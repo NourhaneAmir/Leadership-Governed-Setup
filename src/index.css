@@ -1,0 +1,9 @@
+@import "tailwindcss";
+
+/* Andalusia Pulse · Leadership Practice — original design system.
+   Kept intact: this file already implements the full dark-green/gold
+   theme, so it is preserved as-is rather than rewritten into Tailwind
+   utility classes. Tailwind is layered in above for any new components
+   built going forward -- use utility classes freely in new code, the
+   two systems coexist without conflict. */
+@import "./theme.css";

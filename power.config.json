@@ -1,0 +1,25 @@
+{
+  "version": "1.0",
+  "appId": "7caa2fb2-1661-4b02-a2a3-926f58f88e61",
+  "appDisplayName": "Andalusia Pulse - Leadership Practice - Governance Setup",
+  "region": "prod",
+  "appType": "CodeApp",
+  "environmentId": "9ce6fb09-5b63-e9f4-9185-b707b4b3425e",
+  "description": " ",
+  "buildPath": "./dist",
+  "buildEntryPoint": "index.html",
+  "localAppUrl": "http://localhost:3000",
+  "logoPath": "Default",
+  "connectionReferences": {},
+  "databaseReferences": {
+    "default.cds": {
+      "dataSources": {
+        "businessunits": {
+          "entitySetName": "businessunits",
+          "logicalName": "businessunit"
+        }
+      },
+      "environmentVariableName": ""
+    }
+  }
+}

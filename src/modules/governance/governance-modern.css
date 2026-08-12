@@ -1,0 +1,326 @@
+/* =========================================================================
+   Governance Setup — modernized shell
+   Scoped entirely under .gov-root so the Leadership Execution module
+   (which shares the same base class names in theme.css) is untouched.
+   Same theme tokens throughout (--teal/--green/--grad-* etc.) — this file
+   only changes layout, spacing, motion and responsiveness.
+   ========================================================================= */
+
+.gov-root{ --gov-side-w: 260px; --gov-topbar-h: 60px; }
+
+/* ---------- topbar ---------- */
+.gov-root .gov-topbar{
+  height:var(--gov-topbar-h);
+  padding:0 20px;
+  gap:18px;
+  box-shadow:0 1px 0 rgba(0,0,0,.18), 0 8px 24px -18px rgba(0,0,0,.55);
+  backdrop-filter:saturate(1.1);
+}
+.gov-root .gov-brand{
+  border-right:none;
+  padding-right:0;
+  gap:1px;
+}
+
+/* burger, left of the brand */
+.gov-root .gov-burger{
+  display:flex; flex-direction:column; justify-content:center; align-items:center;
+  gap:4px; width:32px; height:32px; flex:0 0 32px;
+  background:transparent; border:1px solid rgba(255,255,255,.16); border-radius:8px;
+  cursor:pointer; margin-right:2px; transition:background .16s,border-color .16s;
+}
+.gov-root .gov-burger:hover{ background:rgba(255,255,255,.08) }
+.gov-root .gov-burger span{
+  display:block; width:16px; height:2px; border-radius:2px; background:#fff;
+  transition:transform .2s,opacity .2s;
+}
+.gov-root .gov-burger[aria-expanded="false"] span:nth-child(1){ transform:translateY(6px) rotate(45deg) }
+.gov-root .gov-burger[aria-expanded="false"] span:nth-child(2){ opacity:0 }
+.gov-root .gov-burger[aria-expanded="false"] span:nth-child(3){ transform:translateY(-6px) rotate(-45deg) }
+.gov-root .gov-brand b{
+  font-size:13.5px;
+  background:linear-gradient(90deg,#fff 0%, #E8D3AC 100%);
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+.gov-root .gov-role{
+  padding:5px 6px 5px 12px;
+  border-radius:9px;
+  background:rgba(255,255,255,.05);
+  border:1px solid rgba(255,255,255,.10);
+}
+.gov-root .gov-role label{ opacity:.65 }
+.gov-root .gov-role select{
+  background:transparent; border:none; padding:2px 4px;
+  font-weight:600;
+}
+.gov-root .gov-scope{
+  display:inline-flex; align-items:center; gap:6px;
+  transition:background .2s,border-color .2s;
+}
+.gov-root .gov-dot{ width:6px;height:6px;border-radius:50%;display:inline-block;background:currentColor }
+.gov-root .gov-scope-rw{ color:#DCEFD9; border-color:rgba(139,196,120,.4); background:rgba(139,196,120,.12) }
+.gov-root .gov-scope-ro{ color:#E9D9B8; border-color:rgba(233,217,184,.35); background:rgba(233,217,184,.10) }
+.gov-root .gov-date{ opacity:.75; font-weight:500 }
+
+/* user chip, top-right */
+.gov-root .gov-user{
+  display:flex; align-items:center; gap:8px;
+  background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.14);
+  border-radius:22px; padding:4px 12px 4px 4px; cursor:pointer;
+  color:#fff; font-family:inherit; transition:background .16s,border-color .16s;
+}
+.gov-root .gov-user:hover{ background:rgba(255,255,255,.12) }
+.gov-root .gov-user-av{
+  width:26px; height:26px; border-radius:50%; flex:0 0 26px;
+  background:var(--grad-gold); color:#2A1E0F; font-size:10.5px; font-weight:700;
+  display:flex; align-items:center; justify-content:center; letter-spacing:.02em;
+}
+.gov-root .gov-user-name{ font-size:12.5px; font-weight:600; white-space:nowrap }
+
+/* module-switch item, bottom of sidebar */
+.gov-root .gov-side-sp{ flex:1 }
+.gov-root .gov-switch-nav{
+  color:rgba(255,255,255,.85);
+  border:1px solid rgba(255,255,255,.10);
+  background:rgba(255,255,255,.03);
+}
+.gov-root .gov-switch-nav:hover{
+  background:var(--grad-gold); color:#2A1E0F; border-color:transparent;
+}
+.gov-root .gov-switch-nav:hover .gov-switch-ic{ background:rgba(0,0,0,.18); color:#2A1E0F }
+.gov-root .gov-switch-ic{ font-size:12px }
+
+/* ---------- shell / layout: full-bleed, fluid ---------- */
+.gov-root{ --gov-side-rail-w: 68px; }
+.gov-root .gov-shell{ align-items:stretch }
+.gov-root .gov-side{
+  width:var(--gov-side-w); flex:0 0 var(--gov-side-w);
+  height:calc(100vh - var(--gov-topbar-h));
+  top:var(--gov-topbar-h);
+  padding:16px 0 20px;
+  border-right:1px solid rgba(0,0,0,.25);
+  display:flex; flex-direction:column;
+  overflow-x:hidden;
+  transition:width .22s ease, flex-basis .22s ease;
+}
+/* collapsed state — icon rail, not a full close */
+.gov-root .gov-nav-closed .gov-side{
+  width:var(--gov-side-rail-w); flex-basis:var(--gov-side-rail-w);
+}
+.gov-root .gov-nav-closed .gov-side-grp{
+  opacity:0; pointer-events:none; height:0; margin:0; padding:0; overflow:hidden;
+}
+.gov-root .gov-nav-closed .gov-subnav{
+  margin:0 0 4px; padding:0; border-left:none;
+  align-items:center;
+}
+.gov-root .gov-nav-closed .gov-nav-label{
+  opacity:0; width:0; overflow:hidden; white-space:nowrap;
+}
+.gov-root .gov-nav-closed .gov-nav-i{
+  justify-content:center; padding-left:0; padding-right:0;
+  margin-left:12px; margin-right:12px;
+}
+.gov-root .gov-nav-label{ transition:opacity .15s ease; white-space:nowrap }
+.gov-root .gov-side-grp{ padding:6px 20px 12px; font-size:10px }
+.gov-root .gov-nav-i{
+  padding:10px 16px 10px 20px;
+  margin:0 10px 3px;
+  width:calc(100% - 20px);
+  border-left:none;
+  border-radius:10px;
+  font-size:13.5px;
+  display:flex; align-items:center; gap:11px;
+  transition:background .16s,color .16s,transform .12s,padding .22s ease,margin .22s ease;
+}
+.gov-root .gov-nav-i:hover{ background:rgba(255,255,255,.07); transform:translateX(1px) }
+.gov-root .gov-nav-i.on{
+  background:linear-gradient(90deg, rgba(165,132,91,.28) 0%, rgba(165,132,91,.10) 100%);
+  border-left:none;
+  box-shadow:inset 3px 0 0 var(--teal);
+}
+.gov-root .gov-nav-n{
+  border-radius:7px; flex:0 0 auto;
+  display:flex; align-items:center; justify-content:center;
+  width:28px; height:28px; color:rgba(255,255,255,.75);
+  transition:background .16s,color .16s;
+}
+.gov-root .gov-nav-i:hover .gov-nav-n{ color:#fff }
+.gov-root .gov-nav-i.on .gov-nav-n{ background:var(--teal); color:#fff }
+
+/* Setup Register sub-nav — quick-create actions for Reports / Meetings */
+.gov-root .gov-subnav{
+  display:flex; flex-direction:column; gap:1px;
+  margin:0 10px 6px 30px; padding-left:8px;
+  border-left:1px solid rgba(255,255,255,.10);
+}
+.gov-root .gov-subnav-i{
+  width:100%; margin:0; padding:6px 10px 6px 8px; font-size:12.5px;
+  color:rgba(255,255,255,.62); border-radius:7px;
+}
+.gov-root .gov-subnav-i:hover{ color:#fff; background:rgba(255,255,255,.06) }
+.gov-root .gov-subnav-n{
+  width:20px; height:20px; background:transparent; color:inherit;
+}
+.gov-root .gov-subnav-i:hover .gov-subnav-n{ color:#fff; background:transparent }
+
+/* main: no width cap, fluid gutters that scale with viewport */
+.gov-root .gov-main{
+  max-width:none;
+  width:100%;
+  box-sizing:border-box;
+  padding:clamp(16px,2.4vw,36px) clamp(16px,3.2vw,48px) 90px;
+}
+.gov-root .card,
+.gov-root .t-wrap,
+.gov-root table.data{ width:100% }
+
+/* let content grids actually use the reclaimed space on wide screens */
+.gov-root .stats{ grid-template-columns:repeat(auto-fit,minmax(170px,1fr)) }
+.gov-root .grid2{ grid-template-columns:repeat(auto-fit,minmax(360px,1fr)) }
+.gov-root .grid3{ grid-template-columns:repeat(auto-fit,minmax(280px,1fr)) }
+.gov-root .sum-grid{ grid-template-columns:repeat(auto-fit,minmax(280px,1fr)) }
+.gov-root .kv-block{ grid-template-columns:repeat(auto-fit,minmax(220px,1fr)) }
+
+/* register/lists two-pane screens: let the content pane breathe on ultrawide */
+.gov-root .lists{ grid-template-columns:230px minmax(0,1fr) }
+.gov-root .wiz{ grid-template-columns:minmax(0,1fr) 310px }
+
+/* cards: slightly crisper, modern elevation */
+.gov-root .card{
+  border-radius:16px;
+  box-shadow:0 1px 2px rgba(33,28,30,.05), 0 10px 28px -20px rgba(33,28,30,.28);
+  transition:box-shadow .18s,transform .18s;
+}
+.gov-root .card:hover{ box-shadow:0 2px 6px rgba(33,28,30,.06), 0 16px 36px -20px rgba(33,28,30,.34) }
+
+/* ---------- responsive ---------- */
+@media(max-width:1400px){
+  .gov-root{ --gov-side-w: 232px }
+}
+
+@media(max-width:1120px){
+  .gov-root .gov-scope.gov-date{ display:none }
+}
+
+@media(max-width:900px){
+  .gov-root .gov-main{ padding:16px 16px 70px }
+  .gov-root .gov-role label{ display:none }
+  .gov-root .gov-user-name{ display:none }
+  .gov-root .gov-user{ padding:4px }
+}
+
+@media(max-width:760px){
+  .gov-root{ --gov-topbar-h: 52px }
+  .gov-root .gov-topbar{ flex-wrap:wrap; height:auto; min-height:var(--gov-topbar-h); padding:8px 14px; gap:8px 12px }
+  .gov-root .gov-brand{ order:1 }
+  .gov-root .gov-user{ order:2; margin-left:auto }
+  .gov-root .gov-role,.gov-root .gov-scope{ order:3 }
+  .gov-root .tb-sp{ display:none }
+
+  .gov-root .gov-shell{ flex-direction:column }
+  .gov-root .gov-side{
+    position:static; width:100%; flex:none; height:auto; max-height:none;
+    flex-direction:row;
+    display:flex; align-items:center; overflow-x:auto; overflow-y:hidden;
+    padding:8px 10px; gap:6px; border-right:none; border-bottom:1px solid rgba(0,0,0,.25);
+  }
+  .gov-root .gov-side-grp{ display:none }
+  .gov-root .gov-side-sp{ display:none }
+  .gov-root .gov-nav-i{
+    margin:0; width:auto; flex:0 0 auto; white-space:nowrap;
+    padding:8px 14px; border-radius:20px;
+  }
+  .gov-root .gov-nav-i.on{ box-shadow:none; background:var(--teal); color:#fff }
+  .gov-root .gov-switch-nav{ background:rgba(255,255,255,.05) }
+  .gov-root .gov-subnav{ display:none }
+  .gov-root .gov-main{ padding:14px 14px 60px }
+
+  /* on the horizontal mobile bar, "collapsed" means hidden entirely —
+     an icon rail doesn't make sense in a row layout */
+  .gov-root .gov-nav-closed .gov-side{ display:none }
+}
+
+/* =========================================================================
+   Wizard stepper — matches the Leadership Execution wizard's card style
+   (.wiz-steps/.wiz-num/.wiz-line/.t are shared, defined in theme.css).
+   This block only adds the invalid-step indicator and lets the card use
+   the reclaimed full-width space instead of wrapping early.
+   ========================================================================= */
+.gov-root .gov-wiz-steps{
+  justify-content:space-between; gap:10px 6px;
+}
+.gov-root .gov-wiz-step .wiz-num{ position:relative }
+.gov-root .gov-step-dot{
+  position:absolute; top:-2px; right:-2px; width:8px; height:8px;
+  border-radius:50%; background:var(--red); border:2px solid var(--panel);
+}
+.gov-root .gov-wiz-step.bad .wiz-num:not(.done):not(.now){ border:1px solid var(--red); color:var(--red) }
+@media(max-width:760px){
+  .gov-root .wiz-line{ min-width:8px }
+  .gov-root .gov-wiz-step .t b{ font-size:11.5px }
+  .gov-root .gov-wiz-step .t span{ display:none }
+}
+
+/* =========================================================================
+   Setup Register — modernized list UI (visual only: no behavior, filters,
+   columns or actions were added/removed/reordered).
+   ========================================================================= */
+
+/* page header row */
+.gov-root .ph h1{ font-size:20px; letter-spacing:-.01em }
+.gov-root .ph .sub{ font-size:12.5px; line-height:1.5 }
+
+/* stat cards */
+.gov-root .stat{
+  border-radius:14px;
+  transition:border-color .16s,box-shadow .16s,transform .16s;
+}
+.gov-root .stat:hover{ transform:translateY(-1px) }
+.gov-root .stat .v{ font-size:24px }
+
+/* filter bar becomes a contained toolbar instead of loose floating controls */
+.gov-root .fltr{
+  background:var(--panel); border:1px solid var(--border);
+  border-radius:12px; padding:11px 14px; gap:8px 14px;
+  box-shadow:0 1px 2px rgba(33,28,30,.04);
+}
+.gov-root .fltr select,.gov-root .fltr input{
+  border-radius:8px; transition:border-color .15s,box-shadow .15s;
+}
+.gov-root .fltr select:focus,.gov-root .fltr input:focus{
+  outline:none; border-color:var(--teal); box-shadow:0 0 0 3px var(--teal-l);
+}
+
+/* table: sticky header, calmer zebra, gold accent on hover instead of flat fill */
+.gov-root table.data thead th{
+  position:sticky; top:var(--gov-topbar-h); z-index:1;
+  background:var(--panel);
+  font-size:9.5px; letter-spacing:.09em; padding:10px 11px;
+  border-bottom:1px solid var(--border-d);
+}
+.gov-root table.data tbody tr{ transition:background .12s }
+.gov-root table.data tbody tr.click:hover{
+  background:linear-gradient(90deg, rgba(165,132,91,.08) 0%, rgba(165,132,91,.03) 60%, transparent 100%);
+}
+.gov-root table.data tbody tr:nth-child(even){ background:rgba(33,28,30,.012) }
+.gov-root table.data tbody tr.click:hover:nth-child(even){
+  background:linear-gradient(90deg, rgba(165,132,91,.08) 0%, rgba(165,132,91,.03) 60%, transparent 100%);
+}
+.gov-root table.data td{ padding:11px 11px }
+.gov-root table.data .t-main{ font-weight:650 }
+
+/* status/kind pills: small leading dot for quicker scanning, same labels */
+.gov-root table.data .tag{
+  font-weight:650; letter-spacing:.01em; padding:3px 10px 3px 8px;
+}
+.gov-root table.data .tag::before{
+  content:''; display:inline-block; width:5px; height:5px; border-radius:50%;
+  background:currentColor; opacity:.8; margin-right:1px;
+}
+.gov-root table.data .tag.grey::before{ display:none }
+
+/* agenda item source badge — read-only, set automatically (not user-editable) */
+.gov-root .agenda-src{
+  display:flex; align-items:center;
+}
