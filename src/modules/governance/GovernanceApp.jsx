@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef, createContext, useContext } from 'react';
 import { ClipboardList, ListChecks, ArrowUpRight, FileText, CalendarDays, Check } from 'lucide-react';
-import { fetchRegions, fetchBusinessUnits } from '../../services/dataverse.js';
+import { fetchRegions, fetchBusinessUnits, fetchDepartments, fetchFunctions, fetchProcesses, fetchKpis, fetchSections, fetchPositions, saveReportTemplateToDataverse } from '../../services/dataverse.js';
 import './governance-modern.css';
 
 
@@ -73,7 +73,7 @@ let BUSINESS_UNITS=[
   {id:'bu-adc', region:'rg-ksa', name:'Andalusia Dental Clinics'},
   {id:'bu-ahm', region:'rg-egy', name:'Andalusia Al Moasah'},
   {id:'bu-ahs', region:'rg-egy', name:'Andalusia Shallalat'}];
-const DEPARTMENTS=[
+let DEPARTMENTS=[
   {id:'dp-ahj-q',  bu:'bu-ahj', name:'Quality'},
   {id:'dp-ahj-n',  bu:'bu-ahj', name:'Nursing'},
   {id:'dp-ahj-m',  bu:'bu-ahj', name:'Medical Affairs'},
@@ -86,17 +86,19 @@ const DEPARTMENTS=[
   {id:'dp-ahs-q',  bu:'bu-ahs', name:'Quality'},
   {id:'dp-ahs-o',  bu:'bu-ahs', name:'Operations'},
   {id:'dp-ahs-f',  bu:'bu-ahs', name:'Facilities'}];
-/* Section / Specialty exists on SOME departments only — the optional branch. */
-const SECTIONS=[
-  {id:'sc-1', dept:'dp-ahj-m', name:'Cardiology'},
-  {id:'sc-2', dept:'dp-ahj-m', name:'Orthopaedics'},
-  {id:'sc-3', dept:'dp-ahj-m', name:'Paediatrics'},
-  {id:'sc-4', dept:'dp-ahj-n', name:'Critical Care Nursing'},
-  {id:'sc-5', dept:'dp-ahj-n', name:'Theatre Nursing'},
-  {id:'sc-6', dept:'dp-adc-c', name:'Orthodontics'},
-  {id:'sc-7', dept:'dp-adc-c', name:'Prosthodontics'},
-  {id:'sc-8', dept:'dp-ahm-n', name:'Maternity Nursing'}];
-const FUNCTIONS=[
+/* Section / Specialty exists on SOME Business Units only — the optional branch.
+   (Real schema: cr301_specialtyksa_service_hubs links directly to Business Unit,
+   not via Department, so this cascades BU -> Specialty, not BU -> Department -> Specialty.) */
+let SECTIONS=[
+  {id:'sc-1', bu:'bu-ahj', name:'Cardiology'},
+  {id:'sc-2', bu:'bu-ahj', name:'Orthopaedics'},
+  {id:'sc-3', bu:'bu-ahj', name:'Paediatrics'},
+  {id:'sc-4', bu:'bu-ahj', name:'Critical Care Nursing'},
+  {id:'sc-5', bu:'bu-ahj', name:'Theatre Nursing'},
+  {id:'sc-6', bu:'bu-adc', name:'Orthodontics'},
+  {id:'sc-7', bu:'bu-adc', name:'Prosthodontics'},
+  {id:'sc-8', bu:'bu-ahm', name:'Maternity Nursing'}];
+let FUNCTIONS=[
   {id:'fn-1',  dept:'dp-ahj-q', name:'Quality Assurance'},
   {id:'fn-2',  dept:'dp-ahj-q', name:'Accreditation'},
   {id:'fn-3',  dept:'dp-ahj-q', name:'Patient Safety'},
@@ -121,7 +123,7 @@ const FUNCTIONS=[
   {id:'fn-22', dept:'dp-ahs-f', name:'Facilities Maintenance'}];
 /* A Setup covers several units at once, so Department and Function are chosen once, by name,
    above the units — the same Department and the same Function exist inside more than one unit. */
-const DEPARTMENT_NAMES=Array.from(new Set(DEPARTMENTS.map(d=>d.name))).sort();
+const departmentNames=()=>Array.from(new Set(DEPARTMENTS.map(d=>d.name))).sort();
 const FUNCTION_NAMES=Array.from(new Set(FUNCTIONS.map(f=>f.name))).sort();
 /* the Functions that sit under one Department — the second dropdown of a scope line.
    Leaving it empty is a real answer: the whole Department is in the committee. */
@@ -129,14 +131,14 @@ function functionsIn(depName){
   const ids=DEPARTMENTS.filter(d=>d.name===depName).map(d=>d.id);
   return Array.from(new Set(FUNCTIONS.filter(f=>ids.includes(f.dept)).map(f=>f.name))).sort();
 }
-/* Sections exist on some Departments only, and only inside a Business Unit */
-function sectionsFor(depNames, bu){
-  const ids=DEPARTMENTS.filter(d=>(depNames||[]).includes(d.name) && (!bu||d.bu===bu)).map(d=>d.id);
-  return SECTIONS.filter(x=>ids.includes(x.dept));
+/* Sections/Specialties now cascade directly from Business Unit (their real
+   Dataverse relationship), not via Department. */
+function sectionsFor(bu){
+  return SECTIONS.filter(x=>!bu||x.bu===bu);
 }
 
 /* ---- positions, each with a seeded current holder (G-01) ----------------- */
-const POSITIONS=[
+let POSITIONS=[
   {id:'p01', name:'Medical Director',                     holder:'Dr. Ahmed Farouk'},
   {id:'p02', name:'Head of Quality',                      holder:'Sara Khalil'},
   {id:'p03', name:'Quality Section Head',                 holder:'Hussain Ahmed'},
@@ -210,12 +212,17 @@ const FOLDERS=(()=>{const o=[];
     o.push({id:`fd-${l.id.slice(3)}-${i}`, library:l.id, name:f})));
   return o;})();
 
-const PROCESSES=['PRC-QLT-01 Quality indicator management','PRC-QLT-02 Corrective action management',
-  'PRC-NUR-01 Nursing establishment planning','PRC-MED-01 Medication reconciliation',
+/* populated alongside PROCESSES/KPIS whenever a live fetch succeeds --
+   name -> id, used only at Report Template save time to resolve the
+   flat display-name selections back to real Dataverse ids. */
+let PROCESS_ID_BY_NAME={};
+let KPI_ID_BY_NAME={};
+
+let PROCESSES=['PRC-QLT-01 Quality indicator management','PRC-QLT-02 Corrective action management',  'PRC-NUR-01 Nursing establishment planning','PRC-MED-01 Medication reconciliation',
   'PRC-IPC-01 Infection surveillance','PRC-OPS-01 Patient flow management',
   'PRC-BME-01 Preventive maintenance','PRC-FIN-01 Budget preparation',
   'PRC-ITX-01 Change management','PRC-HRM-01 Workforce planning'];
-const KPIS=['KPI-QLT-001 Sepsis bundle compliance','KPI-QLT-007 Hand hygiene compliance',
+let KPIS=['KPI-QLT-001 Sepsis bundle compliance','KPI-QLT-007 Hand hygiene compliance',
   'KPI-NUR-003 Nursing vacancy rate','KPI-MED-002 Medication error rate',
   'KPI-IPC-004 Healthcare associated infection rate','KPI-OPS-004 Theatre utilisation',
   'KPI-BME-002 Preventive maintenance completion','KPI-FIN-001 Operating margin',
@@ -285,6 +292,32 @@ function unitSub(s,key){
   return byId(REGIONS,key) ? 'Region' : '';
 }
 const buOf=(s,key)=> stageLevel(s)==='bu' ? key : null;
+
+/* Positions filtered to the Business Units/Regions actually in scope for
+   this Setup (Organisational scope step). Falls back to every Position
+   once nothing is selected yet, so pickers aren't empty before scope is
+   chosen, and never hides a Position that has no `bu` at all (built-in
+   mock data predates the Dataverse wiring and isn't tagged to a unit). */
+/* key, when given, scopes to that ONE unit card's own Business Unit --
+   not the whole Setup's multi-unit selection. Without a key (e.g. the
+   Meeting agenda owner picker, which isn't per-unit), falls back to every
+   Business Unit the Setup as a whole runs in. */
+function positionsInScope(s,key){
+  const lv=stageLevel(s);
+  let buIds;
+  if(lv==='bu'){
+    buIds = key ? [key] : (s.businessUnits||[]).slice();
+  }else if(lv==='region'){
+    const regionIds = key ? [key] : (s.regions||[]);
+    buIds = BUSINESS_UNITS.filter(b=>regionIds.includes(b.region)).map(b=>b.id);
+  }else if(lv==='group'){
+    buIds = BUSINESS_UNITS.map(b=>b.id);
+  }else{
+    buIds = [];
+  }
+  if(!buIds.length) return POSITIONS;
+  return POSITIONS.filter(p=>!p.bu || buIds.includes(p.bu));
+}
 
 /* ---- scope lines: one Department, and optionally one Function inside it --- */
 /* A line with no Function means the whole Department sits on this Setup. */
@@ -415,7 +448,7 @@ const BLANK_REPORT={
   kind:'Report Template', objective:'', reportType:null, reportCategory:null,
   qualifier:'',
   stage:null, regions:[], businessUnits:[], lines:[], units:[],
-  delivery:'File destination', site:null, library:null, folder:null, sourceLink:'',
+  delivery:'Source link', site:null, library:null, folder:null, sourceLink:'',
   checklist:[], processes:[], kpis:[],
   frequency:null, dayOfWeek:null, dayOfMonth:null, monthInQuarter:null,
   confidentiality:null, status:'Draft', version:0, updated:TODAY};
@@ -826,9 +859,13 @@ const Sel=({id,val,onChange,opts,placeholder='Select…',disabled})=>
 const Seg=({id,opts,val,onChange,disabled})=>
   <div className="seg-ctl" id={id} role="group">
     {opts.map(o=>{const v=typeof o==='object'?o.v:o, l=typeof o==='object'?o.label:o;
-      return <button type="button" key={v} disabled={disabled}
-        className={val===v?'on':''} aria-pressed={val===v}
-        onClick={()=>onChange(v)}>{l}</button>;})}
+      const locked=typeof o==='object'&&o.locked;
+      const optDisabled=disabled||locked;
+      return <button type="button" key={v} disabled={optDisabled}
+        className={(val===v?'on':'')+(locked?' locked':'')} aria-pressed={val===v}
+        title={locked&&o.lockedHint?o.lockedHint:undefined}
+        onClick={()=>{ if(!optDisabled) onChange(v); }}>
+        {l}{locked?<span className="seg-lock" aria-hidden="true">🔒</span>:null}</button>;})}
   </div>;
 
 const Checks=({id,opts,val,onChange})=>
@@ -838,6 +875,48 @@ const Checks=({id,opts,val,onChange})=>
         onChange={()=>onChange((val||[]).includes(o)?val.filter(x=>x!==o):[...(val||[]),o])}/>
       <span>{o}</span></label>)}
   </div>;
+
+/* Searchable multi-select: type to filter, click a result to add it, chosen
+   items render as removable chips. Used for Related Processes/KPIs, which
+   can run into long governed lists once Dataverse is fully populated. */
+function ComboMulti({id,opts,val,onChange,placeholder}){
+  const [q,setQ]=useState('');
+  const [open,setOpen]=useState(false);
+  const wrapRef=useRef(null);
+  const selected=val||[];
+  const filtered=opts.filter(o=>!selected.includes(o) && o.toLowerCase().includes(q.toLowerCase()));
+
+  useEffect(()=>{
+    const onDoc=e=>{ if(wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown',onDoc);
+    return ()=>document.removeEventListener('mousedown',onDoc);
+  },[]);
+
+  const add=o=>{ onChange([...selected,o]); setQ(''); };
+  const remove=o=>onChange(selected.filter(x=>x!==o));
+
+  return <div className="combo-multi" ref={wrapRef} id={id}>
+    <div className="combo-chips" onClick={()=>setOpen(true)}>
+      {selected.map(o=><span className="combo-chip" key={o}>{o}
+        <button type="button" aria-label={`Remove ${o}`}
+          onClick={e=>{e.stopPropagation();remove(o);}}>×</button></span>)}
+      <input type="text" value={q} placeholder={selected.length?'Add more…':(placeholder||'Search…')}
+        onFocus={()=>setOpen(true)}
+        onChange={e=>{setQ(e.target.value); setOpen(true);}}
+        onKeyDown={e=>{
+          if(e.key==='Backspace' && !q && selected.length) remove(selected[selected.length-1]);
+          else if(e.key==='Enter' && filtered.length){ e.preventDefault(); add(filtered[0]); }
+          else if(e.key==='Escape') setOpen(false);
+        }}/>
+    </div>
+    {open ? <div className="combo-list" role="listbox">
+      {filtered.length
+        ? filtered.map(o=><button type="button" key={o} className="combo-opt" role="option"
+            onClick={()=>add(o)}>{o}</button>)
+        : <div className="combo-empty">{q?'No matches':'All options selected'}</div>}
+    </div> : null}
+  </div>;
+}
 
 /* ---- stepper (matches the Leadership Execution wizard's visual style) --- */
 function Stepper({steps,current,onGo,invalidSteps}){
@@ -1029,7 +1108,7 @@ function ScopeFields({s,set,stepNo}){
               return <div className="f-row">
                 <Field id={'f-line-dep-'+i} label="Department" req>
                   <Sel id={'f-line-dep-'+i} val={r.department}
-                    opts={DEPARTMENT_NAMES.filter(d=>!taken.includes(d)).map(d=>({v:d,label:d}))}
+                    opts={departmentNames().filter(d=>!taken.includes(d)).map(d=>({v:d,label:d}))}
                     onChange={v=>set({lines:s.lines.map((x,j)=>j===i?{...x,department:v,function:null}:x)})}/>
                 </Field>
                 <Field id={'f-line-fn-'+i} label="Function"
@@ -1137,7 +1216,7 @@ function UnitSetup({s,set,issues,shared,intro}){
       const bad=unitIssueCount(s,k,issues);
       const closed=shut.has(k);
       const bu=buOf(s,k);
-      const secs=sectionsFor(depsOf(s), bu);
+      const secs=sectionsFor(bu);
       const teams=teamsIn(k);
       return <div className={'unit-card'+(bad?' bad':'')+(closed?' shut':'')} key={k} id={'u-'+k}>
         <button type="button" className="unit-hd"
@@ -1179,18 +1258,18 @@ function UnitSetup({s,set,issues,shared,intro}){
                     <Field id={'u-sub-'+k} label="Submitting Position" req govern
                       hint="Who prepares and submits this report in this unit.">
                       <Sel id={'u-sub-'+k} val={u.submitter}
-                        opts={POSITIONS.map(p=>({v:p.id,label:p.name}))}
+                        opts={positionsInScope(s,k).map(p=>({v:p.id,label:p.name}))}
                         onChange={v=>setUnit(k,{submitter:v})}/>
-                      {u.submitter?<div className="holder">currently: {posHolder(u.submitter)}</div>:null}
+                      {posHolder(u.submitter)?<div className="holder">currently: {posHolder(u.submitter)}</div>:null}
                     </Field>
                     <Field id={'u-own-'+k} label="Owner Position" req govern
                       hint="Accountable for the content.">
-                      <Sel id={'u-own-'+k} val={u.owner} opts={POSITIONS.map(p=>({v:p.id,label:p.name}))}
+                      <Sel id={'u-own-'+k} val={u.owner} opts={positionsInScope(s,k).map(p=>({v:p.id,label:p.name}))}
                         onChange={v=>setUnit(k,{owner:v})}/>
-                      {u.owner?<div className="holder">currently: {posHolder(u.owner)}</div>:null}
+                      {posHolder(u.owner)?<div className="holder">currently: {posHolder(u.owner)}</div>:null}
                     </Field>
                   </div>
-                  <UnitChain u={u} k={k} setUnit={setUnit}/>
+                  <UnitChain u={u} k={k} s={s} setUnit={setUnit}/>
                 </>
               : <>
                   <div className="f-row3">
@@ -1198,9 +1277,9 @@ function UnitSetup({s,set,issues,shared,intro}){
                       ['Organizer / Facilitator','facilitator',true]].map(([label,key,req])=>
                       <Field key={key} id={'u-'+key+'-'+k} label={label} req={req} govern>
                         <Sel id={'u-'+key+'-'+k} val={u[key]} placeholder={req?'Select…':'None'}
-                          opts={POSITIONS.map(p=>({v:p.id,label:p.name}))}
+                          opts={positionsInScope(s,k).map(p=>({v:p.id,label:p.name}))}
                           onChange={v=>setUnit(k,{[key]:v})}/>
-                        {u[key]?<div className="holder">currently: {posHolder(u[key])}</div>:null}
+                        {posHolder(u[key])?<div className="holder">currently: {posHolder(u[key])}</div>:null}
                       </Field>)}
                   </div>
                   <Field id={'u-cm-'+k} label="Attendees" req
@@ -1212,7 +1291,7 @@ function UnitSetup({s,set,issues,shared,intro}){
                         .concat([{id:uid('cm'),position:null,type:'Core'}])})}
                       render={(r,i2)=><div className="f-row">
                         <Sel val={r.position} placeholder="Position…"
-                          opts={POSITIONS.map(p=>({v:p.id,label:p.name}))}
+                          opts={positionsInScope(s,k).map(p=>({v:p.id,label:p.name}))}
                           onChange={v=>setUnit(k,{coreMembers:u.coreMembers
                             .map((x,j)=>j===i2?{...x,position:v}:x)})}/>
                         <Sel val={r.type} opts={ATTENDEE_TYPES}
@@ -1237,7 +1316,7 @@ function UnitSetup({s,set,issues,shared,intro}){
 
 /* per-unit review chain — the Submitting Position cannot review its own submission,
    but the Owner Position (accountable for the content) may sit in the chain. */
-function UnitChain({u,k,setUnit}){
+function UnitChain({u,k,s,setUnit}){
   const [rejected,setRejected]=useState(false);
   const chain=u.reviewChain||[];
   const clash=chain.includes(u.submitter) && !!u.submitter;
@@ -1248,7 +1327,7 @@ function UnitChain({u,k,setUnit}){
       onAdd={()=>{setRejected(false);setUnit(k,{reviewChain:chain.concat([null])});}}
       render={(r,i)=><div className="chain-row">
         <Sel val={r.pos} placeholder="Position…"
-          opts={POSITIONS.filter(p=>!chain.includes(p.id)||p.id===r.pos).map(p=>({v:p.id,label:p.name}))}
+          opts={positionsInScope(s,k).filter(p=>!chain.includes(p.id)||p.id===r.pos).map(p=>({v:p.id,label:p.name}))}
           onChange={v=>{ if(v && v===u.submitter){setRejected(true);return;} setRejected(false);
             setUnit(k,{reviewChain:chain.map((x,j)=>j===i?v:x)});}}/>
         {i===chain.length-1?<Tag c="green">approves</Tag>:<Tag c="teal">reviews</Tag>}
@@ -1426,7 +1505,7 @@ function MeetingWizard({rec,onClose}){
             render={(r,i)=><div className="f-row3">
               <input type="text" value={r.text} placeholder="Item"
                 onChange={e=>set({agenda:s.agenda.map((x,j)=>j===i?{...x,text:e.target.value}:x)})}/>
-              <Sel val={r.owner} placeholder="Owner…" opts={POSITIONS.map(p=>({v:p.id,label:p.name}))}
+              <Sel val={r.owner} placeholder="Owner…" opts={positionsInScope(s).map(p=>({v:p.id,label:p.name}))}
                 onChange={v=>set({agenda:s.agenda.map((x,j)=>j===i?{...x,owner:v}:x)})}/>
               <span className="agenda-src" title="Set automatically; not editable">
                 <Tag c={r.source==='Added'?'teal':'grey'}>{r.source}</Tag></span>
@@ -1490,7 +1569,7 @@ function UnitsTable({s}){
         return <tr key={k}>
           <td className="k">{unitLabel(s,k)}
             <div className="t-sub">{unitSub(s,k)}</div></td>
-          {lv==='bu'?<td className="d">{u.section?nameOf(SECTIONS,u.section):'Whole Department'}</td>:null}
+          {lv==='bu'?<td className="d">{u.section?nameOf(SECTIONS,u.section):'Whole Business Unit'}</td>:null}
           {report
             ? <><td>{posName(u.submitter)}</td><td>{posName(u.owner)}</td>
                 <td className="d">{(u.reviewChain||[]).filter(Boolean).map(posName).join(' → ')||'—'}</td></>
@@ -1597,7 +1676,10 @@ function ReportWizard({rec,onClose}){
         return <div className="card">
           <h2>Destination and content</h2>
           <Field id="f-delivery" label="Report Delivery" req>
-            <Seg id="f-delivery" opts={REPORT_DELIVERY} val={s.delivery}
+            <Seg id="f-delivery" opts={[
+                {v:'File destination', label:'File destination', locked:true,
+                 lockedHint:'Coming soon — SharePoint destinations are not wired to live data yet. Use Source link for now.'},
+                {v:'Source link', label:'Source link'}]} val={s.delivery}
               onChange={v=>set({delivery:v,
                 ...(v==='Source link'?{site:null,library:null,folder:null}:{sourceLink:''})})}/></Field>
           {file ? <div className="f-row3">
@@ -1630,11 +1712,12 @@ function ReportWizard({rec,onClose}){
           <div className="f-row">
             <Field id="f-processes" label="Related Processes" govern
               hint="Referenced by identifier only, never copied.">
-              <Checks id="f-processes" opts={PROCESSES} val={s.processes}
-                onChange={v=>set({processes:v})}/></Field>
+              <ComboMulti id="f-processes" opts={PROCESSES} val={s.processes}
+                placeholder="Search processes…" onChange={v=>set({processes:v})}/></Field>
             <Field id="f-kpis" label="Related KPIs" govern
               hint="Referenced by identifier only, never copied.">
-              <Checks id="f-kpis" opts={KPIS} val={s.kpis} onChange={v=>set({kpis:v})}/></Field>
+              <ComboMulti id="f-kpis" opts={KPIS} val={s.kpis}
+                placeholder="Search KPIs…" onChange={v=>set({kpis:v})}/></Field>
           </div>
         </div>;
       }
@@ -1691,6 +1774,44 @@ function ReportSummary({s}){
     </div>
     <UnitsTable s={s}/>
   </>;
+}
+
+/* Resolves a Report Template Setup (as edited/published in ReportWizard)
+   into the plain-id payload saveReportTemplateToDataverse() expects.
+   Kept separate from that function since it needs the app's live
+   reference data and cascade helpers (DEPARTMENTS, FUNCTIONS, POSITIONS,
+   KPI_ID_BY_NAME/PROCESS_ID_BY_NAME, scopeKeys/unitOf/buOf/nameOf), none
+   of which the plain data-service module knows about. */
+function buildReportTemplatePayload(f){
+  const keys=scopeKeys(f);
+  const firstKey=keys[0];
+  const firstUnit=firstKey?unitOf(f,firstKey):null;
+  const bu=firstKey?buOf(f,firstKey):null;
+
+  return {
+    name: f.name,
+    objective: f.objective,
+    reportType: f.reportType,
+    frequency: f.frequency,
+    dayOfWeek: f.dayOfWeek,
+    dayOfMonth: f.dayOfMonth,
+    monthInQuarter: f.monthInQuarter,
+    confidentiality: f.confidentiality,
+    destinationLink: f.delivery==='Source link' ? (f.sourceLink||undefined) : undefined,
+    businessUnitId: bu || undefined,
+    specialityId: firstUnit?.section || undefined,
+    checklist: (f.checklist||[]).filter(c=>c.text).map(c=>({text:c.text})),
+    lines: linesOf(f).map(l=>({
+      departmentId: DEPARTMENTS.find(d=>d.name===l.department)?.id,
+      functionId: l.function ? FUNCTIONS.find(fn=>fn.name===l.function)?.id : undefined,
+    })).filter(l=>l.departmentId),
+    kpiIds: (f.kpis||[]).map(name=>KPI_ID_BY_NAME[name]).filter(Boolean),
+    processIds: (f.processes||[]).map(name=>PROCESS_ID_BY_NAME[name]).filter(Boolean),
+    reviewChain: (firstUnit?.reviewChain||[]).map((posId,i)=>({
+      step: i+1,
+      positionName: nameOf(POSITIONS,posId) || posId || '',
+    })),
+  };
 }
 
 /* =========================================================================
@@ -1910,10 +2031,10 @@ const LIST_DEFS=[
    parentOpts:()=>BUSINESS_UNITS.map(x=>({v:x.id,label:x.name})),
    rows:p=>DEPARTMENTS.filter(d=>!p||d.bu===p).map(x=>[x.name,nameOf(BUSINESS_UNITS,x.bu)]),
    note:'A Setup selects Departments by name, so the same Department covers every unit it runs in.'},
-  {id:'section',      name:'Section / Specialty', parent:'Department',
-   parentOpts:()=>DEPARTMENTS.map(x=>({v:x.id,label:`${x.name} · ${nameOf(BUSINESS_UNITS,x.bu)}`})),
-   rows:p=>SECTIONS.filter(s=>!p||s.dept===p).map(x=>[x.name,nameOf(DEPARTMENTS,x.dept)]),
-   note:'Only some Departments have Sections. Choosing one without any shows an empty list.'},
+  {id:'section',      name:'Section / Specialty', parent:'Business Unit',
+   parentOpts:()=>BUSINESS_UNITS.map(x=>({v:x.id,label:x.name})),
+   rows:p=>SECTIONS.filter(s=>!p||s.bu===p).map(x=>[x.name,nameOf(BUSINESS_UNITS,x.bu)]),
+   note:'Only some Business Units have Specialties. Choosing one without any shows an empty list.'},
   {id:'function',     name:'Function',       parent:'Department',
    parentOpts:()=>DEPARTMENTS.map(x=>({v:x.id,label:`${x.name} · ${nameOf(BUSINESS_UNITS,x.bu)}`})),
    rows:p=>FUNCTIONS.filter(f=>!p||f.dept===p).map(x=>[x.name,nameOf(DEPARTMENTS,x.dept)])},
@@ -2016,25 +2137,89 @@ function App({onSwitch}){
   ALL_SETUPS.current=db.setups;
   useEffect(()=>{ saveDb(db); },[db]);
 
-  /* Regions and Business Units, read live from Dataverse (crd04_regions /
-     businessunit). Falls back silently to the built-in list above if the
-     data source isn't wired yet or isn't reachable (e.g. running with
-     plain `npm run dev` instead of `pac code run`) -- everything that
-     reads REGIONS/BUSINESS_UNITS keeps working either way. */
+  /* Regions, Business Units, Departments, Functions, Processes and KPIs,
+     read live from Dataverse. Falls back silently to the built-in lists
+     above if a data source isn't wired yet or isn't reachable (e.g.
+     running with plain `npm run dev` instead of `pac code run`) --
+     everything that reads these mutable module-level lists keeps working
+     either way, one table at a time so a failure on one doesn't block
+     the others. */
   const [refDataTick,setRefDataTick]=useState(0);
   useEffect(()=>{
     let cancelled=false;
     (async()=>{
+      let changed=false;
       try{
-        const [regions,units]=await Promise.all([fetchRegions(),fetchBusinessUnits()]);
+        const regions=await fetchRegions();
         if(cancelled) return;
-        let changed=false;
+        console.log(`[dataverse] fetchRegions() returned ${regions?regions.length:0} row(s)`, regions);
         if(regions&&regions.length){ REGIONS=regions; changed=true; }
-        if(units&&units.length){ BUSINESS_UNITS=units; changed=true; }
-        if(changed) setRefDataTick(t=>t+1);
       }catch(e){
-        console.warn('[dataverse] Region/Business Unit read failed, using built-in list:', e);
+        console.warn('[dataverse] fetchRegions() failed, using built-in list:', e);
       }
+      try{
+        const units=await fetchBusinessUnits();
+        if(cancelled) return;
+        console.log(`[dataverse] fetchBusinessUnits() returned ${units?units.length:0} row(s)`, units);
+        if(units&&units.length){ BUSINESS_UNITS=units; changed=true; }
+      }catch(e){
+        console.warn('[dataverse] fetchBusinessUnits() failed, using built-in list:', e);
+      }
+      try{
+        const depts=await fetchDepartments();
+        if(cancelled) return;
+        console.log(`[dataverse] fetchDepartments() returned ${depts?depts.length:0} row(s)`, depts);
+        if(depts&&depts.length){ DEPARTMENTS=depts; changed=true; }
+      }catch(e){
+        console.warn('[dataverse] fetchDepartments() failed, using built-in list:', e);
+      }
+      try{
+        const fns=await fetchFunctions();
+        if(cancelled) return;
+        console.log(`[dataverse] fetchFunctions() returned ${fns?fns.length:0} row(s)`, fns);
+        if(fns&&fns.length){ FUNCTIONS=fns; changed=true; }
+      }catch(e){
+        console.warn('[dataverse] fetchFunctions() failed, using built-in list:', e);
+      }
+      try{
+        const procs=await fetchProcesses();
+        if(cancelled) return;
+        console.log(`[dataverse] fetchProcesses() returned ${procs?procs.length:0} row(s)`, procs);
+        if(procs&&procs.length){
+          PROCESS_ID_BY_NAME={}; procs.forEach(p=>{ PROCESS_ID_BY_NAME[p.name]=p.id; });
+          PROCESSES=procs.map(p=>p.name); changed=true;
+        }
+      }catch(e){
+        console.warn('[dataverse] fetchProcesses() failed, using built-in list:', e);
+      }
+      try{
+        const kpis=await fetchKpis();
+        if(cancelled) return;
+        console.log(`[dataverse] fetchKpis() returned ${kpis?kpis.length:0} row(s)`, kpis);
+        if(kpis&&kpis.length){
+          KPI_ID_BY_NAME={}; kpis.forEach(k=>{ KPI_ID_BY_NAME[k.name]=k.id; });
+          KPIS=kpis.map(k=>k.name); changed=true;
+        }
+      }catch(e){
+        console.warn('[dataverse] fetchKpis() failed, using built-in list:', e);
+      }
+      try{
+        const secs=await fetchSections();
+        if(cancelled) return;
+        console.log(`[dataverse] fetchSections() returned ${secs?secs.length:0} row(s)`, secs);
+        if(secs&&secs.length){ SECTIONS=secs; changed=true; }
+      }catch(e){
+        console.warn('[dataverse] fetchSections() failed, using built-in list:', e);
+      }
+      try{
+        const positions=await fetchPositions();
+        if(cancelled) return;
+        console.log(`[dataverse] fetchPositions() returned ${positions?positions.length:0} row(s)`, positions);
+        if(positions&&positions.length){ POSITIONS=positions; changed=true; }
+      }catch(e){
+        console.warn('[dataverse] fetchPositions() failed, using built-in list:', e);
+      }
+      if(changed&&!cancelled) setRefDataTick(t=>t+1);
     })();
     return ()=>{cancelled=true;};
   },[]);
@@ -2112,7 +2297,32 @@ function App({onSwitch}){
         n.setups[i]={...f,status:'Active / Approved',version:next,updated:TODAY};});
       setEditing(false);
       toast('Setup published',
-        `${displayName(f)} is Active / Approved at version ${next}. Records created from now on are stamped with this version.`,'ok');},
+        `${displayName(f)} is Active / Approved at version ${next}. Records created from now on are stamped with this version.`,'ok');
+      /* Dataverse write runs after the local publish already succeeded,
+         and never blocks or reverses it -- a failed/partial Dataverse
+         save just surfaces as a follow-up toast, since the Setup is
+         already correctly published locally either way. */
+      if(f.kind==='Report Template'){
+        saveReportTemplateToDataverse(buildReportTemplatePayload(f))
+          .then(({id,errors})=>{
+            if(!id){
+              console.warn('[dataverse] Report Template save failed entirely:', errors);
+              toast('Dataverse save failed',
+                `${displayName(f)} was published locally, but the Dataverse write failed. Check the console for details.`,'err');
+            }else if(errors.length){
+              console.warn('[dataverse] Report Template saved with some child rows failing:', errors);
+              toast('Report Template saved, with gaps',
+                `${errors.length} related row(s) (${errors.map(e=>e.table).join(', ')}) failed to save. Check the console for details.`,'warn');
+            }else{
+              console.log('[dataverse] Report Template saved:', id);
+            }
+          })
+          .catch(e=>{
+            console.warn('[dataverse] Report Template save threw unexpectedly:', e);
+            toast('Dataverse save failed',
+              `${displayName(f)} was published locally, but the Dataverse write failed. Check the console for details.`,'err');
+          });
+      }},
 
     duplicate:id=>{ const src=db.setups.find(s=>s.id===id); const nid=uid('su');
       /* the per-unit rows are copied, not shared — editing the copy must never reach the original */

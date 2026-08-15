@@ -1,0 +1,1193 @@
+{
+  "name": "cr603_organizationstructure",
+  "title": "Organization Structures",
+  "schema": {
+    "type": "array",
+    "items": {
+      "type": "object",
+      "x-ms-dataverse-entity": true,
+      "x-ms-dataverse-entityset": "cr603_organizationstructures",
+      "x-ms-dataverse-primary-id": "cr603_organizationstructureid",
+      "x-ms-dataverse-primary-name": "cr603_name",
+      "properties": {
+        "anoyer_role": {
+          "type": "string",
+          "title": "Role",
+          "x-ms-dataverse-attribute": "anoyer_role",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "anoyer_Role"
+        },
+        "anoyer_rolename": {
+          "type": "string",
+          "title": "anoyer_rolename",
+          "x-ms-dataverse-attribute": "anoyer_rolename",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "anoyer_RoleName",
+          "x-ms-read-only": true,
+          "maxLength": 850
+        },
+        "cr18c_departments_lkp": {
+          "type": "string",
+          "title": "Department",
+          "x-ms-dataverse-attribute": "cr18c_departments_lkp",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "cr18c_Departments_LKP",
+          "required": true
+        },
+        "cr18c_departments_lkpname": {
+          "type": "string",
+          "title": "cr18c_departments_lkpname",
+          "x-ms-dataverse-attribute": "cr18c_departments_lkpname",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "cr18c_Departments_LKPName",
+          "x-ms-read-only": true,
+          "maxLength": 850
+        },
+        "cr18c_technicalmanagername": {
+          "type": "string",
+          "title": "Technical Manager Name",
+          "x-ms-dataverse-attribute": "cr18c_technicalmanagername",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "cr18c_TechnicalManagerName",
+          "x-ms-read-only": true,
+          "maxLength": 4000
+        },
+        "cr603_administrativemanager": {
+          "type": "string",
+          "title": "Administrative Manager",
+          "x-ms-dataverse-attribute": "cr603_administrativemanager",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "cr603_AdministrativeManager"
+        },
+        "cr603_administrativemanagername": {
+          "type": "string",
+          "title": "cr603_administrativemanagername",
+          "x-ms-dataverse-attribute": "cr603_administrativemanagername",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "cr603_AdministrativeManagerName",
+          "x-ms-read-only": true,
+          "maxLength": 850
+        },
+        "cr603_businessunit": {
+          "type": "string",
+          "title": "Business Unit",
+          "x-ms-dataverse-attribute": "cr603_businessunit",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "cr603_BusinessUnit",
+          "required": true
+        },
+        "cr603_businessunitname": {
+          "type": "string",
+          "title": "cr603_businessunitname",
+          "x-ms-dataverse-attribute": "cr603_businessunitname",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "cr603_BusinessUnitName",
+          "x-ms-read-only": true,
+          "maxLength": 160
+        },
+        "cr603_name": {
+          "type": "string",
+          "title": "Name",
+          "x-ms-dataverse-attribute": "cr603_name",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "cr603_Name",
+          "x-ms-dataverse-primary-name": true,
+          "required": true,
+          "maxLength": 850
+        },
+        "cr603_organizationstructureid": {
+          "type": "string",
+          "title": "Organization Structure",
+          "x-ms-dataverse-attribute": "cr603_organizationstructureid",
+          "x-ms-dataverse-type": "UniqueidentifierType",
+          "x-ms-schema-name": "cr603_OrganizationStructureId",
+          "x-ms-dataverse-primary-id": true,
+          "required": true,
+          "x-ms-keyType": "primary"
+        },
+        "cr603_position": {
+          "type": "string",
+          "title": "Position",
+          "x-ms-dataverse-attribute": "cr603_position",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "cr603_Position",
+          "required": true
+        },
+        "cr603_positionname": {
+          "type": "string",
+          "title": "cr603_positionname",
+          "x-ms-dataverse-attribute": "cr603_positionname",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "cr603_PositionName",
+          "x-ms-read-only": true,
+          "maxLength": 850
+        },
+        "cr603_technicalmanager": {
+          "type": "string",
+          "title": "Technical Manager",
+          "x-ms-dataverse-attribute": "cr603_technicalmanager",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "cr603_TechnicalManager"
+        },
+        "cr603_technicalmanagerid": {
+          "type": "string",
+          "title": "Technical Manager ID",
+          "x-ms-dataverse-attribute": "cr603_technicalmanagerid",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "cr603_TechnicalManagerID",
+          "x-ms-read-only": true,
+          "maxLength": 4000
+        },
+        "cr603_technicalmanagername": {
+          "type": "string",
+          "title": "cr603_technicalmanagername",
+          "x-ms-dataverse-attribute": "cr603_technicalmanagername",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "cr603_TechnicalManagerName",
+          "x-ms-read-only": true,
+          "maxLength": 850
+        },
+        "createdby": {
+          "type": "string",
+          "title": "Created By",
+          "x-ms-dataverse-attribute": "createdby",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "CreatedBy",
+          "x-ms-read-only": true
+        },
+        "createdbyname": {
+          "type": "string",
+          "title": "createdbyname",
+          "x-ms-dataverse-attribute": "createdbyname",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "CreatedByName",
+          "x-ms-read-only": true,
+          "maxLength": 100
+        },
+        "createdbyyominame": {
+          "type": "string",
+          "title": "createdbyyominame",
+          "x-ms-dataverse-attribute": "createdbyyominame",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "CreatedByYomiName",
+          "x-ms-read-only": true,
+          "required": true,
+          "maxLength": 100
+        },
+        "createdon": {
+          "type": "string",
+          "title": "Created On",
+          "x-ms-dataverse-attribute": "createdon",
+          "x-ms-dataverse-type": "DateTimeType",
+          "x-ms-schema-name": "CreatedOn",
+          "x-ms-read-only": true
+        },
+        "createdonbehalfby": {
+          "type": "string",
+          "title": "Created By (Delegate)",
+          "x-ms-dataverse-attribute": "createdonbehalfby",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "CreatedOnBehalfBy",
+          "x-ms-read-only": true
+        },
+        "createdonbehalfbyname": {
+          "type": "string",
+          "title": "createdonbehalfbyname",
+          "x-ms-dataverse-attribute": "createdonbehalfbyname",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "CreatedOnBehalfByName",
+          "x-ms-read-only": true,
+          "maxLength": 100
+        },
+        "createdonbehalfbyyominame": {
+          "type": "string",
+          "title": "createdonbehalfbyyominame",
+          "x-ms-dataverse-attribute": "createdonbehalfbyyominame",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "CreatedOnBehalfByYomiName",
+          "x-ms-read-only": true,
+          "required": true,
+          "maxLength": 100
+        },
+        "hr_administrativemanagername": {
+          "type": "string",
+          "title": "Administrative Manager Name",
+          "x-ms-dataverse-attribute": "hr_administrativemanagername",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "hr_AdministrativeManagerName",
+          "x-ms-read-only": true,
+          "maxLength": 4000
+        },
+        "hr_aministrativemanagerid": {
+          "type": "string",
+          "title": "Aministrative Manager ID",
+          "x-ms-dataverse-attribute": "hr_aministrativemanagerid",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "hr_AministrativeManagerID",
+          "x-ms-read-only": true,
+          "maxLength": 4000
+        },
+        "hr_applysimilartechnicalmanager": {
+          "type": "string",
+          "title": "Apply to similar position",
+          "x-ms-dataverse-attribute": "hr_applysimilartechnicalmanager",
+          "x-ms-dataverse-type": "PicklistType",
+          "x-ms-schema-name": "hr_ApplySimilarTechnicalManager",
+          "enum": [
+            "Position Only",
+            "Position + Function",
+            "Position + Function + Section"
+          ],
+          "x-ms-enum-values": [
+            123140000,
+            123140003,
+            123140002
+          ],
+          "Color": [
+            null,
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "d5990981-bca9-f011-bbd2-7ced8d0cef8a",
+          "x-ms-isGlobal": true,
+          "x-ms-optionsetdisplayname": "HR System-Apply Similar Technical Manager",
+          "x-ms-optionSetType": "Picklist"
+        },
+        "hr_applysimilartechnicalmanagername": {
+          "type": "string",
+          "title": "hr_applysimilartechnicalmanagername",
+          "x-ms-dataverse-attribute": "hr_applysimilartechnicalmanagername",
+          "x-ms-dataverse-type": "VirtualType",
+          "x-ms-schema-name": "hr_applysimilartechnicalmanagerName",
+          "x-ms-read-only": true
+        },
+        "hr_assignedto": {
+          "type": "string",
+          "title": "Assigned To",
+          "x-ms-dataverse-attribute": "hr_assignedto",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "hr_AssignedTo"
+        },
+        "hr_assignedtoname": {
+          "type": "string",
+          "title": "hr_assignedtoname",
+          "x-ms-dataverse-attribute": "hr_assignedtoname",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "hr_AssignedToName",
+          "x-ms-read-only": true,
+          "maxLength": 850
+        },
+        "hr_buofadministrativemanager": {
+          "type": "string",
+          "title": "BU of Administrative Manager",
+          "x-ms-dataverse-attribute": "hr_buofadministrativemanager",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "hr_BUofAdministrativeManager",
+          "x-ms-read-only": true,
+          "maxLength": 4000
+        },
+        "hr_buoftechnicalmanager": {
+          "type": "string",
+          "title": "BU of Technical Manager",
+          "x-ms-dataverse-attribute": "hr_buoftechnicalmanager",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "hr_BUofTechnicalManager",
+          "x-ms-read-only": true,
+          "maxLength": 4000
+        },
+        "hr_caresection": {
+          "type": "string",
+          "title": "Dot Care Section",
+          "x-ms-dataverse-attribute": "hr_caresection",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "hr_CareSection",
+          "x-ms-read-only": true,
+          "maxLength": 4000
+        },
+        "hr_company": {
+          "type": "string",
+          "title": "Company",
+          "x-ms-dataverse-attribute": "hr_company",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "hr_Company",
+          "required": true
+        },
+        "hr_companyname": {
+          "type": "string",
+          "title": "hr_companyname",
+          "x-ms-dataverse-attribute": "hr_companyname",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "hr_CompanyName",
+          "x-ms-read-only": true,
+          "maxLength": 850
+        },
+        "hr_copyrecords": {
+          "type": "string",
+          "title": "Copy Records",
+          "x-ms-dataverse-attribute": "hr_copyrecords",
+          "x-ms-dataverse-type": "BooleanType",
+          "x-ms-schema-name": "hr_CopyRecords",
+          "enum": [
+            "No",
+            "Yes"
+          ],
+          "x-ms-enum-values": [
+            0,
+            1
+          ],
+          "Color": [
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "9bea7770-0c84-f011-b4cb-7c1e52854802",
+          "x-ms-isGlobal": false,
+          "x-ms-optionsetdisplayname": "Copy Records",
+          "x-ms-optionSetType": "Boolean"
+        },
+        "hr_copyrecordsname": {
+          "type": "string",
+          "title": "hr_copyrecordsname",
+          "x-ms-dataverse-attribute": "hr_copyrecordsname",
+          "x-ms-dataverse-type": "VirtualType",
+          "x-ms-schema-name": "hr_copyrecordsName",
+          "x-ms-read-only": true
+        },
+        "hr_currentemployee": {
+          "type": "string",
+          "title": "Current Employee",
+          "x-ms-dataverse-attribute": "hr_currentemployee",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "hr_CurrentEmployee"
+        },
+        "hr_currentemployeename": {
+          "type": "string",
+          "title": "hr_currentemployeename",
+          "x-ms-dataverse-attribute": "hr_currentemployeename",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "hr_CurrentEmployeeName",
+          "x-ms-read-only": true,
+          "maxLength": 850
+        },
+        "hr_department": {
+          "type": "string",
+          "title": "Department(view)",
+          "x-ms-dataverse-attribute": "hr_department",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "hr_Department",
+          "x-ms-read-only": true,
+          "maxLength": 4000
+        },
+        "hr_detailsofposition": {
+          "type": "string",
+          "title": "Details of Position",
+          "x-ms-dataverse-attribute": "hr_detailsofposition",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "hr_DetailsofPosition",
+          "x-ms-read-only": true,
+          "maxLength": 4000
+        },
+        "hr_emailofadministrativemanager": {
+          "type": "string",
+          "title": "Email of Administrative Manager",
+          "x-ms-dataverse-attribute": "hr_emailofadministrativemanager",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "hr_EmailofAdministrativeManager",
+          "x-ms-read-only": true,
+          "maxLength": 4000
+        },
+        "hr_flagofeditinfunctionflow": {
+          "type": "string",
+          "title": "Flag of Edit in Function Flow",
+          "x-ms-dataverse-attribute": "hr_flagofeditinfunctionflow",
+          "x-ms-dataverse-type": "PicklistType",
+          "x-ms-schema-name": "hr_FlagofEditinFunctionFlow",
+          "enum": [
+            "Yes",
+            "No"
+          ],
+          "x-ms-enum-values": [
+            123140000,
+            123140001
+          ],
+          "Color": [
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "2629e408-8e9f-f011-b41c-6045bd8cce39",
+          "x-ms-isGlobal": false,
+          "x-ms-optionsetdisplayname": "Flag of Edit in Function Flow",
+          "x-ms-optionSetType": "Picklist"
+        },
+        "hr_flagofeditinfunctionflowname": {
+          "type": "string",
+          "title": "hr_flagofeditinfunctionflowname",
+          "x-ms-dataverse-attribute": "hr_flagofeditinfunctionflowname",
+          "x-ms-dataverse-type": "VirtualType",
+          "x-ms-schema-name": "hr_flagofeditinfunctionflowName",
+          "x-ms-read-only": true
+        },
+        "hr_fullnameofcurrentemployee": {
+          "type": "string",
+          "title": "Full Name of Current Employee",
+          "x-ms-dataverse-attribute": "hr_fullnameofcurrentemployee",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "hr_FullNameofCurrentEmployee",
+          "x-ms-read-only": true,
+          "maxLength": 4000
+        },
+        "hr_functioncategory": {
+          "type": "string",
+          "title": "Function Category",
+          "x-ms-dataverse-attribute": "hr_functioncategory",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "hr_FunctionCategory",
+          "x-ms-read-only": true,
+          "maxLength": 4000
+        },
+        "hr_functionview": {
+          "type": "string",
+          "title": "Function(view)",
+          "x-ms-dataverse-attribute": "hr_functionview",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "hr_Functionview",
+          "x-ms-read-only": true,
+          "maxLength": 4000
+        },
+        "hr_funtion": {
+          "type": "string",
+          "title": "Function",
+          "x-ms-dataverse-attribute": "hr_funtion",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "hr_Funtion",
+          "required": true
+        },
+        "hr_funtionname": {
+          "type": "string",
+          "title": "hr_funtionname",
+          "x-ms-dataverse-attribute": "hr_funtionname",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "hr_FuntionName",
+          "x-ms-read-only": true,
+          "maxLength": 850
+        },
+        "hr_hasreporting": {
+          "type": "string",
+          "title": "Has Reporting",
+          "x-ms-dataverse-attribute": "hr_hasreporting",
+          "x-ms-dataverse-type": "PicklistType",
+          "x-ms-schema-name": "hr_HasReporting",
+          "required": true,
+          "enum": [
+            "Yes",
+            "No"
+          ],
+          "x-ms-enum-values": [
+            123140000,
+            123140001
+          ],
+          "Color": [
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "97ff00bf-5e61-f011-bec3-6045bdf37b46",
+          "x-ms-isGlobal": true,
+          "x-ms-optionsetdisplayname": "Has Reporting",
+          "x-ms-optionSetType": "Picklist"
+        },
+        "hr_hasreportingname": {
+          "type": "string",
+          "title": "hr_hasreportingname",
+          "x-ms-dataverse-attribute": "hr_hasreportingname",
+          "x-ms-dataverse-type": "VirtualType",
+          "x-ms-schema-name": "hr_hasreportingName",
+          "x-ms-read-only": true
+        },
+        "hr_hiringortransfer": {
+          "type": "string",
+          "title": "Hiring Or Transfer",
+          "x-ms-dataverse-attribute": "hr_hiringortransfer",
+          "x-ms-dataverse-type": "PicklistType",
+          "x-ms-schema-name": "hr_HiringOrTransfer",
+          "enum": [
+            "Hiring Request",
+            "External Transfer Request",
+            "Internal Transfer Request"
+          ],
+          "x-ms-enum-values": [
+            123140000,
+            123140001,
+            123140002
+          ],
+          "Color": [
+            null,
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "c6771421-c005-f111-8407-000d3a4b5321",
+          "x-ms-isGlobal": true,
+          "x-ms-optionsetdisplayname": "HR System-Hiring Or Transfer",
+          "x-ms-optionSetType": "Picklist"
+        },
+        "hr_hiringortransfername": {
+          "type": "string",
+          "title": "hr_hiringortransfername",
+          "x-ms-dataverse-attribute": "hr_hiringortransfername",
+          "x-ms-dataverse-type": "VirtualType",
+          "x-ms-schema-name": "hr_hiringortransferName",
+          "x-ms-read-only": true
+        },
+        "hr_isphysician": {
+          "type": "string",
+          "title": "isPhysician",
+          "x-ms-dataverse-attribute": "hr_isphysician",
+          "x-ms-dataverse-type": "BooleanType",
+          "x-ms-schema-name": "hr_isPhysician",
+          "x-ms-read-only": true,
+          "enum": [
+            "No",
+            "Yes"
+          ],
+          "x-ms-enum-values": [
+            0,
+            1
+          ],
+          "Color": [
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "22c0729a-72f0-f011-8406-000d3a4b5321",
+          "x-ms-isGlobal": false,
+          "x-ms-optionsetdisplayname": "isPhysician",
+          "x-ms-optionSetType": "Boolean"
+        },
+        "hr_isphysicianname": {
+          "type": "string",
+          "title": "hr_isphysicianname",
+          "x-ms-dataverse-attribute": "hr_isphysicianname",
+          "x-ms-dataverse-type": "VirtualType",
+          "x-ms-schema-name": "hr_isphysicianName",
+          "x-ms-read-only": true
+        },
+        "hr_jobfamily": {
+          "type": "string",
+          "title": "Job Family",
+          "x-ms-dataverse-attribute": "hr_jobfamily",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "hr_JobFamily",
+          "maxLength": 100
+        },
+        "hr_jobtype": {
+          "type": "string",
+          "title": "Job Type",
+          "x-ms-dataverse-attribute": "hr_jobtype",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "hr_JobType",
+          "maxLength": 100
+        },
+        "hr_level": {
+          "type": "string",
+          "title": "Level",
+          "x-ms-dataverse-attribute": "hr_level",
+          "x-ms-dataverse-type": "IntegerType",
+          "x-ms-schema-name": "hr_Level",
+          "x-ms-read-only": true
+        },
+        "hr_makethetechnicalmanagerthesameastheadminis": {
+          "type": "string",
+          "title": "Set Technical Manager as Administration Manager",
+          "x-ms-dataverse-attribute": "hr_makethetechnicalmanagerthesameastheadminis",
+          "x-ms-dataverse-type": "PicklistType",
+          "x-ms-schema-name": "hr_MaketheTechnicalManagerthesameastheAdminis",
+          "required": true,
+          "enum": [
+            "Yes",
+            "No"
+          ],
+          "x-ms-enum-values": [
+            123140000,
+            123140001
+          ],
+          "Color": [
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "8eb2c10a-8dd6-f011-8544-7ced8d0cef8a",
+          "x-ms-isGlobal": false,
+          "x-ms-optionsetdisplayname": "Make the Technical Manager the same as the Adminis",
+          "x-ms-optionSetType": "Picklist"
+        },
+        "hr_makethetechnicalmanagerthesameastheadminisname": {
+          "type": "string",
+          "title": "hr_makethetechnicalmanagerthesameastheadminisname",
+          "x-ms-dataverse-attribute": "hr_makethetechnicalmanagerthesameastheadminisname",
+          "x-ms-dataverse-type": "VirtualType",
+          "x-ms-schema-name": "hr_makethetechnicalmanagerthesameastheadminisName",
+          "x-ms-read-only": true
+        },
+        "hr_newstatus": {
+          "type": "string",
+          "title": "_Status",
+          "x-ms-dataverse-attribute": "hr_newstatus",
+          "x-ms-dataverse-type": "PicklistType",
+          "x-ms-schema-name": "hr_NewStatus",
+          "enum": [
+            "Hold",
+            "Closed"
+          ],
+          "x-ms-enum-values": [
+            123140000,
+            123140001
+          ],
+          "Color": [
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "23874525-aba9-f011-bbd2-7ced8d0cef8a",
+          "x-ms-isGlobal": true,
+          "x-ms-optionsetdisplayname": "HR System-Org Status",
+          "x-ms-optionSetType": "Picklist"
+        },
+        "hr_newstatusname": {
+          "type": "string",
+          "title": "hr_newstatusname",
+          "x-ms-dataverse-attribute": "hr_newstatusname",
+          "x-ms-dataverse-type": "VirtualType",
+          "x-ms-schema-name": "hr_newstatusName",
+          "x-ms-read-only": true
+        },
+        "hr_note": {
+          "type": "string",
+          "title": "Note",
+          "x-ms-dataverse-attribute": "hr_note",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "hr_Note",
+          "maxLength": 100
+        },
+        "hr_organizationstructureid": {
+          "type": "string",
+          "title": "Organization Structure ID",
+          "x-ms-dataverse-attribute": "hr_organizationstructureid",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "hr_OrganizationStructureID",
+          "maxLength": 100
+        },
+        "hr_overridedata": {
+          "type": "string",
+          "title": "Override Data",
+          "x-ms-dataverse-attribute": "hr_overridedata",
+          "x-ms-dataverse-type": "BooleanType",
+          "x-ms-schema-name": "hr_OverrideData",
+          "enum": [
+            "No",
+            "Yes"
+          ],
+          "x-ms-enum-values": [
+            0,
+            1
+          ],
+          "Color": [
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "280f7a4a-7eda-f011-8544-7ced8d0cef8a",
+          "x-ms-isGlobal": false,
+          "x-ms-optionsetdisplayname": "Override Data",
+          "x-ms-optionSetType": "Boolean"
+        },
+        "hr_overridedataname": {
+          "type": "string",
+          "title": "hr_overridedataname",
+          "x-ms-dataverse-attribute": "hr_overridedataname",
+          "x-ms-dataverse-type": "VirtualType",
+          "x-ms-schema-name": "hr_overridedataName",
+          "x-ms-read-only": true
+        },
+        "hr_passcodeofsimilarposition": {
+          "type": "string",
+          "title": "Passcode of Similar Position",
+          "x-ms-dataverse-attribute": "hr_passcodeofsimilarposition",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "hr_PasscodeofSimilarPosition",
+          "maxLength": 100
+        },
+        "hr_position_status": {
+          "type": "string",
+          "title": "Position_Status",
+          "x-ms-dataverse-attribute": "hr_position_status",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "hr_Position_Status",
+          "x-ms-read-only": true,
+          "maxLength": 4000
+        },
+        "hr_positiondisplay": {
+          "type": "string",
+          "title": "Position Display",
+          "x-ms-dataverse-attribute": "hr_positiondisplay",
+          "x-ms-dataverse-type": "PicklistType",
+          "x-ms-schema-name": "hr_PositionDisplay",
+          "enum": [
+            "Position Only",
+            "Position + Function",
+            "Position + Section",
+            "Position + Function + Section",
+            "Position + Section + Sub Section",
+            "Position + SubSection"
+          ],
+          "x-ms-enum-values": [
+            123140000,
+            123140001,
+            123140002,
+            123140003,
+            123140004,
+            123140005
+          ],
+          "Color": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "86d4f42b-9dca-f011-8544-7ced8d0cef8a",
+          "x-ms-isGlobal": true,
+          "x-ms-optionsetdisplayname": "HR System-Position Display Global",
+          "x-ms-optionSetType": "Picklist"
+        },
+        "hr_positiondisplayname": {
+          "type": "string",
+          "title": "hr_positiondisplayname",
+          "x-ms-dataverse-attribute": "hr_positiondisplayname",
+          "x-ms-dataverse-type": "VirtualType",
+          "x-ms-schema-name": "hr_positiondisplayName",
+          "x-ms-read-only": true
+        },
+        "hr_positionview": {
+          "type": "string",
+          "title": "Position(view)",
+          "x-ms-dataverse-attribute": "hr_positionview",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "hr_Positionview",
+          "x-ms-read-only": true,
+          "maxLength": 4000
+        },
+        "hr_repeatcount": {
+          "type": "string",
+          "title": "RepeatCount",
+          "x-ms-dataverse-attribute": "hr_repeatcount",
+          "x-ms-dataverse-type": "IntegerType",
+          "x-ms-schema-name": "hr_RepeatCount"
+        },
+        "hr_section": {
+          "type": "string",
+          "title": "Section(view)",
+          "x-ms-dataverse-attribute": "hr_section",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "hr_Section",
+          "x-ms-read-only": true,
+          "maxLength": 4000
+        },
+        "hr_sectionlookup": {
+          "type": "string",
+          "title": "Section",
+          "x-ms-dataverse-attribute": "hr_sectionlookup",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "hr_SectionLookup"
+        },
+        "hr_sectionlookupname": {
+          "type": "string",
+          "title": "hr_sectionlookupname",
+          "x-ms-dataverse-attribute": "hr_sectionlookupname",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "hr_SectionLookupName",
+          "x-ms-read-only": true,
+          "maxLength": 850
+        },
+        "hr_sectiontag": {
+          "type": "string",
+          "title": "Section Tag",
+          "x-ms-dataverse-attribute": "hr_sectiontag",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "hr_SectionTag",
+          "maxLength": 100
+        },
+        "hr_sectiontagview": {
+          "type": "string",
+          "title": "Section Tag (view)",
+          "x-ms-dataverse-attribute": "hr_sectiontagview",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "hr_SectionTagview",
+          "x-ms-read-only": true,
+          "maxLength": 4000
+        },
+        "hr_subsection": {
+          "type": "string",
+          "title": "Sub Section",
+          "x-ms-dataverse-attribute": "hr_subsection",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "hr_SubSection"
+        },
+        "hr_subsectionname": {
+          "type": "string",
+          "title": "hr_subsectionname",
+          "x-ms-dataverse-attribute": "hr_subsectionname",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "hr_SubSectionName",
+          "x-ms-read-only": true,
+          "maxLength": 850
+        },
+        "hr_subsectionview": {
+          "type": "string",
+          "title": "Sub Section(view)",
+          "x-ms-dataverse-attribute": "hr_subsectionview",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "hr_SubSectionview",
+          "x-ms-read-only": true,
+          "maxLength": 4000
+        },
+        "hr_typeoforganizationstructure": {
+          "type": "string",
+          "title": "Type",
+          "x-ms-dataverse-attribute": "hr_typeoforganizationstructure",
+          "x-ms-dataverse-type": "PicklistType",
+          "x-ms-schema-name": "hr_TypeofOrganizationStructure",
+          "required": true,
+          "enum": [
+            "Full Time",
+            "Part Time",
+            "Vocational Qualification",
+            "Protocol Nursing",
+            "Internship"
+          ],
+          "x-ms-enum-values": [
+            123140000,
+            123140001,
+            123140002,
+            123140003,
+            123140004
+          ],
+          "Color": [
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "abeb4590-6baa-f011-bbd2-7ced8d0cef8a",
+          "x-ms-isGlobal": true,
+          "x-ms-optionsetdisplayname": "HR System-Type of Organization Structure",
+          "x-ms-optionSetType": "Picklist"
+        },
+        "hr_typeoforganizationstructurename": {
+          "type": "string",
+          "title": "hr_typeoforganizationstructurename",
+          "x-ms-dataverse-attribute": "hr_typeoforganizationstructurename",
+          "x-ms-dataverse-type": "VirtualType",
+          "x-ms-schema-name": "hr_typeoforganizationstructureName",
+          "x-ms-read-only": true
+        },
+        "hr_typeview": {
+          "type": "string",
+          "title": "Type (View)",
+          "x-ms-dataverse-attribute": "hr_typeview",
+          "x-ms-dataverse-type": "PicklistType",
+          "x-ms-schema-name": "hr_TypeView",
+          "x-ms-read-only": true,
+          "enum": [
+            "Full Time",
+            "Part Time",
+            "Vocational Qualification",
+            "Protocol Nursing",
+            "Internship"
+          ],
+          "x-ms-enum-values": [
+            123140000,
+            123140001,
+            123140002,
+            123140003,
+            123140004
+          ],
+          "Color": [
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "abeb4590-6baa-f011-bbd2-7ced8d0cef8a",
+          "x-ms-isGlobal": true,
+          "x-ms-optionsetdisplayname": "HR System-Type of Organization Structure",
+          "x-ms-optionSetType": "Picklist"
+        },
+        "hr_typeviewname": {
+          "type": "string",
+          "title": "hr_typeviewname",
+          "x-ms-dataverse-attribute": "hr_typeviewname",
+          "x-ms-dataverse-type": "VirtualType",
+          "x-ms-schema-name": "hr_typeviewName",
+          "x-ms-read-only": true
+        },
+        "importsequencenumber": {
+          "type": "string",
+          "title": "Import Sequence Number",
+          "x-ms-dataverse-attribute": "importsequencenumber",
+          "x-ms-dataverse-type": "IntegerType",
+          "x-ms-schema-name": "ImportSequenceNumber"
+        },
+        "modifiedby": {
+          "type": "string",
+          "title": "Modified By",
+          "x-ms-dataverse-attribute": "modifiedby",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "ModifiedBy",
+          "x-ms-read-only": true
+        },
+        "modifiedbyname": {
+          "type": "string",
+          "title": "modifiedbyname",
+          "x-ms-dataverse-attribute": "modifiedbyname",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "ModifiedByName",
+          "x-ms-read-only": true,
+          "maxLength": 100
+        },
+        "modifiedbyyominame": {
+          "type": "string",
+          "title": "modifiedbyyominame",
+          "x-ms-dataverse-attribute": "modifiedbyyominame",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "ModifiedByYomiName",
+          "x-ms-read-only": true,
+          "required": true,
+          "maxLength": 100
+        },
+        "modifiedon": {
+          "type": "string",
+          "title": "Modified On",
+          "x-ms-dataverse-attribute": "modifiedon",
+          "x-ms-dataverse-type": "DateTimeType",
+          "x-ms-schema-name": "ModifiedOn",
+          "x-ms-read-only": true
+        },
+        "modifiedonbehalfby": {
+          "type": "string",
+          "title": "Modified By (Delegate)",
+          "x-ms-dataverse-attribute": "modifiedonbehalfby",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "ModifiedOnBehalfBy",
+          "x-ms-read-only": true
+        },
+        "modifiedonbehalfbyname": {
+          "type": "string",
+          "title": "modifiedonbehalfbyname",
+          "x-ms-dataverse-attribute": "modifiedonbehalfbyname",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "ModifiedOnBehalfByName",
+          "x-ms-read-only": true,
+          "maxLength": 100
+        },
+        "modifiedonbehalfbyyominame": {
+          "type": "string",
+          "title": "modifiedonbehalfbyyominame",
+          "x-ms-dataverse-attribute": "modifiedonbehalfbyyominame",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "ModifiedOnBehalfByYomiName",
+          "x-ms-read-only": true,
+          "required": true,
+          "maxLength": 100
+        },
+        "overriddencreatedon": {
+          "type": "string",
+          "title": "Record Created On",
+          "x-ms-dataverse-attribute": "overriddencreatedon",
+          "x-ms-dataverse-type": "DateTimeType",
+          "x-ms-schema-name": "OverriddenCreatedOn"
+        },
+        "ownerid": {
+          "type": "string",
+          "title": "Owner",
+          "x-ms-dataverse-attribute": "ownerid",
+          "x-ms-dataverse-type": "OwnerType",
+          "x-ms-schema-name": "OwnerId",
+          "required": true
+        },
+        "owneridname": {
+          "type": "string",
+          "title": "owneridname",
+          "x-ms-dataverse-attribute": "owneridname",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "OwnerIdName",
+          "x-ms-read-only": true,
+          "required": true,
+          "maxLength": 100
+        },
+        "owneridtype": {
+          "type": "string",
+          "title": "owneridtype",
+          "x-ms-dataverse-attribute": "owneridtype",
+          "x-ms-dataverse-type": "EntityNameType",
+          "x-ms-schema-name": "OwnerIdType",
+          "required": true
+        },
+        "owneridyominame": {
+          "type": "string",
+          "title": "owneridyominame",
+          "x-ms-dataverse-attribute": "owneridyominame",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "OwnerIdYomiName",
+          "x-ms-read-only": true,
+          "required": true,
+          "maxLength": 100
+        },
+        "owningbusinessunit": {
+          "type": "string",
+          "title": "Owning Business Unit",
+          "x-ms-dataverse-attribute": "owningbusinessunit",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "OwningBusinessUnit",
+          "x-ms-read-only": true
+        },
+        "owningbusinessunitname": {
+          "type": "string",
+          "title": "owningbusinessunitname",
+          "x-ms-dataverse-attribute": "owningbusinessunitname",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "OwningBusinessUnitName",
+          "x-ms-read-only": true,
+          "required": true,
+          "maxLength": 100
+        },
+        "owningteam": {
+          "type": "string",
+          "title": "Owning Team",
+          "x-ms-dataverse-attribute": "owningteam",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "OwningTeam",
+          "x-ms-read-only": true
+        },
+        "owninguser": {
+          "type": "string",
+          "title": "Owning User",
+          "x-ms-dataverse-attribute": "owninguser",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "OwningUser",
+          "x-ms-read-only": true
+        },
+        "statecode": {
+          "type": "string",
+          "title": "Status",
+          "x-ms-dataverse-attribute": "statecode",
+          "x-ms-dataverse-type": "StateType",
+          "x-ms-schema-name": "statecode",
+          "required": true,
+          "enum": [
+            "Active",
+            "Inactive"
+          ],
+          "x-ms-enum-values": [
+            0,
+            1
+          ],
+          "Color": [
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "daa4bbd2-524d-f011-877a-6045bd9979f4",
+          "x-ms-isGlobal": false,
+          "x-ms-optionsetdisplayname": "Status",
+          "x-ms-optionSetType": "State"
+        },
+        "statecodename": {
+          "type": "string",
+          "title": "statecodename",
+          "x-ms-dataverse-attribute": "statecodename",
+          "x-ms-dataverse-type": "VirtualType",
+          "x-ms-schema-name": "statecodeName",
+          "x-ms-read-only": true
+        },
+        "statuscode": {
+          "type": "string",
+          "title": "Status Reason",
+          "x-ms-dataverse-attribute": "statuscode",
+          "x-ms-dataverse-type": "StatusType",
+          "x-ms-schema-name": "statuscode",
+          "enum": [
+            "Active",
+            "Inactive"
+          ],
+          "x-ms-enum-values": [
+            1,
+            2
+          ],
+          "Color": [
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "e4a4bbd2-524d-f011-877a-6045bd9979f4",
+          "x-ms-isGlobal": false,
+          "x-ms-optionsetdisplayname": "Status Reason",
+          "x-ms-optionSetType": "Status"
+        },
+        "statuscodename": {
+          "type": "string",
+          "title": "statuscodename",
+          "x-ms-dataverse-attribute": "statuscodename",
+          "x-ms-dataverse-type": "VirtualType",
+          "x-ms-schema-name": "statuscodeName",
+          "x-ms-read-only": true
+        },
+        "tam_vacantdate": {
+          "type": "string",
+          "title": "Vacant Date",
+          "x-ms-dataverse-attribute": "tam_vacantdate",
+          "x-ms-dataverse-type": "DateTimeType",
+          "x-ms-schema-name": "tam_VacantDate"
+        },
+        "timezoneruleversionnumber": {
+          "type": "string",
+          "title": "Time Zone Rule Version Number",
+          "x-ms-dataverse-attribute": "timezoneruleversionnumber",
+          "x-ms-dataverse-type": "IntegerType",
+          "x-ms-schema-name": "TimeZoneRuleVersionNumber"
+        },
+        "utcconversiontimezonecode": {
+          "type": "string",
+          "title": "UTC Conversion Time Zone Code",
+          "x-ms-dataverse-attribute": "utcconversiontimezonecode",
+          "x-ms-dataverse-type": "IntegerType",
+          "x-ms-schema-name": "UTCConversionTimeZoneCode"
+        },
+        "versionnumber": {
+          "type": "string",
+          "title": "Version Number",
+          "x-ms-dataverse-attribute": "versionnumber",
+          "x-ms-dataverse-type": "BigIntType",
+          "x-ms-schema-name": "VersionNumber",
+          "x-ms-read-only": true
+        }
+      },
+      "required": [
+        "cr18c_departments_lkp",
+        "cr603_businessunit",
+        "cr603_name",
+        "cr603_organizationstructureid",
+        "cr603_position",
+        "createdbyyominame",
+        "createdonbehalfbyyominame",
+        "hr_company",
+        "hr_funtion",
+        "hr_hasreporting",
+        "hr_makethetechnicalmanagerthesameastheadminis",
+        "hr_typeoforganizationstructure",
+        "modifiedbyyominame",
+        "modifiedonbehalfbyyominame",
+        "ownerid",
+        "owneridname",
+        "owneridtype",
+        "owneridyominame",
+        "owningbusinessunitname",
+        "statecode"
+      ]
+    }
+  }
+}

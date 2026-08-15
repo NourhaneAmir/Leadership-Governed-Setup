@@ -8,6 +8,7 @@ import type { GetEntityMetadataOptions, EntityMetadata } from '@microsoft/power-
 import type { IGetOptions, IGetAllOptions } from '../models/CommonModels';
 import type { IOperationResult } from '@microsoft/power-apps/data';
 import { dataSourcesInfo } from '../../../.power/schemas/appschemas/dataSourcesInfo';
+import { deserializeMultiSelectPicklistFields, serializeMultiSelectPicklistFields } from '@microsoft/power-apps/data';
 import { getClient } from '@microsoft/power-apps/data';
 
 
@@ -15,21 +16,28 @@ export class BusinessunitsService {
   private static readonly dataSourceName = 'businessunits';
 
   private static readonly client = getClient(dataSourcesInfo);
+  private static readonly multiSelectPicklistFields = ['cr603_application_tag'] as const;
 
   public static async create(record: Omit<BusinessunitsBase, 'address1_addressid'>): Promise<IOperationResult<Businessunits>> {
-    const result = await BusinessunitsService.client.createRecordAsync<Omit<BusinessunitsBase, 'address1_addressid'>, Businessunits>(
+    const result = await BusinessunitsService.client.createRecordAsync<Record<string, unknown>, Businessunits>(
       BusinessunitsService.dataSourceName,
-      record
+      serializeMultiSelectPicklistFields(record as unknown as Record<string, unknown>, BusinessunitsService.multiSelectPicklistFields)
     );
+    if (result.data) {
+      deserializeMultiSelectPicklistFields(result.data as unknown as Record<string, unknown>, BusinessunitsService.multiSelectPicklistFields);
+    }
     return result;
   }
 
   public static async update(id: string, changedFields: Partial<Omit<BusinessunitsBase, 'address1_addressid'>>): Promise<IOperationResult<Businessunits>> {
-    const result = await BusinessunitsService.client.updateRecordAsync<Partial<Omit<BusinessunitsBase, 'address1_addressid'>>, Businessunits>(
+    const result = await BusinessunitsService.client.updateRecordAsync<Record<string, unknown>, Businessunits>(
       BusinessunitsService.dataSourceName,
       id,
-      changedFields
+      serializeMultiSelectPicklistFields(changedFields as unknown as Record<string, unknown>, BusinessunitsService.multiSelectPicklistFields)
     );
+    if (result.data) {
+      deserializeMultiSelectPicklistFields(result.data as unknown as Record<string, unknown>, BusinessunitsService.multiSelectPicklistFields);
+    }
     return result;
   }
 
@@ -45,6 +53,9 @@ export class BusinessunitsService {
       id,
       options
     );
+    if (result.data) {
+      deserializeMultiSelectPicklistFields(result.data as unknown as Record<string, unknown>, BusinessunitsService.multiSelectPicklistFields);
+    }
     return result;
   }
 
@@ -53,6 +64,7 @@ export class BusinessunitsService {
       BusinessunitsService.dataSourceName,
       options
     );
+    result.data?.forEach(record => deserializeMultiSelectPicklistFields(record as unknown as Record<string, unknown>, BusinessunitsService.multiSelectPicklistFields));
     return result;
   }
 
