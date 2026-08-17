@@ -17,6 +17,136 @@
         "businessunits": {
           "entitySetName": "businessunits",
           "logicalName": "businessunit"
+        },
+        "regionses": {
+          "entitySetName": "crd04_regionses",
+          "logicalName": "crd04_regions",
+          "isHidden": false
+        },
+        "processes": {
+          "entitySetName": "strategy_processes",
+          "logicalName": "strategy_process",
+          "isHidden": false
+        },
+        "kpis": {
+          "entitySetName": "strategy_kpises",
+          "logicalName": "strategy_kpis",
+          "isHidden": false
+        },
+        "functions": {
+          "entitySetName": "hr_functions",
+          "logicalName": "hr_function",
+          "isHidden": false
+        },
+        "departments": {
+          "entitySetName": "cr603_chklst_departmentses",
+          "logicalName": "cr603_chklst_departments",
+          "isHidden": false
+        },
+        "specialtyksa_service_hubs": {
+          "entitySetName": "cr301_specialtyksa_service_hubs",
+          "logicalName": "cr301_specialtyksa_service_hub",
+          "isHidden": false
+        },
+        "teamschannels": {
+          "entitySetName": "and_teamschannels",
+          "logicalName": "and_teamschannel",
+          "isHidden": false
+        },
+        "reporttemplatecontentchecklists": {
+          "entitySetName": "lm_reporttemplatecontentchecklists",
+          "logicalName": "lm_reporttemplatecontentchecklist",
+          "isHidden": false
+        },
+        "reporttemplatedepartment_functions": {
+          "entitySetName": "lm_reporttemplatedepartmentfunctions",
+          "logicalName": "lm_reporttemplatedepartmentfunction",
+          "isHidden": false
+        },
+        "reporttemplaterelatedkpis": {
+          "entitySetName": "lm_reporttemplaterelatedkpises",
+          "logicalName": "lm_reporttemplaterelatedkpis",
+          "isHidden": false
+        },
+        "reporttemplaterelatedprocesses": {
+          "entitySetName": "lm_reporttemplaterelatedprocesseses",
+          "logicalName": "lm_reporttemplaterelatedprocesses",
+          "isHidden": false
+        },
+        "reporttemplatereviewchains": {
+          "entitySetName": "lm_reporttemplatereviewchains",
+          "logicalName": "lm_reporttemplatereviewchain",
+          "isHidden": false
+        },
+        "report_templates": {
+          "entitySetName": "lm_report_templates",
+          "logicalName": "lm_report_template",
+          "isHidden": false
+        },
+        "organizationstructures": {
+          "entitySetName": "cr603_organizationstructures",
+          "logicalName": "cr603_organizationstructure",
+          "isHidden": false
+        },
+        "meetingattendeeslists": {
+          "entitySetName": "lm_meetingattendeeslists",
+          "logicalName": "lm_meetingattendeeslist",
+          "isHidden": false
+        },
+        "meetingtemplates": {
+          "entitySetName": "lm_meetingtemplates",
+          "logicalName": "lm_meetingtemplate",
+          "isHidden": false
+        },
+        "meetingtemplateagendaitems": {
+          "entitySetName": "lm_meetingtemplateagendaitems",
+          "logicalName": "lm_meetingtemplateagendaitem",
+          "isHidden": false
+        },
+        "meetingtemplatedepartment_functions": {
+          "entitySetName": "lm_meetingtemplatedepartmentfunctions",
+          "logicalName": "lm_meetingtemplatedepartmentfunction",
+          "isHidden": false
+        },
+        "meetingtemplatelinkedreports": {
+          "entitySetName": "lm_meetingtemplatelinkedreportses",
+          "logicalName": "lm_meetingtemplatelinkedreports",
+          "isHidden": false
+        },
+        "meetingtemplatesupportivefunctions": {
+          "entitySetName": "lm_meetingtemplatesupportivefunctionses",
+          "logicalName": "lm_meetingtemplatesupportivefunctions",
+          "isHidden": false
+        },
+        "users": {
+          "entitySetName": "systemusers",
+          "logicalName": "systemuser",
+          "isHidden": false
+        },
+        "employees": {
+          "entitySetName": "hr_employees",
+          "logicalName": "hr_employee",
+          "isHidden": false
+        },
+        "meetingtemplatebusinessunits": {
+          "entitySetName": "lm_meetingtemplatebusinessunitses",
+          "logicalName": "lm_meetingtemplatebusinessunits",
+          "isHidden": false
+        },
+        "reporttemplatebusinessunits": {
+          "entitySetName": "lm_reporttemplatebusinessunitses",
+          "logicalName": "lm_reporttemplatebusinessunits",
+          "isHidden": false
+        },
+        "reporttemplateregions": {
+          "entitySetName": "lm_reporttemplateregions",
+          "logicalName": "lm_reporttemplateregion",
+          "isHidden": false
+        },
+        "meetingtemplateregions": {
+          "entitySetName": "lm_meetingtemplateregions",
+          "logicalName": "lm_meetingtemplateregion",
+          "isHidden": false
         }
       },
       "environmentVariableName": ""

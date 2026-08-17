@@ -294,7 +294,6 @@
 
 /* table: sticky header, calmer zebra, gold accent on hover instead of flat fill */
 .gov-root table.data thead th{
-  position:sticky; top:var(--gov-topbar-h); z-index:1;
   background:var(--panel);
   font-size:9.5px; letter-spacing:.09em; padding:10px 11px;
   border-bottom:1px solid var(--border-d);
@@ -324,3 +323,133 @@
 .gov-root .agenda-src{
   display:flex; align-items:center;
 }
+
+/* locked segmented-control option (Report Delivery -> File destination) */
+.gov-root .seg-lock{ margin-left:5px; font-size:10px; opacity:.7 }
+.gov-root .seg-ctl button.locked{ cursor:not-allowed }
+
+/* ---------------------------------------------------------------------
+   ComboMulti — searchable multi-select with chips (Related Processes/KPIs)
+   --------------------------------------------------------------------- */
+.gov-root .combo-multi{ position:relative }
+.gov-root .combo-chips{
+  display:flex; flex-wrap:wrap; align-items:center; gap:6px;
+  min-height:38px; padding:6px 8px;
+  border:1px solid var(--border); border-radius:9px; background:#fff;
+  cursor:text; transition:border-color .15s,box-shadow .15s;
+}
+.gov-root .combo-chips:focus-within{
+  border-color:var(--teal); box-shadow:0 0 0 3px var(--teal-l);
+}
+.gov-root .combo-chip{
+  display:inline-flex; align-items:center; gap:5px;
+  background:var(--teal-l); color:var(--teal-d); font-size:12px; font-weight:600;
+  padding:4px 6px 4px 10px; border-radius:20px; line-height:1.3; white-space:nowrap;
+}
+.gov-root .combo-chip button{
+  border:none; background:rgba(0,0,0,.08); color:inherit; cursor:pointer;
+  width:16px; height:16px; border-radius:50%; font-size:12px; line-height:1;
+  display:flex; align-items:center; justify-content:center; padding:0;
+  transition:background .15s;
+}
+.gov-root .combo-chip button:hover{ background:rgba(0,0,0,.18) }
+.gov-root .combo-chips input{
+  flex:1; min-width:120px; border:none; outline:none; background:transparent;
+  font-size:12.5px; padding:4px 2px; font-family:inherit;
+}
+.gov-root .combo-list{
+  position:absolute; top:calc(100% + 4px); left:0; right:0; z-index:20;
+  max-height:220px; overflow-y:auto;
+  background:#fff; border:1px solid var(--border); border-radius:10px;
+  box-shadow:0 12px 28px -12px rgba(33,28,30,.35); padding:4px;
+}
+.gov-root .combo-opt{
+  display:block; width:100%; text-align:left; border:none; background:transparent;
+  padding:8px 10px; font-size:12.5px; border-radius:7px; cursor:pointer;
+  color:var(--ink);
+}
+.gov-root .combo-opt:hover{ background:var(--teal-ll) }
+.gov-root .combo-empty{
+  padding:8px 10px; font-size:12px; color:var(--muted); font-style:italic;
+}
+
+/* locked Governed List tabs (Sites/Libraries/Folders/Teams/Channels) */
+.gov-root .lists-rail button.locked{
+  opacity:.5; cursor:not-allowed;
+}
+.gov-root .lists-rail button.locked:hover{ background:transparent }
+.gov-root .lists-rail .seg-lock{ margin-left:4px; font-size:10px }
+
+/* =========================================================================
+   Setup Register — kind icons, Dataverse badge, row overflow menu
+   ========================================================================= */
+.gov-root .reg-name{
+  display:flex; align-items:center; gap:7px; flex-wrap:wrap;
+}
+.gov-root .reg-kind-ic{
+  flex:0 0 auto; width:20px; height:20px; border-radius:6px;
+  display:flex; align-items:center; justify-content:center;
+  background:var(--teal-l); color:var(--teal-d);
+}
+.gov-root tr.reg-shadow{ background:rgba(165,132,91,.035) }
+.gov-root tr.reg-shadow:hover{ background:rgba(165,132,91,.07) }
+.gov-root tr.reg-shadow.opening{ opacity:.6; pointer-events:none }
+
+.gov-root .reg-actions{
+  text-align:right; white-space:nowrap;
+  display:flex; align-items:center; justify-content:flex-end; gap:4px;
+}
+.gov-root .row-menu{ position:relative; display:inline-block }
+.gov-root .row-menu-btn{
+  width:30px; height:30px; border-radius:8px; border:1px solid var(--border);
+  background:#fff; color:var(--muted); display:inline-flex; align-items:center; justify-content:center;
+  cursor:pointer; transition:background .15s,color .15s,border-color .15s;
+}
+.gov-root .row-menu-btn:hover{ background:var(--teal-ll); color:var(--teal-d); border-color:var(--teal) }
+.gov-root .row-menu-list{
+  position:absolute; top:calc(100% + 4px); right:0; z-index:20; min-width:150px;
+  background:#fff; border:1px solid var(--border); border-radius:10px;
+  box-shadow:0 12px 28px -12px rgba(33,28,30,.35); padding:4px;
+}
+.gov-root .row-menu-item{
+  display:block; width:100%; text-align:left; border:none; background:transparent;
+  padding:8px 10px; font-size:12.5px; border-radius:7px; cursor:pointer; color:var(--ink);
+}
+.gov-root .row-menu-item:hover{ background:var(--teal-ll) }
+.gov-root .row-menu-item.danger{ color:var(--red) }
+.gov-root .row-menu-item.danger:hover{ background:rgba(196,74,58,.08) }
+
+/* row "Open" button — same visual family as the header's "New ... Setup"
+   buttons (bordered, white, rounded) instead of the plain small/grey
+   utility button style, just sized to sit comfortably in a table row */
+.gov-root .btn.reg-open{
+  padding:6px 14px; border-radius:8px; font-size:12.5px; font-weight:600;
+}
+
+/* header cells: align with the column they head, so "Ver" and the
+   trailing actions column don't sit left-aligned over right-aligned data */
+.gov-root .reg-th-num{ text-align:right !important }
+.gov-root .reg-th-actions{ text-align:right !important }
+
+/* publish confirmation modal — one block per changed section, with a
+   red "removed" line (rows that will be deleted in Dataverse) and a green
+   "added" line (rows that will be created) so the delete/recreate a Stage
+   or scope change triggers reads as an unambiguous before/after, not a
+   wall of plain text. */
+.gov-root .pub-diff-grp{ margin:0 0 14px; padding-bottom:12px; border-bottom:1px solid var(--border) }
+.gov-root .pub-diff-grp:last-child{ border-bottom:none; margin-bottom:0; padding-bottom:0 }
+.gov-root .pub-diff-title{ font-size:12px; font-weight:700; color:var(--ink-2); margin-bottom:6px }
+.gov-root .pub-diff-line{
+  display:flex; align-items:flex-start; gap:8px; font-size:12.5px; line-height:1.5;
+  padding:6px 9px; border-radius:7px; margin-bottom:4px;
+}
+.gov-root .pub-diff-line:last-child{ margin-bottom:0 }
+.gov-root .pub-diff-line.pub-diff-rm{ background:var(--red-bg); color:var(--red) }
+.gov-root .pub-diff-line.pub-diff-add{ background:var(--green-bg); color:var(--green) }
+.gov-root .pub-diff-tag{
+  flex:none; width:16px; height:16px; border-radius:50%; display:inline-flex;
+  align-items:center; justify-content:center; font-size:11px; font-weight:800; line-height:1;
+}
+.gov-root .pub-diff-tag.rm{ background:var(--red); color:#fff }
+.gov-root .pub-diff-tag.add{ background:var(--green); color:#fff }
+.gov-root .pub-diff-line b{ color:inherit }

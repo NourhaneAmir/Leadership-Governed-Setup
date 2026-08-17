@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef, createContext, useContext } from 'react';
-import { ClipboardList, ListChecks, ArrowUpRight, FileText, CalendarDays, Check } from 'lucide-react';
-import { fetchRegions, fetchBusinessUnits } from '../../services/dataverse.js';
+import { ClipboardList, ListChecks, ArrowUpRight, FileText, CalendarDays, Check, MoreHorizontal } from 'lucide-react';
+import { fetchRegions, fetchBusinessUnits, fetchDepartments, fetchFunctions, fetchProcesses, fetchKpis, fetchSections, fetchPositions, saveReportTemplateToDataverse, saveMeetingTemplateToDataverse, updateReportTemplateToDataverse, updateMeetingTemplateToDataverse, updateReportTemplateStatus, updateMeetingTemplateStatus, fetchReportTemplatesList, fetchMeetingTemplatesList, fetchReportTemplateDetail, fetchMeetingTemplateDetail, TEMPLATE_STATUS_LABEL } from '../../services/dataverse.js';
 import './governance-modern.css';
 
 
@@ -38,7 +38,10 @@ const MONTHS_IN_QUARTER=['1st month','2nd month','3rd month'];
 const MODES=['Physical','Virtual','Hybrid'];
 /* Clock time and duration are not Setup data — they are fixed on each occurrence. */
 const CONFIDENTIALITY=['Public','Internal','Confidential','High Confidential','Restricted'];
-const LIFECYCLE=['Draft','Active / Approved','Under Revision','Expired'];
+/* Draft -> Under Review (Publish) -> Active / Approved (Approve) -> Expired.
+   Nothing skips Under Review: Publish always lands there, never straight at
+   Active / Approved -- only the dedicated Approve action moves it further. */
+const LIFECYCLE=['Draft','Under Review','Active / Approved','Expired'];
 const ATTENDEE_TYPES=['Core','Supportive'];
 const SUPPORTIVE_FUNCTIONS=['Business Analysis','HR Performance','L&D','Business Transformation',
                             'HR Reward','Recruitment','HR Assessment','Strategy Management (SMO)'];
@@ -48,6 +51,9 @@ const REPORT_TYPE_HELP={
   'Plan':'Submitted the month before the month it covers.',
   'Report':'Content and submission fall in the same month.',
   'Conclusion':'Submitted the month after its content month.'};
+/* register-table tag colour, one per Report Type -- same idea as the
+   purple/blue split the register already uses for Meeting Setup Type. */
+const REPORT_TYPE_TAG_COLOR={'Plan':'blue','Report':'teal','Conclusion':'purple'};
 const REPORT_CATEGORIES=['Outcome Executive','Process Executive','Core Process','Custom Content'];
 const REPORT_ROLES=['Input','Output'];
 const REPORT_DELIVERY=['File destination','Source link'];
@@ -73,7 +79,7 @@ let BUSINESS_UNITS=[
   {id:'bu-adc', region:'rg-ksa', name:'Andalusia Dental Clinics'},
   {id:'bu-ahm', region:'rg-egy', name:'Andalusia Al Moasah'},
   {id:'bu-ahs', region:'rg-egy', name:'Andalusia Shallalat'}];
-const DEPARTMENTS=[
+let DEPARTMENTS=[
   {id:'dp-ahj-q',  bu:'bu-ahj', name:'Quality'},
   {id:'dp-ahj-n',  bu:'bu-ahj', name:'Nursing'},
   {id:'dp-ahj-m',  bu:'bu-ahj', name:'Medical Affairs'},
@@ -86,17 +92,19 @@ const DEPARTMENTS=[
   {id:'dp-ahs-q',  bu:'bu-ahs', name:'Quality'},
   {id:'dp-ahs-o',  bu:'bu-ahs', name:'Operations'},
   {id:'dp-ahs-f',  bu:'bu-ahs', name:'Facilities'}];
-/* Section / Specialty exists on SOME departments only — the optional branch. */
-const SECTIONS=[
-  {id:'sc-1', dept:'dp-ahj-m', name:'Cardiology'},
-  {id:'sc-2', dept:'dp-ahj-m', name:'Orthopaedics'},
-  {id:'sc-3', dept:'dp-ahj-m', name:'Paediatrics'},
-  {id:'sc-4', dept:'dp-ahj-n', name:'Critical Care Nursing'},
-  {id:'sc-5', dept:'dp-ahj-n', name:'Theatre Nursing'},
-  {id:'sc-6', dept:'dp-adc-c', name:'Orthodontics'},
-  {id:'sc-7', dept:'dp-adc-c', name:'Prosthodontics'},
-  {id:'sc-8', dept:'dp-ahm-n', name:'Maternity Nursing'}];
-const FUNCTIONS=[
+/* Section / Specialty exists on SOME Business Units only — the optional branch.
+   (Real schema: cr301_specialtyksa_service_hubs links directly to Business Unit,
+   not via Department, so this cascades BU -> Specialty, not BU -> Department -> Specialty.) */
+let SECTIONS=[
+  {id:'sc-1', bu:'bu-ahj', name:'Cardiology'},
+  {id:'sc-2', bu:'bu-ahj', name:'Orthopaedics'},
+  {id:'sc-3', bu:'bu-ahj', name:'Paediatrics'},
+  {id:'sc-4', bu:'bu-ahj', name:'Critical Care Nursing'},
+  {id:'sc-5', bu:'bu-ahj', name:'Theatre Nursing'},
+  {id:'sc-6', bu:'bu-adc', name:'Orthodontics'},
+  {id:'sc-7', bu:'bu-adc', name:'Prosthodontics'},
+  {id:'sc-8', bu:'bu-ahm', name:'Maternity Nursing'}];
+let FUNCTIONS=[
   {id:'fn-1',  dept:'dp-ahj-q', name:'Quality Assurance'},
   {id:'fn-2',  dept:'dp-ahj-q', name:'Accreditation'},
   {id:'fn-3',  dept:'dp-ahj-q', name:'Patient Safety'},
@@ -121,22 +129,22 @@ const FUNCTIONS=[
   {id:'fn-22', dept:'dp-ahs-f', name:'Facilities Maintenance'}];
 /* A Setup covers several units at once, so Department and Function are chosen once, by name,
    above the units — the same Department and the same Function exist inside more than one unit. */
-const DEPARTMENT_NAMES=Array.from(new Set(DEPARTMENTS.map(d=>d.name))).sort();
-const FUNCTION_NAMES=Array.from(new Set(FUNCTIONS.map(f=>f.name))).sort();
+const departmentNames=()=>Array.from(new Set(DEPARTMENTS.map(d=>d.name))).sort();
+const functionNames=()=>Array.from(new Set(FUNCTIONS.map(f=>f.name))).sort();
 /* the Functions that sit under one Department — the second dropdown of a scope line.
    Leaving it empty is a real answer: the whole Department is in the committee. */
 function functionsIn(depName){
   const ids=DEPARTMENTS.filter(d=>d.name===depName).map(d=>d.id);
   return Array.from(new Set(FUNCTIONS.filter(f=>ids.includes(f.dept)).map(f=>f.name))).sort();
 }
-/* Sections exist on some Departments only, and only inside a Business Unit */
-function sectionsFor(depNames, bu){
-  const ids=DEPARTMENTS.filter(d=>(depNames||[]).includes(d.name) && (!bu||d.bu===bu)).map(d=>d.id);
-  return SECTIONS.filter(x=>ids.includes(x.dept));
+/* Sections/Specialties now cascade directly from Business Unit (their real
+   Dataverse relationship), not via Department. */
+function sectionsFor(bu){
+  return SECTIONS.filter(x=>!bu||x.bu===bu);
 }
 
 /* ---- positions, each with a seeded current holder (G-01) ----------------- */
-const POSITIONS=[
+let POSITIONS=[
   {id:'p01', name:'Medical Director',                     holder:'Dr. Ahmed Farouk'},
   {id:'p02', name:'Head of Quality',                      holder:'Sara Khalil'},
   {id:'p03', name:'Quality Section Head',                 holder:'Hussain Ahmed'},
@@ -210,12 +218,19 @@ const FOLDERS=(()=>{const o=[];
     o.push({id:`fd-${l.id.slice(3)}-${i}`, library:l.id, name:f})));
   return o;})();
 
-const PROCESSES=['PRC-QLT-01 Quality indicator management','PRC-QLT-02 Corrective action management',
-  'PRC-NUR-01 Nursing establishment planning','PRC-MED-01 Medication reconciliation',
+/* populated alongside PROCESSES/KPIS whenever a live fetch succeeds --
+   name -> id, used only at Report Template save time to resolve the
+   flat display-name selections back to real Dataverse ids. */
+let PROCESS_ID_BY_NAME={};
+let KPI_ID_BY_NAME={};
+let PROCESS_DEPT_BY_NAME={};
+let KPI_DEPT_BY_NAME={};
+
+let PROCESSES=['PRC-QLT-01 Quality indicator management','PRC-QLT-02 Corrective action management',  'PRC-NUR-01 Nursing establishment planning','PRC-MED-01 Medication reconciliation',
   'PRC-IPC-01 Infection surveillance','PRC-OPS-01 Patient flow management',
   'PRC-BME-01 Preventive maintenance','PRC-FIN-01 Budget preparation',
   'PRC-ITX-01 Change management','PRC-HRM-01 Workforce planning'];
-const KPIS=['KPI-QLT-001 Sepsis bundle compliance','KPI-QLT-007 Hand hygiene compliance',
+let KPIS=['KPI-QLT-001 Sepsis bundle compliance','KPI-QLT-007 Hand hygiene compliance',
   'KPI-NUR-003 Nursing vacancy rate','KPI-MED-002 Medication error rate',
   'KPI-IPC-004 Healthcare associated infection rate','KPI-OPS-004 Theatre utilisation',
   'KPI-BME-002 Preventive maintenance completion','KPI-FIN-001 Operating margin',
@@ -285,6 +300,32 @@ function unitSub(s,key){
   return byId(REGIONS,key) ? 'Region' : '';
 }
 const buOf=(s,key)=> stageLevel(s)==='bu' ? key : null;
+
+/* Positions filtered to the Business Units/Regions actually in scope for
+   this Setup (Organisational scope step). Falls back to every Position
+   once nothing is selected yet, so pickers aren't empty before scope is
+   chosen, and never hides a Position that has no `bu` at all (built-in
+   mock data predates the Dataverse wiring and isn't tagged to a unit). */
+/* key, when given, scopes to that ONE unit card's own Business Unit --
+   not the whole Setup's multi-unit selection. Without a key (e.g. the
+   Meeting agenda owner picker, which isn't per-unit), falls back to every
+   Business Unit the Setup as a whole runs in. */
+function positionsInScope(s,key){
+  const lv=stageLevel(s);
+  let buIds;
+  if(lv==='bu'){
+    buIds = key ? [key] : (s.businessUnits||[]).slice();
+  }else if(lv==='region'){
+    const regionIds = key ? [key] : (s.regions||[]);
+    buIds = BUSINESS_UNITS.filter(b=>regionIds.includes(b.region)).map(b=>b.id);
+  }else if(lv==='group'){
+    buIds = BUSINESS_UNITS.map(b=>b.id);
+  }else{
+    buIds = [];
+  }
+  if(!buIds.length) return POSITIONS;
+  return POSITIONS.filter(p=>!p.bu || buIds.includes(p.bu));
+}
 
 /* ---- scope lines: one Department, and optionally one Function inside it --- */
 /* A line with no Function means the whole Department sits on this Setup. */
@@ -401,6 +442,29 @@ function saveDb(db){
   catch(e){ /* storage full/unavailable — edits still work for this render, just won't persist */ }
 }
 
+/* Maps a local Report Template Setup's session id (su-xxx) to the real
+   Dataverse id it was assigned the last time it was successfully saved.
+   Lets a Meeting Template's Linked Reports write a genuine
+   lm_ReportTemplate@odata.bind instead of only a free-text name -- see
+   buildMeetingTemplatePayload and saveMeetingTemplateToDataverse. Same
+   sessionStorage persistence model as the rest of Governance Setup: if
+   the browser session ends before a report is (re-)published, the
+   mapping is gone and Linked Reports quietly falls back to name-only,
+   same as before this existed. */
+const REPORT_DV_ID_KEY='andalusiaPulse.governanceSetup.reportDataverseIds.v1';
+function loadReportDvIds(){
+  try{
+    const raw=sessionStorage.getItem(REPORT_DV_ID_KEY);
+    if(raw) return JSON.parse(raw);
+  }catch(e){ /* corrupt or inaccessible storage */ }
+  return {};
+}
+function saveReportDvIds(map){
+  try{ sessionStorage.setItem(REPORT_DV_ID_KEY, JSON.stringify(map)); }
+  catch(e){ /* storage full/unavailable */ }
+}
+let REPORT_DATAVERSE_ID=loadReportDvIds(); // { [local Setup id]: real lm_report_templates id }
+
 const BLANK_MEETING={
   kind:'Committee / Meeting', setupType:'Business Meeting', category:null,
   qualifier:'',
@@ -415,7 +479,7 @@ const BLANK_REPORT={
   kind:'Report Template', objective:'', reportType:null, reportCategory:null,
   qualifier:'',
   stage:null, regions:[], businessUnits:[], lines:[], units:[],
-  delivery:'File destination', site:null, library:null, folder:null, sourceLink:'',
+  delivery:'Source link', site:null, library:null, folder:null, sourceLink:'',
   checklist:[], processes:[], kpis:[],
   frequency:null, dayOfWeek:null, dayOfMonth:null, monthInQuarter:null,
   confidentiality:null, status:'Draft', version:0, updated:TODAY};
@@ -423,7 +487,7 @@ const BLANK_REPORT={
 function seed(){
   const S=[];
   const mk=(o)=>{ const base=o.kind==='Report Template'?BLANK_REPORT:BLANK_MEETING;
-                  S.push({...base,...o}); return S[S.length-1]; };
+                  S.push({...base,...o,_seed:true}); return S[S.length-1]; };
 
   const um=(key,o)=>({id:'un-'+key.slice(3), key, section:null, team:null, channel:null,
     chairman:null, coChairman:null, facilitator:null, coreMembers:[], ...o});
@@ -506,7 +570,7 @@ function seed(){
     agenda:[], linkedTemplates:[], confidentiality:'Confidential',
     status:'Draft', version:0, updated:'2026-07-18'});
 
-  /* 5 — Under Revision, Stage 2: the same Committee run once per REGION —
+  /* 5 — Under Review, Stage 2: the same Committee run once per REGION —
          Saudi Arabia and Egypt, each with its own Chairman and Organizer. */
   mk({id:'su-5', kind:'Committee / Meeting', setupType:'Accreditation Committee', category:null,
     stage:STAGES[1], regions:['rg-ksa','rg-egy'], businessUnits:[],
@@ -526,7 +590,7 @@ function seed(){
             {id:'a2',text:'Surveillance data review',owner:'p11',source:'Migrated - Initial'},
             {id:'a3',text:'Hand hygiene compliance',owner:'p05',source:'Added'}],
     linkedTemplates:[], confidentiality:'Confidential',
-    status:'Under Revision', version:1, updated:'2026-07-25'});
+    status:'Under Review', version:1, updated:'2026-07-25'});
 
   /* 6 — Expired */
   mk({id:'su-6', kind:'Committee / Meeting', setupType:'Business Meeting', category:'Operational Meeting',
@@ -611,7 +675,7 @@ function seed(){
     {id:'g3', setup:'su-1', at:'2026-06-14 11:12', actor:'Setup Administrator', action:'Published',
      field:'Version', before:'1', after:'2'},
     {id:'g4', setup:'su-5', at:'2026-07-25 08:40', actor:'Setup Administrator', action:'Edit opened',
-     field:'Lifecycle Status', before:'Active / Approved', after:'Under Revision'},
+     field:'Lifecycle Status', before:'Active / Approved', after:'Under Review'},
     {id:'g5', setup:'su-6', at:'2026-03-30 16:00', actor:'Setup Administrator', action:'Expired',
      field:'Lifecycle Status', before:'Active / Approved', after:'Expired'},
     {id:'g6', setup:'su-7', at:'2026-06-03 10:15', actor:'Setup Administrator', action:'Published',
@@ -681,8 +745,11 @@ function unitRules(s, stepNo){
   keys.forEach(k=>{
     const u=unitOf(s,k), at=unitLabel(s,k), f='u-'+k;
     if(!u){ r.push({field:f, step:stepNo, msg:`${at}: nothing has been set up yet.`}); return; }
-    if(!u.team)    r.push({field:f, step:stepNo, msg:`${at}: the Team it is discussed in is required.`});
-    else if(!u.channel)
+    // Team/Channel are no longer required to publish -- the underlying
+    // table has no real data yet, so forcing a pick here would just mean
+    // choosing a meaningless mock value. Still optional to select if
+    // useful for context; just not blocking.
+    if(u.team && !u.channel)
       r.push({field:f, step:stepNo, msg:`${at}: choose the Channel inside ${nameOf(TEAMS,u.team)}.`});
     if(s.kind==='Report Template'){
       if(!u.submitter) r.push({field:f, step:stepNo, msg:`${at}: the Position that submits is required.`});
@@ -783,7 +850,35 @@ const validate=(s,all)=> s.kind==='Report Template' ? validateReport(s,all) : va
    SHARED COMPONENTS
    ========================================================================= */
 const Ctx=createContext(null); const use=()=>useContext(Ctx);
-const Tag=({c='grey',children})=><span className={'tag '+c}>{children}</span>;
+const Tag=({c='grey',children,style})=><span className={'tag '+c} style={style}>{children}</span>;
+
+/* Overflow "..." menu for row actions that shouldn't crowd every row as
+   separate buttons -- click opens a small dropdown, click-outside or Esc
+   closes it. */
+function RowMenu({items}){
+  const [open,setOpen]=useState(false);
+  const ref=useRef(null);
+  useEffect(()=>{
+    if(!open) return;
+    const onDoc=e=>{ if(ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const onEsc=e=>{ if(e.key==='Escape') setOpen(false); };
+    document.addEventListener('mousedown',onDoc);
+    document.addEventListener('keydown',onEsc);
+    return ()=>{ document.removeEventListener('mousedown',onDoc); document.removeEventListener('keydown',onEsc); };
+  },[open]);
+  const visible=items.filter(Boolean);
+  if(!visible.length) return null;
+  return <div className="row-menu" ref={ref}>
+    <button type="button" className="row-menu-btn" aria-label="More actions" aria-haspopup="true"
+      aria-expanded={open} onClick={()=>setOpen(o=>!o)}>
+      <MoreHorizontal size={16}/></button>
+    {open ? <div className="row-menu-list" role="menu">
+      {visible.map((it,i)=>
+        <button type="button" key={i} role="menuitem" className={'row-menu-item'+(it.danger?' danger':'')}
+          onClick={()=>{setOpen(false); it.onClick();}}>{it.label}</button>)}
+    </div> : null}
+  </div>;
+}
 const Btn=({k='',children,...r})=><button type="button" className={'btn '+k} {...r}>{children}</button>;
 const Note=({k='info',ic,children})=>
   <div className={'note '+k}>{ic?<span className="ic">{ic}</span>:null}<div>{children}</div></div>;
@@ -792,7 +887,7 @@ const Stat=({label,v,d,c})=>
   <div className="stat"><label>{label}</label>
     <div className="v" style={c?{color:'var(--'+c+')'}:null}>{v}</div>{d?<div className="d">{d}</div>:null}</div>;
 
-const STATUS_C={'Draft':'grey','Active / Approved':'green','Under Revision':'amber','Expired':'muted'};
+const STATUS_C={'Draft':'grey','Active / Approved':'green','Under Review':'amber','Expired':'muted'};
 const StatusPill=({s})=> s==='Expired'
   ? <span className="tag grey" style={{opacity:.55}}>Expired</span>
   : <Tag c={STATUS_C[s]||'grey'}>{s}</Tag>;
@@ -826,9 +921,13 @@ const Sel=({id,val,onChange,opts,placeholder='Select…',disabled})=>
 const Seg=({id,opts,val,onChange,disabled})=>
   <div className="seg-ctl" id={id} role="group">
     {opts.map(o=>{const v=typeof o==='object'?o.v:o, l=typeof o==='object'?o.label:o;
-      return <button type="button" key={v} disabled={disabled}
-        className={val===v?'on':''} aria-pressed={val===v}
-        onClick={()=>onChange(v)}>{l}</button>;})}
+      const locked=typeof o==='object'&&o.locked;
+      const optDisabled=disabled||locked;
+      return <button type="button" key={v} disabled={optDisabled}
+        className={(val===v?'on':'')+(locked?' locked':'')} aria-pressed={val===v}
+        title={locked&&o.lockedHint?o.lockedHint:undefined}
+        onClick={()=>{ if(!optDisabled) onChange(v); }}>
+        {l}{locked?<span className="seg-lock" aria-hidden="true">🔒</span>:null}</button>;})}
   </div>;
 
 const Checks=({id,opts,val,onChange})=>
@@ -838,6 +937,48 @@ const Checks=({id,opts,val,onChange})=>
         onChange={()=>onChange((val||[]).includes(o)?val.filter(x=>x!==o):[...(val||[]),o])}/>
       <span>{o}</span></label>)}
   </div>;
+
+/* Searchable multi-select: type to filter, click a result to add it, chosen
+   items render as removable chips. Used for Related Processes/KPIs, which
+   can run into long governed lists once Dataverse is fully populated. */
+function ComboMulti({id,opts,val,onChange,placeholder}){
+  const [q,setQ]=useState('');
+  const [open,setOpen]=useState(false);
+  const wrapRef=useRef(null);
+  const selected=val||[];
+  const filtered=opts.filter(o=>!selected.includes(o) && o.toLowerCase().includes(q.toLowerCase()));
+
+  useEffect(()=>{
+    const onDoc=e=>{ if(wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown',onDoc);
+    return ()=>document.removeEventListener('mousedown',onDoc);
+  },[]);
+
+  const add=o=>{ onChange([...selected,o]); setQ(''); };
+  const remove=o=>onChange(selected.filter(x=>x!==o));
+
+  return <div className="combo-multi" ref={wrapRef} id={id}>
+    <div className="combo-chips" onClick={()=>setOpen(true)}>
+      {selected.map(o=><span className="combo-chip" key={o}>{o}
+        <button type="button" aria-label={`Remove ${o}`}
+          onClick={e=>{e.stopPropagation();remove(o);}}>×</button></span>)}
+      <input type="text" value={q} placeholder={selected.length?'Add more…':(placeholder||'Search…')}
+        onFocus={()=>setOpen(true)}
+        onChange={e=>{setQ(e.target.value); setOpen(true);}}
+        onKeyDown={e=>{
+          if(e.key==='Backspace' && !q && selected.length) remove(selected[selected.length-1]);
+          else if(e.key==='Enter' && filtered.length){ e.preventDefault(); add(filtered[0]); }
+          else if(e.key==='Escape') setOpen(false);
+        }}/>
+    </div>
+    {open ? <div className="combo-list" role="listbox">
+      {filtered.length
+        ? filtered.map(o=><button type="button" key={o} className="combo-opt" role="option"
+            onClick={()=>add(o)}>{o}</button>)
+        : <div className="combo-empty">{q?'No matches':'All options selected'}</div>}
+    </div> : null}
+  </div>;
+}
 
 /* ---- stepper (matches the Leadership Execution wizard's visual style) --- */
 function Stepper({steps,current,onGo,invalidSteps}){
@@ -1029,7 +1170,7 @@ function ScopeFields({s,set,stepNo}){
               return <div className="f-row">
                 <Field id={'f-line-dep-'+i} label="Department" req>
                   <Sel id={'f-line-dep-'+i} val={r.department}
-                    opts={DEPARTMENT_NAMES.filter(d=>!taken.includes(d)).map(d=>({v:d,label:d}))}
+                    opts={departmentNames().filter(d=>!taken.includes(d)).map(d=>({v:d,label:d}))}
                     onChange={v=>set({lines:s.lines.map((x,j)=>j===i?{...x,department:v,function:null}:x)})}/>
                 </Field>
                 <Field id={'f-line-fn-'+i} label="Function"
@@ -1137,7 +1278,7 @@ function UnitSetup({s,set,issues,shared,intro}){
       const bad=unitIssueCount(s,k,issues);
       const closed=shut.has(k);
       const bu=buOf(s,k);
-      const secs=sectionsFor(depsOf(s), bu);
+      const secs=sectionsFor(bu);
       const teams=teamsIn(k);
       return <div className={'unit-card'+(bad?' bad':'')+(closed?' shut':'')} key={k} id={'u-'+k}>
         <button type="button" className="unit-hd"
@@ -1160,12 +1301,12 @@ function UnitSetup({s,set,issues,shared,intro}){
                 onChange={v=>setUnit(k,{section:v})}/></Field>
 
             <div className="f-row">
-              <Field id={'u-team-'+k} label="Team" req govern
-                hint="The Team this unit discusses it in. Only this unit’s Teams are offered.">
+              <Field id={'u-team-'+k} label="Team" govern
+                hint="The Team this unit discusses it in. Only this unit’s Teams are offered. Optional for now — this table has no data yet.">
                 <Sel id={'u-team-'+k} val={u.team} opts={teams.map(t=>({v:t.id,label:t.name}))}
                   placeholder={teams.length?'Select…':'No Team for this unit'}
                   onChange={v=>setUnit(k,{team:v,channel:null})}/></Field>
-              <Field id={'u-chan-'+k} label="Channel" req govern
+              <Field id={'u-chan-'+k} label="Channel" req={!!u.team} govern
                 hint={u.team?'Narrowed to the Channels inside that Team.':null}>
                 <Sel id={'u-chan-'+k} val={u.channel} disabled={!u.team}
                   placeholder={u.team?'Select…':'Choose a Team first'}
@@ -1179,18 +1320,18 @@ function UnitSetup({s,set,issues,shared,intro}){
                     <Field id={'u-sub-'+k} label="Submitting Position" req govern
                       hint="Who prepares and submits this report in this unit.">
                       <Sel id={'u-sub-'+k} val={u.submitter}
-                        opts={POSITIONS.map(p=>({v:p.id,label:p.name}))}
+                        opts={positionsInScope(s,k).map(p=>({v:p.id,label:p.name}))}
                         onChange={v=>setUnit(k,{submitter:v})}/>
-                      {u.submitter?<div className="holder">currently: {posHolder(u.submitter)}</div>:null}
+                      {posHolder(u.submitter)?<div className="holder">currently: {posHolder(u.submitter)}</div>:null}
                     </Field>
                     <Field id={'u-own-'+k} label="Owner Position" req govern
                       hint="Accountable for the content.">
-                      <Sel id={'u-own-'+k} val={u.owner} opts={POSITIONS.map(p=>({v:p.id,label:p.name}))}
+                      <Sel id={'u-own-'+k} val={u.owner} opts={positionsInScope(s,k).map(p=>({v:p.id,label:p.name}))}
                         onChange={v=>setUnit(k,{owner:v})}/>
-                      {u.owner?<div className="holder">currently: {posHolder(u.owner)}</div>:null}
+                      {posHolder(u.owner)?<div className="holder">currently: {posHolder(u.owner)}</div>:null}
                     </Field>
                   </div>
-                  <UnitChain u={u} k={k} setUnit={setUnit}/>
+                  <UnitChain u={u} k={k} s={s} setUnit={setUnit}/>
                 </>
               : <>
                   <div className="f-row3">
@@ -1198,9 +1339,9 @@ function UnitSetup({s,set,issues,shared,intro}){
                       ['Organizer / Facilitator','facilitator',true]].map(([label,key,req])=>
                       <Field key={key} id={'u-'+key+'-'+k} label={label} req={req} govern>
                         <Sel id={'u-'+key+'-'+k} val={u[key]} placeholder={req?'Select…':'None'}
-                          opts={POSITIONS.map(p=>({v:p.id,label:p.name}))}
+                          opts={positionsInScope(s,k).map(p=>({v:p.id,label:p.name}))}
                           onChange={v=>setUnit(k,{[key]:v})}/>
-                        {u[key]?<div className="holder">currently: {posHolder(u[key])}</div>:null}
+                        {posHolder(u[key])?<div className="holder">currently: {posHolder(u[key])}</div>:null}
                       </Field>)}
                   </div>
                   <Field id={'u-cm-'+k} label="Attendees" req
@@ -1212,7 +1353,7 @@ function UnitSetup({s,set,issues,shared,intro}){
                         .concat([{id:uid('cm'),position:null,type:'Core'}])})}
                       render={(r,i2)=><div className="f-row">
                         <Sel val={r.position} placeholder="Position…"
-                          opts={POSITIONS.map(p=>({v:p.id,label:p.name}))}
+                          opts={positionsInScope(s,k).map(p=>({v:p.id,label:p.name}))}
                           onChange={v=>setUnit(k,{coreMembers:u.coreMembers
                             .map((x,j)=>j===i2?{...x,position:v}:x)})}/>
                         <Sel val={r.type} opts={ATTENDEE_TYPES}
@@ -1237,7 +1378,7 @@ function UnitSetup({s,set,issues,shared,intro}){
 
 /* per-unit review chain — the Submitting Position cannot review its own submission,
    but the Owner Position (accountable for the content) may sit in the chain. */
-function UnitChain({u,k,setUnit}){
+function UnitChain({u,k,s,setUnit}){
   const [rejected,setRejected]=useState(false);
   const chain=u.reviewChain||[];
   const clash=chain.includes(u.submitter) && !!u.submitter;
@@ -1248,7 +1389,7 @@ function UnitChain({u,k,setUnit}){
       onAdd={()=>{setRejected(false);setUnit(k,{reviewChain:chain.concat([null])});}}
       render={(r,i)=><div className="chain-row">
         <Sel val={r.pos} placeholder="Position…"
-          opts={POSITIONS.filter(p=>!chain.includes(p.id)||p.id===r.pos).map(p=>({v:p.id,label:p.name}))}
+          opts={positionsInScope(s,k).filter(p=>!chain.includes(p.id)||p.id===r.pos).map(p=>({v:p.id,label:p.name}))}
           onChange={v=>{ if(v && v===u.submitter){setRejected(true);return;} setRejected(false);
             setUnit(k,{reviewChain:chain.map((x,j)=>j===i?v:x)});}}/>
         {i===chain.length-1?<Tag c="green">approves</Tag>:<Tag c="teal">reviews</Tag>}
@@ -1276,6 +1417,7 @@ function Wizard({rec,steps,renderStep,onClose}){
   const {A,role,db}=use();
   const [s,setS]=useState(rec);
   const [step,setStep]=useState(1);
+  const [confirmPublish,setConfirmPublish]=useState(false);
   const set=patch=>setS(x=>({...x,...patch}));
   const issues=useMemo(()=>validate(s,db.setups),[s,db.setups]);
   const invalidSteps=useMemo(()=>new Set(issues.map(i=>i.step)),[issues]);
@@ -1304,12 +1446,16 @@ function Wizard({rec,steps,renderStep,onClose}){
           <Btn disabled={isLast} onClick={()=>setStep(step+1)}>Next →</Btn>
           <div style={{flex:1}}/>
           {canWrite?<Btn onClick={()=>{A.saveDraft(s);onClose();}}>Save draft</Btn>:null}
-          {canWrite?<Btn k="pri" disabled={issues.length>0} onClick={()=>{A.publish(s);onClose();}}>
+          {canWrite?<Btn k="pri" disabled={issues.length>0} onClick={()=>setConfirmPublish(true)}>
             {published?'Publish new version':'Publish'}</Btn>:null}
         </div>
       </div>
       <ValidationPanel issues={issues} onGo={setStep}/>
     </div>
+
+    {confirmPublish?<PublishConfirmModal original={rec} edited={s}
+      onCancel={()=>setConfirmPublish(false)}
+      onConfirm={()=>{setConfirmPublish(false);A.publish(s);onClose();}}/>:null}
   </>;
 }
 
@@ -1326,7 +1472,7 @@ const MEETING_STEPS=[
 ];
 
 function MeetingWizard({rec,onClose}){
-  const {db}=use();
+  const {db,dvReports}=use();
   return <Wizard rec={rec} steps={MEETING_STEPS} onClose={onClose}
     renderStep={(step,s,set,issues)=>{
       const locked=s.version>0;                       /* G-05 */
@@ -1410,8 +1556,8 @@ function MeetingWizard({rec,onClose}){
               onChange={e=>set({quorum:e.target.value===''?null:+e.target.value})}/>
             <span>%</span></div></Field>
         <Field id="f-supportive" label="Supportive Function Representation" govern>
-          <Checks id="f-supportive" opts={SUPPORTIVE_FUNCTIONS} val={s.supportive}
-            onChange={v=>set({supportive:v})}/></Field>
+          <ComboMulti id="f-supportive" opts={functionNames()} val={s.supportive}
+            placeholder="Search functions…" onChange={v=>set({supportive:v})}/></Field>
         <Field id="f-torLink" label="TOR / Policy link" req={accred}
           hint={accred?'Required for an Accreditation Committee. A link only.'
                       :'Optional for a Business Meeting. A link only.'}>
@@ -1426,7 +1572,7 @@ function MeetingWizard({rec,onClose}){
             render={(r,i)=><div className="f-row3">
               <input type="text" value={r.text} placeholder="Item"
                 onChange={e=>set({agenda:s.agenda.map((x,j)=>j===i?{...x,text:e.target.value}:x)})}/>
-              <Sel val={r.owner} placeholder="Owner…" opts={POSITIONS.map(p=>({v:p.id,label:p.name}))}
+              <Sel val={r.owner} placeholder="Owner…" opts={positionsInScope(s).map(p=>({v:p.id,label:p.name}))}
                 onChange={v=>set({agenda:s.agenda.map((x,j)=>j===i?{...x,owner:v}:x)})}/>
               <span className="agenda-src" title="Set automatically; not editable">
                 <Tag c={r.source==='Added'?'teal':'grey'}>{r.source}</Tag></span>
@@ -1436,7 +1582,7 @@ function MeetingWizard({rec,onClose}){
       </div>;
 
       /* step 6 */
-      const templates=db.setups.filter(x=>x.kind==='Report Template' && x.status==='Active / Approved');
+      const templates=dvReports||[];
       return <>
         <div className="card">
           <h2>Linked Report Templates</h2>
@@ -1447,9 +1593,10 @@ function MeetingWizard({rec,onClose}){
             onAdd={()=>set({linkedTemplates:[...(s.linkedTemplates||[]),
               {id:uid('lt'),template:null,role:'Input'}]})}
             render={(r,i)=><div className="f-row">
-              <Sel val={r.template} placeholder="Report Template…"
+              <Sel val={r.template} placeholder={templates.length?'Report Template…':'No Report Templates in Dataverse yet'}
                 opts={templates.map(t=>({v:t.id,label:t.name}))}
-                onChange={v=>set({linkedTemplates:s.linkedTemplates.map((x,j)=>j===i?{...x,template:v}:x)})}/>
+                onChange={v=>{ const chosen=templates.find(t=>t.id===v);
+                  set({linkedTemplates:s.linkedTemplates.map((x,j)=>j===i?{...x,template:v,templateName:chosen?chosen.name:null}:x)}); }}/>
               <Sel val={r.role} opts={REPORT_ROLES}
                 onChange={v=>set({linkedTemplates:s.linkedTemplates.map((x,j)=>j===i?{...x,role:v}:x)})}/>
             </div>}/>
@@ -1490,7 +1637,7 @@ function UnitsTable({s}){
         return <tr key={k}>
           <td className="k">{unitLabel(s,k)}
             <div className="t-sub">{unitSub(s,k)}</div></td>
-          {lv==='bu'?<td className="d">{u.section?nameOf(SECTIONS,u.section):'Whole Department'}</td>:null}
+          {lv==='bu'?<td className="d">{u.section?nameOf(SECTIONS,u.section):'Whole Business Unit'}</td>:null}
           {report
             ? <><td>{posName(u.submitter)}</td><td>{posName(u.owner)}</td>
                 <td className="d">{(u.reviewChain||[]).filter(Boolean).map(posName).join(' → ')||'—'}</td></>
@@ -1537,7 +1684,7 @@ function MeetingSummary({s}){
           ['Agenda Items',(s.agenda||[]).length+' standing']]}/>
         <SumBlock title="Governance" items={[
           ['Linked Templates',(s.linkedTemplates||[]).length
-            ? s.linkedTemplates.map(t=>`${nameOf(db.setups,t.template)||'—'} (${t.role})`).join(', ')
+            ? s.linkedTemplates.map(t=>`${t.templateName||'—'} (${t.role})`).join(', ')
             : 'None'],
           ['Confidentiality',s.confidentiality],
           ['Audit Grid',accred?'Produced for every occurrence':'Not produced']]}/>
@@ -1597,7 +1744,10 @@ function ReportWizard({rec,onClose}){
         return <div className="card">
           <h2>Destination and content</h2>
           <Field id="f-delivery" label="Report Delivery" req>
-            <Seg id="f-delivery" opts={REPORT_DELIVERY} val={s.delivery}
+            <Seg id="f-delivery" opts={[
+                {v:'File destination', label:'File destination', locked:true,
+                 lockedHint:'Coming soon — SharePoint destinations are not wired to live data yet. Use Source link for now.'},
+                {v:'Source link', label:'Source link'}]} val={s.delivery}
               onChange={v=>set({delivery:v,
                 ...(v==='Source link'?{site:null,library:null,folder:null}:{sourceLink:''})})}/></Field>
           {file ? <div className="f-row3">
@@ -1630,11 +1780,12 @@ function ReportWizard({rec,onClose}){
           <div className="f-row">
             <Field id="f-processes" label="Related Processes" govern
               hint="Referenced by identifier only, never copied.">
-              <Checks id="f-processes" opts={PROCESSES} val={s.processes}
-                onChange={v=>set({processes:v})}/></Field>
+              <ComboMulti id="f-processes" opts={PROCESSES} val={s.processes}
+                placeholder="Search processes…" onChange={v=>set({processes:v})}/></Field>
             <Field id="f-kpis" label="Related KPIs" govern
               hint="Referenced by identifier only, never copied.">
-              <Checks id="f-kpis" opts={KPIS} val={s.kpis} onChange={v=>set({kpis:v})}/></Field>
+              <ComboMulti id="f-kpis" opts={KPIS} val={s.kpis}
+                placeholder="Search KPIs…" onChange={v=>set({kpis:v})}/></Field>
           </div>
         </div>;
       }
@@ -1693,25 +1844,496 @@ function ReportSummary({s}){
   </>;
 }
 
+/* Resolves a Report Template Setup (as edited/published in ReportWizard)
+   into the plain-id payload saveReportTemplateToDataverse() expects.
+   Kept separate from that function since it needs the app's live
+   reference data and cascade helpers (DEPARTMENTS, FUNCTIONS, POSITIONS,
+   KPI_ID_BY_NAME/PROCESS_ID_BY_NAME, scopeKeys/unitOf/buOf/nameOf), none
+   of which the plain data-service module knows about. */
+function buildReportTemplatePayload(f){
+  const lv=stageLevel(f);
+  const keys=scopeKeys(f);
+
+  return {
+    name: f.name,
+    status: f.status,
+    version: f.version,
+    objective: f.objective,
+    reportType: f.reportType,
+    reportCategory: f.reportCategory,
+    frequency: f.frequency,
+    dayOfWeek: f.dayOfWeek,
+    dayOfMonth: f.dayOfMonth,
+    monthInQuarter: f.monthInQuarter,
+    confidentiality: f.confidentiality,
+    destinationLink: f.delivery==='Source link' ? (f.sourceLink||undefined) : undefined,
+    // Business Unit/Speciality/Team-Channel/Owner/Submitter no longer live
+    // on the parent record -- they're per-unit now. Review Chain is now
+    // per-unit too (each unit carries its own `reviewChain`), since
+    // Lm_reporttemplatereviewchains got real lookups back to a specific
+    // Business-Unit or Region row, not just the parent template.
+    stageLevel: lv,
+    units: keys.map(k=>{
+      const u=unitOf(f,k)||{};
+      return {
+        key: k,
+        name: unitLabel(f,k),
+        businessUnitId: lv==='bu' ? k : undefined,
+        regionId: lv==='region' ? k : undefined,
+        specialityId: u.section || undefined,
+        ownerPositionId: u.owner || undefined,
+        submittingPositionId: u.submitter || undefined,
+        reviewChain: (u.reviewChain||[]).map((posId,i)=>({
+          step: i+1,
+          positionId: posId || undefined,
+          positionName: nameOf(POSITIONS,posId) || posId || '',
+        })),
+      };
+    }),
+    checklist: (f.checklist||[]).filter(c=>c.text).map(c=>({text:c.text})),
+    lines: linesOf(f).map(l=>({
+      departmentId: DEPARTMENTS.find(d=>d.name===l.department)?.id,
+      functionId: l.function ? FUNCTIONS.find(fn=>fn.name===l.function)?.id : undefined,
+    })).filter(l=>l.departmentId),
+    kpiIds: (f.kpis||[]).map(name=>KPI_ID_BY_NAME[name]).filter(Boolean),
+    processIds: (f.processes||[]).map(name=>PROCESS_ID_BY_NAME[name]).filter(Boolean),
+  };
+}
+
+/* Same idea as buildReportTemplatePayload above, for the Committee/Meeting
+   side: normalizes a Meeting Setup into the plain-id shape
+   saveMeetingTemplateToDataverse() expects. Uses the FIRST scope key's
+   unit for Chairman/Co-Chairman/Facilitator and the meeting's Business
+   Unit, for the same single-BU-table reason as the Report side.
+
+   Linked Reports: s.linkedTemplates[].template is a real Dataverse
+   lm_report_templateid, picked directly from the live Dataverse list
+   (dvReports) rather than a local Setup id -- see the picker in
+   MeetingWizard's step 6. That makes this a genuine, always-real
+   lm_ReportTemplate@odata.bind link, not a name-only fallback. */
+function buildMeetingTemplatePayload(f){
+  const lv=stageLevel(f);
+  const keys=scopeKeys(f);
+
+  return {
+    name: f.name,
+    status: f.status,
+    version: f.version,
+    setupType: f.setupType,
+    category: f.category,
+    stage: f.stage,
+    frequency: f.frequency,
+    dayOfWeek: f.dayOfWeek,
+    dayOfMonth: f.dayOfMonth,
+    monthInQuarter: f.monthInQuarter,
+    mode: f.mode,
+    confidentiality: f.confidentiality,
+    quorum: f.quorum,
+    torLink: f.torLink || undefined,
+    // Business Unit/Chairman/Co-Chairman/Facilitator/Team-Channel no
+    // longer live on the parent record -- they're per-unit now. Attendees
+    // is now per-unit too (each unit carries its own `attendeePositionIds`),
+    // since Lm_meetingattendeeslists got real lookups back to a specific
+    // Business-Unit or Region row, not just the parent template.
+    stageLevel: lv,
+    units: keys.map(k=>{
+      const u=unitOf(f,k)||{};
+      return {
+        key: k,
+        name: unitLabel(f,k),
+        businessUnitId: lv==='bu' ? k : undefined,
+        regionId: lv==='region' ? k : undefined,
+        chairmanId: u.chairman || undefined,
+        coChairmanId: u.coChairman || undefined,
+        facilitatorId: u.facilitator || undefined,
+        attendeePositionIds: (u.coreMembers||[]).filter(m=>m.position).map(m=>m.position),
+      };
+    }),
+    agenda: (f.agenda||[]).filter(a=>a.text).map((a,i)=>({
+      step: i+1,
+      text: a.text,
+      ownerId: a.owner || undefined,
+      source: a.source==='Added' ? 'Added' : 'Migrated - Initial',
+    })),
+    lines: linesOf(f).map(l=>({
+      departmentId: DEPARTMENTS.find(d=>d.name===l.department)?.id,
+      functionId: l.function ? FUNCTIONS.find(fn=>fn.name===l.function)?.id : undefined,
+    })).filter(l=>l.departmentId),
+    // Supportive Function Representation now picks directly from FUNCTIONS
+    // (the real hr_functions table), so this resolves to a real functionId
+    // by construction -- not a coincidental name match.
+    supportive: (f.supportive||[]).map(name=>({
+      name,
+      functionId: FUNCTIONS.find(fn=>fn.name===name)?.id || undefined,
+    })),
+    // f.linkedTemplates[].template is now the real Dataverse
+    // lm_report_templateid directly (the picker sources from dvReports,
+    // the live Dataverse list), not a local Setup id -- so this is a
+    // direct, always-real link now, no id-tracking lookup needed.
+    linkedReports: (f.linkedTemplates||[]).map(lt=>({
+      name: lt.templateName || lt.template || '',
+      role: lt.role==='Output' ? 'Output' : 'Input',
+      reportTemplateId: lt.template || undefined,
+    })),
+  };
+}
+
+/* =========================================================================
+   PUBLISH CONFIRMATION -- what will actually change in Dataverse
+   Compares the Setup as it was when the wizard opened against the edited
+   form state, and turns that into the plain-language list the confirm
+   modal shows before anything is written. Editing and republishing a
+   Dataverse-backed Setup deletes the child rows (Business Unit/Region rows
+   and everything nested under them, checklist/agenda/lines/etc.) that no
+   longer apply and recreates the ones that do -- see
+   updateReportTemplateToDataverse/updateMeetingTemplateToDataverse in
+   dataverse.js -- so this diff is not cosmetic: "removed" here really does
+   mean "its Dataverse row(s) will be deleted."
+   ========================================================================= */
+
+/* Plain set-difference between two label lists, order-preserving. Used for
+   every "which of these will be added/removed" section in the modal. */
+function diffList(before, after){
+  const beforeSet=new Set(before), afterSet=new Set(after);
+  return {
+    added: after.filter(x=>!beforeSet.has(x)),
+    removed: before.filter(x=>!afterSet.has(x)),
+  };
+}
+
+function buildPublishSummary(original, edited){
+  const isExisting = !!original?._dataverseId;
+  const isReport = edited.kind==='Report Template';
+
+  const fields=[];
+  const addField=(label,before,after,fmt=v=>(v==null||v===''?'—':String(v)))=>{
+    if(before!==after) fields.push({label, before:fmt(before), after:fmt(after)});
+  };
+
+  // What Publish will actually do to the lifecycle: always lands on Under
+  // Review, and only bumps the version if this is a re-publish of
+  // something that had already been Active / Approved -- mirrors A.publish
+  // exactly, so the modal previews the real outcome, not a guess.
+  const wasApproved = edited.status==='Active / Approved';
+  const nextVersion = wasApproved ? (edited.version||0)+1 : (edited.version||1);
+  addField('Lifecycle Status', edited.status, 'Under Review');
+  addField('Version', edited.version, nextVersion);
+
+  addField('Stage', original.stage, edited.stage);
+  addField('Frequency', original.frequency, edited.frequency);
+  addField('Day of week', original.dayOfWeek, edited.dayOfWeek);
+  addField('Day of month', original.dayOfMonth, edited.dayOfMonth);
+  addField('Month within quarter', original.monthInQuarter, edited.monthInQuarter);
+  addField('Confidentiality', original.confidentiality, edited.confidentiality);
+  if(isReport){
+    addField('Objective', original.objective, edited.objective);
+    addField('Report Type', original.reportType, edited.reportType);
+    addField('Report Category', original.reportCategory, edited.reportCategory);
+    addField('Report Delivery', original.delivery, edited.delivery);
+    addField('Source link', original.sourceLink, edited.sourceLink);
+  }else{
+    addField('Setup Type', original.setupType, edited.setupType);
+    addField('Type / Classification', original.category, edited.category);
+    addField('Default Meeting Mode', original.mode, edited.mode);
+    addField('Quorum Threshold %', original.quorum, edited.quorum, v=>(v==null||v===''?'—':`${v}%`));
+    addField('TOR / Policy link', original.torLink, edited.torLink);
+  }
+
+  const unitLevel = stageLevel(edited);
+  const levelChanged = stageLevel(original)!==unitLevel;
+  const units = diffList(scopeKeys(original).map(k=>unitLabel(original,k)||k),
+                          scopeKeys(edited).map(k=>unitLabel(edited,k)||k));
+
+  const lines = diffList(
+    linesOf(original).map(l=>l.function?`${l.department} · ${l.function}`:l.department),
+    linesOf(edited).map(l=>l.function?`${l.department} · ${l.function}`:l.department));
+
+  const extra={};
+  if(isReport){
+    extra.checklist = diffList((original.checklist||[]).map(c=>c.text).filter(Boolean),
+      (edited.checklist||[]).map(c=>c.text).filter(Boolean));
+    extra.kpis = diffList(original.kpis||[], edited.kpis||[]);
+    extra.processes = diffList(original.processes||[], edited.processes||[]);
+  }else{
+    extra.supportive = diffList(original.supportive||[], edited.supportive||[]);
+    extra.agenda = diffList((original.agenda||[]).map(a=>a.text).filter(Boolean),
+      (edited.agenda||[]).map(a=>a.text).filter(Boolean));
+    extra.linkedReports = diffList(
+      (original.linkedTemplates||[]).map(l=>l.templateName||l.template).filter(Boolean),
+      (edited.linkedTemplates||[]).map(l=>l.templateName||l.template).filter(Boolean));
+  }
+
+  const hasAnyChange = fields.length>0 || units.added.length>0 || units.removed.length>0 ||
+    lines.added.length>0 || lines.removed.length>0 ||
+    Object.values(extra).some(d=>d.added.length>0 || d.removed.length>0);
+
+  return {isExisting, isReport, fields, unitLevel, levelChanged, units, lines, extra, hasAnyChange};
+}
+
+function DiffSection({title, diff, addLabel, removeLabel}){
+  if(!diff || (diff.added.length===0 && diff.removed.length===0)) return null;
+  return <div className="pub-diff-grp">
+    <div className="pub-diff-title">{title}</div>
+    {diff.removed.length ? <div className="pub-diff-line pub-diff-rm">
+      <span className="pub-diff-tag rm">−</span>
+      <span>{removeLabel}: <b>{diff.removed.join(', ')}</b></span></div> : null}
+    {diff.added.length ? <div className="pub-diff-line pub-diff-add">
+      <span className="pub-diff-tag add">+</span>
+      <span>{addLabel}: <b>{diff.added.join(', ')}</b></span></div> : null}
+  </div>;
+}
+
+function PublishConfirmModal({original, edited, onConfirm, onCancel}){
+  const summary=useMemo(()=>buildPublishSummary(original,edited),[original,edited]);
+  return <Modal wide onClose={onCancel}
+    title={summary.isExisting ? 'Confirm changes before sending for review' : 'Confirm before sending for review'}
+    sub={summary.isExisting
+      ? 'Review every change below. Publishing sends it to Under Review, not straight to Active / Approved — an admin still needs to Approve it. Confirming updates the Dataverse record in place — removed rows are deleted, new rows are created. Nothing changes until you confirm.'
+      : 'Publishing sends this Setup to Under Review, not straight to Active / Approved — an admin still needs to Approve it. Review the Setup below before it is created in Dataverse. Nothing is written until you confirm.'}
+    footer={<><Btn onClick={onCancel}>Cancel</Btn>
+      <Btn k="pri" onClick={onConfirm}>Confirm & send for review</Btn></>}>
+    <div className="readonly" style={{marginBottom:12}}>
+      <b>{displayName(edited)}</b>
+      <div style={{fontSize:12,color:'var(--muted)',marginTop:4}}>{edited.kind} · {scopeString(edited)}</div>
+    </div>
+
+    {!summary.hasAnyChange
+      ? <Note k="info" ic="i">{summary.isExisting
+          ? 'No governed fields changed since this Setup was opened for edit.'
+          : 'This Setup will be created in Dataverse exactly as shown above.'}</Note>
+      : null}
+
+    {summary.fields.length ? <div className="pub-diff-grp">
+      <div className="pub-diff-title">Fields</div>
+      <table className="data" style={{marginTop:6}}>
+        <thead><tr><th>Field</th><th>Before</th><th>After</th></tr></thead>
+        <tbody>{summary.fields.map(f=><tr key={f.label}>
+          <td className="t-main">{f.label}</td><td className="dim">{f.before}</td><td>{f.after}</td></tr>)}
+        </tbody>
+      </table>
+    </div> : null}
+
+    <DiffSection title={`${LEVEL_WORD[summary.unitLevel]||'Unit'} scope${summary.levelChanged?' — Stage level changed':''}`}
+      diff={summary.units}
+      addLabel="New Dataverse rows will be created for"
+      removeLabel="Existing rows — and everything under them (chairs, reviewers, attendees) — will be deleted for"/>
+
+    <DiffSection title="Departments & Functions" diff={summary.lines}
+      addLabel="Added" removeLabel="Removed"/>
+
+    {summary.isReport ? <>
+      <DiffSection title="Content Checklist" diff={summary.extra.checklist} addLabel="Added" removeLabel="Removed"/>
+      <DiffSection title="Related KPIs" diff={summary.extra.kpis} addLabel="Added" removeLabel="Removed"/>
+      <DiffSection title="Related Processes" diff={summary.extra.processes} addLabel="Added" removeLabel="Removed"/>
+    </> : <>
+      <DiffSection title="Supportive Function Representation" diff={summary.extra.supportive} addLabel="Added" removeLabel="Removed"/>
+      <DiffSection title="Standing Agenda" diff={summary.extra.agenda} addLabel="Added" removeLabel="Removed"/>
+      <DiffSection title="Linked Reports" diff={summary.extra.linkedReports} addLabel="Added" removeLabel="Removed"/>
+    </>}
+  </Modal>;
+}
+
+/* =========================================================================
+   Reading Report/Meeting Templates back OUT of Dataverse -- converts the
+   raw fetchReportTemplateDetail()/fetchMeetingTemplateDetail() shape into
+   a real app Setup object, so it can be opened in the exact same detail
+   view and wizard every local Setup already uses. No separate "Dataverse
+   view" UI was built -- once converted, it's just a Setup.
+
+   Known, deliberate gaps (documented, not silently hidden):
+   - Editing and republishing one of these creates NEW Dataverse rows,
+     it does not update the original rows in place -- there's no
+     id-tracking for a round-trip update, only for create (see
+     REPORT_DATAVERSE_ID above).
+   - Linked Reports come back as a name only (no working link back to a
+     local Setup id), since the original local id isn't stored anywhere
+     in Dataverse.
+   - Group-level Setups never had a per-unit child table to begin with,
+     so nothing comes back for their org placement -- the Setup still
+     converts, just with an empty `units` list.
+   ========================================================================= */
+
+const DV_REPORT_TYPE=['Plan','Report','Conclusion'];
+const DV_REPORT_CATEGORY=['Outcome Executive','Process Executive','Core Process','Custom Content'];
+const DV_FREQUENCY=['Daily','Twice Weekly','Weekly','Twice Monthly','Monthly','Quarterly','Semesterly','Annually','Custom'];
+const DV_DAY_OF_WEEK=['Sunday','Monday','Tuesday','Wednesday','Thursday'];
+const DV_MONTH_IN_QUARTER=['1st month','2nd month','3rd month'];
+const DV_CONFIDENTIALITY=['Public','Internal','Confidential','High Confidential','Restricted'];
+const byCode1=(arr,code)=> (code>=1 && code<=arr.length) ? arr[code-1] : null;
+
+// Meeting-side choice codes aren't sequential from 1, so these mirror the
+// forward MEETING_*_KEY maps in dataverse.js explicitly instead.
+const DV_MEETING_DAY_OF_WEEK={124330000:'Sunday',124330001:'Monday',124330002:'Tuesday',124330003:'Wednesday',124330004:'Thursday'};
+const DV_MEETING_MONTH_IN_QUARTER={124330000:'1st month',124330001:'2nd month',124330002:'3rd month'};
+const DV_MEETING_CONFIDENTIALITY={124330000:'Public',124330001:'Internal',124330002:'Confidential',124330003:'High Confidential',124330004:'Restricted'};
+const DV_MEETING_CATEGORY={124330000:'Planning Meeting',124330001:'Performance Monitoring Meeting',124330002:'Clinical Meeting',124330003:'Operational Meeting',124330004:'Technology Meeting',124330005:'Cross-Functional Meeting',124330006:TOT};
+const DV_MEETING_MODE={1:'Physical',2:'Virtual',3:'Hybrid'};
+const DV_MEETING_SETUP_TYPE={1:'Business Meeting',2:'Accreditation Committee'};
+const DV_MEETING_STAGE={1:STAGES[0],2:STAGES[1],3:STAGES[2],4:STAGES[3]};
+
+/* id -> name lookups the save side didn't need (it only went name -> id) */
+const idToName=(map,id)=>{ const hit=Object.entries(map).find(([,v])=>v===id); return hit?hit[0]:null; };
+
+function dataverseReportToSetup(detail){
+  const p=detail.parent;
+  const buUnits=(detail.businessUnits||[]).map(bu=>({
+    id:'dvu-'+bu.lm_reporttemplatebusinessunitsid, key:bu._lm_businessunit_value,
+    section:bu._lm_speciality_value||null, team:null, channel:null,
+    submitter:bu._lm_submittingposition_value||null, owner:bu._lm_ownerposition_value||null,
+    reviewChain:(bu.reviewChain||[]).slice().sort((a,b)=>(a.lm_step||0)-(b.lm_step||0))
+      .map(r=>r._lm_reviewerposition_value||null),
+  }));
+  const regionUnits=(detail.regions||[]).map(rg=>({
+    id:'dvu-'+rg.lm_reporttemplateregionid, key:rg._lm_region_value,
+    section:rg._lm_reportspeciality_value||null, team:null, channel:null,
+    submitter:rg._lm_submittingposition_value||null, owner:rg._lm_ownerposition_value||null,
+    reviewChain:(rg.reviewChain||[]).slice().sort((a,b)=>(a.lm_step||0)-(b.lm_step||0))
+      .map(r=>r._lm_reviewerposition_value||null),
+  }));
+  const isRegionLevel=regionUnits.length>0 && buUnits.length===0;
+
+  return {...BLANK_REPORT,
+    id:'dv-rpt-'+p.lm_report_templateid,
+    kind:'Report Template',
+    name:p.lm_newcolumn||'(untitled)',
+    objective:p.lm_objective||'',
+    reportType:byCode1(DV_REPORT_TYPE,p.lm_reporttype),
+    reportCategory:byCode1(DV_REPORT_CATEGORY,p.lm_reportcategory),
+    frequency:byCode1(DV_FREQUENCY,p.lm_frequency),
+    dayOfWeek:byCode1(DV_DAY_OF_WEEK,p.lm_dayoftheweek),
+    dayOfMonth:p.lm_dayofthemonth ?? null,
+    monthInQuarter:byCode1(DV_MONTH_IN_QUARTER,p.lm_monthofthequarter),
+    confidentiality:byCode1(DV_CONFIDENTIALITY,p.lm_confidentiality),
+    delivery:'Source link', sourceLink:p.lm_destinationsharepointlink||'',
+    checklist:(detail.checklist||[]).slice().sort((a,b)=>(a.lm_checklistitemstep||0)-(b.lm_checklistitemstep||0))
+      .map(c=>({id:uid('ck'), text:c.lm_checklistitemname||''})),
+    lines:(detail.lines||[]).map(l=>({
+      id:uid('ln'),
+      department:nameOf(DEPARTMENTS,l._lm_department_value)||'',
+      function:l._lm_function_value ? (nameOf(FUNCTIONS,l._lm_function_value)||'') : '',
+    })),
+    kpis:(detail.kpiIds||[]).map(id=>idToName(KPI_ID_BY_NAME,id)).filter(Boolean),
+    processes:(detail.processIds||[]).map(id=>idToName(PROCESS_ID_BY_NAME,id)).filter(Boolean),
+    stage:isRegionLevel?STAGES[1]:STAGES[0],
+    regions:isRegionLevel ? regionUnits.map(u=>u.key)
+      : Array.from(new Set(buUnits.map(u=>{const b=byId(BUSINESS_UNITS,u.key);return b?b.region:null;}).filter(Boolean))),
+    businessUnits:isRegionLevel ? [] : buUnits.map(u=>u.key),
+    units:[...buUnits,...regionUnits],
+    // Rows written before lm_reportstatus/lm_version existed have neither --
+    // treated as Active / Approved / version 1 so they still register as
+    // "available for use" rather than looking unreviewed.
+    status:TEMPLATE_STATUS_LABEL[p.lm_reportstatus]||'Active / Approved',
+    version:typeof p.lm_version==='number'?p.lm_version:1,
+    updated:(p.modifiedon||p.createdon||TODAY).slice(0,10),
+    _dataverseId:p.lm_report_templateid,
+  };
+}
+
+function dataverseMeetingToSetup(detail){
+  const p=detail.parent;
+  const buUnits=(detail.businessUnits||[]).map(bu=>({
+    id:'dvu-'+bu.lm_meetingtemplatebusinessunitsid, key:bu._lm_businessunit_value,
+    section:null, team:null, channel:null,
+    chairman:bu._lm_meetingchairman_value||null, coChairman:bu._lm_meetingcochairman_value||null,
+    facilitator:bu._lm_meetingorganizerfacilitator_value||null,
+    coreMembers:(bu.attendees||[]).map(a=>({position:a._lm_attendeeposition_value||null})),
+  }));
+  const regionUnits=(detail.regions||[]).map(rg=>({
+    id:'dvu-'+rg.lm_meetingtemplateregionid, key:rg._lm_region_value,
+    section:null, team:null, channel:null,
+    chairman:rg._lm_meetingchairman_value||null, coChairman:rg._lm_meetingcochairman_value||null,
+    facilitator:rg._lm_meetingorganizerfacilitator_value||null,
+    coreMembers:(rg.attendees||[]).map(a=>({position:a._lm_attendeeposition_value||null})),
+  }));
+  const isRegionLevel=regionUnits.length>0 && buUnits.length===0;
+
+  return {...BLANK_MEETING,
+    id:'dv-mtg-'+p.lm_meetingtemplateid,
+    kind:'Committee / Meeting',
+    name:p.lm_meetingtemplatename||'(untitled)',
+    setupType:DV_MEETING_SETUP_TYPE[p.lm_setuptype]||'Business Meeting',
+    category:DV_MEETING_CATEGORY[p.lm_typeclassification]||null,
+    stage:isRegionLevel?STAGES[1]:(DV_MEETING_STAGE[p.lm_stages]||STAGES[0]),
+    frequency:byCode1(DV_FREQUENCY,p.lm_frequency),
+    dayOfWeek:DV_MEETING_DAY_OF_WEEK[p.lm_daysoftheweek]||null,
+    dayOfMonth:p.lm_dayofthemonth ?? null,
+    monthInQuarter:DV_MEETING_MONTH_IN_QUARTER[p.lm_monthofthequarter]||null,
+    mode:DV_MEETING_MODE[p.lm_defaultmeetingmode]||null,
+    confidentiality:DV_MEETING_CONFIDENTIALITY[p.lm_meetingconfidentiality]||null,
+    quorum:p.lm_quorumthreshold ?? null,
+    torLink:p.lm_torpolicylink||'',
+    agenda:(detail.agenda||[]).slice().sort((a,b)=>(a.lm_step||0)-(b.lm_step||0)).map(a=>({
+      id:uid('ag'), text:a.lm_agendaitemname||'', owner:a._lm_agendaitemowner_value||null,
+      source:a.lm_agendaitemtype===2?'Added':'Migrated - Initial',
+    })),
+    lines:(detail.lines||[]).map(l=>({
+      id:uid('ln'),
+      department:nameOf(DEPARTMENTS,l._lm_department_value)||'',
+      function:l._lm_function_value ? (nameOf(FUNCTIONS,l._lm_function_value)||'') : '',
+    })),
+    supportive:(detail.supportive||[])
+      .map(s=>s._lm_function_value ? (nameOf(FUNCTIONS,s._lm_function_value)||s.lm_newcolumn) : s.lm_newcolumn)
+      .filter(Boolean),
+    // Name-only -- see the header note on why there's no working link back yet.
+    linkedTemplates:(detail.linkedReports||[]).map(lr=>({
+      template:lr._lm_reporttemplate_value||null, templateName:lr.lm_name||null,
+      role:lr.lm_reporttype===1?'Output':'Input',
+    })),
+    regions:isRegionLevel ? regionUnits.map(u=>u.key)
+      : Array.from(new Set(buUnits.map(u=>{const b=byId(BUSINESS_UNITS,u.key);return b?b.region:null;}).filter(Boolean))),
+    businessUnits:isRegionLevel ? [] : buUnits.map(u=>u.key),
+    units:[...buUnits,...regionUnits],
+    // Same fallback as dataverseReportToSetup above, for rows written before
+    // lm_meetingstatus/lm_version existed.
+    status:TEMPLATE_STATUS_LABEL[p.lm_meetingstatus]||'Active / Approved',
+    version:typeof p.lm_version==='number'?p.lm_version:1,
+    updated:(p.modifiedon||p.createdon||TODAY).slice(0,10),
+    _dataverseId:p.lm_meetingtemplateid,
+  };
+}
+
 /* =========================================================================
    S1 — SETUP REGISTER
    ========================================================================= */
 function ScreenRegister(){
-  const {db,A,role,open}=use();
+  const {db,A,role,open,dvReports,dvMeetings,dvOpening}=use();
   const w=ROLES[role].write;
   const [fKind,setFKind]=useState('All'), [fType,setFType]=useState('All');
   const [fCat,setFCat]=useState('All'), [fStage,setFStage]=useState('All');
   const [fStatus,setFStatus]=useState('All'), [q,setQ]=useState('');
   const [confirm,setConfirm]=useState(null);
 
-  const rows=db.setups.filter(s=>
+  // Only real data: Setups opened from Dataverse, or created fresh this
+  // session. The built-in demo/seed Setups never existed in Dataverse, so
+  // they're excluded everywhere on this screen -- rows, stats, and the
+  // opened-id dedup used to decide which Dataverse shadow rows to show.
+  const realSetups=db.setups.filter(s=>!s._seed);
+
+  const rows=realSetups.filter(s=>
     (fKind==='All'||s.kind===fKind) &&
     (fType==='All'||s.setupType===fType) &&
     (fCat==='All'||s.category===fCat) &&
     (fStage==='All'||s.stage===fStage) &&
     (fStatus==='All'||s.status===fStatus) &&
     (!q||displayName(s).toLowerCase().includes(q.toLowerCase())));
-  const available=db.setups.filter(s=>s.status==='Active / Approved').length;
+
+  /* Dataverse-sourced rows the register hasn't loaded into this session's
+     `db` yet -- shown as a lightweight "shadow" row until opened (at
+     which point they become a real Setup and disappear from here, since
+     they now show up via `rows` above). Only Kind and the name search
+     apply to these, since the other filters need fields that aren't in
+     the lightweight list fetch -- opening one is exactly what pulls in
+     the rest. */
+  const openedDvIds=new Set(realSetups.filter(s=>s._dataverseId).map(s=>s._dataverseId));
+  const otherFiltersActive=fType!=='All'||fCat!=='All'||fStage!=='All'||fStatus!=='All';
+  const dvRows=otherFiltersActive ? [] : [
+    ...(fKind==='All'||fKind==='Report Template' ? dvReports : []).filter(r=>!openedDvIds.has(r.id))
+      .map(r=>({...r, _dv:true, dvKind:'Report Template', dvId:r.id})),
+    ...(fKind==='All'||fKind==='Committee / Meeting' ? dvMeetings : []).filter(r=>!openedDvIds.has(r.id))
+      .map(r=>({...r, _dv:true, dvKind:'Committee / Meeting', dvId:r.id})),
+  ].filter(r=>!q||r.name.toLowerCase().includes(q.toLowerCase()));
+
+  const available=realSetups.filter(s=>s.status==='Active / Approved').length;
   const clearAll=()=>{setFKind('All');setFType('All');setFCat('All');setFStage('All');
                       setFStatus('All');setQ('');};
   const filtered=fKind!=='All'||fType!=='All'||fCat!=='All'||fStage!=='All'||fStatus!=='All'||q;
@@ -1727,11 +2349,11 @@ function ScreenRegister(){
 
     <div className="stats">
       <Stat label="Available for use" v={available} d="Active / Approved" c="green"/>
-      <Stat label="Draft" v={db.setups.filter(s=>s.status==='Draft').length} d="not yet published" c="amber"/>
-      <Stat label="Under Revision" v={db.setups.filter(s=>s.status==='Under Revision').length}
-            d="being amended" c="amber"/>
-      <Stat label="Expired" v={db.setups.filter(s=>s.status==='Expired').length} d="create no occurrences"/>
-      <Stat label="Report Templates" v={db.setups.filter(s=>s.kind==='Report Template').length} d="published and draft"/>
+      <Stat label="Draft" v={realSetups.filter(s=>s.status==='Draft').length} d="not yet published" c="amber"/>
+      <Stat label="Under Review" v={realSetups.filter(s=>s.status==='Under Review').length}
+            d="pending approval" c="amber"/>
+      <Stat label="Expired" v={realSetups.filter(s=>s.status==='Expired').length} d="create no occurrences"/>
+      <Stat label="Report Templates" v={realSetups.filter(s=>s.kind==='Report Template').length} d="published and draft"/>
     </div>
 
     <div className="fltr">
@@ -1757,19 +2379,24 @@ function ScreenRegister(){
     </div>
 
     <div className="card flush">
-      <div className="t-wrap"><table className="data">
+      <div className="t-wrap"><table className="data reg-table">
         <thead><tr><th>Setup name</th><th>Kind</th><th>Setup Type</th><th>Category</th><th>Stage</th>
-          <th>Scope and units</th><th>Frequency</th><th>Status</th><th>Ver</th><th>Updated</th>
-          <th></th></tr></thead>
-        <tbody>{rows.length===0
+          <th>Scope and units</th><th>Frequency</th><th>Status</th><th className="reg-th-num">Ver</th><th>Updated</th>
+          <th className="reg-th-actions"></th></tr></thead>
+        <tbody>{rows.length===0 && dvRows.length===0
           ? <tr><td colSpan={11}><Empty>No Setup matches these filters.</Empty></td></tr>
-          : rows.map(s=>{
+          : <>{rows.map(s=>{
           const keys=scopeKeys(s), lv=stageLevel(s);
+          const KindIcon=s.kind==='Report Template'?ClipboardList:CalendarDays;
           return <tr key={s.id} className="click" onClick={()=>open(s.id)}>
-            <td><div className="t-main">{displayName(s)}</div>
+            <td><div className="t-main reg-name">
+                <span className="reg-kind-ic" title={s.kind}><KindIcon size={13} strokeWidth={2.25}/></span>
+                {displayName(s)}
+              </div>
               {s.kind==='Report Template'?<div className="t-sub">{s.reportType} · {s.reportCategory}</div>:null}</td>
             <td className="dim">{s.kind}</td>
-            <td>{s.kind==='Report Template'?<span className="dim">—</span>
+            <td>{s.kind==='Report Template'
+              ?(s.reportType?<Tag c={REPORT_TYPE_TAG_COLOR[s.reportType]||'grey'}>{s.reportType}</Tag>:<span className="dim">—</span>)
               :<Tag c={s.setupType==='Accreditation Committee'?'purple':'blue'}>{s.setupType}</Tag>}</td>
             <td className="dim">{s.category||'—'}</td>
             <td className="dim">{(s.stage||'—').replace(/^Stage (\d) /,'$1 · ')}</td>
@@ -1784,17 +2411,77 @@ function ScreenRegister(){
             <td><StatusPill s={s.status}/></td>
             <td className="num">{s.version||'—'}</td>
             <td className="dim">{fmtD(s.updated)}</td>
-            <td style={{textAlign:'right',whiteSpace:'nowrap'}} onClick={e=>e.stopPropagation()}>
-              <Btn k="sm" onClick={()=>open(s.id)}>Open</Btn>{' '}
-              {w?<Btn k="sm" onClick={()=>A.duplicate(s.id)}>Duplicate</Btn>:null}{' '}
-              {w&&s.status==='Active / Approved'
-                ? <Btn k="sm" onClick={()=>setConfirm(s)}>Expire</Btn> : null}
+            <td className="reg-actions" onClick={e=>e.stopPropagation()}>
+              <Btn k="reg-open" onClick={()=>open(s.id)}>Open</Btn>
+              <RowMenu items={[
+                w&&s.status==='Under Review'?{label:'Approve', onClick:()=>setConfirm({...s,_action:'approve'})}:null,
+                w?{label:'Duplicate', onClick:()=>A.duplicate(s.id)}:null,
+                w&&s.status==='Active / Approved'?{label:'Expire', danger:true, onClick:()=>setConfirm({...s,_action:'expire'})}:null,
+              ]}/>
             </td>
           </tr>;})}
+          {dvRows.map(r=>{
+            const isOpening=dvOpening===r.dvId;
+            const isReport=r.dvKind==='Report Template';
+            const KindIcon=isReport?ClipboardList:CalendarDays;
+            const buNames=(r.businessUnitIds||[]).map(id=>nameOf(BUSINESS_UNITS,id)).filter(Boolean);
+            const rgNames=(r.regionIds||[]).map(id=>nameOf(REGIONS,id)).filter(Boolean);
+            const unitCount=(r.businessUnitIds||[]).length || (r.regionIds||[]).length;
+            const isRegionLevel=(r.regionIds||[]).length>0 && (r.businessUnitIds||[]).length===0;
+            const scopeLabel = buNames.length ? buNames.join(', ')
+              : rgNames.length ? rgNames.join(', ') : '—';
+            const stageLabel = isReport
+              ? (isRegionLevel ? '2 · Regional' : (unitCount?'1 · BU Operational':'—'))
+              : (DV_MEETING_STAGE[r.stageCode] ? DV_MEETING_STAGE[r.stageCode].replace(/^Stage (\d) /,'$1 · ') : '—');
+            return <tr key={'dv-'+r.dvId} className={'click reg-shadow'+(isOpening?' opening':'')}
+              onClick={()=>{ if(!isOpening) A.openDataverse(r.dvKind,r.dvId); }}>
+              <td><div className="t-main reg-name">
+                  <span className="reg-kind-ic" title={r.dvKind}><KindIcon size={13} strokeWidth={2.25}/></span>
+                  {r.name}
+                </div>
+                <div className="t-sub">{isOpening?'Loading…':'Not loaded into this session yet — open to view/edit.'}</div></td>
+              <td className="dim">{r.dvKind}</td>
+              <td>{isReport
+                ?(byCode1(DV_REPORT_TYPE,r.reportTypeCode)
+                    ?<Tag c={REPORT_TYPE_TAG_COLOR[byCode1(DV_REPORT_TYPE,r.reportTypeCode)]||'grey'}>{byCode1(DV_REPORT_TYPE,r.reportTypeCode)}</Tag>
+                    :<span className="dim">—</span>)
+                :<Tag c={DV_MEETING_SETUP_TYPE[r.setupTypeCode]==='Accreditation Committee'?'purple':'blue'}>
+                    {DV_MEETING_SETUP_TYPE[r.setupTypeCode]||'—'}</Tag>}</td>
+              <td className="dim">{isReport ? (byCode1(DV_REPORT_CATEGORY,r.reportCategoryCode)||'—')
+                : (DV_MEETING_CATEGORY[r.categoryCode]||'—')}</td>
+              <td className="dim">{stageLabel}</td>
+              <td className="dim" style={{fontSize:11.5,maxWidth:230}}
+                title={[...buNames,...rgNames].join(', ')}>
+                {scopeLabel}
+                {unitCount>1
+                  ? <div style={{marginTop:3}}><Tag c="teal">runs in {unitCount}{' '}
+                      {isRegionLevel?'regions':'units'}</Tag></div>
+                  : null}</td>
+              <td className="dim">{byCode1(DV_FREQUENCY,r.frequencyCode)||'—'}</td>
+              <td>{TEMPLATE_STATUS_LABEL[r.statusCode]
+                ?<StatusPill s={TEMPLATE_STATUS_LABEL[r.statusCode]}/>
+                :<span className="dim" title="Saved before this environment tracked lifecycle status">—</span>}</td>
+              <td className="num">{r.version??'—'}</td>
+              <td className="dim">{r.updated?fmtD(r.updated.slice(0,10)):'—'}</td>
+              <td className="reg-actions" onClick={e=>e.stopPropagation()}>
+                <Btn k="reg-open" disabled={isOpening} onClick={()=>A.openDataverse(r.dvKind,r.dvId)}>
+                  {isOpening?'Opening…':'Open'}</Btn>
+              </td>
+            </tr>;})}
+          </>}
         </tbody></table></div>
     </div>
 
-    {confirm?<Modal title="Expire this Setup?" onClose={()=>setConfirm(null)}
+    {confirm&&confirm._action==='approve'?<Modal title="Approve this Setup?" onClose={()=>setConfirm(null)}
+      sub="It moves to Active / Approved and becomes available for records to be created from it."
+      footer={<><Btn onClick={()=>setConfirm(null)}>Cancel</Btn>
+        <Btn k="pri" onClick={()=>{A.approve(confirm.id);setConfirm(null);}}>Approve</Btn></>}>
+      <div className="readonly"><b>{confirm.name}</b>
+        <div style={{fontSize:12,color:'var(--muted)',marginTop:4}}>
+          {confirm.kind} · version {confirm.version} · {scopeString(confirm)}</div></div>
+    </Modal>:null}
+
+    {confirm&&confirm._action==='expire'?<Modal title="Expire this Setup?" onClose={()=>setConfirm(null)}
       sub="Nothing is deleted. An expired Setup creates no new occurrences and stays readable."
       footer={<><Btn onClick={()=>setConfirm(null)}>Keep it Active</Btn>
         <Btn k="dgr" onClick={()=>{A.expire(confirm.id);setConfirm(null);}}>Expire the Setup</Btn></>}>
@@ -1823,6 +2510,7 @@ function Modal({title,sub,onClose,footer,children,wide}){
 function ScreenDetail({rec,onClose}){
   const {db,A,role}=use();
   const [tab,setTab]=useState('summary');
+  const [confirmApprove,setConfirmApprove]=useState(false);
   const w=ROLES[role].write;
   const usage=db.usage.filter(u=>u.setup===rec.id);
   const audit=db.audit.filter(a=>a.setup===rec.id).slice().reverse();
@@ -1835,7 +2523,8 @@ function ScreenDetail({rec,onClose}){
         <div className="sub">{rec.kind} · version {rec.version||'—'} · <StatusPill s={rec.status}/>
           {rec.confidentiality?<> · <Tag c="grey">{rec.confidentiality}</Tag></>:null}</div>
         <div className="sub" style={{marginTop:4}}>{scopeString(rec)}</div></div>
-      {w&&rec.status!=='Expired'?<Btn k="pri" onClick={()=>A.edit(rec.id)}>Edit</Btn>:null}
+      {w&&rec.status==='Under Review'?<Btn k="pri" onClick={()=>setConfirmApprove(true)}>Approve</Btn>:null}
+      {w&&rec.status!=='Expired'?<Btn onClick={()=>A.edit(rec.id)}>Edit</Btn>:null}
       <Btn onClick={onClose}>Close</Btn>
     </div>
 
@@ -1843,10 +2532,23 @@ function ScreenDetail({rec,onClose}){
       ? <Note k="lock" ic="—">This Setup is Expired. It creates no new occurrences and cannot be
           edited. It stays readable so its history and prior records remain traceable.</Note>
       : null}
+    {rec.status==='Under Review'
+      ? <Note k="info" ic="i">This Setup is Under Review. It needs to be Approved before records are
+          created from it. Use Edit to change it further, or Approve it as-is.</Note>
+      : null}
     {issues.length>0 && rec.status!=='Expired'
       ? <Note k="warn" ic="⚠"><b>{issues.length} rule{issues.length>1?'s are':' is'} unmet.</b> This Setup
           cannot be published until they are resolved. Open Edit to see them field by field.</Note>
       : null}
+
+    {confirmApprove?<Modal title="Approve this Setup?" onClose={()=>setConfirmApprove(false)}
+      sub="It moves to Active / Approved and becomes available for records to be created from it."
+      footer={<><Btn onClick={()=>setConfirmApprove(false)}>Cancel</Btn>
+        <Btn k="pri" onClick={()=>{A.approve(rec.id);setConfirmApprove(false);}}>Approve</Btn></>}>
+      <div className="readonly"><b>{displayName(rec)}</b>
+        <div style={{fontSize:12,color:'var(--muted)',marginTop:4}}>
+          {rec.kind} · version {rec.version||'—'} · {scopeString(rec)}</div></div>
+    </Modal>:null}
 
     <div className="tabs">
       <button type="button" className={tab==='summary'?'on':''}
@@ -1910,10 +2612,10 @@ const LIST_DEFS=[
    parentOpts:()=>BUSINESS_UNITS.map(x=>({v:x.id,label:x.name})),
    rows:p=>DEPARTMENTS.filter(d=>!p||d.bu===p).map(x=>[x.name,nameOf(BUSINESS_UNITS,x.bu)]),
    note:'A Setup selects Departments by name, so the same Department covers every unit it runs in.'},
-  {id:'section',      name:'Section / Specialty', parent:'Department',
-   parentOpts:()=>DEPARTMENTS.map(x=>({v:x.id,label:`${x.name} · ${nameOf(BUSINESS_UNITS,x.bu)}`})),
-   rows:p=>SECTIONS.filter(s=>!p||s.dept===p).map(x=>[x.name,nameOf(DEPARTMENTS,x.dept)]),
-   note:'Only some Departments have Sections. Choosing one without any shows an empty list.'},
+  {id:'section',      name:'Section / Specialty', parent:'Business Unit',
+   parentOpts:()=>BUSINESS_UNITS.map(x=>({v:x.id,label:x.name})),
+   rows:p=>SECTIONS.filter(s=>!p||s.bu===p).map(x=>[x.name,nameOf(BUSINESS_UNITS,x.bu)]),
+   note:'Only some Business Units have Specialties. Choosing one without any shows an empty list.'},
   {id:'function',     name:'Function',       parent:'Department',
    parentOpts:()=>DEPARTMENTS.map(x=>({v:x.id,label:`${x.name} · ${nameOf(BUSINESS_UNITS,x.bu)}`})),
    rows:p=>FUNCTIONS.filter(f=>!p||f.dept===p).map(x=>[x.name,nameOf(DEPARTMENTS,x.dept)])},
@@ -1924,22 +2626,33 @@ const LIST_DEFS=[
               ['Accreditation Committee (Setup Type)','Committee']]),
    note:'A Setup is never named by hand. The name is [Stage prefix] [Function or Department] '+
         '[Classification], with any repeated word dropped.'},
-  {id:'positions',    name:'Positions',      rows:()=>POSITIONS.map(p=>[p.name,p.holder])},
-  {id:'teams',        name:'Teams',
+  {id:'positions',    name:'Positions',      filterPositions:true,
+   rows:()=>POSITIONS.map(p=>[p.name, nameOf(BUSINESS_UNITS,p.bu)||'—',
+     nameOf(DEPARTMENTS,p.dept)||'—', nameOf(FUNCTIONS,p.fn)||'—', p.holder||'—']),
+   note:'One row per assignment (Position + Business Unit + current employee), not one per Position title.'},
+  {id:'teams',        name:'Teams',          locked:true,
+   lockedHint:'Coming soon — Teams isn\u2019t wired to a Dataverse table yet.',
    rows:()=>TEAMS.map(t=>[t.name, t.unit===GROUP_KEY?'Group-wide'
      :(nameOf(BUSINESS_UNITS,t.unit)||nameOf(REGIONS,t.unit)||'—')]),
    note:'A Team belongs to one Business Unit, one Region, or to the group.'},
-  {id:'channels',     name:'Channels',       parent:'Team',
+  {id:'channels',     name:'Channels',       parent:'Team',       locked:true,
+   lockedHint:'Coming soon — Channels has no Team relationship in Dataverse yet.',
    parentOpts:()=>TEAMS.map(t=>({v:t.id,label:t.name})),
    rows:p=>CHANNELS.filter(c=>!p||c.team===p).map(x=>[x.name,nameOf(TEAMS,x.team)])},
-  {id:'sites',        name:'Sites',          rows:()=>SITES.map(x=>[x.name])},
-  {id:'libraries',    name:'Libraries',      parent:'Site',
+  {id:'sites',        name:'Sites',          locked:true,
+   lockedHint:'Coming soon — Sites isn\u2019t wired to a Dataverse table yet.',
+   rows:()=>SITES.map(x=>[x.name])},
+  {id:'libraries',    name:'Libraries',      parent:'Site',       locked:true,
+   lockedHint:'Coming soon — Libraries isn\u2019t wired to a Dataverse table yet.',
    parentOpts:()=>SITES.map(x=>({v:x.id,label:x.name})),
    rows:p=>LIBRARIES.filter(l=>!p||l.site===p).map(x=>[x.name,nameOf(SITES,x.site)])},
-  {id:'folders',      name:'Folders',        cascade2:true,
+  {id:'folders',      name:'Folders',        cascade2:true,       locked:true,
+   lockedHint:'Coming soon — Folders isn\u2019t wired to a Dataverse table yet.',
    note:'A Folder belongs to a Library, which belongs to a Site. Choose both.'},
-  {id:'processes',    name:'Processes',      rows:()=>PROCESSES.map(p=>[p])},
-  {id:'kpis',         name:'KPIs',           rows:()=>KPIS.map(k=>[k])},
+  {id:'processes',    name:'Processes',      filterByBuDept:true,
+   rows:()=>PROCESSES.map(p=>[p])},
+  {id:'kpis',         name:'KPIs',           filterByBuDept:true,
+   rows:()=>KPIS.map(k=>[k])},
 ];
 
 function ScreenLists(){
@@ -1947,11 +2660,31 @@ function ScreenLists(){
   const [cur,setCur]=useState('region');
   const [parent,setParent]=useState(null);
   const [site,setSite]=useState(null); const [lib,setLib]=useState(null);
+  const [buF,setBuF]=useState(null); const [deptF,setDeptF]=useState(null); const [fnF,setFnF]=useState(null);
   const def=LIST_DEFS.find(l=>l.id===cur);
   const libs=LIBRARIES.filter(l=>l.site===site);
+  const deptOptsForBu=DEPARTMENTS.filter(d=>!buF||d.bu===buF);
+  const fnOptsForDept=FUNCTIONS.filter(fn=>!deptF||fn.dept===deptF);
+  const deptByName=cur==='kpis'?KPI_DEPT_BY_NAME:PROCESS_DEPT_BY_NAME;
+  const reset=()=>{setParent(null);setSite(null);setLib(null);setBuF(null);setDeptF(null);setFnF(null);};
   const rows=def.cascade2
     ? (site&&lib ? FOLDERS.filter(f=>f.library===lib).map(f=>[f.name,nameOf(LIBRARIES,f.library),nameOf(SITES,site)]) : null)
-    : def.rows(parent);
+    : def.filterByBuDept
+      ? def.rows().filter(r=>{
+          const dId=deptByName[r[0]];
+          if(deptF) return dId===deptF;
+          if(buF){ const d=byId(DEPARTMENTS,dId); return d&&d.bu===buF; }
+          return true;
+        }).map(r=>{
+          const dId=deptByName[r[0]], d=byId(DEPARTMENTS,dId);
+          return [r[0], d?d.name:'—', d?nameOf(BUSINESS_UNITS,d.bu):'—'];
+        })
+      : def.filterPositions
+        ? POSITIONS.filter(p=>
+            (!buF||p.bu===buF) && (!deptF||p.dept===deptF) && (!fnF||p.fn===fnF)
+          ).map(p=>[p.name, nameOf(BUSINESS_UNITS,p.bu)||'—',
+            nameOf(DEPARTMENTS,p.dept)||'—', nameOf(FUNCTIONS,p.fn)||'—', p.holder||'—'])
+        : def.rows(parent);
 
   return <>
     <div className="ph"><h1>Governed Lists</h1>
@@ -1966,8 +2699,10 @@ function ScreenLists(){
     <div className="lists">
       <nav className="lists-rail" aria-label="Governed lists">
         {LIST_DEFS.map(l=>
-          <button type="button" key={l.id} className={cur===l.id?'on':''}
-            onClick={()=>{setCur(l.id);setParent(null);setSite(null);setLib(null);}}>{l.name}</button>)}
+          <button type="button" key={l.id} className={(cur===l.id?'on':'')+(l.locked?' locked':'')}
+            disabled={l.locked} title={l.locked?l.lockedHint:undefined}
+            onClick={()=>{ if(l.locked) return; setCur(l.id); reset(); }}>
+            {l.name}{l.locked?<span className="seg-lock" aria-hidden="true"> 🔒</span>:null}</button>)}
       </nav>
       <div className="card" style={{flex:1,minWidth:0,marginBottom:0}}>
         <h2>{def.name}</h2>
@@ -1990,6 +2725,24 @@ function ScreenLists(){
           <select id="ll" value={lib||''} disabled={!site} onChange={e=>setLib(e.target.value||null)}>
             <option value="">{site?'Select…':'Choose a Site first'}</option>
             {libs.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select>
+        </div>:null}
+
+        {def.filterByBuDept||def.filterPositions? <div className="fltr" style={{marginBottom:12}}>
+          <label htmlFor="pf-bu">Business Unit</label>
+          <select id="pf-bu" value={buF||''} onChange={e=>{setBuF(e.target.value||null);setDeptF(null);setFnF(null);}}>
+            <option value="">All</option>
+            {BUSINESS_UNITS.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select>
+          <label htmlFor="pf-dept">Department</label>
+          <select id="pf-dept" value={deptF||''} onChange={e=>{setDeptF(e.target.value||null);setFnF(null);}}>
+            <option value="">All</option>
+            {deptOptsForBu.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select>
+          {def.filterPositions? <>
+            <label htmlFor="pf-fn">Function</label>
+            <select id="pf-fn" value={fnF||''} onChange={e=>setFnF(e.target.value||null)}>
+              <option value="">All</option>
+              {fnOptsForDept.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select>
+          </>:null}
+          {(buF||deptF||fnF)?<Btn k="sm" onClick={()=>{setBuF(null);setDeptF(null);setFnF(null);}}>Clear</Btn>:null}
         </div>:null}
 
         {rows===null
@@ -2016,25 +2769,112 @@ function App({onSwitch}){
   ALL_SETUPS.current=db.setups;
   useEffect(()=>{ saveDb(db); },[db]);
 
-  /* Regions and Business Units, read live from Dataverse (crd04_regions /
-     businessunit). Falls back silently to the built-in list above if the
-     data source isn't wired yet or isn't reachable (e.g. running with
-     plain `npm run dev` instead of `pac code run`) -- everything that
-     reads REGIONS/BUSINESS_UNITS keeps working either way. */
+  /* Regions, Business Units, Departments, Functions, Processes and KPIs,
+     read live from Dataverse. Falls back silently to the built-in lists
+     above if a data source isn't wired yet or isn't reachable (e.g.
+     running with plain `npm run dev` instead of `pac code run`) --
+     everything that reads these mutable module-level lists keeps working
+     either way, one table at a time so a failure on one doesn't block
+     the others. */
   const [refDataTick,setRefDataTick]=useState(0);
+  const [dvReports,setDvReports]=useState([]);
+  const [dvMeetings,setDvMeetings]=useState([]);
+  const [dvOpening,setDvOpening]=useState(null); // id currently being fetched+opened, for a loading state
   useEffect(()=>{
     let cancelled=false;
     (async()=>{
       try{
-        const [regions,units]=await Promise.all([fetchRegions(),fetchBusinessUnits()]);
+        const list=await fetchReportTemplatesList();
         if(cancelled) return;
-        let changed=false;
+        console.log(`[dataverse] fetchReportTemplatesList() returned ${list?list.length:0} row(s)`, list);
+        setDvReports(list||[]);
+      }catch(e){ console.warn('[dataverse] fetchReportTemplatesList() failed:', e); }
+      try{
+        const list=await fetchMeetingTemplatesList();
+        if(cancelled) return;
+        console.log(`[dataverse] fetchMeetingTemplatesList() returned ${list?list.length:0} row(s)`, list);
+        setDvMeetings(list||[]);
+      }catch(e){ console.warn('[dataverse] fetchMeetingTemplatesList() failed:', e); }
+    })();
+    return ()=>{cancelled=true;};
+  },[]);
+  useEffect(()=>{
+    let cancelled=false;
+    (async()=>{
+      let changed=false;
+      try{
+        const regions=await fetchRegions();
+        if(cancelled) return;
+        console.log(`[dataverse] fetchRegions() returned ${regions?regions.length:0} row(s)`, regions);
         if(regions&&regions.length){ REGIONS=regions; changed=true; }
-        if(units&&units.length){ BUSINESS_UNITS=units; changed=true; }
-        if(changed) setRefDataTick(t=>t+1);
       }catch(e){
-        console.warn('[dataverse] Region/Business Unit read failed, using built-in list:', e);
+        console.warn('[dataverse] fetchRegions() failed, using built-in list:', e);
       }
+      try{
+        const units=await fetchBusinessUnits();
+        if(cancelled) return;
+        console.log(`[dataverse] fetchBusinessUnits() returned ${units?units.length:0} row(s)`, units);
+        if(units&&units.length){ BUSINESS_UNITS=units; changed=true; }
+      }catch(e){
+        console.warn('[dataverse] fetchBusinessUnits() failed, using built-in list:', e);
+      }
+      try{
+        const depts=await fetchDepartments();
+        if(cancelled) return;
+        console.log(`[dataverse] fetchDepartments() returned ${depts?depts.length:0} row(s)`, depts);
+        if(depts&&depts.length){ DEPARTMENTS=depts; changed=true; }
+      }catch(e){
+        console.warn('[dataverse] fetchDepartments() failed, using built-in list:', e);
+      }
+      try{
+        const fns=await fetchFunctions();
+        if(cancelled) return;
+        console.log(`[dataverse] fetchFunctions() returned ${fns?fns.length:0} row(s)`, fns);
+        if(fns&&fns.length){ FUNCTIONS=fns; changed=true; }
+      }catch(e){
+        console.warn('[dataverse] fetchFunctions() failed, using built-in list:', e);
+      }
+      try{
+        const procs=await fetchProcesses();
+        if(cancelled) return;
+        console.log(`[dataverse] fetchProcesses() returned ${procs?procs.length:0} row(s)`, procs);
+        if(procs&&procs.length){
+          PROCESS_ID_BY_NAME={}; PROCESS_DEPT_BY_NAME={};
+          procs.forEach(p=>{ PROCESS_ID_BY_NAME[p.name]=p.id; PROCESS_DEPT_BY_NAME[p.name]=p.dept??null; });
+          PROCESSES=procs.map(p=>p.name); changed=true;
+        }
+      }catch(e){
+        console.warn('[dataverse] fetchProcesses() failed, using built-in list:', e);
+      }
+      try{
+        const kpis=await fetchKpis();
+        if(cancelled) return;
+        console.log(`[dataverse] fetchKpis() returned ${kpis?kpis.length:0} row(s)`, kpis);
+        if(kpis&&kpis.length){
+          KPI_ID_BY_NAME={}; KPI_DEPT_BY_NAME={};
+          kpis.forEach(k=>{ KPI_ID_BY_NAME[k.name]=k.id; KPI_DEPT_BY_NAME[k.name]=k.dept??null; });
+          KPIS=kpis.map(k=>k.name); changed=true;
+        }
+      }catch(e){
+        console.warn('[dataverse] fetchKpis() failed, using built-in list:', e);
+      }
+      try{
+        const secs=await fetchSections();
+        if(cancelled) return;
+        console.log(`[dataverse] fetchSections() returned ${secs?secs.length:0} row(s)`, secs);
+        if(secs&&secs.length){ SECTIONS=secs; changed=true; }
+      }catch(e){
+        console.warn('[dataverse] fetchSections() failed, using built-in list:', e);
+      }
+      try{
+        const positions=await fetchPositions();
+        if(cancelled) return;
+        console.log(`[dataverse] fetchPositions() returned ${positions?positions.length:0} row(s)`, positions);
+        if(positions&&positions.length){ POSITIONS=positions; changed=true; }
+      }catch(e){
+        console.warn('[dataverse] fetchPositions() failed, using built-in list:', e);
+      }
+      if(changed&&!cancelled) setRefDataTick(t=>t+1);
     })();
     return ()=>{cancelled=true;};
   },[]);
@@ -2076,6 +2916,70 @@ function App({onSwitch}){
     if(depVal(prev)!==depVal(f)) logIt(n,f.id,'Edited','Departments',depVal(prev),depVal(f));
   };
 
+  /* Fire-and-forget Dataverse write shared by saveDraft and publish -- both
+     now persist to Dataverse, the only difference being what status/version
+     the caller already baked into `f` before calling this. Never blocks or
+     reverses the local save that already succeeded; a failed/partial
+     Dataverse write just surfaces as a follow-up toast.
+
+     A Setup that already has a _dataverseId (opened from Dataverse, or a
+     prior save that created one) is UPDATED in place -- its old child rows
+     are deleted and rows matching the edited Setup are recreated. A
+     brand-new Setup is created fresh. */
+  const writeTemplateToDataverse=(f, actionLabel)=>{
+    const isUpdate = !!f._dataverseId;
+    if(f.kind==='Report Template'){
+      const writer = isUpdate
+        ? updateReportTemplateToDataverse(f._dataverseId, buildReportTemplatePayload(f))
+        : saveReportTemplateToDataverse(buildReportTemplatePayload(f));
+      writer
+        .then(({id,errors})=>{
+          if(!id){
+            console.warn(`[dataverse] Report Template ${isUpdate?'update':'save'} failed entirely:`, errors);
+            toast('Dataverse save failed',
+              `${displayName(f)} was ${actionLabel} locally, but the Dataverse ${isUpdate?'update':'write'} failed. Check the console for details.`,'err');
+          }else if(errors.length){
+            console.warn(`[dataverse] Report Template ${isUpdate?'updated':'saved'} with some child rows failing:`, errors);
+            toast(`Report Template ${isUpdate?'updated':'saved'}, with gaps`,
+              `${errors.length} related row(s) (${errors.map(e=>e.table).join(', ')}) failed to save. Check the console for details.`,'warn');
+            if(!isUpdate){ REPORT_DATAVERSE_ID={...REPORT_DATAVERSE_ID, [f.id]:id}; saveReportDvIds(REPORT_DATAVERSE_ID); }
+          }else{
+            console.log(`[dataverse] Report Template ${isUpdate?'updated':'saved'}:`, id);
+            if(!isUpdate){ REPORT_DATAVERSE_ID={...REPORT_DATAVERSE_ID, [f.id]:id}; saveReportDvIds(REPORT_DATAVERSE_ID); }
+          }
+        })
+        .catch(e=>{
+          console.warn(`[dataverse] Report Template ${isUpdate?'update':'save'} threw unexpectedly:`, e);
+          toast('Dataverse save failed',
+            `${displayName(f)} was ${actionLabel} locally, but the Dataverse ${isUpdate?'update':'write'} failed. Check the console for details.`,'err');
+        });
+    }
+    if(f.kind==='Committee / Meeting'){
+      const writer = isUpdate
+        ? updateMeetingTemplateToDataverse(f._dataverseId, buildMeetingTemplatePayload(f))
+        : saveMeetingTemplateToDataverse(buildMeetingTemplatePayload(f));
+      writer
+        .then(({id,errors})=>{
+          if(!id){
+            console.warn(`[dataverse] Meeting Template ${isUpdate?'update':'save'} failed entirely:`, errors);
+            toast('Dataverse save failed',
+              `${displayName(f)} was ${actionLabel} locally, but the Dataverse ${isUpdate?'update':'write'} failed. Check the console for details.`,'err');
+          }else if(errors.length){
+            console.warn(`[dataverse] Meeting Template ${isUpdate?'updated':'saved'} with some child rows failing:`, errors);
+            toast(`Meeting Template ${isUpdate?'updated':'saved'}, with gaps`,
+              `${errors.length} related row(s) (${errors.map(e=>e.table).join(', ')}) failed to save. Check the console for details.`,'warn');
+          }else{
+            console.log(`[dataverse] Meeting Template ${isUpdate?'updated':'saved'}:`, id);
+          }
+        })
+        .catch(e=>{
+          console.warn(`[dataverse] Meeting Template ${isUpdate?'update':'save'} threw unexpectedly:`, e);
+          toast('Dataverse save failed',
+            `${displayName(f)} was ${actionLabel} locally, but the Dataverse ${isUpdate?'update':'write'} failed. Check the console for details.`,'err');
+        });
+    }
+  };
+
   const A={
     create:kind=>{const id=uid('su');
       mut(n=>{const base=kind==='Report Template'?BLANK_REPORT:BLANK_MEETING;
@@ -2085,13 +2989,48 @@ function App({onSwitch}){
 
     open:id=>{setOpenId(id); setEditing(false); setScreen('register'); window.scrollTo({top:0});},
 
+    /* Opens a Report/Meeting Template that lives in Dataverse but not in
+       this session's local `db` yet: fetches the full record, converts it
+       into a real Setup object (dataverseReportToSetup/
+       dataverseMeetingToSetup), adds it to db.setups (so it behaves like
+       any other Setup from here on -- same detail view, same wizard), then
+       opens it. Re-opening the same Dataverse record replaces the earlier
+       local copy rather than duplicating it, so edits don't pile up stale
+       versions in the register. */
+    openDataverse: async(kind,dvId)=>{
+      const localId='dv-'+(kind==='Report Template'?'rpt':'mtg')+'-'+dvId;
+      setDvOpening(dvId);
+      try{
+        const setup = kind==='Report Template'
+          ? dataverseReportToSetup(await fetchReportTemplateDetail(dvId))
+          : dataverseMeetingToSetup(await fetchMeetingTemplateDetail(dvId));
+        mut(n=>{
+          const i=n.setups.findIndex(x=>x.id===localId);
+          if(i>=0) n.setups[i]=setup; else n.setups.push(setup);
+        });
+        setOpenId(localId); setEditing(false); setScreen('register'); window.scrollTo({top:0});
+      }catch(e){
+        console.warn(`[dataverse] Failed to open ${kind} ${dvId}:`, e);
+        toast('Could not open record', 'Reading this record from Dataverse failed. Check the console for details.', 'err');
+      }finally{
+        setDvOpening(null);
+      }
+    },
+
     edit:id=>{ mut(n=>{const s=n.setups.find(x=>x.id===id);
         if(s.status==='Active / Approved'){
-          logIt(n,id,'Edit opened','Lifecycle Status',s.status,'Under Revision');
-          s.status='Under Revision';
+          logIt(n,id,'Edit opened','Lifecycle Status',s.status,'Under Review');
+          s.status='Under Review';
         }});
       setOpenId(id); setEditing(true); window.scrollTo({top:0});},
 
+    /* Persists the current edit as-is -- it never advances or reverts the
+       lifecycle status itself (a brand-new Setup keeps the Draft BLANK_*
+       seeded it with; a Setup being re-edited keeps whatever A.edit() put
+       it in, e.g. Under Review). Version is untouched. Now also writes
+       through to Dataverse (create if this Setup has never been saved
+       there, update-in-place otherwise) -- previously Save Draft was
+       local-only and a draft never reached Dataverse at all. */
     saveDraft:f0=>{ const f={...f0,name:derivedName(f0)};
       mut(n=>{const i=n.setups.findIndex(x=>x.id===f.id); const prev=n.setups[i];
         TRACKED.forEach(([k,label])=>{ if(prev[k]!==f[k])
@@ -2099,26 +3038,71 @@ function App({onSwitch}){
         logDerived(n,prev,f);
         n.setups[i]={...f,updated:TODAY};});
       setEditing(false);
-      toast('Draft saved','Nothing downstream changes until it is published.','ok');},
+      toast('Draft saved','Saved to Dataverse as a Draft. Nothing downstream changes until it is published.','ok');
+      writeTemplateToDataverse(f,'saved as a draft');},
 
-    publish:f0=>{ const f={...f0,name:derivedName(f0)}; const next=(f.version||0)+1;
+    /* Publish always lands on Under Review -- nothing skips review, even a
+       re-publish of something that was already Active / Approved. Version
+       only increases when this IS a re-publish of something that had been
+       Approved; the very first publish, or a re-publish while still
+       Draft/Under Review and never yet approved, keeps/starts at 1. Only
+       the Approve action (below) can move a Setup to Active / Approved. */
+    publish:f0=>{ const named={...f0,name:derivedName(f0)};
+      const wasApproved = named.status==='Active / Approved';
+      const next = wasApproved ? (named.version||0)+1 : (named.version||1);
+      const f={...named, status:'Under Review', version:next};
       mut(n=>{const i=n.setups.findIndex(x=>x.id===f.id); const prev=n.setups[i];
         TRACKED.forEach(([k,label])=>{ if(prev[k]!==f[k])
           logIt(n,f.id,'Edited',label,showVal(k,prev[k]),showVal(k,f[k])); });
         logDerived(n,prev,f);
-        logIt(n,f.id,'Published','Version',prev.version||'—',String(next));
-        if(prev.status!=='Active / Approved')
-          logIt(n,f.id,'Published','Lifecycle Status',prev.status,'Active / Approved');
-        n.setups[i]={...f,status:'Active / Approved',version:next,updated:TODAY};});
+        if(prev.version!==next) logIt(n,f.id,'Published','Version',prev.version||'—',String(next));
+        if(prev.status!=='Under Review')
+          logIt(n,f.id,'Published','Lifecycle Status',prev.status,'Under Review');
+        n.setups[i]={...f,updated:TODAY};});
       setEditing(false);
-      toast('Setup published',
-        `${displayName(f)} is Active / Approved at version ${next}. Records created from now on are stamped with this version.`,'ok');},
+      toast('Sent for review',
+        `${displayName(f)} is Under Review at version ${next}. An admin needs to Approve it before it's Active / Approved.`,'ok');
+      writeTemplateToDataverse(f, wasApproved?'sent back for review':'sent for review');},
+
+    /* Moves a Setup that is Under Review to Active / Approved -- the only
+       action that does. A pure status flip: unlike Publish/Save Draft it
+       never touches any child row, so the Dataverse write is the light
+       status-only update, not the full delete-and-recreate reconcile. */
+    approve:id=>{
+      let rec=null;
+      mut(n=>{const s=n.setups.find(x=>x.id===id);
+        logIt(n,id,'Approved','Lifecycle Status',s.status,'Active / Approved');
+        s.status='Active / Approved'; s.updated=TODAY;
+        rec={...s};});
+      toast('Setup approved',
+        `${displayName(rec)} is now Active / Approved at version ${rec.version||1}.`,'ok');
+      if(rec._dataverseId){
+        const writer = rec.kind==='Report Template'
+          ? updateReportTemplateStatus(rec._dataverseId,'Active / Approved')
+          : updateMeetingTemplateStatus(rec._dataverseId,'Active / Approved');
+        writer
+          .then(({id:wid,errors})=>{
+            if(!wid||errors.length){
+              console.warn(`[dataverse] Approve status update failed for ${rec._dataverseId}:`, errors);
+              toast('Dataverse status update failed',
+                `${displayName(rec)} is Approved locally, but updating its status in Dataverse failed. Check the console for details.`,'err');
+            }else{
+              console.log(`[dataverse] Approved ${rec.kind} ${rec._dataverseId}`);
+            }
+          })
+          .catch(e=>{
+            console.warn(`[dataverse] Approve status update threw unexpectedly for ${rec._dataverseId}:`, e);
+            toast('Dataverse status update failed',
+              `${displayName(rec)} is Approved locally, but updating its status in Dataverse failed. Check the console for details.`,'err');
+          });
+      }},
 
     duplicate:id=>{ const src=db.setups.find(s=>s.id===id); const nid=uid('su');
-      /* the per-unit rows are copied, not shared — editing the copy must never reach the original */
       /* the per-unit rows are copied, not shared — editing the copy must never reach the original.
-         The copy carries a qualifier because the name it derives is otherwise identical. */
-      mut(n=>{ n.setups.push({...src,id:nid,status:'Draft',version:1,updated:TODAY,
+         The copy carries a qualifier because the name it derives is otherwise identical, and never
+         carries over _dataverseId -- it is a new, never-published Setup, not the same Dataverse row. */
+      mut(n=>{ n.setups.push({...src,id:nid,status:'Draft',version:0,updated:TODAY,
+          _dataverseId:undefined,
           qualifier:((src.qualifier||'')+' copy').trim(),
           regions:(src.regions||[]).slice(), businessUnits:(src.businessUnits||[]).slice(),
           lines:(src.lines||[]).map(l=>({...l,id:uid('ln')})),
@@ -2130,15 +3114,24 @@ function App({onSwitch}){
         `"${displayName(src)}" copied as a Draft. It carries the qualifier "copy" so the two names differ.`,
         'ok');},
 
-    expire:id=>{ mut(n=>{const s=n.setups.find(x=>x.id===id);
+    expire:id=>{
+      let rec=null;
+      mut(n=>{const s=n.setups.find(x=>x.id===id);
         logIt(n,id,'Expired','Lifecycle Status',s.status,'Expired');
-        s.status='Expired'; s.updated=TODAY;});
-      toast('Setup expired','It creates no new occurrences and stays readable.','warn');},
+        s.status='Expired'; s.updated=TODAY;
+        rec={...s};});
+      toast('Setup expired','It creates no new occurrences and stays readable.','warn');
+      if(rec._dataverseId){
+        const writer = rec.kind==='Report Template'
+          ? updateReportTemplateStatus(rec._dataverseId,'Expired')
+          : updateMeetingTemplateStatus(rec._dataverseId,'Expired');
+        writer.catch(e=>console.warn(`[dataverse] Expire status update threw unexpectedly for ${rec._dataverseId}:`, e));
+      }},
   };
 
   const rec=openId?db.setups.find(s=>s.id===openId):null;
   const close=()=>{setOpenId(null);setEditing(false);};
-  const ctx={db,setDb,mut,role,A,open:A.open,toast};
+  const ctx={db,setDb,mut,role,A,open:A.open,toast,dvReports,dvMeetings,dvOpening};
 
   let body;
   if(rec && editing)
