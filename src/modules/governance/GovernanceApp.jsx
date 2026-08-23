@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef, createContext, useContext } from 'react';
 import { ClipboardList, ListChecks, ArrowUpRight, FileText, CalendarDays, Check, MoreHorizontal } from 'lucide-react';
-import { fetchRegions, fetchBusinessUnits, fetchDepartments, fetchFunctions, fetchProcesses, fetchKpis, fetchSections, fetchPositions, departmentBuIndex, fetchTeamsChannels, fetchCurrentUser, saveReportTemplateToDataverse, saveMeetingTemplateToDataverse, updateReportTemplateToDataverse, updateMeetingTemplateToDataverse, updateReportTemplateStatus, updateMeetingTemplateStatus, fetchReportTemplatesList, fetchMeetingTemplatesList, fetchReportTemplateDetail, fetchMeetingTemplateDetail, TEMPLATE_STATUS_LABEL } from '../../services/dataverse.js';
+import { fetchRegions, fetchBusinessUnits, fetchDepartments, fetchFunctions, fetchProcesses, fetchKpis, fetchSections, fetchPositions, departmentBuIndex, fetchTeamsChannels, fetchCurrentUser, saveReportTemplateToDataverse, saveMeetingTemplateToDataverse, updateReportTemplateToDataverse, updateMeetingTemplateToDataverse, updateReportTemplateStatus, updateMeetingTemplateStatus, fetchReportTemplatesList, fetchMeetingTemplatesList, fetchReportTemplateDetail, fetchMeetingTemplateDetail, fetchMeetingOccurrencesByTemplate, fetchReportOccurrencesByTemplate, TEMPLATE_STATUS_LABEL } from '../../services/dataverse.js';
 import './governance-modern.css';
 
 
@@ -2748,6 +2748,32 @@ function ScreenDetail({rec,onClose}){
   const audit=db.audit.filter(a=>a.setup===rec.id).slice().reverse();
   const issues=validate(rec,db.setups);
 
+  /* Real usage, read live from lm_meetingoccurrences / lm_reportoccurrences,
+     filtered to this Setup's Dataverse Template id -- the seeded `usage` rows
+     above only ever exist for the local demo Setups and never reflect a
+     record actually created through the live app (an Ad Hoc from Setup, or a
+     live Report Submission). Only runs once this Setup actually has a
+     Dataverse id -- a Draft/local-only Setup has no Template row to match
+     occurrences against yet. */
+  const [dvUsage,setDvUsage]=useState([]);
+  const [dvUsageLoading,setDvUsageLoading]=useState(false);
+  const [dvUsageError,setDvUsageError]=useState(null);
+  useEffect(()=>{
+    const templateId=rec._dataverseId;
+    if(!templateId){ setDvUsage([]); setDvUsageError(null); return; }
+    let cancelled=false;
+    setDvUsageLoading(true); setDvUsageError(null);
+    const fetchFn = rec.kind==='Report Template' ? fetchReportOccurrencesByTemplate : fetchMeetingOccurrencesByTemplate;
+    fetchFn(templateId)
+      .then(rows=>{ if(!cancelled) setDvUsage(rows||[]); })
+      .catch(e=>{
+        console.warn('[dataverse] fetching live usage failed:', e);
+        if(!cancelled) setDvUsageError('Live usage could not be read from Dataverse.');
+      })
+      .finally(()=>{ if(!cancelled) setDvUsageLoading(false); });
+    return ()=>{cancelled=true;};
+  },[rec._dataverseId, rec.kind]);
+
   return <>
     <div className="crumb"><a onClick={onClose}>Setup Register</a> › <b>{displayName(rec)}</b></div>
     <div className="ph ph-row">
@@ -2803,7 +2829,7 @@ function ScreenDetail({rec,onClose}){
       <button type="button" className={tab==='summary'?'on':''}
         onClick={()=>setTab('summary')}>Summary</button>
       <button type="button" className={tab==='usage'?'on':''}
-        onClick={()=>setTab('usage')}>Usage<span className="c">{usage.length}</span></button>
+        onClick={()=>setTab('usage')}>Usage<span className="c">{usage.length+dvUsage.length}</span></button>
       <button type="button" className={tab==='activity'?'on':''}
         onClick={()=>setTab('activity')}>Activity<span className="c">{audit.length}</span></button>
     </div>
@@ -2814,18 +2840,34 @@ function ScreenDetail({rec,onClose}){
 
     {tab==='usage'? <div className="card flush">
       <div className="card-hd"><h2>Records created from this Setup</h2>
-        <div className="csub">One record per unit, per period. Each carries the Setup version that was
-          current when it was created, so a later version never rewrites an existing record.</div></div>
-      {usage.length===0?<Empty>No records yet.</Empty>:
+        <div className="csub">{rec._dataverseId
+          ? `Read live from ${rec.kind==='Report Template'?'lm_reportoccurrences':'lm_meetingoccurrences'}, filtered to this Setup's Template.`
+          : 'This Setup has no Dataverse Template yet, so live usage cannot be checked.'}
+          {' '}Each carries the unit it was held in.</div></div>
+      {dvUsageError && <div style={{padding:'8px 17px 0'}}><Note k="warn" ic="⚠">{dvUsageError}</Note></div>}
+      {dvUsageLoading
+        ? <div style={{padding:'8px 17px 17px'}}><Empty>Reading live usage from Dataverse…</Empty></div>
+        : (usage.length===0 && dvUsage.length===0) ? <div style={{padding:'8px 17px 17px'}}>
+            <Empty>No records yet.</Empty></div> :
       <div className="t-wrap"><table className="data">
         <thead><tr><th>Record</th><th>Held in</th><th>Type</th><th>Created</th>
-          <th>Setup version at creation</th></tr></thead>
-        <tbody>{usage.map(u=>
-          <tr key={u.id}><td className="t-main">{u.record}</td>
-            <td className="dim">{u.unit?unitLabel(rec,u.unit):'—'}</td>
-            <td className="dim">{u.type}</td><td className="dim">{fmtD(u.created)}</td>
-            <td><Tag c={u.setupVersion===rec.version?'green':'grey'}>version {u.setupVersion}</Tag></td>
-          </tr>)}
+          <th>Status / Setup version</th></tr></thead>
+        <tbody>
+          {dvUsage.map(o=>
+            <tr key={'dv-'+o.id}>
+              <td className="t-main">{o.name}
+                <div className="t-sub">{o.date?fmtD(o.date):o.period?fmtD(o.period):null}</div></td>
+              <td className="dim">{unitLabel(rec,o.businessUnitId||o.regionId)||'—'}</td>
+              <td className="dim">{rec.kind==='Report Template'?'Report Submission':'Meeting Occurrence'}</td>
+              <td className="dim">{o.created?fmtD(o.created.slice(0,10)):'—'}</td>
+              <td><Tag c="teal">{o.status||'—'}</Tag></td>
+            </tr>)}
+          {usage.map(u=>
+            <tr key={u.id}><td className="t-main">{u.record}</td>
+              <td className="dim">{u.unit?unitLabel(rec,u.unit):'—'}</td>
+              <td className="dim">{u.type}</td><td className="dim">{fmtD(u.created)}</td>
+              <td><Tag c={u.setupVersion===rec.version?'green':'grey'}>version {u.setupVersion}</Tag></td>
+            </tr>)}
         </tbody></table></div>}
     </div>:null}
 

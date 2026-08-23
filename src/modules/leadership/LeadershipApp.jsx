@@ -1,8 +1,13 @@
 import React, { useState, useMemo, useEffect, useRef, createContext, useContext } from 'react';
+import { ArrowUpRight, BarChart3, CalendarDays, CheckSquare, ClipboardList, FileText,
+         Gauge, Menu, Settings2, UsersRound, X } from 'lucide-react';
 import { fetchMeetingOccurrences, fetchReportOccurrences, createMeetingOccurrence,
          createReportOccurrence,
          fetchBusinessUnits, fetchPositions, fetchDepartments, fetchRegions,
-         fetchMeetingTemplatesList } from '../../services/dataverse.js';
+         fetchMeetingTemplatesList, fetchMeetingTemplateDetail,
+         fetchReportTemplatesList, fetchReportTemplateDetail, fetchCurrentUser,
+         MEETING_SETUP_TYPE, MEETING_CATEGORY, MEETING_FREQUENCY, MEETING_DAY_OF_WEEK,
+         ATTENDEE_TYPE, REPORT_TYPE, REPORT_CATEGORY, REPORT_FREQUENCY } from '../../services/dataverse.js';
 
 /* =========================================================================
    REFERENCE DATA + SEED
@@ -324,6 +329,14 @@ reports:[
   {id:'sub2', setup:'rs1', custom:null, period:'2026-07', bu:'AHJ', dept:'Quality',
    status:'In Review', creator:'u1', step:0, file:'Monthly_Quality_Report_2026-07.docx',
    url:'/Quality/2026/Monthly Reports/Monthly_Quality_Report_2026-07.docx', ver:2, locked:false,
+   metrics:[{label:'Incidents',value:'12'},{label:'Near Misses',value:'5'},
+            {label:'Mortality',value:'1.2%'},{label:'Satisfaction',value:'87'}],
+   execSummary:'Overall quality metrics for July 2026 show improvement in patient satisfaction scores '+
+     '(+3pts) while maintaining stable incident rates. Key focus areas include medication error '+
+     'reduction in ICU and hand hygiene compliance improvement in surgical wards.',
+   improvementActions:['Implement barcode medication verification in ICU by Aug 15',
+     'Launch hand hygiene campaign in surgical wards',
+     'Review near-miss reporting workflow with nursing leads'],
    history:[
      {at:'2026-07-08 11:20', who:'u1', act:'Submitted for review'},
      {at:'2026-07-09 16:02', who:'u5', act:'Requested more information',
@@ -1196,17 +1209,17 @@ const ScoreHero = ({score,coverage,applicable,total,threshold,state}) => {
    ========================================================================= */
 const NAV = [
   {g:'Start here',    items:[
-    {id:'work',  n:1, label:'My Workspace'},
-    {id:'cal',   n:2, label:'Calendar'}]},
+    {id:'work',  n:1, label:'My Workspace', Icon:Gauge},
+    {id:'cal',   n:2, label:'Calendar', Icon:CalendarDays}]},
   {g:'Execution',     items:[
-    {id:'rpt',   n:3, label:'Reports & Plans'},
-    {id:'mtg',   n:4, label:'Meetings & Committees'},
-    {id:'mom',   n:5, label:'Meeting Minutes'}]},
+    {id:'rpt',   n:3, label:'Reports & Plans', Icon:FileText},
+    {id:'mtg',   n:4, label:'Meetings & Committees', Icon:UsersRound},
+    {id:'mom',   n:5, label:'Meeting Minutes', Icon:ClipboardList}]},
   {g:'Governance',    items:[
-    {id:'dec',   n:6, label:'Decisions'},
-    {id:'grid',  n:7, label:'Committee Scores'}]},
+    {id:'dec',   n:6, label:'Decisions', Icon:CheckSquare},
+    {id:'grid',  n:7, label:'Committee Scores', Icon:BarChart3}]},
   {g:'Configuration', items:[
-    {id:'set',   n:8, label:'Governance Settings'}]},
+    {id:'set',   n:8, label:'Governance Settings', Icon:Settings2}]},
 ];
 /* one-line answer to "what lives here?", shown under each nav group on the workspace */
 const NAV_HINT = {
@@ -1221,25 +1234,39 @@ const NAV_HINT = {
 };
 
 function Side(){
-  const {screen,go,counts} = use();
-  return <nav className="side">
+  const {screen,go,counts,onSwitch,navOpen,setNavOpen} = use();
+  return <nav className="side lp-side" id="lp-side-nav" aria-label="Sections" aria-hidden={!navOpen}>
     {NAV.map(g=><div key={g.g}>
       <div className="side-grp">{g.g}</div>
       {g.items.map(i=>
         <button key={i.id} type="button" aria-current={screen===i.id?'page':undefined}
           aria-label={i.label+(counts[i.id]>0?' — '+counts[i.id]+' open activities':'')}
+          title={navOpen?undefined:i.label}
           className={'nav-i'+(screen===i.id?' on':'')} onClick={()=>go(i.id)}>
-          <span className="nav-n">{i.n}</span><span>{i.label}</span>
+          <span className="nav-n"><i.Icon size={16} strokeWidth={2.25}/></span><span className="lp-nav-label">{i.label}</span>
           {counts[i.id]>0 && <span className="nav-b" aria-label={counts[i.id]+' open activities'}>
             {counts[i.id]}</span>}
         </button>)}
     </div>)}
+    <div className="lp-side-sp"/>
+    <div className="side-grp">Modules</div>
+    <button type="button" className="nav-i lp-switch-nav" onClick={onSwitch}>
+      <span className="nav-n lp-switch-ic"><ArrowUpRight size={16} strokeWidth={2.25}/></span>
+      <span className="lp-nav-label">Governance Setup</span></button>
   </nav>;
 }
 
 function TopBar(){
-  const {bu,setBu,reset,onSwitch} = use();
-  return <div className="topbar">
+  const {bu,setBu,businessUnits,navOpen,setNavOpen,currentUser} = use();
+  const position=DV_POS_LIST.find(p=>currentUser?.fullName && p.holder &&
+    p.holder.toLowerCase()===currentUser.fullName.toLowerCase());
+  const userLabel=currentUser?.fullName || P('u0').name;
+  const userTitle=position?.name || P('u0').position;
+  const userInitials=userLabel.split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase();
+  return <div className="topbar lp-topbar">
+    <button type="button" className="lp-burger" aria-label={navOpen?'Close side navigation':'Open side navigation'}
+      aria-expanded={navOpen} aria-controls="lp-side-nav" onClick={()=>setNavOpen(o=>!o)}>
+      {navOpen?<X size={18}/>:<Menu size={18}/>}</button>
     <div className="tb-brand"><b>ANDALUSIA PULSE</b><span>Leadership Practice</span></div>
     <span className="tb-scope" title="This demo signs in as one user holding every role, so the whole
       governance cycle can be walked in one sitting. Each record still names its accountable owner.">
@@ -1248,13 +1275,15 @@ function TopBar(){
       <label>Business unit</label>
       <select value={bu} onChange={e=>setBu(e.target.value)}>
         <option value="ALL">All business units</option>
-        {BUS.map(b=><option key={b.id} value={b.id}>{b.id} — {b.name}</option>)}
+        {businessUnits.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
       </select>
     </div>
     <div className="tb-sp"/>
     <span className="tb-scope">{fmtD(TODAY)}</span>
-    <Btn k="tb-btn sm" title="Reset the demo to its seeded state" onClick={reset}>↺</Btn>
-    <Btn k="tb-btn" onClick={onSwitch}>Governance Setup →</Btn>
+    <button type="button" className="lp-user" title={`${userLabel} · ${userTitle}`}>
+      <span className="lp-user-av">{userInitials}</span>
+      <span className="lp-user-name">{userLabel}<span className="lp-user-sub">{userTitle}</span></span>
+    </button>
   </div>;
 }
 
@@ -1397,7 +1426,7 @@ function DvOccurrenceModal({item,onClose}){
       <Row label="Status" value={r.status}/>
       <Row label="Version" value={r.version!=null?String(r.version):null}/>
       <Row label="Review step" value={r.reviewStep!=null?String(r.reviewStep):null}/>
-      <Row label="Report Template" value={dvTpl(r.templateId)||(r.templateId?'(template not in this list)':null)}/>
+      <Row label="Report Template" value={dvRptTpl(r.templateId)||(r.templateId?'(template not in this list)':null)}/>
       <Row label="Business Unit" value={dvBu(r.businessUnitId)}/>
       <Row label="Department" value={dvDept(r.departmentId)}/>
       <Row label="Created by" value={pos(r.creatorPositionId)}/>
@@ -1662,7 +1691,10 @@ function reportDue(r){
 
 /* GUID -> display name, filled from Dataverse on mount. Plain objects rather
    than state because they are read from render paths all over this file. */
-let DV_BU_NAME={}, DV_POS_NAME={}, DV_POS_HOLDER={}, DV_DEPT_NAME={}, DV_TPL_NAME={};
+let DV_BU_NAME={}, DV_POS_NAME={}, DV_POS_HOLDER={}, DV_DEPT_NAME={}, DV_TPL_NAME={}, DV_TPL_DETAIL={};
+/* Same shape, for Report Templates -- kept separate from DV_TPL_NAME above,
+   which only ever holds Meeting Templates. */
+let DV_RPT_TPL_NAME={}, DV_RPT_TPL_DETAIL={};
 /* The same reference data as lists, for the pickers on the Custom Ad Hoc form
    -- a Dataverse lookup only accepts a real row id, so that form cannot offer
    the seeded PEOPLE/BUS ids the rest of this module uses. */
@@ -1720,6 +1752,9 @@ const dvBu    = id => (id && DV_BU_NAME[id])   || null;
 const dvPos   = id => (id && DV_POS_NAME[id])  || null;
 const dvDept  = id => (id && DV_DEPT_NAME[id]) || null;
 const dvTpl   = id => (id && DV_TPL_NAME[id])  || null;
+const dvTplDetail = id => (id && DV_TPL_DETAIL[id]) || null;
+const dvRptTpl = id => (id && DV_RPT_TPL_NAME[id]) || null;
+const dvRptTplDetail = id => (id && DV_RPT_TPL_DETAIL[id]) || null;
 
 /* One Dataverse Meeting Occurrence as a Calendar entry, in the same shape
    calendarItems() produces for seeded records so both render identically. */
@@ -1821,6 +1856,9 @@ function App({onSwitch}){
                                           return s?JSON.parse(s):seed(); }catch(e){ return seed(); } });
   const me            = ME;      /* one signed-in user, full access */
   const [bu,setBu]     = useState('ALL');
+  const [businessUnits,setBusinessUnits] = useState(BUS);
+  const [navOpen,setNavOpen] = useState(true);
+  const [currentUser,setCurrentUser] = useState(null);
   const [screen,setScreen] = useState('work');
   const [sel,setSel]   = useState({});
   const [toasts,setToasts] = useState([]);
@@ -2274,7 +2312,8 @@ function App({onSwitch}){
       await Promise.all([
         load(fetchBusinessUnits,'fetchBusinessUnits',rows=>{
           DV_BU_NAME={}; rows.forEach(r=>{ DV_BU_NAME[r.id]=r.name; });
-          DV_BU_LIST=rows.slice().sort((x,y)=>(x.name||'').localeCompare(y.name||'')); }),
+          DV_BU_LIST=rows.slice().sort((x,y)=>(x.name||'').localeCompare(y.name||''));
+          setBusinessUnits(rows.slice().sort((x,y)=>(x.name||'').localeCompare(y.name||''))); }),
         load(fetchPositions,'fetchPositions',rows=>{
           DV_POS_NAME={}; DV_POS_HOLDER={};
           rows.forEach(r=>{ DV_POS_NAME[r.id]=r.name; DV_POS_HOLDER[r.id]=r.holder||null; });
@@ -2286,8 +2325,13 @@ function App({onSwitch}){
           DV_REGION_NAME={}; rows.forEach(r=>{ DV_REGION_NAME[r.id]=r.name; });
           DV_REGION_LIST=rows.slice().sort((x,y)=>(x.name||'').localeCompare(y.name||'')); }),
         load(fetchMeetingTemplatesList,'fetchMeetingTemplatesList',rows=>{
-          DV_TPL_NAME={}; rows.forEach(r=>{ DV_TPL_NAME[r.id]=r.name; });
+          DV_TPL_NAME={}; DV_TPL_DETAIL={};
+          rows.forEach(r=>{ DV_TPL_NAME[r.id]=r.name; DV_TPL_DETAIL[r.id]=r; });
           DV_TPL_LIST=rows.slice().sort((x,y)=>(x.name||'').localeCompare(y.name||'')); }),
+        load(fetchReportTemplatesList,'fetchReportTemplatesList',rows=>{
+          DV_RPT_TPL_NAME={}; DV_RPT_TPL_DETAIL={};
+          rows.forEach(r=>{ DV_RPT_TPL_NAME[r.id]=r.name; DV_RPT_TPL_DETAIL[r.id]=r; }); }),
+        load(fetchCurrentUser,'fetchCurrentUser',user=>setCurrentUser(user)),
       ]);
       if(cancelled) return;
       setDvTick(t=>t+1);
@@ -2321,7 +2365,7 @@ function App({onSwitch}){
     return c;
   },[work]);
 
-  const ctx = {db,setDb,mut,me,bu,setBu,screen,go,openMeeting,openWork,sel,setSel,
+  const ctx = {db,setDb,mut,me,bu,setBu,businessUnits,navOpen,setNavOpen,currentUser,screen,go,openMeeting,openWork,sel,setSel,
                toast,toasts,reset,S,A,work,cal,counts,onSwitch,
                dvMeetingOccs,dvReportOccs,dvLoading,dvError,refreshOccurrences,
                dvOpen,setDvOpen,openDvRec};
@@ -2331,7 +2375,7 @@ function App({onSwitch}){
 
   return <Ctx.Provider value={ctx}>
     <TopBar/>
-    <div className="shell">
+    <div className={'shell'+(navOpen?'':' lp-nav-closed')}>
       <Side/>
       <main className={'main'+(screen==='work'||screen==='cal'||screen==='rpt'||screen==='mtg'||screen==='mom'?' full':'')}><Screen/></main>
     </div>
@@ -2618,10 +2662,12 @@ const rptCode = r => 'RPT-'+r.period.slice(0,4)+'-'+r.id.slice(-4).toUpperCase()
 const rptSubmittedAt = r => { const h=r.history.find(x=>x.act==='Submitted for review'); return h?h.at.split(' ')[0]:null; };
 
 function ScreenReports(){
-  const {db,me,sel,setSel,go,S,cal} = use();
+  const {db,me,sel,setSel,go,S,cal,dvReportOccs} = use();
   const [creating,setCreating]=useState(false);
   const [tab,setTab]=useState('due');
   const id = sel.rpt;
+  const dvRec = dvReportOccs.find(r=>r.id===id);
+  if(dvRec) return <DvReportDetail rec={dvRec} back={()=>setSel(v=>({...v,rpt:null}))}/>;
   const list = db.reports.filter(r=>canSeeReport(r,me));
   const rec  = list.find(r=>r.id===id);
   if(rec) return <ReportDetail rec={rec} back={()=>setSel(v=>({...v,rpt:null}))}/>;
@@ -2699,6 +2745,31 @@ function ScreenReports(){
           </tbody></table></div>}
     </div>
 
+    {dvReportOccs.length>0 && <div className="card flush">
+      <div className="card-hd" style={{display:'flex',alignItems:'center',gap:12}}>
+        <div className="wa-icon teal">📄</div>
+        <h2 style={{flex:1}}>Live Reports
+          <span className="t-sub" style={{fontWeight:400}}> · lm_reportoccurrences</span></h2>
+        <Tag c="teal">{dvReportOccs.length} in the table</Tag>
+      </div>
+      <div className="t-wrap"><table className="data">
+        <thead><tr><th>Report</th><th>Period</th><th>Status</th><th>Business Unit</th>
+          <th>Review step</th></tr></thead>
+        <tbody>{dvReportOccs.map(r=>{
+          const statusC = r.status==='Approved'?'green':r.status==='Rejected'?'red'
+            :r.status==='Returned'?'amber':r.status==='In Review'?'teal':'grey';
+          return <tr key={r.id} className="click" onClick={()=>go('rpt',r.id)}>
+            <td><div className="t-main">{r.name}</div>
+              <div className="t-sub">{dvRptTpl(r.templateId)||(r.noSetupFlag?'Ad Hoc — no Setup':'Ad Hoc')}</div>
+              {r.noSetupFlag && <div style={{marginTop:3}}><Tag c="amber">No approved Setup</Tag></div>}</td>
+            <td className="dim">{r.period?fmtP(r.period):'—'}</td>
+            <td><Tag c={statusC}>{r.status||'—'}</Tag></td>
+            <td className="dim">{dvBu(r.businessUnitId)||dvRegion(r.regionId)||'Group-wide'}</td>
+            <td className="dim">{r.reviewStep!=null?'Step '+(r.reviewStep+1):'—'}</td>
+          </tr>;})}
+        </tbody></table></div>
+    </div>}
+
   </>;
 }
 
@@ -2756,6 +2827,28 @@ function ReportDetail({rec,back}){
             ['Creator', P(rec.creator).name],
           ]}/>
         </div>
+
+        {rec.metrics && rec.metrics.length>0 && <div className="card">
+          <h2>{rec.metricsLabel||'Quality Metrics'}</h2>
+          <div className="stats" style={{marginBottom:0}}>
+            {rec.metrics.map((m,i)=><Stat key={i} label={m.label} v={m.value}/>)}
+          </div>
+        </div>}
+
+        {rec.execSummary && <div className="card">
+          <h2>Executive Summary</h2>
+          <p style={{fontSize:12.5,lineHeight:1.55,margin:0}}>{rec.execSummary}</p>
+        </div>}
+
+        {rec.improvementActions && rec.improvementActions.length>0 && <div className="card">
+          <h2>Improvement Actions</h2>
+          {rec.improvementActions.map((a,i)=>
+            <div key={i} style={{display:'flex',alignItems:'flex-start',gap:10,padding:'7px 0',
+              borderBottom:i<rec.improvementActions.length-1?'1px solid var(--border)':'none'}}>
+              <span style={{color:'var(--teal-d)',fontWeight:700,fontSize:12,width:16,flexShrink:0}}>{i+1}.</span>
+              <span style={{fontSize:12.5}}>{a}</span>
+            </div>)}
+        </div>}
 
         <div className="card">
           <h2>Attachments</h2>
@@ -3860,6 +3953,13 @@ function DvMeetingDetail({rec,back}){
   const posName = id => { const n=dvPos(id); if(!n) return null;
     const h=id&&DV_POS_HOLDER[id]; return h?`${n} — ${h}`:n; };
   const scope = dvBu(rec.businessUnitId)||dvRegion(rec.regionId)||'Group-wide';
+  const tpl = dvTplDetail(rec.templateId);
+  const tplSetupType = tpl ? MEETING_SETUP_TYPE[tpl.setupTypeCode]||null : null;
+  const tplCategory  = tpl ? MEETING_CATEGORY[tpl.categoryCode]||null : null;
+  const tplFrequency = tpl ? MEETING_FREQUENCY[tpl.frequencyCode]||null : null;
+  const tplDayOfWeek = tpl ? MEETING_DAY_OF_WEEK[tpl.dayOfWeekCode]||null : null;
+  const cadence = [tplFrequency,tplDayOfWeek].filter(Boolean).join(' — ') || null;
+  const accred = tplSetupType==='Accreditation Committee';
   const covered = rec.agenda.filter(a=>a.covered==='Yes').length;
   const present = rec.attendees.filter(a=>a.present==='Present').length;
   const required = rec.attendees.filter(a=>(a.type||'Required')==='Required');
@@ -3934,7 +4034,44 @@ function DvMeetingDetail({rec,back}){
         </div>
 
         <div className="card">
-          <h2>The occurrence</h2>
+          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:2}}>
+            <div className="wa-icon gold">📋</div><h2 style={{flex:1}}>Agenda Preview</h2>
+            <span className="csub" style={{marginBottom:0}}>{rec.agenda.length} items
+              {durMin!=null?' · '+durMin+' min':''}</span>
+          </div>
+          {rec.agenda.length===0 ? <Empty ic="📋">No Agenda Items yet.</Empty> : <>
+            {rec.agenda.slice(0,5).map((a,i)=>
+              <div key={a.id} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 0',
+                borderBottom:'1px solid var(--border)'}}>
+                <span style={{color:'var(--teal-d)',fontWeight:700,fontSize:12,width:16}}>{i+1}.</span>
+                <span style={{flex:1,fontSize:12.5}}>{a.title||'—'}</span>
+                <span className="dim" style={{fontSize:11}}>{posName(a.ownerPositionId)||'—'}</span>
+              </div>)}
+            <div style={{textAlign:'center',marginTop:10}}>
+              <a onClick={()=>setTab('agenda')} style={{fontSize:12,color:'var(--teal-d)',fontWeight:650,
+                cursor:'pointer'}}>View full agenda →</a></div>
+          </>}
+        </div>
+
+        <div className="card">
+          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:6}}>
+            <div className="wa-icon green">👥</div><h2 style={{flex:1,marginBottom:0}}>Attendance Summary</h2>
+            <Bar v={required.length?requiredPresent/required.length*100:0} c="green"/>
+            <span style={{fontWeight:700,fontSize:13,minWidth:32,textAlign:'right'}}>
+              {requiredPresent}/{required.length}</span>
+          </div>
+          {tpl && tpl.quorumPct!=null &&
+            <Note k="info">Attendance is recorded after the meeting is held. Quorum requires
+              {' '}{Math.ceil(tpl.quorumPct/100*required.length)} of {required.length} required members.</Note>}
+          <div style={{textAlign:'center',marginTop:10}}>
+            <a onClick={()=>setTab('att')} style={{fontSize:12,color:'var(--teal-d)',fontWeight:650,
+              cursor:'pointer'}}>View full attendance →</a></div>
+        </div>
+      </div>
+
+      <div className="wa-side">
+        <div className="card">
+          <h2>Occurrence</h2>
           <div className="csub" style={{marginBottom:6}}>lm_meetingoccurrences</div>
           <Row label="Meeting name" value={rec.name}/>
           <Row label="Status" value={rec.status}/>
@@ -3942,29 +4079,37 @@ function DvMeetingDetail({rec,back}){
           <Row label="Business Unit" value={dvBu(rec.businessUnitId)}/>
           <Row label="Region" value={dvRegion(rec.regionId)}/>
           <Row label="Department" value={dvDept(rec.departmentId)}/>
-          <Row label="Meeting Template" value={dvTpl(rec.templateId)
-            ||(rec.templateId?'(not in the loaded list)':null)}/>
+          <Row label="Setup" value={dvTpl(rec.templateId)
+            ||(rec.templateId?'(not in the loaded list)':(rec.adhocType?'Ad Hoc — '+rec.adhocType:'Custom Ad Hoc'))}/>
+          <Row label="Setup Type" value={tplSetupType||(rec.templateId?null:'Ad Hoc')}/>
+          <Row label="Classification" value={tplCategory}/>
+          <Row label="Cadence" value={cadence}/>
+          <Row label="TOR or Policy Reference" value={tpl&&tpl.torLink
+            ? tpl.torLink
+            : rec.templateId ? (accred?'Required — none held':'Optional — none held') : null}/>
+          <Row label="Quorum Threshold" value={tpl
+            ? (tpl.quorumPct!=null?tpl.quorumPct+'%':'Not configured')
+            : null}/>
           <Row label="Ad Hoc Type" value={rec.adhocType}/>
           <Row label="Date" value={rec.date?fmtD(rec.date):null}/>
           <Row label="Time" value={[rec.start,rec.end].filter(Boolean).join(' – ')||null}/>
           <Row label="Time zone" value={rec.timezone}/>
           <Row label="Mode" value={rec.mode}/>
           <Row label="Location" value={rec.location}/>
-          <Row label="Meeting link" value={rec.link}/>
+          <Row label="Online link" value={rec.link}/>
           <Row label="Invite sent" value={rec.inviteSent?fmtD(rec.inviteSent):null}/>
-          <Row label="Agenda distributed" value={rec.agendaSent?fmtD(rec.agendaSent):null}/>
-          <Row label="Outlook / Teams sync" value={rec.sync}/>
+          <Row label="Agenda Distributed" value={rec.agendaSent?fmtD(rec.agendaSent):'Not recorded'}/>
+          <Row label="Outlook and Teams" value={rec.sync}/>
           <Row label="Cancellation reason" value={rec.cancelReason}/>
         </div>
-      </div>
 
-      <div className="wa-side">
         <div className="card">
           <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:2}}>
             <div className="wa-icon gold">👤</div><h2 style={{flex:1}}>Who runs it</h2>
           </div>
-          <Row label="Chair" value={posName(rec.chairPositionId)}/>
+          <Row label="Meeting Chair" value={posName(rec.chairPositionId)}/>
           <Row label="Facilitator" value={posName(rec.facilitatorPositionId)}/>
+          <Row label="MoM Recorder" value="Not tracked at the occurrence level"/>
           <div style={{fontSize:12,color:'var(--muted)',marginTop:8}}>
             The Facilitator owns the agenda items and writes up the Minutes.</div>
         </div>
@@ -3987,6 +4132,50 @@ function DvMeetingDetail({rec,back}){
               <div style={{flex:1,fontSize:12.5,color:'var(--ink-2)'}}>{label}</div>
               <b style={colour?{color:`var(--${colour})`}:null}>{val}</b>
             </div>)}
+        </div>
+
+        {tpl && tpl.quorumPct!=null && <div className="card">
+          <h2>Quorum Rules</h2>
+          <div style={{border:'1px solid var(--green-bd)',background:'var(--green-bg)',borderRadius:8,
+            padding:'7px 10px',fontSize:12,color:'var(--green)',fontWeight:600}}>
+            ✓ Min {Math.ceil(tpl.quorumPct/100*required.length)} of {required.length} required</div>
+        </div>}
+
+        <div className="card">
+          <h2>Terms of Reference or Policy</h2>
+          <div className="csub">Mandatory for an Accreditation Committee, optional for a Business Meeting.
+            Retrieved from the approved Setup and read-only here.</div>
+          <div style={{display:'flex',alignItems:'center',gap:9,padding:'8px 10px',borderRadius:8,
+                       background:'var(--grey-bg)',border:'1px solid var(--border)'}}>
+            <span aria-hidden="true">🔒</span>
+            <span>{tpl&&tpl.torLink
+              ? tpl.torLink
+              : rec.templateId
+                ? (accred ? 'Required for this Setup Type, and none is held.' : 'Optional for this Setup Type, and none is held.')
+                : 'No Terms of Reference or Policy is linked to this occurrence.'}</span>
+          </div>
+        </div>
+
+        <div className="card">
+          <h2>What this occurrence produces</h2>
+          <div className="csub">Outputs generated from the occurrence and its recorded child rows.</div>
+          <div className="lp-produced">
+            <div className="lp-produced-row">
+              <span className="lp-produced-dot" aria-hidden="true"/>
+              <div><label>MEETING MINUTES</label>
+                <div>{rec.status==='Held' ? 'Created when the Meeting is held.' : 'Created when the Meeting is held.'}</div></div>
+            </div>
+            <div className="lp-produced-row">
+              <span className="lp-produced-dot" aria-hidden="true"/>
+              <div><label>AGENDA ITEMS</label>
+                <div>{rec.agenda.length ? `${rec.agenda.length} recorded Agenda Item${rec.agenda.length===1?'':'s'}.` : 'No Agenda Item recorded.'}</div></div>
+            </div>
+            <div className="lp-produced-row">
+              <span className="lp-produced-dot" aria-hidden="true"/>
+              <div><label>GOVERNANCE AUDIT GRID</label>
+                <div>Not created for live Dataverse occurrences in this view.</div></div>
+            </div>
+          </div>
         </div>
       </div>
     </div>}
@@ -4047,6 +4236,162 @@ function DvMeetingDetail({rec,back}){
   </>;
 }
 
+/* Report Submission detail — the full page, read from lm_reportoccurrences.
+   Modelled on DvMeetingDetail above: read-only, and the review chain (which
+   step approves next) is read from the linked Report Template's per-unit
+   row, the same way a Meeting Template's Chairman/Facilitator are. */
+function DvReportDetail({rec,back}){
+  const pos = id => { const n=dvPos(id); if(!n) return null;
+    const h=id&&DV_POS_HOLDER[id]; return h?`${n} — ${h}`:n; };
+  const [tplDetail,setTplDetail]=useState(null);
+  const [tplLoading,setTplLoading]=useState(false);
+
+  useEffect(()=>{
+    if(!rec.templateId){ setTplDetail(null); return; }
+    let cancelled=false;
+    setTplLoading(true);
+    fetchReportTemplateDetail(rec.templateId)
+      .then(d=>{ if(!cancelled) setTplDetail(d); })
+      .catch(e=>console.warn('[dataverse] fetchReportTemplateDetail() failed:', e))
+      .finally(()=>{ if(!cancelled) setTplLoading(false); });
+    return ()=>{cancelled=true;};
+  },[rec.templateId]);
+
+  // The review chain is scoped to whichever Business Unit or Region this
+  // occurrence actually belongs to -- a Report Template approved for
+  // several units can name a different reviewer chain in each one.
+  const unit = tplDetail
+    ? (tplDetail.businessUnits||[]).find(b=>b._lm_businessunit_value===rec.businessUnitId)
+      || (tplDetail.regions||[]).find(r=>r._lm_region_value===rec.regionId)
+    : null;
+  const reviewChain = unit
+    ? (unit.reviewChain||[]).slice().sort((a,b)=>(a.lm_step||0)-(b.lm_step||0)) : [];
+
+  const tplRow = dvRptTplDetail(rec.templateId);
+  const statusColour = rec.status==='Approved' ? 'green' : rec.status==='Rejected' ? 'red'
+    : rec.status==='Returned' ? 'amber' : rec.status==='In Review' ? 'teal' : 'grey';
+
+  return <>
+    <div className="crumb"><a onClick={back}>Reports</a> › <b>Report Detail</b></div>
+    <div className="ph ph-row">
+      <div style={{flex:1}}><h1>{rec.name}{rec.period?` — ${fmtP(rec.period)}`:''}</h1>
+        <div className="sub" style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+          <Tag c={statusColour}>{rec.status||'—'}</Tag>
+          <span>· {dvRptTpl(rec.templateId)||(rec.noSetupFlag?'Ad Hoc — no approved Setup':'Ad Hoc')}</span>
+          <span>· {dvBu(rec.businessUnitId)||dvRegion(rec.regionId)||'Group-wide'}</span>
+          {rec.locked && <Tag c="grey">🔒 Locked</Tag>}
+        </div></div>
+      <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+        <Btn onClick={back}>Back to List</Btn>
+      </div>
+    </div>
+
+    <Note k="lock" ic="—">Read-only. This is the Dataverse record as it stands — reviewing, approving and
+      uploading a working copy are not wired to this table yet.</Note>
+    {rec.noSetupFlag && <Note k="warn"><b>No approved Setup.</b> This Report's metadata is queued for
+      Taxonomy with a No-Setup flag — review proceeds on this record regardless.</Note>}
+    {rec.locked && <Note k="lock"><b>Approved and locked.</b> The file URL, version and complete
+      approval history are retained. A correction is made through a new version, never an in-place
+      edit.</Note>}
+
+    <div className="wa-grid">
+      <div>
+        <div className="card">
+          <h2>Report Information</h2>
+          <KVBlock items={[
+            ['Period', rec.period?fmtP(rec.period):'—'],
+            ['Setup', dvRptTpl(rec.templateId)
+              ||(rec.templateId?'(not in the loaded list)':(rec.noSetupFlag?'Ad Hoc — no approved Setup':'Ad Hoc'))],
+            ['Department', dvDept(rec.departmentId)||'—'],
+            ['Creator', pos(rec.creatorPositionId)||'—'],
+          ]}/>
+        </div>
+
+        {rec.objective && <div className="card">
+          <h2>Objective</h2>
+          <p style={{fontSize:12.5,lineHeight:1.55,margin:0}}>{rec.objective}</p>
+        </div>}
+
+        <div className="card">
+          <h2>Attachments</h2>
+          {rec.fileUrl
+            ? <div className="att-row">
+                <div className="att-ic">📄</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div className="t-main" style={{fontSize:12.5}}>{rec.name}</div>
+                  <div className="t-sub mono" style={{fontSize:10.5}}>{rec.fileUrl}</div>
+                </div>
+              </div>
+            : <Empty ic="📄">No file URL recorded on this Report Submission.</Empty>}
+        </div>
+      </div>
+
+      <div className="wa-side">
+        <div className="card">
+          <h2>Review Progress</h2>
+          {!rec.templateId
+            ? <div className="csub" style={{marginBottom:0}}>No Report Template is linked, so there is
+                no configured review chain to show.</div>
+            : tplLoading
+              ? <div className="csub" style={{marginBottom:0}}>Reading the review chain from Dataverse…</div>
+              : reviewChain.length===0
+                ? <Empty>No review chain configured for this Report's Business Unit or Region.</Empty>
+                : reviewChain.map((r,i)=>{
+                    const st = rec.status==='Approved' || (rec.reviewStep!=null && i<rec.reviewStep) ? 'Approved'
+                      : rec.status==='In Review' && rec.reviewStep===i ? 'Current' : 'Pending';
+                    return <div className="rev-row" key={i}>
+                      <div className={'rev-num '+(st==='Approved'?'done':st==='Current'?'now':'pending')}>
+                        {st==='Approved'?'✓':i+1}</div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div className="t-main" style={{fontSize:12.5}}>
+                          {pos(r._lm_reviewerposition_value)||'—'}</div>
+                        {r.lm_newcolumn && <div className="t-sub">{r.lm_newcolumn}</div>}
+                      </div>
+                      <Tag c={st==='Approved'?'green':st==='Current'?'amber':'grey'}>{st}</Tag>
+                    </div>;})}
+        </div>
+
+        <div className="card">
+          <h2>Report Details</h2>
+          <div className="wa-mo-r"><label>Status</label>
+            <span className="v" style={{fontFamily:'inherit'}}>{rec.status||'—'}</span></div>
+          <div className="wa-mo-r"><label>Report Type</label>
+            <span className="v" style={{fontFamily:'inherit'}}>{tplRow?(REPORT_TYPE[tplRow.reportTypeCode]||'—'):'—'}</span></div>
+          <div className="wa-mo-r"><label>Category</label>
+            <span className="v" style={{fontFamily:'inherit'}}>{tplRow?(REPORT_CATEGORY[tplRow.reportCategoryCode]||'—'):'—'}</span></div>
+          <div className="wa-mo-r"><label>Frequency</label>
+            <span className="v" style={{fontFamily:'inherit'}}>{tplRow?(REPORT_FREQUENCY[tplRow.frequencyCode]||'—'):'—'}</span></div>
+          <div className="wa-mo-r"><label>Business Unit</label>
+            <span className="v" style={{fontFamily:'inherit'}}>{dvBu(rec.businessUnitId)||'—'}</span></div>
+          <div className="wa-mo-r"><label>Region</label>
+            <span className="v" style={{fontFamily:'inherit'}}>{dvRegion(rec.regionId)||'—'}</span></div>
+          <div className="wa-mo-r"><label>Version</label>
+            <span className="v">{rec.version!=null?'v'+rec.version:'—'}</span></div>
+          <div className="wa-mo-r"><label>Review step</label>
+            <span className="v" style={{fontFamily:'inherit'}}>{rec.reviewStep!=null
+              ?`Step ${rec.reviewStep+1} of ${reviewChain.length||'—'}`:'—'}</span></div>
+          <div className="wa-mo-r"><label>Locked</label>
+            <span className="v" style={{fontFamily:'inherit'}}>{rec.locked?'Yes':'No'}</span></div>
+        </div>
+
+        <div className="card">
+          <h2>What this Submission produces</h2>
+          <div className="csub">Outputs generated from this Report and its review.</div>
+          <div className="lp-produced">
+            <div className="lp-produced-row">
+              <span className="lp-produced-dot" aria-hidden="true"/>
+              <div><label>APPROVAL</label>
+                <div>{rec.status==='Approved'
+                  ? 'Approved and locked.'
+                  : `Reached once every reviewer in the chain approves${reviewChain.length?' ('+reviewChain.length+' step'+(reviewChain.length===1?'':'s')+')':''}.`}</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </>;
+}
+
 function MeetingDetail({rec,back}){
   const {db,me,A,go,S,sel,setSel}=use();
   const tab = sel.mtgTab || 'detail';
@@ -4058,6 +4403,7 @@ function MeetingDetail({rec,back}){
   const [people,setPeople]=useState(false);
   const [editAg,setEditAg]=useState(null);
   const setup=rec.setup?MS(rec.setup):null;
+  const accred = setup && setup.cls==='Accreditation-required Committee';
   const r=occRoles(rec);
   const mom=db.moms.find(m=>m.occ===rec.id);
   const grid=db.grids.find(g=>g.occ===rec.id);
@@ -4087,6 +4433,8 @@ function MeetingDetail({rec,back}){
           <Tag c={rec.status==='Held'?'green':rec.status==='Cancelled'?'grey':'blue'}>{rec.status}</Tag>
           <span className="mono" style={{fontSize:11.5}}>{occCode(rec)}</span>
           <span>· {(setup&&(setup.cls||'').includes('Accreditation'))?'Accreditation':occType(rec)} · {occCls(rec)}</span>
+          {rec.adhoc && <Tag c="amber">Ad Hoc — {rec.adhoc}</Tag>}
+          {!rec.setup && <span className="src">No approved Setup · sent to Taxonomy</span>}
           {rec.restricted && <Tag c="purple">Restricted</Tag>}
         </div></div>
       <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
@@ -4186,30 +4534,62 @@ function MeetingDetail({rec,back}){
           {live ? <>
             <Btn k="grn" style={{width:'100%',marginBottom:8}} disabled={!rec.agenda.length}
               onClick={()=>A.holdMeeting(rec.id)}>✓ Mark as Held</Btn>
-            <Btn style={{width:'100%',marginBottom:8}} onClick={()=>setEdit(true)}>📅 Reschedule</Btn>
-            <Btn k="dgr" style={{width:'100%'}} onClick={()=>setCancel(true)}>⊘ Cancel Meeting</Btn>
+            <Btn style={{width:'100%',marginBottom:8}} onClick={()=>setEdit(true)}>
+              ✎ Edit date, time, mode or location</Btn>
+            <Btn style={{width:'100%',marginBottom:8}} disabled={!!rec.agendaSent}
+              onClick={()=>A.setAgendaSent(rec.id,TODAY)}>🗓 Record agenda distribution</Btn>
+            <Btn k="dgr" style={{width:'100%',marginBottom:10}} onClick={()=>setCancel(true)}>
+              ⊘ Cancel occurrence</Btn>
+            <Note k="info" ic="i">Only execution-level information is editable —
+              date, time, mode, location, online link, attendees, Agenda and Inputs. The approved Setup, its
+              controlled name and its classification belong to Taxonomy and cannot be changed here.</Note>
           </> : <div className="csub" style={{marginBottom:0}}>No further actions — this occurrence is
             {rec.status==='Held'?' Held.':' Cancelled.'}</div>}
         </div>
 
         <div className="card">
-          <h2>Meeting Details</h2>
+          <h2>Occurrence</h2>
           <div className="wa-mo-r"><label>ID</label><span className="v mono">{occCode(rec)}</span></div>
           <div className="wa-mo-r"><label>Setup</label>
             <span className="v" style={{fontFamily:'inherit'}}>{setup?setup.name:'Custom Ad Hoc'}</span></div>
-          <div className="wa-mo-r"><label>Type</label>
+          <div className="wa-mo-r"><label>Setup Type</label>
+            <span className="v" style={{fontFamily:'inherit'}}>{setup?setup.type:'Ad Hoc'}</span></div>
+          <div className="wa-mo-r"><label>Classification</label>
+            <span className="v" style={{fontFamily:'inherit'}}>{occCls(rec)}</span></div>
+          <div className="wa-mo-r"><label>Cadence</label>
+            <span className="v" style={{fontFamily:'inherit'}}>{setup?setup.cadence:'Ad Hoc — no cadence'}</span></div>
+          {rec.adhoc && <div className="wa-mo-r"><label>Ad Hoc Type</label>
+            <span className="v" style={{fontFamily:'inherit'}}>{rec.adhoc}</span></div>}
+          <div className="wa-mo-r"><label>Business Unit</label>
             <span className="v" style={{fontFamily:'inherit'}}>
-              {(setup&&(setup.cls||'').includes('Accreditation'))?'Accreditation':occType(rec)}</span></div>
-          <div className="wa-mo-r"><label>Chair</label>
+              {rec.bu}{(BUS.find(b=>b.id===rec.bu)||{}).region?' · '+BUS.find(b=>b.id===rec.bu).region:''}</span></div>
+          <div className="wa-mo-r"><label>Meeting Chair</label>
             <span className="v" style={{fontFamily:'inherit'}}>{P(r.chair).name}</span></div>
           <div className="wa-mo-r"><label>Facilitator</label>
             <span className="v" style={{fontFamily:'inherit'}}>{P(r.facilitator).name}</span></div>
-          <div className="wa-mo-r"><label>Recorder</label>
+          <div className="wa-mo-r"><label>MoM Recorder</label>
             <span className="v" style={{fontFamily:'inherit'}}>{P(r.recorder).name}</span></div>
+          <div className="wa-mo-r"><label>TOR or Policy Reference</label>
+            <span className="v" style={{fontFamily:'inherit'}}>{setup&&setup.tor
+              ? setup.tor
+              : accred ? 'Required — none held' : 'Optional — none held'}</span></div>
+          <div className="wa-mo-r"><label>Quorum Threshold</label>
+            <span className="v" style={{fontFamily:'inherit'}}>
+              {setup&&setup.quorumPct!=null?setup.quorumPct+'%':'Not configured'}</span></div>
+          <div className="wa-mo-r"><label>Agenda Distributed</label>
+            <span className="v" style={{fontFamily:'inherit'}}>
+              {rec.agendaSent?fmtD(rec.agendaSent):'Not recorded'}</span></div>
+          <div className="wa-mo-r"><label>Outlook and Teams</label>
+            <span className="v" style={{fontFamily:'inherit'}}>{rec.sync||'—'}</span></div>
+          <div className="wa-mo-r"><label>Mode</label>
+            <span className="v" style={{fontFamily:'inherit'}}>{rec.mode}</span></div>
           <div className="wa-mo-r"><label>Location</label>
-            <span className="v" style={{fontFamily:'inherit'}}>{rec.location||rec.mode}</span></div>
+            <span className="v" style={{fontFamily:'inherit'}}>{rec.location||'—'}</span></div>
           <div className="wa-mo-r"><label>Created</label>
             <span className="v" style={{fontFamily:'inherit'}}>{fmtD(rec.inviteSent)}</span></div>
+          {rec.link && <div style={{marginTop:8,paddingTop:8,borderTop:'1px solid var(--border)',
+            fontSize:12,overflowWrap:'anywhere'}}>
+            <span style={{color:'var(--ink-2)'}}>Online link: </span>{rec.link}</div>}
         </div>
 
         {setup && setup.quorumPct!=null && <div className="card">
@@ -4218,6 +4598,47 @@ function MeetingDetail({rec,back}){
             padding:'7px 10px',fontSize:12,color:'var(--green)',fontWeight:600}}>
             ✓ Min {Math.ceil(setup.quorumPct/100*a.den)} of {a.den} required</div>
         </div>}
+
+        <div className="card">
+          <h2>Terms of Reference or Policy</h2>
+          <div className="csub">Mandatory for an Accreditation Committee, optional for a Business Meeting.
+            Retrieved from the approved Setup and read-only here.</div>
+          <div style={{display:'flex',alignItems:'center',gap:9,padding:'8px 10px',borderRadius:8,
+                       background:'var(--grey-bg)',border:'1px solid var(--border)'}}>
+            <span aria-hidden="true">🔒</span>
+            <span>{setup&&setup.tor
+              ? `${setup.tor}${setup.torReview?' · review due '+fmtD(setup.torReview):''}`
+              : accred ? 'Required for this Committee classification, and none is held. AG-01 will score 0.'
+                : 'Optional for this classification, and none is held. AG-01 is Not Applicable for this classification.'}</span>
+          </div>
+        </div>
+
+        <div className="card">
+          <h2>What this occurrence produces</h2>
+          <div className="csub">Everything below lives in a tab on this page — Minutes, the governance score,
+            and the Tasks and Decisions that came out of it.</div>
+          <div className="lp-produced">
+            <div className="lp-produced-row">
+              <span className="lp-produced-dot" aria-hidden="true"/>
+              <div><label>MEETING MINUTES</label>
+                <div>{mom ? `Minutes ${mom.status}.` : 'Created when the Meeting is held.'}</div></div>
+            </div>
+            <div className="lp-produced-row">
+              <span className="lp-produced-dot" aria-hidden="true"/>
+              <div><label>TASKS AND DECISIONS</label>
+                <div>{actionsAll.length
+                  ? `${actionsAll.length} recorded.`
+                  : 'None recorded.'}</div></div>
+            </div>
+            <div className="lp-produced-row">
+              <span className="lp-produced-dot" aria-hidden="true"/>
+              <div><label>GOVERNANCE AUDIT GRID</label>
+                <div>{isCommittee(rec)
+                  ? (grid ? `${grid.state}${grid.score!=null?' · '+grid.score+'%':''}.` : 'Created when the Minutes reach Closed.')
+                  : 'Not created. The Audit Grid applies to Committee occurrences only.'}</div></div>
+            </div>
+          </div>
+        </div>
 
         {rd.length>0 && <div className="card">
           <h2>Linked Items</h2>
@@ -4722,19 +5143,22 @@ function DvAttendeePicker({value,onChange,opts,scopeChosen,scopeHint}){
 }
 
 function NewMeetingModal({kind,onClose}){
-  const {A,me,toast,refreshOccurrences}=use();
+  const {me,toast,refreshOccurrences}=use();
   const custom = kind==='custom';
-  const [f,setF]=useState({setup: custom?null:'ms1', name:'', purpose:'', bu:'AHJ',
+  const [f,setF]=useState({setup:'', tplUnitKey:'', name:'', purpose:'', bu:'AHJ',
     date:addDays(TODAY,5), start:'09:00', end:'10:00', mode:'Online', location:'',
     adhoc:'Governance', restricted:false, dept:P(me).dept, stage:'Business Unit',
     chair:'u2', facilitator:'u3', recorder:null,
     attend:[{who:'u2',type:'Required'},{who:'u5',type:'Required'}], agenda:[''], inputs:[],
     inviteSent:TODAY, link:'',
-    /* Custom Ad Hoc only — real Dataverse row ids, since the lookups on
-       lm_meetingoccurrences will not accept this module's seeded ids. */
+    /* Real Dataverse row ids -- the lookups on lm_meetingoccurrences will not
+       accept this module's seeded ids, for either an Ad Hoc from Setup or a
+       Custom Ad Hoc Meeting. */
     dvBusinessUnitId:'', dvRegionId:'', dvDepartmentId:'',
     dvChairPositionId:'', dvFacilitatorPositionId:'', dvAttend:[], tz:''});
   const [saving,setSaving]=useState(false);
+  const [tplDetail,setTplDetail]=useState(null);
+  const [tplLoading,setTplLoading]=useState(false);
   const set=(k,v)=>setF(x=>({...x,[k]:v}));
   const agenda=f.agenda.filter(a=>a.trim());
 
@@ -4755,6 +5179,87 @@ function NewMeetingModal({kind,onClose}){
   const scopePlaceholder = stageBU&&!f.dvBusinessUnitId ? 'Choose a Business Unit first'
     : stageRegion&&!f.dvRegionId ? 'Choose a Region first' : 'Search a Position…';
 
+  /* Every Business Unit / Region the selected Setup is actually approved to
+     run in, each carrying that unit's own Chairman, Co-Chairman, Facilitator
+     and core Attendees -- read straight from lm_meetingtemplatebusinessunitses
+     / lm_meetingtemplateregionses via fetchMeetingTemplateDetail(). A Group or
+     ExCom Setup owns no such child rows at all, so this comes back empty for
+     one of those and the occurrence just runs Group-wide. */
+  const tplUnits = tplDetail ? [
+    ...(tplDetail.businessUnits||[]).map(b=>({
+      key:b._lm_businessunit_value, kind:'bu',
+      label: dvBu(b._lm_businessunit_value) || '(Business Unit not in the loaded list)',
+      chairman:b._lm_meetingchairman_value||null,
+      facilitator:b._lm_meetingorganizerfacilitator_value||null,
+      attendees:(b.attendees||[]).map(a=>({positionId:a._lm_attendeeposition_value||null,
+                                            type:ATTENDEE_TYPE[a.lm_attendeetype]||'Required'})),
+    })),
+    ...(tplDetail.regions||[]).map(r=>({
+      key:r._lm_region_value, kind:'region',
+      label: dvRegion(r._lm_region_value) || '(Region not in the loaded list)',
+      chairman:r._lm_meetingchairman_value||null,
+      facilitator:r._lm_meetingorganizerfacilitator_value||null,
+      attendees:(r.attendees||[]).map(a=>({positionId:a._lm_attendeeposition_value||null,
+                                            type:ATTENDEE_TYPE[a.lm_attendeetype]||'Required'})),
+    })),
+  ].filter(u=>u.key) : [];
+  const TPL_STAGE_LABEL = {1:'Business Unit',2:'Region',3:'Group',4:'ExCom'};
+  const tplGroupStage = TPL_STAGE_LABEL[tplDetail?.parent?.lm_stages] || 'Group';
+
+  /* Applies one of the Setup's approved units (or, for a Group / ExCom Setup,
+     none at all) to the form: its Chairman and Facilitator pre-fill the
+     Position pickers below and its core Attendees pre-fill the Attendee list
+     -- every one of them still adjustable for this occurrence only. */
+  const applyUnit = unit => {
+    const region = unit && unit.kind==='bu'
+      ? dvRegion(DV_BU_LIST.find(b=>b.id===unit.key)?.region) : null;
+    setF(x=>({...x,
+      tplUnitKey: unit ? unit.key : '',
+      stage: unit ? (unit.kind==='bu'?'Business Unit':'Region') : tplGroupStage,
+      dvBusinessUnitId: unit&&unit.kind==='bu' ? unit.key : '',
+      dvRegionId: unit&&unit.kind==='region' ? unit.key : '',
+      dvDepartmentId:'',
+      dvChairPositionId: (unit&&unit.chairman) || '',
+      dvFacilitatorPositionId: (unit&&unit.facilitator) || '',
+      dvAttend: unit ? unit.attendees.filter(a=>a.positionId).map(a=>({
+        positionId:a.positionId, name:dvPos(a.positionId), holder:DV_POS_HOLDER[a.positionId]||null,
+        type:a.type,
+      })) : [],
+      tz: unit
+        ? (unit.kind==='bu' ? (region?tzForRegionName(region):x.tz) : tzForRegionName(unit.label))
+        : x.tz,
+    }));
+  };
+
+  /* Reading a Setup's own per-unit placement, roles and Attendees is a
+     separate, heavier call than the lightweight list the picker below is
+     built from, so it only runs once a Setup is actually chosen. */
+  useEffect(()=>{
+    if(custom || !f.setup){ setTplDetail(null); setTplLoading(false); return; }
+    let cancelled=false;
+    setTplLoading(true); setTplDetail(null);
+    setF(x=>({...x, tplUnitKey:'', dvBusinessUnitId:'', dvRegionId:'', dvDepartmentId:'',
+                    dvChairPositionId:'', dvFacilitatorPositionId:'', dvAttend:[], agenda:['']}));
+    fetchMeetingTemplateDetail(f.setup)
+      .then(d=>{ if(!cancelled) setTplDetail(d); })
+      .catch(e=>{ console.warn('[dataverse] fetchMeetingTemplateDetail() failed:', e); })
+      .finally(()=>{ if(!cancelled) setTplLoading(false); });
+    return ()=>{ cancelled=true; };
+  },[custom, f.setup]);
+
+  /* Once the Setup's detail is in: seed the Agenda from its controlled
+     Agenda Items, and auto-apply its placement when there is exactly one
+     (or none, for a Group / ExCom Setup) -- a Setup approved for more than
+     one Business Unit or Region waits on the picker below instead. */
+  useEffect(()=>{
+    if(custom || !tplDetail) return;
+    const ag=(tplDetail.agenda||[]).slice().sort((a,b)=>(a.lm_step||0)-(b.lm_step||0))
+      .map(a=>a.lm_agendaitemname||'').filter(Boolean);
+    setF(x=>({...x, agenda: ag.length?ag:['']}));
+    if(tplUnits.length<=1) applyUnit(tplUnits[0]||null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[tplDetail]);
+
   /* A Meeting may not be booked on the weekend (Friday or Saturday) at all. */
   const weekend = isWeekend(f.date);
   const nw = isNonWorking(f.date) && !weekend;   // a public holiday — a warning, not a block
@@ -4764,19 +5269,25 @@ function NewMeetingModal({kind,onClose}){
   const needsLocation = f.mode==='In person' || f.mode==='Hybrid';
   const modeOk = (!needsLink || f.link.trim()) && (!needsLocation || f.location.trim());
 
-  const ok = !weekend && (custom
-    ? agenda.length>0 && f.name.trim() && f.purpose.trim() && f.dvAttend.length>0
-      && scopeOk && f.dvChairPositionId && f.dvFacilitatorPositionId && f.tz && modeOk
-    : agenda.length>0);
+  const ok = !weekend && agenda.length>0 && f.dvAttend.length>0 && scopeOk
+    && f.dvChairPositionId && f.dvFacilitatorPositionId && f.tz && modeOk
+    && (custom
+      ? f.name.trim() && f.purpose.trim()
+      : !!f.setup && !tplLoading && (tplUnits.length<=1 || !!f.tplUnitKey));
 
-  /* A Custom Ad Hoc Meeting is written straight to Dataverse -- parent row,
-     then its agenda and attendee rows -- and is NOT also added to the seeded
-     demo state, which would put the same meeting on the calendar twice. */
-  const saveCustom=async()=>{
+  /* Both an Ad Hoc from Setup and a Custom Ad Hoc Meeting are written
+     straight to Dataverse -- parent row, then its agenda and attendee rows --
+     and are NOT also added to the seeded demo state, which would put the
+     same meeting on the calendar twice. The only difference is where the
+     controlled name comes from and whether a Meeting Template is bound. */
+  const save=async()=>{
     setSaving(true);
     try{
+      const name = custom ? f.name.trim()
+        : (tplDetail?.parent?.lm_meetingtemplatename || dvTpl(f.setup) || 'Untitled Meeting');
       const {id,errors}=await createMeetingOccurrence({
-        name:f.name.trim(),
+        name,
+        templateId: custom ? undefined : (f.setup||undefined),
         // Scope follows the Stage: a Stage 1 Meeting carries a Business Unit,
         // a Stage 2 Meeting a Region, and Group / ExCom neither.
         stage:f.stage,
@@ -4807,9 +5318,12 @@ function NewMeetingModal({kind,onClose}){
         console.warn('[dataverse] Meeting Occurrence saved with some child rows failing:', errors);
         toast('Saved, with gaps',
           `The Meeting Occurrence was created, but ${errors.length} related row(s) (${errors.map(e=>e.table).join(', ')}) failed. Check the console for details.`,'warn');
-      }else{
+      }else if(custom){
         toast('Custom Ad Hoc Meeting saved',
           'Written to lm_meetingoccurrences with its agenda and attendees. It now appears on the Calendar.','ok');
+      }else{
+        toast('Ad Hoc occurrence created',
+          'Created from the approved Setup and written to lm_meetingoccurrences. The Setup and its classification are unchanged.','ok');
       }
       await refreshOccurrences();
       onClose();
@@ -4824,30 +5338,49 @@ function NewMeetingModal({kind,onClose}){
     sub={custom?'Use this only where no approved Setup exists. The Meeting is scheduled immediately and the metadata is sent to Taxonomy with a No-Setup flag.'
                :'The approved Setup and its classification are preserved. Only execution-level information can be changed.'}
     footer={<><Btn onClick={onClose} disabled={saving}>Cancel</Btn>
-      <Btn k="pri" disabled={!ok||saving}
-        onClick={()=>{ if(custom) saveCustom(); else { A.createOcc({...f,agenda}); onClose(); } }}>
-        {custom?(saving?'Saving…':'Schedule the Meeting'):'Create the occurrence'}</Btn></>}>
+      <Btn k="pri" disabled={!ok||saving} onClick={save}>
+        {saving?'Saving…':(custom?'Schedule the Meeting':'Create the occurrence')}</Btn></>}>
 
     {!custom && <>
-      <Field label="Approved Setup" req>
+      <Field label="Approved Setup" req hint="Read live from Dataverse — lm_meetingtemplates.">
         <select value={f.setup} onChange={e=>set('setup',e.target.value)}>
-          {MTG_SETUPS.map(s=><option key={s.id} value={s.id}>{s.name} — {s.type}</option>)}</select></Field>
-      <Note k="lock">Locked by Taxonomy for this occurrence: controlled name, Setup Type, classification,
-        TOR reference and quorum threshold. Editable here: date, time, mode, location, attendees, agenda
-        and linked inputs.</Note>
+          <option value="">{DV_TPL_LIST.length?'Select…':'No Meeting Templates loaded from Dataverse'}</option>
+          {DV_TPL_LIST.map(s=>
+            <option key={s.id} value={s.id}>
+              {s.name}{s.setupTypeCode?` — ${MEETING_SETUP_TYPE[s.setupTypeCode]||''}`:''}</option>)}
+        </select></Field>
+      {f.setup && tplLoading &&
+        <Note k="info" ic="i">Reading this Setup's organizational placement, Chair, Facilitator, Attendees
+          and Agenda from Dataverse…</Note>}
+      {f.setup && !tplLoading && tplUnits.length>1 &&
+        <Field label="Business Unit / Region" req
+          hint="This Setup is approved for more than one place — choose which one this occurrence belongs to.">
+          <select value={f.tplUnitKey} onChange={e=>applyUnit(tplUnits.find(u=>u.key===e.target.value)||null)}>
+            <option value="">Select…</option>
+            {tplUnits.map(u=><option key={u.key} value={u.key}>{u.label}</option>)}
+          </select></Field>}
+      {f.setup && !tplLoading && tplUnits.length===1 &&
+        <Note k="info" ic="i">Business Unit / Region: <b>{tplUnits[0].label}</b> — the only place this
+          Setup is approved to run.</Note>}
+      {f.setup && !tplLoading && tplUnits.length===0 &&
+        <Note k="info" ic="i">This Setup runs once, group-wide — no Business Unit or Region scope applies.</Note>}
+      {f.setup && !tplLoading &&
+        <Note k="lock">Locked by Taxonomy for this occurrence: controlled name, Setup Type, classification,
+          TOR reference and quorum threshold. Chair, Facilitator, Attendees and Agenda are pre-filled from
+          the Setup below and can still be adjusted for this occurrence only.</Note>}
     </>}
 
-    {custom && <>
-      <Note k="info" ic="i">This form writes straight to <b>lm_meetingoccurrences</b>, with its agenda and
+    {(custom || (f.setup && !tplLoading)) && <>
+      {custom && <Note k="info" ic="i">This form writes straight to <b>lm_meetingoccurrences</b>, with its agenda and
         attendees. Business Unit, Chair and Attendees are therefore read from Dataverse — the seeded demo
         people used elsewhere in this module are not real rows and the lookups would reject them.
         <div style={{marginTop:6}}><b>Purpose</b> is the one field not saved — the occurrence table has
-        no column for it.</div></Note>
-      <Field label="Meeting name" req><input type="text" value={f.name}
-        onChange={e=>set('name',e.target.value)} placeholder="e.g. Sterilisation incident review"/></Field>
-      <Field label="Purpose" req hint="Not stored — the occurrence table has no Purpose column.">
-        <textarea value={f.purpose} onChange={e=>set('purpose',e.target.value)}/></Field>
-      <div className="f-row">
+        no column for it.</div></Note>}
+      {custom && <Field label="Meeting name" req><input type="text" value={f.name}
+        onChange={e=>set('name',e.target.value)} placeholder="e.g. Sterilisation incident review"/></Field>}
+      {custom && <Field label="Purpose" req hint="Not stored — the occurrence table has no Purpose column.">
+        <textarea value={f.purpose} onChange={e=>set('purpose',e.target.value)}/></Field>}
+      {custom && <div className="f-row">
         <Field label="Organizational Stage" req
           hint="Stage 1 runs in one Business Unit, Stage 2 in one Region. Group and ExCom run once, group-wide.">
           <select value={f.stage} onChange={e=>{
@@ -4889,7 +5422,8 @@ function NewMeetingModal({kind,onClose}){
                 </select></Field>
             : <Field label="Scope" hint="Group and ExCom Meetings run once, group-wide — no Business Unit or Region.">
                 <input type="text" value="Group-wide" disabled/></Field>}
-      </div>
+      </div>}
+
       <div className="f-row">
         <Field label="Meeting Chair" req hint={scopeHint}>
           <PositionSelect value={f.dvChairPositionId} onChange={v=>set('dvChairPositionId',v)}
@@ -4951,14 +5485,16 @@ function NewMeetingModal({kind,onClose}){
         : null}
     </div>
 
-    {custom && <Field label="">
+    <Field label="">
       <label className="chk"><input type="checkbox" checked={f.restricted}
         onChange={e=>set('restricted',e.target.checked)}/>
         <span>Restrict visibility to participants — use for a one-to-one or skip-level Meeting.
           The occurrence and its Minutes will be hidden from everyone else except permitted governance
-          roles.</span></label></Field>}
+          roles.</span></label></Field>
 
-    <Field label="Agenda Items" req hint="At least one Agenda Item is required for every Meeting.">
+    <Field label="Agenda Items" req hint={custom
+      ? 'At least one Agenda Item is required for every Meeting.'
+      : 'Pre-filled from the Setup’s controlled Agenda — add, edit or remove items for this occurrence only.'}>
       {f.agenda.map((a,i)=>
         <div key={i} style={{display:'flex',gap:7,marginBottom:6}}>
           <input type="text" value={a} placeholder={'Agenda Item '+(i+1)}

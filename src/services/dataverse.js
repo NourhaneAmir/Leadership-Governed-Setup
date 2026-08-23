@@ -353,16 +353,39 @@ export async function fetchTeamsChannels(){
    null. Callers just show what they got. */
 
 /** The Entra identity the app is running as, straight from the host.
- *  Returns null when there's no Power Apps host (e.g. plain `vite dev`). */
+ *  Returns null when there's no Power Apps host (e.g. plain `vite dev`).
+ *
+ *  On a fresh embed, the host's own handshake (and its identity/auth
+ *  resolution behind it) can still be in flight the instant this app's first
+ *  script runs -- getContext() can come back with no usable identity before
+ *  the host has caught up. Left as a single attempt, that's exactly what
+ *  produced the "works after a manual reload" symptom: nothing here ever
+ *  asked again. Retried a few times with a short backoff instead, so the
+ *  caller gets the real identity within a couple of seconds of the app
+ *  opening rather than needing a reload to get a second attempt. */
 async function fetchHostUserContext(){
+  let getContext;
   try{
-    const { getContext } = await import('@microsoft/power-apps/app');
-    const ctx = await getContext();
-    return ctx?.user ?? null;
+    ({ getContext } = await import('@microsoft/power-apps/app'));
   }catch(e){
-    console.warn('[dataverse] getContext() unavailable -- no Power Apps host?', e);
+    // The SDK itself isn't there at all -- e.g. plain `npm run dev` with no
+    // Power Apps host. Nothing to retry.
+    console.warn('[dataverse] @microsoft/power-apps unavailable -- no Power Apps host?', e);
     return null;
   }
+
+  const attempts = 5;
+  for(let attempt=0; attempt<attempts; attempt++){
+    try{
+      const ctx = await getContext();
+      const user = ctx?.user;
+      if(user && (user.fullName || user.userPrincipalName || user.objectId)) return user;
+    }catch(e){
+      console.warn(`[dataverse] getContext() failed on attempt ${attempt+1}/${attempts}:`, e);
+    }
+    if(attempt < attempts-1) await new Promise(r=>setTimeout(r, 400*(attempt+1)));
+  }
+  return null;
 }
 
 /** Looks up the `systemusers` row for an Entra identity. Returns null if
@@ -811,6 +834,25 @@ const MEETING_CATEGORY_KEY = {
 const AGENDA_ITEM_TYPE_KEY = { 'Migrated - Initial':1, 'Added':2 };
 const LINKED_REPORT_TYPE_KEY = { 'Input':2, 'Output':1 };
 
+// Read-side decodes for a Meeting Template's setupTypeCode / categoryCode /
+// frequencyCode / dayOfWeekCode (see fetchMeetingTemplatesList below) --
+// the inverse of the *_KEY maps above, which only serve the write path.
+export const MEETING_SETUP_TYPE = { 1:'Business Meeting', 2:'Accreditation Committee' };
+export const MEETING_CATEGORY = {
+  124330000:'Planning Meeting', 124330001:'Performance Monitoring Meeting',
+  124330002:'Clinical Meeting', 124330003:'Operational Meeting',
+  124330004:'Technology Meeting', 124330005:'Cross-Functional Meeting',
+  124330006:'Cross-Functional Team of Teams',
+};
+export const MEETING_FREQUENCY = {
+  1:'Daily', 2:'Twice Weekly', 3:'Weekly', 4:'Twice Monthly', 5:'Monthly',
+  6:'Quarterly', 7:'Semesterly', 8:'Annually', 9:'Custom',
+};
+export const MEETING_DAY_OF_WEEK = {
+  124330000:'Sunday', 124330001:'Monday', 124330002:'Tuesday',
+  124330003:'Wednesday', 124330004:'Thursday',
+};
+
 /**
  * Saves a Committee/Meeting Setup to Dataverse: creates the parent
  * lm_meetingtemplates row, then its child rows.
@@ -1177,7 +1219,7 @@ export async function fetchReportTemplatesList(){
 
 export async function fetchMeetingTemplatesList(){
   const res = await Lm_meetingtemplatesService.getAll({
-    select: ['lm_meetingtemplateid','lm_meetingtemplatename','lm_setuptype','lm_typeclassification','lm_stages','lm_frequency','lm_meetingstatus','lm_version','modifiedon','createdon'],
+    select: ['lm_meetingtemplateid','lm_meetingtemplatename','lm_setuptype','lm_typeclassification','lm_stages','lm_frequency','lm_daysoftheweek','lm_quorumthreshold','lm_torpolicylink','lm_meetingstatus','lm_version','modifiedon','createdon'],
   });
   const rows = res?.data ?? [];
   return Promise.all(rows.map(async r => {
@@ -1193,6 +1235,9 @@ export async function fetchMeetingTemplatesList(){
       categoryCode: r.lm_typeclassification ?? null,
       stageCode: r.lm_stages ?? null,
       frequencyCode: r.lm_frequency ?? null,
+      dayOfWeekCode: r.lm_daysoftheweek ?? null,
+      quorumPct: r.lm_quorumthreshold ?? null,
+      torLink: r.lm_torpolicylink || null,
       statusCode: r.lm_meetingstatus ?? null,
       version: r.lm_version ?? null,
       businessUnitIds: (buRes?.data ?? []).map(x=>x._lm_businessunit_value).filter(Boolean),
@@ -1330,6 +1375,17 @@ export const ATTENDEE_PRESENT_KEY = { 'Present':1, 'Absent':2, 'Not Yet Recorded
 export const ATTENDEE_TYPE = { 1:'Required', 2:'Optional' };
 export const ATTENDEE_TYPE_KEY = { 'Required':1, 'Optional':2 };
 export const REPORT_OCC_STATUS = { 1:'Draft', 2:'In Review', 3:'Approved', 4:'Rejected', 5:'Returned' };
+// Read-side decodes for a Report Template's reportTypeCode / reportCategoryCode
+// / frequencyCode (see fetchReportTemplatesList in the section above) --
+// mirrors the MEETING_* decodes below for the meeting side.
+export const REPORT_TYPE = { 1:'Plan', 2:'Report', 3:'Conclusion' };
+export const REPORT_CATEGORY = {
+  1:'Outcome Executive', 2:'Process Executive', 3:'Core Process', 4:'Custom Content',
+};
+export const REPORT_FREQUENCY = {
+  1:'Daily', 2:'Twice Weekly', 3:'Weekly', 4:'Twice Monthly', 5:'Monthly',
+  6:'Quarterly', 7:'Semesterly', 8:'Annual', 9:'Custom',
+};
 /* lm_meetingstage is the same global option set the Governance module's Setup
    Stages use, so an occurrence records the stage in exactly the same terms its
    template does. The execution module labels them more briefly. */
@@ -1459,6 +1515,46 @@ export async function fetchReportOccurrences(){
     departmentId: r._lm_department_value || null,
     creatorPositionId: r._lm_creatorposition_value || null,
     updated: r.modifiedon || r.createdon || null,
+  }));
+}
+
+/** Every Meeting Occurrence created from one Meeting Template -- filtered
+ *  server-side, and far lighter than fetchMeetingOccurrences() (no agenda or
+ *  attendee child rows), since this only needs to answer "is this Template
+ *  actually in use, and by what." Used by the Setup Register's Usage tab. */
+export async function fetchMeetingOccurrencesByTemplate(templateId){
+  const res = await Lm_meetingoccurrencesService.getAll({
+    filter: `_lm_meetingtemplate_value eq ${templateId}`,
+    select: ['lm_meetingoccurrenceid','lm_name','lm_date','lm_meetingstatus',
+             '_lm_businessunit_value','_lm_region_value','createdon'],
+  });
+  return (res?.data ?? []).map(o => ({
+    id: o.lm_meetingoccurrenceid,
+    name: o.lm_name || '(untitled meeting)',
+    date: isoDay(o.lm_date),
+    status: MEETING_OCC_STATUS[o.lm_meetingstatus] || null,
+    businessUnitId: o._lm_businessunit_value || null,
+    regionId: o._lm_region_value || null,
+    created: o.createdon || null,
+  }));
+}
+
+/** Every Report Occurrence created from one Report Template -- same
+ *  server-side-filtered shape as fetchMeetingOccurrencesByTemplate above. */
+export async function fetchReportOccurrencesByTemplate(templateId){
+  const res = await Lm_reportoccurrencesService.getAll({
+    filter: `_lm_reporttemplate_value eq ${templateId}`,
+    select: ['lm_reportoccurrenceid','lm_name','lm_period','lm_status',
+             '_lm_businessunit_value','_lm_region_value','createdon'],
+  });
+  return (res?.data ?? []).map(r => ({
+    id: r.lm_reportoccurrenceid,
+    name: r.lm_name || '(untitled report)',
+    period: isoDay(r.lm_period),
+    status: REPORT_OCC_STATUS[r.lm_status] || null,
+    businessUnitId: r._lm_businessunit_value || null,
+    regionId: r._lm_region_value || null,
+    created: r.createdon || null,
   }));
 }
 
