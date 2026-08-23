@@ -147,6 +147,31 @@
           "entitySetName": "lm_meetingtemplateregions",
           "logicalName": "lm_meetingtemplateregion",
           "isHidden": false
+        },
+        "reportoccurrences": {
+          "entitySetName": "lm_reportoccurrences",
+          "logicalName": "lm_reportoccurrence",
+          "isHidden": false
+        },
+        "reportoccurrencehistories": {
+          "entitySetName": "lm_reportoccurrencehistories",
+          "logicalName": "lm_reportoccurrencehistory",
+          "isHidden": false
+        },
+        "meetingoccurrences": {
+          "entitySetName": "lm_meetingoccurrences",
+          "logicalName": "lm_meetingoccurrence",
+          "isHidden": false
+        },
+        "meetingoccurrenceagenda": {
+          "entitySetName": "lm_meetingoccurrenceagendas",
+          "logicalName": "lm_meetingoccurrenceagenda",
+          "isHidden": false
+        },
+        "meetingoccurrenceattendees": {
+          "entitySetName": "lm_meetingoccurrenceattendeeses",
+          "logicalName": "lm_meetingoccurrenceattendees",
+          "isHidden": false
         }
       },
       "environmentVariableName": ""

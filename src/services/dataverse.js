@@ -32,6 +32,7 @@ import { Cr301_specialtyksa_service_hubsService } from '../generated/services/Cr
 import { Cr603_organizationstructuresService } from '../generated/services/Cr603_organizationstructuresService';
 import { SystemusersService } from '../generated/services/SystemusersService';
 import { Hr_employeesService } from '../generated/services/Hr_employeesService';
+import { And_teamschannelsService } from '../generated/services/And_teamschannelsService';
 
 /** Regions -- table crd04_regions (generated as Crd04_regionsesService).
  *  Primary key crd04_regionsid; crd04_id holds the display name. */
@@ -66,17 +67,17 @@ export async function fetchBusinessUnits(){
 /* ---------------------------------------------------------------------
    WIRED: Departments, Functions, Processes, KPIs
    ---------------------------------------------------------------------
-   Departments: no direct Business Unit lookup column exists on
-   cr603_chklst_departmentses, but every Dataverse row carries the
-   standard ownership field "owningbusinessunit" -- and since the
-   Business Units above already come from Dataverse's own standard
-   `businessunit` table (not a custom one), _owningbusinessunit_value
-   here resolves to the exact same ids fetchBusinessUnits() returns.
-   That's what's used below as the `bu` relationship the app's cascade
-   (sectionsFor, the Department list's parent filter) already expects.
-   If Departments in this environment aren't actually organized by their
-   owning business unit, tell me the real relationship column and this
-   is a one-line fix.
+   Departments: cr603_chklst_departmentses has NO Business Unit lookup --
+   its only real lookups are Company, Cost Center and Department Sector.
+   The standard "owningbusinessunit" field on it is Dataverse's security
+   owner, which is the root org for practically every row, so filtering
+   Departments by it does not work. It is still returned below, named
+   honestly as `owningBu`, but nothing should narrow by it.
+
+   The real link between a Department and a Business Unit is the
+   Organization Structure table: each position assignment carries both a
+   Business Unit and a Department. departmentBuIndex() below derives the
+   relationship from those rows.
 
    Functions: hr_Department is a real lookup to the Department table, so
    _hr_department_value maps directly to a Department's id (matches the
@@ -96,8 +97,27 @@ export async function fetchDepartments(){
   return rows.map(r => ({
     id: r.cr603_chklst_departmentsid,
     name: r.cr603_department,
-    bu: r._owningbusinessunit_value ?? null,
+    // Security owner, NOT an org relationship -- see the note above. Kept only
+    // so nothing silently loses the column; use departmentBuIndex() to relate a
+    // Department to a Business Unit.
+    owningBu: r._owningbusinessunit_value ?? null,
   }));
+}
+
+/** Department <-> Business Unit, derived from the Organization Structure rows,
+ *  each of which names both. Takes the result of fetchPositions().
+ *  A Department can legitimately map to more than one Business Unit, so both
+ *  directions are sets rather than single ids. */
+export function departmentBuIndex(positions){
+  const buIdsByDept = new Map(), deptIdsByBu = new Map();
+  (positions || []).forEach(p => {
+    if(!p.dept || !p.bu) return;
+    if(!buIdsByDept.has(p.dept)) buIdsByDept.set(p.dept, new Set());
+    buIdsByDept.get(p.dept).add(p.bu);
+    if(!deptIdsByBu.has(p.bu)) deptIdsByBu.set(p.bu, new Set());
+    deptIdsByBu.get(p.bu).add(p.dept);
+  });
+  return { buIdsByDept, deptIdsByBu };
 }
 
 export async function fetchFunctions(){
@@ -190,51 +210,71 @@ async function fetchUserNameMap(){
   }
 }
 
-/** Primary source for Position holder names -- table hr_employees.
- *  Each Employee row has a REQUIRED lookup back to the Position it
- *  currently holds (cr603_OrganizationStructure), so this is a direct,
- *  reliable reverse-join: fetch every Employee once, key the result by
- *  the Position id they point back to. Uses hr_firstname + hr_lastname
- *  (both required, guaranteed-real columns) rather than hr_fullname,
- *  which -- like the lookup-display fields that broke fetchPositions()
- *  before -- may be a synthetic/calculated field Dataverse won't accept
- *  in a plain $select. */
-async function fetchEmployeeNameByPosition(){
+/** Employees, read once from hr_employees and indexed two ways.
+ *
+ *  A Position dropdown names the POSITION; the person shown under it is
+ *  whoever currently holds it. That is resolved from this table:
+ *
+ *   - byEmployeeId   -- the forward path. The Organization Structure row names
+ *                       its Current Employee (hr_CurrentEmployee), and that id
+ *                       is looked up here. This is the intended route.
+ *   - byPositionId   -- the reverse path, kept as a backstop. Every Employee
+ *                       carries a required lookup back to the Position it holds
+ *                       (cr603_OrganizationStructure), so a Position whose
+ *                       Current Employee is blank can still be resolved.
+ *
+ *  hr_fullname is a read-only calculated column and Dataverse rejects some such
+ *  fields in a plain $select, so the name is composed from the writable parts. */
+async function fetchEmployeeIndex(){
   try{
     const res = await Hr_employeesService.getAll({
-      select: ['_cr603_organizationstructure_value', 'hr_firstname', 'hr_lastname'],
+      select: ['hr_employeeid', '_cr603_organizationstructure_value',
+               'hr_firstname', 'hr_secondname', 'hr_lastname'],
     });
     const rows = res?.data ?? [];
-    const map = {};
+    const byEmployeeId = {}, byPositionId = {};
     rows.forEach(e => {
+      const name = [e.hr_firstname, e.hr_secondname, e.hr_lastname].filter(Boolean).join(' ').trim();
+      if(!name) return;
+      if(e.hr_employeeid) byEmployeeId[e.hr_employeeid] = name;
       const posId = e._cr603_organizationstructure_value;
-      if(!posId) return;
-      const name = [e.hr_firstname, e.hr_lastname].filter(Boolean).join(' ');
-      if(name) map[posId] = name;
+      if(posId && !byPositionId[posId]) byPositionId[posId] = name;
     });
-    return map;
+    return { byEmployeeId, byPositionId };
   }catch(e){
-    console.warn('[dataverse] fetchEmployeeNameByPosition() failed -- falling back to systemusers:', e);
-    return {};
+    console.warn('[dataverse] fetchEmployeeIndex() failed -- Position holders will be unresolved:', e);
+    return { byEmployeeId:{}, byPositionId:{} };
   }
 }
 
 export async function fetchPositions(){
-  const [posRes, employeeMap, userMap] = await Promise.all([
+  const [posRes, employees, userMap] = await Promise.all([
     Cr603_organizationstructuresService.getAll({
       select: [
         'cr603_organizationstructureid', 'cr603_name', '_cr603_businessunit_value',
         '_cr18c_departments_lkp_value', '_hr_funtion_value', '_hr_currentemployee_value',
       ],
     }),
-    fetchEmployeeNameByPosition(),
+    fetchEmployeeIndex(),
     fetchUserNameMap(),
   ]);
   const rows = posRes?.data ?? [];
   return rows.map(r => {
     const posId = r.cr603_organizationstructureid;
-    const holder = employeeMap[posId]
-      || (r._hr_currentemployee_value && userMap[r._hr_currentemployee_value])
+    const currentEmployeeId = r._hr_currentemployee_value;
+    /* Read the Position from the Organization Structure, then go back to
+       hr_employees for the name of the employee currently holding it.
+
+       Three routes, in order of how directly they answer that:
+        1. the Position's own Current Employee lookup, resolved in hr_employees
+        2. the same lookup resolved in systemusers -- covers an environment where
+           hr_CurrentEmployee points at a User rather than an Employee record
+        3. the reverse link, an Employee pointing back at this Position, for rows
+           where Current Employee was never filled in */
+    const holder =
+         (currentEmployeeId && employees.byEmployeeId[currentEmployeeId])
+      || (currentEmployeeId && userMap[currentEmployeeId])
+      || employees.byPositionId[posId]
       || null;
     return {
       id: posId,
@@ -247,11 +287,7 @@ export async function fetchPositions(){
   });
 }
 
-/* ---- reference data reads (not wired yet) --------------------------------
-   No generated service for these yet. Channels (and_teamschannels) is
-   connected but held off per your call -- it has no Team lookup column,
-   only the generic Dataverse "owning team" field, which isn't necessarily
-   the same relationship. Wire it once the real Team link is available. */
+/* ---- reference data reads (not wired yet) -------------------------------- */
 
 function notWiredYet(name){
   throw new Error(
@@ -261,9 +297,132 @@ function notWiredYet(name){
   );
 }
 
-export async function fetchTeams(){ return notWiredYet('fetchTeams'); }
-export async function fetchChannels(){ return notWiredYet('fetchChannels'); }
 export async function fetchSetups(){ return notWiredYet('fetchSetups'); }
+
+/** Teams and Channels -- table and_teamschannels. One row per CHANNEL; the
+ *  Team it belongs to is lm_team, a plain text column rather than a lookup
+ *  to a Teams table (there is no Teams table -- a "Team" exists only as the
+ *  name repeated across its channels' rows). So the app derives its Team
+ *  list from the distinct lm_team values, and a Team's channels are the rows
+ *  carrying that exact name.
+ *
+ *  Consequence worth knowing: a Team here has no Business Unit or Region
+ *  relationship, so Teams can't be narrowed to the unit a Setup runs in the
+ *  way the old mock data allowed -- every unit is offered every Team.
+ *
+ *  lm_sharepointsitepath / lm_documentlibrary / lm_folder are the channel's
+ *  document location, joined into one path by the caller and used to
+ *  auto-fill a Report Template's Source link. */
+export async function fetchTeamsChannels(){
+  const res = await And_teamschannelsService.getAll({
+    select: ['and_teamschannelid','and_channelname','and_channellink','lm_team',
+             'lm_sharepointsitepath','lm_documentlibrary','lm_folder'],
+  });
+  const rows = res?.data ?? [];
+  return rows.map(r => ({
+    id: r.and_teamschannelid,
+    name: r.and_channelname || '(unnamed channel)',
+    link: r.and_channellink ?? null,
+    team: (r.lm_team || '').trim() || null,
+    sitePath: r.lm_sharepointsitepath ?? null,
+    library: r.lm_documentlibrary ?? null,
+    folder: r.lm_folder ?? null,
+  }));
+}
+
+/* =========================================================================
+   Who is signed in
+   ========================================================================= *
+   Two halves, deliberately separate:
+
+   1. The HOST tells us who the user is -- getContext() from the Power Apps
+      SDK returns the Entra (Azure AD) identity the app is running as:
+      fullName, objectId, userPrincipalName. This works even if the user
+      has no Dataverse systemuser row at all.
+
+   2. That identity is then matched to a real `systemusers` row, which is
+      what the rest of Dataverse actually references. Matched on
+      azureactivedirectoryobjectid first (the exact, stable link between an
+      Entra identity and its Dataverse user), falling back to comparing the
+      UPN against internalemailaddress/domainname for environments where
+      the AAD object id column isn't populated.
+
+   Every step degrades rather than throws: running under plain `npm run dev`
+   (no Power Apps host) gives no context, and a user with no matching
+   systemuser row still gets their host identity back with systemUserId
+   null. Callers just show what they got. */
+
+/** The Entra identity the app is running as, straight from the host.
+ *  Returns null when there's no Power Apps host (e.g. plain `vite dev`). */
+async function fetchHostUserContext(){
+  try{
+    const { getContext } = await import('@microsoft/power-apps/app');
+    const ctx = await getContext();
+    return ctx?.user ?? null;
+  }catch(e){
+    console.warn('[dataverse] getContext() unavailable -- no Power Apps host?', e);
+    return null;
+  }
+}
+
+/** Looks up the `systemusers` row for an Entra identity. Returns null if
+ *  nothing matches (a perfectly normal case -- not every signed-in user has
+ *  a Dataverse user record). */
+async function fetchSystemUserFor({ objectId, userPrincipalName }){
+  const select = ['systemuserid','fullname','internalemailaddress','domainname','azureactivedirectoryobjectid'];
+
+  if(objectId){
+    try{
+      const res = await SystemusersService.getAll({
+        filter: `azureactivedirectoryobjectid eq ${objectId}`, select,
+      });
+      const hit = (res?.data ?? [])[0];
+      if(hit) return hit;
+    }catch(e){
+      console.warn('[dataverse] systemusers lookup by azureactivedirectoryobjectid failed, trying email:', e);
+    }
+  }
+
+  if(userPrincipalName){
+    // Single-quotes are escaped by doubling them in OData, so an apostrophe
+    // in an address can't break out of the literal.
+    const upn = String(userPrincipalName).replace(/'/g, "''");
+    try{
+      const res = await SystemusersService.getAll({
+        filter: `internalemailaddress eq '${upn}' or domainname eq '${upn}'`, select,
+      });
+      const hit = (res?.data ?? [])[0];
+      if(hit) return hit;
+    }catch(e){
+      console.warn('[dataverse] systemusers lookup by email/domainname failed:', e);
+    }
+  }
+
+  return null;
+}
+
+/**
+ * The signed-in user, linked to their Dataverse `systemusers` row.
+ *
+ * @returns {Promise<{fullName:string|null, email:string|null, azureObjectId:string|null,
+ *                    systemUserId:string|null, linked:boolean}|null>}
+ *          null only when there's no host context at all to identify anyone.
+ *          `linked` is false when the identity is known but has no matching
+ *          systemusers row.
+ */
+export async function fetchCurrentUser(){
+  const host = await fetchHostUserContext();
+  if(!host) return null;
+
+  const sysUser = await fetchSystemUserFor(host);
+  return {
+    fullName: sysUser?.fullname || host.fullName || null,
+    email: sysUser?.internalemailaddress || sysUser?.domainname || host.userPrincipalName || null,
+    azureObjectId: host.objectId || null,
+    systemUserId: sysUser?.systemuserid || null,
+    linked: !!sysUser,
+  };
+}
 
 /* =========================================================================
    Report Template save -- lm_report_templates and its five child tables
@@ -396,7 +555,7 @@ async function createReportTemplateChildren(templateId, payload, errors){
         if(unit.specialityId) rowPayload['lm_Speciality@odata.bind'] = `/cr301_specialtyksa_service_hubs(${unit.specialityId})`;
         if(unit.ownerPositionId) rowPayload['lm_OwnerPosition@odata.bind'] = `/cr603_organizationstructures(${unit.ownerPositionId})`;
         if(unit.submittingPositionId) rowPayload['lm_SubmittingPosition@odata.bind'] = `/cr603_organizationstructures(${unit.submittingPositionId})`;
-        // lm_TeamChannel intentionally omitted -- Channels isn't wired (no Team relationship yet).
+        if(unit.channelId) rowPayload['lm_TeamChannel@odata.bind'] = `/and_teamschannels(${unit.channelId})`;
         const created = await Lm_reporttemplatebusinessunitsesService.create(rowPayload);
         const rowId = created?.data?.lm_reporttemplatebusinessunitsid;
         if(rowId){ unitBind = `/lm_reporttemplatebusinessunitses(${rowId})`; unitLookupField = 'lm_MeetingTemplatePerBusinessUnit@odata.bind'; }
@@ -411,6 +570,7 @@ async function createReportTemplateChildren(templateId, payload, errors){
         if(unit.specialityId) rowPayload['lm_ReportSpeciality@odata.bind'] = `/cr301_specialtyksa_service_hubs(${unit.specialityId})`;
         if(unit.ownerPositionId) rowPayload['lm_OwnerPosition@odata.bind'] = `/cr603_organizationstructures(${unit.ownerPositionId})`;
         if(unit.submittingPositionId) rowPayload['lm_SubmittingPosition@odata.bind'] = `/cr603_organizationstructures(${unit.submittingPositionId})`;
+        if(unit.channelId) rowPayload['lm_TeamChannel@odata.bind'] = `/and_teamschannels(${unit.channelId})`;
         const created = await Lm_reporttemplateregionsService.create(rowPayload);
         const rowId = created?.data?.lm_reporttemplateregionid;
         if(rowId){ unitBind = `/lm_reporttemplateregions(${rowId})`; unitLookupField = 'lm_MeetingTemplatePerRegion@odata.bind'; }
@@ -730,7 +890,7 @@ async function createMeetingTemplateChildren(templateId, payload, errors){
         if(unit.chairmanId)    rowPayload['lm_MeetingChairman@odata.bind'] = `/cr603_organizationstructures(${unit.chairmanId})`;
         if(unit.coChairmanId)  rowPayload['lm_MeetingCoChairman@odata.bind'] = `/cr603_organizationstructures(${unit.coChairmanId})`;
         if(unit.facilitatorId) rowPayload['lm_MeetingOrganizerFacilitator@odata.bind'] = `/cr603_organizationstructures(${unit.facilitatorId})`;
-        // lm_TeamChannel intentionally omitted -- Channels isn't wired (no Team relationship yet).
+        if(unit.channelId) rowPayload['lm_TeamChannel@odata.bind'] = `/and_teamschannels(${unit.channelId})`;
         const created = await Lm_meetingtemplatebusinessunitsesService.create(rowPayload);
         const rowId = created?.data?.lm_meetingtemplatebusinessunitsid;
         if(rowId){ unitBind = `/lm_meetingtemplatebusinessunitses(${rowId})`; unitLookupField = 'lm_MeetingTemplatePerBusinessUnit@odata.bind'; }
@@ -745,6 +905,7 @@ async function createMeetingTemplateChildren(templateId, payload, errors){
         if(unit.chairmanId)    rowPayload['lm_MeetingChairman@odata.bind'] = `/cr603_organizationstructures(${unit.chairmanId})`;
         if(unit.coChairmanId)  rowPayload['lm_MeetingCoChairman@odata.bind'] = `/cr603_organizationstructures(${unit.coChairmanId})`;
         if(unit.facilitatorId) rowPayload['lm_MeetingOrganizerFacilitator@odata.bind'] = `/cr603_organizationstructures(${unit.facilitatorId})`;
+        if(unit.channelId) rowPayload['lm_TeamChannel@odata.bind'] = `/and_teamschannels(${unit.channelId})`;
         const created = await Lm_meetingtemplateregionsService.create(rowPayload);
         const rowId = created?.data?.lm_meetingtemplateregionid;
         if(rowId){ unitBind = `/lm_meetingtemplateregions(${rowId})`; unitLookupField = 'lm_MeetingTemplatePerRegion@odata.bind'; }
@@ -1056,8 +1217,8 @@ export async function fetchReportTemplateDetail(id){
     Lm_reporttemplatedepartmentfunctionsService.getAll({ filter, select:['_lm_department_value','_lm_function_value'] }),
     Lm_reporttemplaterelatedkpisesService.getAll({ filter, select:['_lm_relatedkpi_value'] }),
     Lm_reporttemplaterelatedprocessesesService.getAll({ filter, select:['_lm_relatedprocess_value'] }),
-    Lm_reporttemplatebusinessunitsesService.getAll({ filter, select:['lm_reporttemplatebusinessunitsid','lm_name','_lm_businessunit_value','_lm_speciality_value','_lm_ownerposition_value','_lm_submittingposition_value'] }),
-    Lm_reporttemplateregionsService.getAll({ filter, select:['lm_reporttemplateregionid','lm_name','_lm_region_value','_lm_reportspeciality_value','_lm_ownerposition_value','_lm_submittingposition_value'] }),
+    Lm_reporttemplatebusinessunitsesService.getAll({ filter, select:['lm_reporttemplatebusinessunitsid','lm_name','_lm_businessunit_value','_lm_speciality_value','_lm_ownerposition_value','_lm_submittingposition_value','_lm_teamchannel_value'] }),
+    Lm_reporttemplateregionsService.getAll({ filter, select:['lm_reporttemplateregionid','lm_name','_lm_region_value','_lm_reportspeciality_value','_lm_ownerposition_value','_lm_submittingposition_value','_lm_teamchannel_value'] }),
   ]);
 
   const businessUnits = busRes?.data ?? [];
@@ -1104,8 +1265,8 @@ export async function fetchMeetingTemplateDetail(id){
     Lm_meetingtemplatedepartmentfunctionsService.getAll({ filter, select:['_lm_department_value','_lm_function_value'] }),
     Lm_meetingtemplatesupportivefunctionsesService.getAll({ filter, select:['lm_newcolumn','_lm_function_value'] }),
     Lm_meetingtemplatelinkedreportsesService.getAll({ filter, select:['lm_name','lm_reporttype','_lm_reporttemplate_value'] }),
-    Lm_meetingtemplatebusinessunitsesService.getAll({ filter, select:['lm_meetingtemplatebusinessunitsid','lm_name','_lm_businessunit_value','_lm_meetingchairman_value','_lm_meetingcochairman_value','_lm_meetingorganizerfacilitator_value'] }),
-    Lm_meetingtemplateregionsService.getAll({ filter, select:['lm_meetingtemplateregionid','lm_name','_lm_region_value','_lm_meetingchairman_value','_lm_meetingcochairman_value','_lm_meetingorganizerfacilitator_value'] }),
+    Lm_meetingtemplatebusinessunitsesService.getAll({ filter, select:['lm_meetingtemplatebusinessunitsid','lm_name','_lm_businessunit_value','_lm_meetingchairman_value','_lm_meetingcochairman_value','_lm_meetingorganizerfacilitator_value','_lm_teamchannel_value'] }),
+    Lm_meetingtemplateregionsService.getAll({ filter, select:['lm_meetingtemplateregionid','lm_name','_lm_region_value','_lm_meetingchairman_value','_lm_meetingcochairman_value','_lm_meetingorganizerfacilitator_value','_lm_teamchannel_value'] }),
   ]);
 
   const businessUnits = busRes?.data ?? [];
@@ -1135,4 +1296,324 @@ export async function fetchMeetingTemplateDetail(id){
     businessUnits: businessUnits.map((bu,i) => ({ ...bu, attendees: buAttendees[i] })),
     regions: regions.map((rg,i) => ({ ...rg, attendees: regionAttendees[i] })),
   };
+}
+/* =========================================================================
+   OCCURRENCES -- the execution side (Leadership Execution module)
+   =========================================================================
+   A Meeting Occurrence is one actual sitting of a Meeting Template; a Report
+   Occurrence is one actual submission of a Report Template. Both carry the
+   per-unit context on the row itself, and a Meeting Occurrence owns two child
+   tables of its own: its agenda and its attendee list.
+
+   NOTE on the attendees table: its logical name really is plural
+   (lm_meetingoccurrenceattendees, entity set lm_meetingoccurrenceattendeeses)
+   -- same quirk as lm_meetingtemplatesupportivefunctions. Kept as generated. */
+
+import { Lm_meetingoccurrencesService } from '../generated/services/Lm_meetingoccurrencesService';
+import { Lm_meetingoccurrenceagendasService } from '../generated/services/Lm_meetingoccurrenceagendasService';
+import { Lm_meetingoccurrenceattendeesesService } from '../generated/services/Lm_meetingoccurrenceattendeesesService';
+import { Lm_reportoccurrencesService } from '../generated/services/Lm_reportoccurrencesService';
+
+export const MEETING_OCC_STATUS = { 1:'Scheduled', 2:'Held', 3:'Cancelled' };
+export const MEETING_OCC_STATUS_KEY = { 'Scheduled':1, 'Held':2, 'Cancelled':3 };
+// The app says "In person / Online / Hybrid"; Dataverse says "Physical / Online / Hybrid".
+export const MEETING_OCC_MODE = { 1:'In person', 2:'Online', 3:'Hybrid' };
+export const MEETING_OCC_MODE_KEY = { 'In person':1, 'Physical':1, 'Online':2, 'Hybrid':3 };
+export const MEETING_OCC_SYNC = { 1:'Synchronized', 2:'Pending', 3:'Failed' };
+export const MEETING_OCC_SYNC_KEY = { 'Synchronized':1, 'Pending':2, 'Failed':3 };
+export const AGENDA_COVERED = { 1:'Yes', 2:'No', 3:'Not Yet Recorded' };
+export const AGENDA_COVERED_KEY = { 'Yes':1, 'No':2, 'Not Yet Recorded':3 };
+export const ATTENDEE_PRESENT = { 1:'Present', 2:'Absent', 3:'Not Yet Recorded' };
+export const ATTENDEE_PRESENT_KEY = { 'Present':1, 'Absent':2, 'Not Yet Recorded':3 };
+// lm_type on the attendee row. The option labels in Dataverse carry stray
+// whitespace ("Optional "), so these map by code rather than by label.
+export const ATTENDEE_TYPE = { 1:'Required', 2:'Optional' };
+export const ATTENDEE_TYPE_KEY = { 'Required':1, 'Optional':2 };
+export const REPORT_OCC_STATUS = { 1:'Draft', 2:'In Review', 3:'Approved', 4:'Rejected', 5:'Returned' };
+/* lm_meetingstage is the same global option set the Governance module's Setup
+   Stages use, so an occurrence records the stage in exactly the same terms its
+   template does. The execution module labels them more briefly. */
+export const MEETING_OCC_STAGE = {
+  1:'Stage 1 BU Operational', 2:'Stage 2 Regional Functional',
+  3:'Stage 3 Group Functional', 4:'Stage 4 Top Management, COO & CEO',
+};
+export const MEETING_OCC_STAGE_KEY = {
+  'Business Unit':1, 'Region':2, 'Group':3, 'ExCom':4,
+  'Stage 1 BU Operational':1, 'Stage 2 Regional Functional':2,
+  'Stage 3 Group Functional':3, 'Stage 4 Top Management, COO & CEO':4,
+};
+export const REPORT_OCC_STATUS_KEY = { 'Draft':1, 'In Review':2, 'Approved':3, 'Rejected':4, 'Returned':5 };
+
+/** A Dataverse DateTime comes back as a full ISO string; the app works in
+ *  plain 'YYYY-MM-DD' dates throughout, so trim rather than re-parse (which
+ *  would shift the day across time zones). */
+const isoDay = v => (typeof v === 'string' && v.length >= 10) ? v.slice(0,10) : null;
+
+/** Every Meeting Occurrence, with its agenda and attendee list attached.
+ *  Three requests total, not one per occurrence: the two child tables are
+ *  fetched whole and grouped client-side, which is far cheaper than a
+ *  per-row fetch once there are more than a handful of occurrences.
+ *  Lookups come back as raw GUIDs -- the caller resolves them to names
+ *  against the reference data it already holds. */
+export async function fetchMeetingOccurrences(){
+  const [occRes, agendaRes, attRes] = await Promise.all([
+    Lm_meetingoccurrencesService.getAll({
+      select: ['lm_meetingoccurrenceid','lm_name','lm_date','lm_starttime','lm_endtime','lm_timezone',
+               'lm_mode','lm_meetingstatus','lm_meetinglocation','lm_meetinglink','lm_adhoctype',
+               'lm_restricted','lm_agendasentdate','lm_invitesentdate','lm_cancelreason','lm_syncstatus',
+               'lm_meetingstage',
+               '_lm_meetingtemplate_value','_lm_businessunit_value','_lm_chairmanposition_value',
+               '_lm_region_value','_lm_department_value','_lm_facilitatorposition_value',
+               '_lm_rescheduledfrom_value','modifiedon','createdon'],
+    }),
+    Lm_meetingoccurrenceagendasService.getAll({
+      select: ['lm_meetingoccurrenceagendaid','lm_title','lm_sequence','lm_source','lm_covered',
+               '_lm_meetingoccurrence_value','_lm_ownerposition_value','_lm_carriedfromagendaitem_value'],
+    }).catch(e=>{ console.warn('[dataverse] occurrence agenda fetch failed:', e); return null; }),
+    Lm_meetingoccurrenceattendeesesService.getAll({
+      select: ['lm_meetingoccurrenceattendeesid','lm_name','lm_present','lm_type',
+               '_lm_meetingoccurrence_value','_lm_attendeeposition_value','_lm_delegateposition_value'],
+    }).catch(e=>{ console.warn('[dataverse] occurrence attendees fetch failed:', e); return null; }),
+  ]);
+
+  const byOcc = (rows, key) => {
+    const m = new Map();
+    (rows ?? []).forEach(r => {
+      const k = r[key]; if(!k) return;
+      if(!m.has(k)) m.set(k, []);
+      m.get(k).push(r);
+    });
+    return m;
+  };
+  const agendaBy = byOcc(agendaRes?.data, '_lm_meetingoccurrence_value');
+  const attBy    = byOcc(attRes?.data,    '_lm_meetingoccurrence_value');
+
+  return (occRes?.data ?? []).map(o => {
+    const id = o.lm_meetingoccurrenceid;
+    return {
+      id,
+      name: o.lm_name || '(untitled meeting)',
+      date: isoDay(o.lm_date),
+      start: o.lm_starttime || null,
+      end: o.lm_endtime || null,
+      timezone: o.lm_timezone || null,
+      mode: MEETING_OCC_MODE[o.lm_mode] || null,
+      status: MEETING_OCC_STATUS[o.lm_meetingstatus] || null,
+      location: o.lm_meetinglocation || null,
+      link: o.lm_meetinglink || null,
+      adhocType: o.lm_adhoctype || null,
+      restricted: !!o.lm_restricted,
+      agendaSent: isoDay(o.lm_agendasentdate),
+      inviteSent: isoDay(o.lm_invitesentdate),
+      cancelReason: o.lm_cancelreason || null,
+      sync: MEETING_OCC_SYNC[o.lm_syncstatus] || null,
+      stage: MEETING_OCC_STAGE[o.lm_meetingstage] || null,
+      templateId: o._lm_meetingtemplate_value || null,
+      businessUnitId: o._lm_businessunit_value || null,
+      regionId: o._lm_region_value || null,
+      departmentId: o._lm_department_value || null,
+      chairPositionId: o._lm_chairmanposition_value || null,
+      facilitatorPositionId: o._lm_facilitatorposition_value || null,
+      rescheduledFromId: o._lm_rescheduledfrom_value || null,
+      updated: o.modifiedon || o.createdon || null,
+      agenda: (agendaBy.get(id) || [])
+        .slice().sort((a,b)=>(a.lm_sequence||0)-(b.lm_sequence||0))
+        .map(a=>({ id:a.lm_meetingoccurrenceagendaid, title:a.lm_title||'', seq:a.lm_sequence??null,
+                   source:a.lm_source||null, covered:AGENDA_COVERED[a.lm_covered]||null,
+                   ownerPositionId:a._lm_ownerposition_value||null,
+                   carriedFromId:a._lm_carriedfromagendaitem_value||null })),
+      attendees: (attBy.get(id) || [])
+        .map(a=>({ id:a.lm_meetingoccurrenceattendeesid, name:a.lm_name||null,
+                   present:ATTENDEE_PRESENT[a.lm_present]||null,
+                   type:ATTENDEE_TYPE[a.lm_type]||null,
+                   positionId:a._lm_attendeeposition_value||null,
+                   delegatePositionId:a._lm_delegateposition_value||null })),
+    };
+  });
+}
+
+/** Every Report Occurrence. One request -- this table has no child tables the
+ *  calendar needs (its history lives in lm_reportoccurrencehistories). */
+export async function fetchReportOccurrences(){
+  const res = await Lm_reportoccurrencesService.getAll({
+    select: ['lm_reportoccurrenceid','lm_name','lm_period','lm_status','lm_version','lm_reviewstep',
+             'lm_fileurl','lm_reportobjective','lm_locked','lm_nosetupflag','lm_reportstage',
+             '_lm_reporttemplate_value','_lm_businessunit_value','_lm_department_value','_lm_region_value',
+             '_lm_creatorposition_value','modifiedon','createdon'],
+  });
+  return (res?.data ?? []).map(r => ({
+    id: r.lm_reportoccurrenceid,
+    name: r.lm_name || '(untitled report)',
+    period: isoDay(r.lm_period),
+    status: REPORT_OCC_STATUS[r.lm_status] || null,
+    version: r.lm_version ?? null,
+    reviewStep: r.lm_reviewstep ?? null,
+    fileUrl: r.lm_fileurl || null,
+    objective: r.lm_reportobjective || null,
+    locked: !!r.lm_locked,
+    noSetupFlag: !!r.lm_nosetupflag,
+    stage: MEETING_OCC_STAGE[r.lm_reportstage] || null,   // same global option set as a Meeting
+    templateId: r._lm_reporttemplate_value || null,
+    businessUnitId: r._lm_businessunit_value || null,
+    regionId: r._lm_region_value || null,
+    departmentId: r._lm_department_value || null,
+    creatorPositionId: r._lm_creatorposition_value || null,
+    updated: r.modifiedon || r.createdon || null,
+  }));
+}
+
+/**
+ * Creates one Meeting Occurrence: the parent lm_meetingoccurrences row, then
+ * its agenda rows and attendee rows. Mirrors the template-save functions
+ * above -- a child row that fails is collected into `errors` rather than
+ * aborting the rest, since the occurrence itself is already real by then.
+ *
+ * @param {object} payload
+ * @param {string} payload.name
+ * @param {string} [payload.templateId] lm_meetingtemplates id -- omitted for a Custom Ad Hoc Meeting
+ * @param {string} [payload.businessUnitId] Stage 1 only
+ * @param {string} [payload.regionId] Stage 2 only
+ * @param {string} [payload.departmentId]
+ * @param {string} [payload.stage] 'Business Unit'|'Region'|'Group'|'ExCom', or a full Stage label
+ * @param {string} [payload.chairPositionId]
+ * @param {string} [payload.facilitatorPositionId]
+ * @param {string} payload.date 'YYYY-MM-DD'
+ * @param {string} [payload.start] 'HH:mm'
+ * @param {string} [payload.end] 'HH:mm'
+ * @param {string} [payload.timezone]
+ * @param {string} [payload.mode] 'In person'|'Online'|'Hybrid'
+ * @param {string} [payload.status] defaults to 'Scheduled'
+ * @param {string} [payload.location]
+ * @param {string} [payload.link]
+ * @param {string} [payload.adhocType]
+ * @param {boolean} [payload.restricted]
+ * @param {string} [payload.inviteSent] 'YYYY-MM-DD'
+ * @param {string} [payload.rescheduledFromId]
+ * @param {{title:string, ownerPositionId?:string, source?:string}[]} [payload.agenda]
+ * @param {{positionId:string, name?:string, type?:string}[]} [payload.attendees] `type` is
+ *        'Required' or 'Optional', written to lm_type; defaults to Required.
+ * @returns {Promise<{id:string|null, errors:{table:string,error:any}[]}>}
+ */
+export async function createMeetingOccurrence(payload){
+  const errors = [];
+
+  const parent = {
+    lm_name: payload.name || 'Untitled Meeting',
+    lm_date: payload.date || null,
+    lm_starttime: payload.start || null,
+    lm_endtime: payload.end || null,
+    lm_timezone: payload.timezone || null,
+    lm_mode: payload.mode ? (MEETING_OCC_MODE_KEY[payload.mode] ?? null) : null,
+    lm_meetingstatus: MEETING_OCC_STATUS_KEY[payload.status || 'Scheduled'] ?? 1,
+    lm_meetinglocation: payload.location || null,
+    lm_meetinglink: payload.link || null,
+    lm_adhoctype: payload.adhocType || null,
+    lm_restricted: !!payload.restricted,
+    lm_invitesentdate: payload.inviteSent || null,
+    lm_syncstatus: MEETING_OCC_SYNC_KEY.Synchronized,
+    lm_meetingstage: payload.stage ? (MEETING_OCC_STAGE_KEY[payload.stage] ?? null) : null,
+  };
+  if(payload.templateId)        parent['lm_MeetingTemplate@odata.bind']   = `/lm_meetingtemplates(${payload.templateId})`;
+  if(payload.businessUnitId)    parent['lm_BusinessUnit@odata.bind']      = `/businessunits(${payload.businessUnitId})`;
+  if(payload.regionId)          parent['lm_Region@odata.bind']            = `/crd04_regionses(${payload.regionId})`;
+  if(payload.departmentId)      parent['lm_Department@odata.bind']        = `/cr603_chklst_departmentses(${payload.departmentId})`;
+  if(payload.chairPositionId)   parent['lm_ChairmanPosition@odata.bind']  = `/cr603_organizationstructures(${payload.chairPositionId})`;
+  if(payload.facilitatorPositionId) parent['lm_FacilitatorPosition@odata.bind'] = `/cr603_organizationstructures(${payload.facilitatorPositionId})`;
+  if(payload.rescheduledFromId) parent['lm_RescheduledFrom@odata.bind']   = `/lm_meetingoccurrences(${payload.rescheduledFromId})`;
+
+  let occId = null;
+  try{
+    const created = await Lm_meetingoccurrencesService.create(parent);
+    occId = created?.data?.lm_meetingoccurrenceid ?? null;
+    if(!occId) throw new Error('Create succeeded but no id was returned');
+  }catch(e){
+    errors.push({ table:'lm_meetingoccurrences', error:e });
+    return { id:null, errors };
+  }
+
+  const bind = `/lm_meetingoccurrences(${occId})`;
+
+  for(const [i, item] of (payload.agenda||[]).entries()){
+    if(!item?.title) continue;
+    try{
+      const row = {
+        'lm_MeetingOccurrence@odata.bind': bind,
+        lm_title: item.title,
+        lm_sequence: i+1,
+        lm_source: item.source || 'Ad Hoc',
+        lm_covered: AGENDA_COVERED_KEY['Not Yet Recorded'],
+      };
+      if(item.ownerPositionId) row['lm_OwnerPosition@odata.bind'] = `/cr603_organizationstructures(${item.ownerPositionId})`;
+      if(item.carriedFromId)   row['lm_CarriedFromAgendaItem@odata.bind'] = `/lm_meetingtemplateagendaitems(${item.carriedFromId})`;
+      await Lm_meetingoccurrenceagendasService.create(row);
+    }catch(e){ errors.push({ table:'lm_meetingoccurrenceagendas', error:e }); }
+  }
+
+  for(const att of (payload.attendees||[])){
+    if(!att?.positionId) continue;
+    try{
+      await Lm_meetingoccurrenceattendeesesService.create({
+        'lm_MeetingOccurrence@odata.bind': bind,
+        'lm_AttendeePosition@odata.bind': `/cr603_organizationstructures(${att.positionId})`,
+        lm_name: att.name || undefined,
+        lm_present: ATTENDEE_PRESENT_KEY['Not Yet Recorded'],
+        lm_type: ATTENDEE_TYPE_KEY[att.type] ?? ATTENDEE_TYPE_KEY.Required,
+      });
+    }catch(e){ errors.push({ table:'lm_meetingoccurrenceattendeeses', error:e }); }
+  }
+
+  return { id: occId, errors };
+}
+
+/**
+ * Creates one Report Occurrence. A single row -- unlike a Meeting Occurrence it
+ * owns no child tables (its trail lives in lm_reportoccurrencehistories, which
+ * nothing writes yet).
+ *
+ * @param {object} payload
+ * @param {string} payload.name
+ * @param {string} [payload.objective]
+ * @param {string} [payload.templateId] lm_report_templates id -- omitted for an Ad Hoc Report,
+ *        which is what lm_nosetupflag records
+ * @param {string} [payload.businessUnitId]
+ * @param {string} [payload.regionId]
+ * @param {string} [payload.stage] a Stage label, or 'Business Unit'|'Region'|'Group'|'ExCom'
+ * @param {string} [payload.departmentId]
+ * @param {string} [payload.creatorPositionId]
+ * @param {string} [payload.period] 'YYYY-MM-DD' -- the period the Report covers
+ * @param {string} [payload.status] one of REPORT_OCC_STATUS_KEY's keys; defaults to Draft
+ * @param {string} [payload.fileUrl]
+ * @param {number} [payload.version] defaults to 1
+ * @param {number} [payload.reviewStep]
+ * @param {boolean} [payload.locked]
+ * @param {boolean} [payload.noSetupFlag] true when the Report has no approved Setup behind it
+ * @returns {Promise<{id:string|null, errors:{table:string,error:any}[]}>}
+ */
+export async function createReportOccurrence(payload){
+  const row = {
+    lm_name: payload.name || 'Untitled Report',
+    lm_reportobjective: payload.objective || null,
+    lm_period: payload.period || null,
+    lm_status: REPORT_OCC_STATUS_KEY[payload.status || 'Draft'] ?? REPORT_OCC_STATUS_KEY.Draft,
+    lm_fileurl: payload.fileUrl || null,
+    lm_version: typeof payload.version === 'number' ? payload.version : 1,
+    lm_reviewstep: typeof payload.reviewStep === 'number' ? payload.reviewStep : null,
+    lm_locked: !!payload.locked,
+    lm_nosetupflag: !!payload.noSetupFlag,
+    lm_reportstage: payload.stage ? (MEETING_OCC_STAGE_KEY[payload.stage] ?? null) : null,
+  };
+  if(payload.templateId)        row['lm_ReportTemplate@odata.bind']   = `/lm_report_templates(${payload.templateId})`;
+  if(payload.businessUnitId)    row['lm_BusinessUnit@odata.bind']     = `/businessunits(${payload.businessUnitId})`;
+  if(payload.regionId)          row['lm_Region@odata.bind']           = `/crd04_regionses(${payload.regionId})`;
+  if(payload.departmentId)      row['lm_Department@odata.bind']       = `/cr603_chklst_departmentses(${payload.departmentId})`;
+  if(payload.creatorPositionId) row['lm_CreatorPosition@odata.bind']  = `/cr603_organizationstructures(${payload.creatorPositionId})`;
+
+  try{
+    const created = await Lm_reportoccurrencesService.create(row);
+    const id = created?.data?.lm_reportoccurrenceid ?? null;
+    if(!id) throw new Error('Create succeeded but no id was returned');
+    return { id, errors: [] };
+  }catch(e){
+    return { id: null, errors: [{ table:'lm_reportoccurrences', error:e }] };
+  }
 }

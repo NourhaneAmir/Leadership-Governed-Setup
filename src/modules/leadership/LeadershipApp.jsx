@@ -1,11 +1,27 @@
 import React, { useState, useMemo, useEffect, useRef, createContext, useContext } from 'react';
+import { fetchMeetingOccurrences, fetchReportOccurrences, createMeetingOccurrence,
+         createReportOccurrence,
+         fetchBusinessUnits, fetchPositions, fetchDepartments, fetchRegions,
+         fetchMeetingTemplatesList } from '../../services/dataverse.js';
 
 /* =========================================================================
    REFERENCE DATA + SEED
-   Demo clock fixed at 29 Jul 2026. Working week Sun–Thu.
+   Working week Sun–Thu.
    ========================================================================= */
-const TODAY = '2026-07-29';
-const PERIOD = '2026-07';
+
+/* A Date as a plain 'YYYY-MM-DD', read in LOCAL time.
+   Not toISOString(), which converts to UTC first: local midnight in Riyadh
+   (+03) or Cairo (+02) is the previous day in UTC, so every date built that way
+   came out one day early -- the Calendar grid was a day out of step with its
+   own weekday columns, and addDays(d,1) returned d unchanged. */
+const ymd = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+
+/* The clock is the real current date. The Calendar, Workspace and Meetings
+   screens read live Dataverse occurrences, which carry real dates, so a fixed
+   demo clock opened the Calendar on the wrong month and mis-flagged what was
+   overdue. The seeded records elsewhere keep their own literal dates. */
+const TODAY = ymd(new Date());
+const PERIOD = TODAY.slice(0,7);
 
 const REGIONS = ['KSA','Egypt'];
 const BUS = [
@@ -279,10 +295,17 @@ const OD_NOTES = {
 const WEEKEND = [5,6];              // Fri, Sat — working week is Sun–Thu
 const HOLIDAYS = ['2026-07-05','2026-08-24'];
 const isNonWorking = d => WEEKEND.includes(new Date(d+'T00:00:00').getDay()) || HOLIDAYS.includes(d);
+/* The weekend proper — Friday and Saturday. Kept apart from isNonWorking (which
+   also counts public holidays) because a Meeting may not be BOOKED on a weekend
+   at all, whereas a holiday only shifts a seeded occurrence to the next working
+   day. Booking is blocked on this one. */
+const isWeekend = d => !!d && WEEKEND.includes(new Date(d+'T00:00:00').getDay());
+const WEEKDAY_NAME = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const dayName = d => d ? WEEKDAY_NAME[new Date(d+'T00:00:00').getDay()] : '';
 /* An occurrence landing on a non-working day moves — that occurrence only, never the series. */
 const nextWorkingDay = d => { let x=new Date(d+'T00:00:00');
-  do { x.setDate(x.getDate()+1); } while(isNonWorking(x.toISOString().slice(0,10)));
-  return x.toISOString().slice(0,10); };
+  do { x.setDate(x.getDate()+1); } while(isNonWorking(ymd(x)));
+  return ymd(x); };
 /* =========================================================================
    SEED — one Committee carried through four cycles so history is real
    ========================================================================= */
@@ -792,9 +815,9 @@ const hoursBetween=(a,b)=>{
   const p=s=>new Date(s.replace(' ','T')+(s.length<=10?'T00:00:00':'')).getTime();
   return Math.round((p(b)-p(a))/36e5);
 };
-const addDays=(d,n)=>{const t=new Date(d+'T00:00:00');t.setDate(t.getDate()+n);return t.toISOString().slice(0,10);};
+const addDays=(d,n)=>{const t=new Date(d+'T00:00:00');t.setDate(t.getDate()+n);return ymd(t);};
 const addHours=(dt,h)=>{ const t=new Date(dt.replace(' ','T')); t.setTime(t.getTime()+h*36e5);
-  return t.toISOString().slice(0,16).replace('T',' '); };
+  return ymd(t)+' '+String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0'); };
 const nowStamp=()=>TODAY+' '+new Date().toTimeString().slice(0,5);
 const money=n=>n==null?'—':n.toLocaleString('en-US')+' SAR';
 const pct=n=>(Math.round(n*10)/10)+'%';
@@ -1254,13 +1277,15 @@ function rangeBounds(id){
 }
 
 function CalendarWebpart({items,title,kinds,emptyText}){
-  const {go,openMeeting} = use();
+  const {go,openMeeting,openDvRec} = use();
   const [rng,setRng]=useState('week');
   const [lo,hi]=rangeBounds(rng);
   const pool=items.filter(i=>!kinds || kinds.includes(i.kind));
   const rows=pool.filter(i=>i.date>=lo && i.date<=hi)
                  .sort((a,b)=>(a.date+(a.time||'')).localeCompare(b.date+(b.time||'')));
-  const open=i=> i.screen==='mtg' ? openMeeting(i.id,i.tab||'detail') : go(i.screen,i.id);
+  /* A live Dataverse row carries no screen -- it opens the read-only panel. */
+  const open=i=> i._dv ? openDvRec(i.kind==='Report'?'Report':'Meeting', i._rec)
+    : i.screen==='mtg' ? openMeeting(i.id,i.tab||'detail') : go(i.screen,i.id);
 
   return <div className="card">
     <div style={{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap',marginBottom:4}}>
@@ -1295,11 +1320,12 @@ function CalendarWebpart({items,title,kinds,emptyText}){
 /* =========================================================================
    CALENDAR — full-page version, reachable directly from the sidebar
    ========================================================================= */
+/* MOM Due is gone: those deadlines were derived from seeded Minutes, and the
+   calendar now shows only what the occurrence tables hold. */
 const CAL_KINDS = [
   {id:'All',     label:'All',      colour:null},
   {id:'Meeting', label:'Meetings', colour:'blue'},
   {id:'Report',  label:'Reports',  colour:'ink'},
-  {id:'MOM',     label:'MOM Due',  colour:'purple'},
 ];
 /* Icon/colour treatment for a calendar item's kind — MOM Due borrows the Minutes styling,
    since a MOM write-up deadline is, functionally, a Minutes item. */
@@ -1309,20 +1335,98 @@ const calGridCls = i => i.status==='Cancelled' ? 'k-canc'
   : i.kind==='Report' ? 'k-rpt' : i.kind==='MOM' ? 'k-mom' : 'k-mtg';
 const CAL_DOT = {blue:'var(--blue)', ink:'var(--ink)', purple:'var(--purple)'};
 
+/* A live Dataverse occurrence, shown read-only. The seeded Meeting screen is
+   built around demo records and their synthetic ids, so it cannot render one
+   of these — this panel shows the row as it actually stands in the table. */
+function DvOccurrenceModal({item,onClose}){
+  const r=item._rec, isMeeting=item.kind==='Meeting';
+  const Row=({label,value})=> value==null||value===''||value==='—' ? null :
+    <div style={{display:'flex',gap:12,padding:'6px 0',borderBottom:'1px solid var(--border)'}}>
+      <div style={{flex:'0 0 190px',fontSize:12,color:'var(--muted)'}}>{label}</div>
+      <div style={{flex:1,fontSize:13,overflowWrap:'anywhere'}}>{value}</div></div>;
+  const pos=id=>{ const n=dvPos(id); if(!n) return null;
+    const h=id&&DV_POS_HOLDER[id]; return h?`${n} — ${h}`:n; };
+
+  return <Modal wide onClose={onClose} title={r.name}
+    sub={`Read live from ${isMeeting?'lm_meetingoccurrences':'lm_reportoccurrences'}. Read-only here — the execution screens run on the seeded demo records.`}
+    footer={<Btn onClick={onClose}>Close</Btn>}>
+    {isMeeting ? <>
+      <Row label="Date" value={r.date?fmtD(r.date):null}/>
+      <Row label="Time" value={[r.start,r.end].filter(Boolean).join(' – ')||null}/>
+      <Row label="Time zone" value={r.timezone}/>
+      <Row label="Status" value={r.status}/>
+      <Row label="Mode" value={r.mode}/>
+      <Row label="Location" value={r.location}/>
+      <Row label="Meeting link" value={r.link}/>
+      <Row label="Meeting Template" value={dvTpl(r.templateId)||(r.templateId?'(template not in this list)':null)}/>
+      <Row label="Ad Hoc Type" value={r.adhocType}/>
+      <Row label="Stage" value={r.stage}/>
+      <Row label="Business Unit" value={dvBu(r.businessUnitId)}/>
+      <Row label="Region" value={dvRegion(r.regionId)}/>
+      <Row label="Department" value={dvDept(r.departmentId)}/>
+      <Row label="Chair" value={pos(r.chairPositionId)}/>
+      <Row label="Facilitator" value={pos(r.facilitatorPositionId)}/>
+      <Row label="Restricted" value={r.restricted?'Yes':null}/>
+      <Row label="Invite sent" value={r.inviteSent?fmtD(r.inviteSent):null}/>
+      <Row label="Agenda sent" value={r.agendaSent?fmtD(r.agendaSent):null}/>
+      <Row label="Cancellation reason" value={r.cancelReason}/>
+      <Row label="Outlook / Teams sync" value={r.sync}/>
+      <h3 style={{fontSize:13,margin:'16px 0 6px'}}>Agenda</h3>
+      {r.agenda.length===0
+        ? <div style={{fontSize:12.5,color:'var(--muted)'}}>No agenda items on this occurrence.</div>
+        : <table className="data"><tbody>{r.agenda.map(a=>
+            <tr key={a.id}><td style={{width:38}} className="dim">{a.seq??'—'}</td>
+              <td><div className="t-main">{a.title}</div>
+                <div className="t-sub">{[a.source,pos(a.ownerPositionId)].filter(Boolean).join(' · ')||'—'}</div></td>
+              <td style={{width:150,textAlign:'right'}}>
+                <Tag c={a.covered==='Yes'?'green':a.covered==='No'?'red':'grey'}>{a.covered||'Not Yet Recorded'}</Tag></td>
+            </tr>)}</tbody></table>}
+      <h3 style={{fontSize:13,margin:'16px 0 6px'}}>Attendees</h3>
+      {r.attendees.length===0
+        ? <div style={{fontSize:12.5,color:'var(--muted)'}}>No attendees on this occurrence.</div>
+        : <table className="data"><tbody>{r.attendees.map(a=>
+            <tr key={a.id}><td><div className="t-main">{pos(a.positionId)||a.name||'—'}</div>
+              {a.delegatePositionId?<div className="t-sub">delegate: {pos(a.delegatePositionId)}</div>:null}</td>
+              <td style={{width:110}}>
+                <Tag c={a.type==='Optional'?'grey':'teal'}>{a.type||'Required'}</Tag></td>
+              <td style={{width:150,textAlign:'right'}}>
+                <Tag c={a.present==='Present'?'green':a.present==='Absent'?'red':'grey'}>{a.present||'Not Yet Recorded'}</Tag></td>
+            </tr>)}</tbody></table>}
+    </> : <>
+      <Row label="Period" value={r.period?fmtD(r.period):null}/>
+      <Row label="Status" value={r.status}/>
+      <Row label="Version" value={r.version!=null?String(r.version):null}/>
+      <Row label="Review step" value={r.reviewStep!=null?String(r.reviewStep):null}/>
+      <Row label="Report Template" value={dvTpl(r.templateId)||(r.templateId?'(template not in this list)':null)}/>
+      <Row label="Business Unit" value={dvBu(r.businessUnitId)}/>
+      <Row label="Department" value={dvDept(r.departmentId)}/>
+      <Row label="Created by" value={pos(r.creatorPositionId)}/>
+      <Row label="Objective" value={r.objective}/>
+      <Row label="File" value={r.fileUrl}/>
+      <Row label="Locked" value={r.locked?'Yes':null}/>
+      <Row label="No-Setup flag" value={r.noSetupFlag?'Yes':null}/>
+    </>}
+  </Modal>;
+}
+
 function ScreenCalendar(){
-  const {db,cal,go,openMeeting} = use();
+  const {cal,go,openMeeting,dvLoading,dvError,dvMeetingOccs,dvReportOccs,openDvRec} = use();
   const [view,setView] = useState('month');   /* month | week | list */
   const [kind,setKind] = useState('All');
   const [ym,setYm]     = useState(TODAY.slice(0,7));
 
   const vis = kind==='All' ? cal : cal.filter(i=>i.kind===kind);
-  const open = i => i.screen==='mtg' ? openMeeting(i.id,i.tab||'detail') : go(i.screen,i.id);
+  /* A live Dataverse row has no seeded record behind it, so it opens the
+     read-only panel rather than an execution screen that could not render it. */
+  const open = i => i._dv ? openDvRec(i.kind, i._rec)
+    : i.screen==='mtg' ? openMeeting(i.id,i.tab||'detail') : go(i.screen,i.id);
+  const liveCount = dvMeetingOccs.length + dvReportOccs.length;
 
   const [y,m]=ym.split('-').map(Number);
   const first=new Date(y,m-1,1), start=new Date(first); start.setDate(1-first.getDay());
   const cells=Array.from({length:42},(_,i)=>{const d=new Date(start);d.setDate(start.getDate()+i);
-    return d.toISOString().slice(0,10);});
-  const shift=n=>{const d=new Date(y,m-1+n,1);setYm(d.toISOString().slice(0,7));};
+    return ymd(d);});
+  const shift=n=>{const d=new Date(y,m-1+n,1);setYm(ymd(d).slice(0,7));};
 
   const EventRow = ({i}) =>
     <div className="sched-r" onClick={()=>open(i)}>
@@ -1340,13 +1444,17 @@ function ScreenCalendar(){
   const nextWeekMtgs = cal.filter(i=>i.kind==='Meeting' && i.date>=nextWk[0] && i.date<=nextWk[1]
     && i.status!=='Cancelled').sort(byDateTime);
   const MtgRow = ({i}) => {
-    const o=db.occs.find(x=>x.id===i.id);
+    /* Every row here is a Dataverse row now, so its detail comes off the
+       record the calendar item carries. */
+    const meta = [i._rec.location||i._rec.mode,
+      i._rec.attendees?.length ? i._rec.attendees.length+' attendees' : null].filter(Boolean);
     return <div className="wa-up-r" onClick={()=>open(i)}>
       <div className="wa-date"><span className="dd">{i.date.slice(8)}</span>
         <span className="mo">{MONTHS[+i.date.slice(5,7)-1]}</span></div>
       <div className="wa-up-t"><div className="n">{i.title}
-          {i.date===TODAY && <Tag c="amber">Today</Tag>}</div>
-        <div className="m">{i.time}{o?' · '+(o.location||o.mode)+' · '+o.attend.length+' attendees':''}</div></div>
+          {i.date===TODAY && <Tag c="amber">Today</Tag>}
+          {i._dv && <Tag c="teal">Live</Tag>}</div>
+        <div className="m">{[i.time,...meta].filter(Boolean).join(' · ')}</div></div>
     </div>;
   };
 
@@ -1359,13 +1467,20 @@ function ScreenCalendar(){
   return <>
     <div className="ph ph-row">
       <div style={{flex:1}}><h1>Calendar</h1>
-        <div className="sub">View all Meetings, Report due dates and MOM write-up deadlines.</div></div>
+        <div className="sub">Every Meeting Occurrence and Report Occurrence, on one timeline.</div></div>
       <div className="seg">
         {['month','week','list'].map(v=>
           <button key={v} className={view===v?'on':''} onClick={()=>setView(v)}>
             {v[0].toUpperCase()+v.slice(1)}</button>)}
       </div>
     </div>
+
+    {dvError
+      ? <Note k="warn" ic="⚠">{dvError}</Note>
+      : dvLoading
+        ? <Note k="info" ic="i">Reading live Meeting and Report Occurrences from Dataverse…</Note>
+        : <Note k="info" ic="i"><b>{liveCount} occurrence{liveCount===1?'':'s'}</b> read from lm_meetingoccurrences and
+            lm_reportoccurrences. Open one to see the row as it stands in the table.</Note>}
 
     <div className="fltr" style={{justifyContent:'space-between'}}>
       <div style={{display:'flex',gap:8,alignItems:'center'}}>
@@ -1403,7 +1518,6 @@ function ScreenCalendar(){
       <div style={{display:'flex',gap:15,flexWrap:'wrap',marginTop:11,fontSize:11.5,color:'var(--muted)'}}>
         <span><span className="tag blue" style={{padding:'1px 7px'}}>&nbsp;</span> Meetings</span>
         <span><span className="tag ink" style={{padding:'1px 7px'}}>&nbsp;</span> Reports</span>
-        <span><span className="tag purple" style={{padding:'1px 7px'}}>&nbsp;</span> MOM Due</span>
         <span><span className="tag grey" style={{padding:'1px 7px'}}>&nbsp;</span> Cancelled</span>
       </div>
     </div>}
@@ -1525,114 +1639,6 @@ const KIND_ICON = {Report:'\u{1F4C4}', Meeting:'\u{1F5D3}', Minutes:'\u{1F4DD}',
 const KIND_SLOT = {Report:'rpt', Meeting:'mtg', Minutes:'gov', 'Audit Grid':'gov',
                    Decision:'dec', Task:'gov'};
 
-function openItems(db, S){
-  const due=[], review=[], finish=[];
-  const mk=(bucket,area,rid,title,sub,action,owner,date,urgent,tab,screen)=>
-    bucket.push({area,rid,title,sub,action,owner,date:date||null,
-                 urgent:!!urgent,tab,screen:screen||'mtg'});
-
-  /* ---- Reports ---- */
-  db.reports.forEach(r=>{
-    const nm   = r.setup? RS(r.setup).name : r.custom.name;
-    const revs = r.setup? RS(r.setup).reviewers : r.custom.reviewers;
-    const dd   = reportDue(r);
-    if(r.status==='Draft')
-      mk(due,'Report',r.id,nm,fmtP(r.period)+' · '+(r.setup?RS(r.setup).cat:'Custom'),
-         r.file?'Prepare the working copy and submit':'Generate the working copy, then submit',
-         r.creator,dd,dd&&dd<TODAY,null,'rpt');
-    if(r.status==='In Review')
-      mk(review,'Report',r.id,nm,fmtP(r.period)+' · review step '+(r.step+1)+' of '+revs.length,
-         'Review — approve, comment or request more information',revs[r.step],dd,false,null,'rpt');
-  });
-
-  /* ---- Meetings not yet held ---- */
-  db.occs.filter(o=>o.status==='Scheduled').forEach(o=>{
-    const r=occRoles(o), nm=occName(o);
-    const late=inputReadiness(db,o,S).filter(x=>!x.ready);
-    if(!o.agenda.length)
-      mk(due,'Meeting',o.id,nm,fmtD(o.date)+' · '+o.start,
-         'Add at least one Agenda Item — the Meeting cannot proceed without one',
-         r.facilitator||r.chair,o.date,true,'agenda');
-    else if(!o.agendaSent)
-      mk(due,'Meeting',o.id,nm,fmtD(o.date)+' · '+o.start,
-         'Distribute the Agenda ahead of the Meeting',r.facilitator||r.chair,o.date,false,'agenda');
-    if(late.length)
-      mk(due,'Meeting',o.id,nm,fmtD(o.date)+' · '+o.start,
-         late.length+' linked input not yet '+(S.inputReadiness==='approved'?'approved':'submitted'),
-         r.facilitator||r.chair,o.date,true,'inputs');
-  });
-
-  /* ---- Meetings held, governance record unfinished ---- */
-  db.occs.filter(o=>o.status==='Held').forEach(o=>{
-    const r=occRoles(o), nm=occName(o), m=db.moms.find(x=>x.occ===o.id);
-    if(!m){
-      mk(finish,'Minutes',o.id,nm,fmtD(o.date)+' · held, no Minutes yet',
-         'Record the Minutes — every completed Meeting must have them',r.recorder,o.date,true,'minutes');
-      return;
-    }
-    if(m.status==='Draft' && !m.submittedAt)
-      mk(finish,'Minutes',o.id,nm,fmtD(o.date)+' · Minutes in Draft',
-         'Record the outcomes and submit for approval',r.recorder,o.date,true,'minutes');
-    if(m.status==='Draft' && m.submittedAt)
-      mk(review,'Minutes',o.id,nm,fmtD(o.date)+' · submitted',
-         'Approve or return the Minutes — approval is the signature',r.chair,o.date,true,'minutes');
-    if(m.status==='Approved' && !m.closedAt)
-      mk(finish,'Minutes',o.id,nm,fmtD(o.date)+' · approved, not closed',
-         'Close the Minutes to release the governance score',r.chair,o.date,false,'minutes');
-    const g=db.grids.find(x=>x.occ===o.id);
-    if(g){
-      if(g.state==='Pending Facilitator Review')
-        mk(finish,'Audit Grid',o.id,nm,fmtD(o.date)+' · awaiting scoring',
-           'Score the remaining questions and submit',g.facilitator,o.date,true,'grid');
-      if(g.state==='Returned for Revision')
-        mk(finish,'Audit Grid',o.id,nm,fmtD(o.date)+' · returned by the Chair',
-           'Revise and resubmit',g.facilitator,o.date,true,'grid');
-      if(g.state==='Submitted for Approval')
-        mk(review,'Audit Grid',o.id,nm,fmtD(o.date)+' · submitted',
-           'Approve or return the Audit Grid',g.chair,o.date,true,'grid');
-    }
-  });
-
-  /* ---- Decisions ---- */
-  db.decisions.filter(d=>!d.draft).forEach(d=>{
-    if(d.blocked)
-      mk(due,'Decision',d.id,d.title,d.type+' · blocked',
-         'No Authority Matrix mapping — submission is blocked',d.creator,null,true,null,'dec');
-    else if(d.status==='Draft' && d.path==='Direct')
-      mk(due,'Decision',d.id,d.title,d.type+' · authority confirmed',
-         'Record the Direct Decision with a rationale',d.creator,null,false,null,'dec');
-    else if(d.status==='Draft')
-      mk(due,'Decision',d.id,d.title,d.type+' · Decision Request',
-         'Add Proposals and evidence, then submit',d.creator,null,false,null,'dec');
-    else if(d.status==='In Approval'){
-      const s=d.steps.find(x=>x.state==='Pending');
-      mk(review,'Decision',d.id,d.title,d.type+(s?' · '+s.pos:''),
-         'Approve, reject or request more information',s?s.who:null,null,false,null,'dec');
-    }
-    else if(d.status==='Returned')
-      mk(due,'Decision',d.id,d.title,d.type+' · returned',
-         'Add the information requested and resubmit',d.creator,null,true,null,'dec');
-    else if(d.status==='Approved')
-      mk(finish,'Decision',d.id,d.title,d.type+' · approved',
-         'Execute the Outputs and monitor the outcome',d.execOwner,null,false,null,'dec');
-  });
-
-  /* ---- Tasks ---- */
-  db.tasks.filter(t=>!t.draft && t.status!=='Closed').forEach(t=>{
-    if(t.src.k==='mom'){
-      const m=db.moms.find(x=>x.id===t.src.id), o=m&&db.occs.find(x=>x.id===m.occ);
-      mk(finish,'Task',o?o.id:null,t.title,o?'From '+occName(o)+' · '+fmtD(o.date):'Task in TMS',
-         'Execute and close in TMS',t.owner,t.due,t.due<TODAY,'outputs');
-    } else {
-      const d=db.decisions.find(x=>x.id===t.src.id);
-      mk(finish,'Task',t.src.id,t.title,d?'From the Decision “'+d.title+'”':'Task in TMS',
-         'Execute and close in TMS',t.owner,t.due,t.due<TODAY,null,'dec');
-    }
-  });
-
-  return {due,review,finish,all:[...due,...review,...finish]};
-}
-
 /* Due date of a Report Submission, from the reporting period and the approved Setup. */
 function reportDue(r){
   if(!r.setup) return null;
@@ -1640,32 +1646,169 @@ function reportDue(r){
   return r.period+'-'+String(s.dueDay).padStart(2,'0');
 }
 
-/* Calendar entries: Meetings and Report due dates on one timeline, colour-coded by kind. */
-function calendarItems(db, S){
-  const out=[];
-  db.occs.forEach(o=>out.push({
-    id:o.id, kind:'Meeting', date:o.date, time:o.start, title:occName(o),
+/* =========================================================================
+   LIVE DATAVERSE LAYER — occurrences and the reference data they point at
+   =========================================================================
+   The rest of this module runs on seeded demo records keyed by synthetic ids
+   ('u2', 'AHJ', 'ms1'), and its permission model hangs off fields that only
+   exist on those seeds (mgr / lvl / scope / fam). Real occurrence rows key
+   off Dataverse GUIDs instead, and there is no mapping between the two.
+
+   So live rows are kept as their OWN records rather than being folded into
+   the seeded ones: the Calendar merges both, and a live row opens a read-only
+   detail panel instead of the seeded Meeting screen, which could not render
+   it. Nothing here mutates the demo state.
+   ========================================================================= */
+
+/* GUID -> display name, filled from Dataverse on mount. Plain objects rather
+   than state because they are read from render paths all over this file. */
+let DV_BU_NAME={}, DV_POS_NAME={}, DV_POS_HOLDER={}, DV_DEPT_NAME={}, DV_TPL_NAME={};
+/* The same reference data as lists, for the pickers on the Custom Ad Hoc form
+   -- a Dataverse lookup only accepts a real row id, so that form cannot offer
+   the seeded PEOPLE/BUS ids the rest of this module uses. */
+let DV_BU_LIST=[], DV_POS_LIST=[], DV_TPL_LIST=[], DV_REGION_LIST=[], DV_DEPT_LIST=[];
+let DV_REGION_NAME={};
+const dvRegion = id => (id && DV_REGION_NAME[id]) || null;
+/* The two time zones the group operates in. lm_timezone is a plain text column,
+   so the Windows time-zone id is what gets written. */
+const TIME_ZONES=[
+  {id:'Arabia Standard Time', label:'KSA — (UTC+03:00) Riyadh', match:/saudi|ksa/i},
+  {id:'Egypt Standard Time',  label:'Egypt — (UTC+02:00) Cairo', match:/egypt|egy/i},
+];
+/* Best time zone for a Region name, so choosing scope pre-selects it. */
+const tzForRegionName = name => (TIME_ZONES.find(t=>name&&t.match.test(name))||TIME_ZONES[0]).id;
+
+/* The Business Units a Meeting's scope covers. Both Departments and Positions
+   hang off a Business Unit, and a Business Unit belongs to a Region -- so Stage
+   1 covers the one chosen Business Unit, Stage 2 covers every Business Unit
+   inside the chosen Region, and Group / ExCom cover everything.
+
+   Returns null for "no narrowing at all", which is deliberately different from
+   an empty set: an empty set means a scope was expected but not chosen yet, and
+   nothing should be offered until it is. */
+function scopeBuIds(stage, buId, regionId){
+  if(stage==='Business Unit') return buId ? new Set([buId]) : new Set();
+  if(stage==='Region'){
+    if(!regionId) return new Set();
+    return new Set(DV_BU_LIST.filter(b=>b.region===regionId).map(b=>b.id));
+  }
+  return null;
+}
+/* The Departments a Meeting may pick from, narrowed to its scope.
+
+   A Department row carries no Business Unit of its own -- the relationship
+   lives in the Organization Structure, where every position assignment names
+   both. So the Departments inside a Business Unit are the ones its positions
+   actually sit in, which is also why this and the Chair list stay consistent:
+   both come from the same rows. */
+function departmentsForScope(stage, buId, regionId){
+  const ids=scopeBuIds(stage, buId, regionId);
+  if(ids===null) return DV_DEPT_LIST;
+  if(!ids.size) return [];
+  const inScope=new Set();
+  DV_POS_LIST.forEach(p=>{ if(p.dept && p.bu && ids.has(p.bu)) inScope.add(p.dept); });
+  return DV_DEPT_LIST.filter(d=>inScope.has(d.id));
+}
+/* The Positions a Meeting may name as Chair, narrowed the same way -- a
+   Position assignment carries the Business Unit it sits in. */
+function positionsForScope(stage, buId, regionId){
+  const ids=scopeBuIds(stage, buId, regionId);
+  if(ids===null) return DV_POS_LIST;
+  return DV_POS_LIST.filter(p=>p.bu && ids.has(p.bu));
+}
+const dvBu    = id => (id && DV_BU_NAME[id])   || null;
+const dvPos   = id => (id && DV_POS_NAME[id])  || null;
+const dvDept  = id => (id && DV_DEPT_NAME[id]) || null;
+const dvTpl   = id => (id && DV_TPL_NAME[id])  || null;
+
+/* One Dataverse Meeting Occurrence as a Calendar entry, in the same shape
+   calendarItems() produces for seeded records so both render identically. */
+function dvMeetingCalItem(o){
+  const kindBits=[o.adhocType ? 'Ad Hoc '+o.adhocType : (dvTpl(o.templateId)||'Meeting')];
+  if(o.mode) kindBits.push(o.mode);
+  // Scope reads as whichever the Stage put on the row.
+  const buName=dvBu(o.businessUnitId)||dvRegion(o.regionId);
+  return {
+    id:o.id, kind:'Meeting', date:o.date, time:o.start, title:o.name,
     cls:o.status==='Cancelled'?'canc':o.restricted?'restr':o.status==='Held'?'held':'due',
-    status:o.status, sub:(o.adhoc?'Ad Hoc '+o.adhoc:occCls(o))+' · '+o.mode,
-    bu:o.bu, type:o.adhoc?'Ad Hoc':occType(o), screen:'mtg', tab:'detail', restricted:o.restricted}));
-  db.reports.forEach(r=>{
-    const d=reportDue(r); if(!d) return;
-    out.push({id:r.id, kind:'Report', date:d, time:null,
-      title:(r.setup?RS(r.setup).name:r.custom.name),
-      cls:'rpt', status:r.status, sub:fmtP(r.period)+' · '+r.status,
-      bu:r.bu, type:'Report', screen:'rpt', tab:null});
+    status:o.status, sub:kindBits.join(' · ')+(buName?' · '+buName:''),
+    bu:o.businessUnitId, type:o.adhocType?'Ad Hoc':'Meeting',
+    restricted:o.restricted, _dv:true, _rec:o,
+  };
+}
+
+/* One Dataverse Report Occurrence as a Calendar entry. Its period is the date
+   the calendar places it on -- there is no separate due-date column. */
+function dvReportCalItem(r){
+  const buName=dvBu(r.businessUnitId);
+  return {
+    id:r.id, kind:'Report', date:r.period, time:null,
+    title:r.name, cls:'rpt', status:r.status,
+    sub:[r.status, dvTpl(r.templateId), buName].filter(Boolean).join(' · '),
+    bu:r.businessUnitId, type:'Report', _dv:true, _rec:r,
+  };
+}
+
+/* What the live tables say still needs doing, in the same shape openItems()
+   produces for seeded records so the Workspace renders both side by side.
+
+   Only what the occurrence rows themselves can prove is listed. A live Meeting
+   has no Minutes or Audit Grid record behind it — those live in seeded state —
+   so a Held Meeting is reported as needing its Minutes, and nothing further is
+   inferred about a governance record that does not exist yet. */
+function dvWorkItems(meetingOccs, reportOccs){
+  const due=[], review=[], finish=[];
+  const mk=(bucket,area,rec,title,sub,action,date,urgent)=>
+    bucket.push({area, rid:rec.id, title, sub, action,
+                 owner:null, date:date||null, urgent:!!urgent,
+                 tab:null, screen:'mtg', _dv:true, _rec:rec});
+
+  meetingOccs.forEach(o=>{
+    const when=[o.date?fmtD(o.date):null, o.start].filter(Boolean).join(' · ');
+    const scope=dvBu(o.businessUnitId)||dvRegion(o.regionId);
+    const sub=[when, scope].filter(Boolean).join(' · ');
+    if(o.status==='Scheduled'){
+      if(!o.agenda.length)
+        mk(due,'Meeting',o,o.name,sub,
+           'Add at least one Agenda Item — the Meeting cannot proceed without one',o.date,true);
+      else if(!o.agendaSent)
+        mk(due,'Meeting',o,o.name,sub,'Distribute the Agenda ahead of the Meeting',o.date,false);
+      const unrecorded=o.attendees.filter(a=>!a.present||a.present==='Not Yet Recorded').length;
+      if(!o.attendees.length)
+        mk(due,'Meeting',o,o.name,sub,'No Attendees on this Meeting yet',o.date,true);
+      else if(unrecorded===o.attendees.length && o.date && o.date<TODAY)
+        mk(finish,'Meeting',o,o.name,sub+' · past its date, still Scheduled',
+           'Mark the Meeting as Held, or cancel it',o.date,true);
+    }
+    if(o.status==='Held'){
+      const notCovered=o.agenda.filter(a=>!a.covered||a.covered==='Not Yet Recorded').length;
+      if(notCovered)
+        mk(finish,'Minutes',o,o.name,sub+' · held',
+           `Record the outcome of ${notCovered} Agenda Item${notCovered===1?'':'s'}`,o.date,true);
+      const noAttendance=o.attendees.filter(a=>!a.present||a.present==='Not Yet Recorded').length;
+      if(noAttendance)
+        mk(finish,'Meeting',o,o.name,sub+' · held',
+           `Record attendance for ${noAttendance} Attendee${noAttendance===1?'':'s'}`,o.date,true);
+    }
   });
-  /* MOM write-up deadline — only meaningful once OD-09a (momWriteupHours) is approved,
-     and only while the MOM is still an unsubmitted Draft. */
-  if(S.momWriteupHours!=null) db.occs.filter(o=>o.status==='Held').forEach(o=>{
-    const m=db.moms.find(x=>x.occ===o.id);
-    if(!m || m.status!=='Draft' || m.submittedAt) return;
-    const due=addHours(o.date+' '+o.end, S.momWriteupHours);
-    out.push({id:o.id, kind:'MOM', date:due.slice(0,10), time:due.slice(11,16),
-      title:'MOM Due: '+occName(o), cls:'mom', status:m.status, sub:'Write-up deadline',
-      bu:o.bu, type:'MOM', screen:'mtg', tab:'minutes'});
+
+  reportOccs.forEach(r=>{
+    const scope=dvBu(r.businessUnitId)||dvRegion(r.regionId);
+    const sub=[r.period?fmtD(r.period):null, dvDept(r.departmentId), scope].filter(Boolean).join(' · ');
+    if(r.status==='Draft')
+      mk(due,'Report',r,r.name,sub,
+         r.fileUrl?'Prepare the working copy and submit':'Generate the working copy, then submit',
+         r.period,false);
+    if(r.status==='In Review')
+      mk(review,'Report',r,r.name,
+         sub+(r.reviewStep!=null?' · review step '+r.reviewStep:''),
+         'Review — approve, comment or request more information',r.period,false);
+    if(r.status==='Returned')
+      mk(due,'Report',r,r.name,sub+' · returned',
+         'Address the reviewer’s comments and resubmit',r.period,true);
   });
-  return out;
+
+  return {due,review,finish};
 }
 
 /* =========================================================================
@@ -1696,7 +1839,18 @@ function App({onSwitch}){
   /* Minutes, the Audit Grid and follow-up all live inside their Meeting Occurrence. */
   const openMeeting=(occId,tab)=>{ setScreen('mtg');
     setSel(v=>({...v,mtg:occId,mtgTab:tab||'detail'})); window.scrollTo({top:0}); };
-  const openWork=w=> w.tab ? openMeeting(w.rid,w.tab) : go(w.screen,w.rid);
+  /* A live Dataverse row has no seeded record behind it, so wherever one is
+     clicked -- Workspace, Calendar or Meetings -- it opens the read-only panel
+     rather than an execution screen that could not render it. */
+  const [dvOpen,setDvOpen]=useState(null);
+  /* A live Meeting Occurrence has a full detail page of its own, so it navigates
+     there. A live Report Occurrence has no page yet, so it opens the read-only
+     panel instead. */
+  const openDvRec=(kind,rec)=> kind==='Report'
+    ? setDvOpen({kind:'Report',_rec:rec})
+    : openMeeting(rec.id,'detail');
+  const openWork=w=> w._dv ? openDvRec(w.area==='Report'?'Report':'Meeting', w._rec)
+    : w.tab ? openMeeting(w.rid,w.tab) : go(w.screen,w.rid);
   const reset=()=>{ if(!window.confirm('Reset the demo to its seeded state? All changes in this browser are discarded.')) return;
                     localStorage.removeItem(KEY); setDb(seed()); setSel({}); setScreen('work');
                     toast('Demo reset','Every record is back to its seeded state.','ok'); };
@@ -2084,8 +2238,83 @@ function App({onSwitch}){
     }
   }
 
-  const work = useMemo(()=>openItems(db,S),[db,S]);
-  const cal  = useMemo(()=>calendarItems(db,S),[db,S]);
+  /* Live rows from lm_meetingoccurrences / lm_reportoccurrences, plus the
+     reference data their lookups point at. Reference data is loaded first so
+     the calendar never renders a bare GUID; a failure on any one of these
+     leaves the seeded calendar working on its own. */
+  const [dvMeetingOccs,setDvMeetingOccs]=useState([]);
+  const [dvReportOccs,setDvReportOccs]=useState([]);
+  const [dvTick,setDvTick]=useState(0);        // bumped when the name maps change
+  const [dvLoading,setDvLoading]=useState(true);
+  const [dvError,setDvError]=useState(null);
+
+  const refreshOccurrences=async()=>{
+    let failed=null;
+    try{
+      const list=await fetchMeetingOccurrences();
+      console.log(`[dataverse] fetchMeetingOccurrences() returned ${list?list.length:0} row(s)`, list);
+      setDvMeetingOccs(list||[]);
+    }catch(e){ console.warn('[dataverse] fetchMeetingOccurrences() failed:', e); failed=e; }
+    try{
+      const list=await fetchReportOccurrences();
+      console.log(`[dataverse] fetchReportOccurrences() returned ${list?list.length:0} row(s)`, list);
+      setDvReportOccs(list||[]);
+    }catch(e){ console.warn('[dataverse] fetchReportOccurrences() failed:', e); failed=failed||e; }
+    setDvError(failed?'Live occurrences could not be read from Dataverse. The seeded demo calendar is shown on its own.':null);
+  };
+
+  useEffect(()=>{
+    let cancelled=false;
+    (async()=>{
+      // Names first, so a live row never renders as a raw GUID.
+      const load=async(fn,label,apply)=>{
+        try{ const rows=await fn(); if(!cancelled&&rows) apply(rows); }
+        catch(e){ console.warn(`[dataverse] ${label} failed:`, e); }
+      };
+      await Promise.all([
+        load(fetchBusinessUnits,'fetchBusinessUnits',rows=>{
+          DV_BU_NAME={}; rows.forEach(r=>{ DV_BU_NAME[r.id]=r.name; });
+          DV_BU_LIST=rows.slice().sort((x,y)=>(x.name||'').localeCompare(y.name||'')); }),
+        load(fetchPositions,'fetchPositions',rows=>{
+          DV_POS_NAME={}; DV_POS_HOLDER={};
+          rows.forEach(r=>{ DV_POS_NAME[r.id]=r.name; DV_POS_HOLDER[r.id]=r.holder||null; });
+          DV_POS_LIST=rows.slice().sort((x,y)=>(x.name||'').localeCompare(y.name||'')); }),
+        load(fetchDepartments,'fetchDepartments',rows=>{
+          DV_DEPT_NAME={}; rows.forEach(r=>{ DV_DEPT_NAME[r.id]=r.name; });
+          DV_DEPT_LIST=rows.slice().sort((x,y)=>(x.name||'').localeCompare(y.name||'')); }),
+        load(fetchRegions,'fetchRegions',rows=>{
+          DV_REGION_NAME={}; rows.forEach(r=>{ DV_REGION_NAME[r.id]=r.name; });
+          DV_REGION_LIST=rows.slice().sort((x,y)=>(x.name||'').localeCompare(y.name||'')); }),
+        load(fetchMeetingTemplatesList,'fetchMeetingTemplatesList',rows=>{
+          DV_TPL_NAME={}; rows.forEach(r=>{ DV_TPL_NAME[r.id]=r.name; });
+          DV_TPL_LIST=rows.slice().sort((x,y)=>(x.name||'').localeCompare(y.name||'')); }),
+      ]);
+      if(cancelled) return;
+      setDvTick(t=>t+1);
+      await refreshOccurrences();
+      if(!cancelled) setDvLoading(false);
+    })();
+    return ()=>{cancelled=true;};
+  },[]);
+
+  /* Open work, derived only from what the occurrence tables hold. The seeded
+     demo records no longer feed this screen. The Reports, Minutes, Audit Grid
+     and Decisions screens still read seeded state directly and are unchanged.
+     dvTick is a dependency because the GUID->name maps the live items read from
+     are plain objects, not state. */
+  const work = useMemo(()=>{
+    const {due,review,finish}=dvWorkItems(dvMeetingOccs,dvReportOccs);
+    return {due,review,finish,all:[...due,...review,...finish]};
+  },[dvMeetingOccs,dvReportOccs,dvTick]);
+  /* The calendar shows the occurrence tables and nothing else -- the seeded
+     demo entries, and the MOM write-up deadlines derived from them, are gone.
+     dvTick is a dependency because the GUID->name maps the live items read from
+     are plain objects, not state -- without it the first render after they load
+     would keep the earlier, name-less labels. */
+  const cal  = useMemo(()=>[
+    ...dvMeetingOccs.filter(o=>o.date).map(dvMeetingCalItem),
+    ...dvReportOccs.filter(r=>r.period).map(dvReportCalItem),
+  ],[dvMeetingOccs,dvReportOccs,dvTick]);
   const counts = useMemo(()=>{
     const c={work:work.due.length+work.finish.length};
     work.all.forEach(w=>{ c[w.screen]=(c[w.screen]||0)+1; });
@@ -2093,7 +2322,9 @@ function App({onSwitch}){
   },[work]);
 
   const ctx = {db,setDb,mut,me,bu,setBu,screen,go,openMeeting,openWork,sel,setSel,
-               toast,toasts,reset,S,A,work,cal,counts,onSwitch};
+               toast,toasts,reset,S,A,work,cal,counts,onSwitch,
+               dvMeetingOccs,dvReportOccs,dvLoading,dvError,refreshOccurrences,
+               dvOpen,setDvOpen,openDvRec};
   const Screen = {work:ScreenWorkspace, cal:ScreenCalendar, rpt:ScreenReports, mtg:ScreenMeetings,
                   mom:ScreenMinutes,
                   grid:ScreenGrid, dec:ScreenDecisions, set:ScreenSettings}[screen] || ScreenWorkspace;
@@ -2105,6 +2336,7 @@ function App({onSwitch}){
       <main className={'main'+(screen==='work'||screen==='cal'||screen==='rpt'||screen==='mtg'||screen==='mom'?' full':'')}><Screen/></main>
     </div>
     <Toasts/>
+    {dvOpen ? <DvOccurrenceModal item={dvOpen} onClose={()=>setDvOpen(null)}/> : null}
   </Ctx.Provider>;
 }
 /* =========================================================================
@@ -2114,8 +2346,9 @@ const AREA_C = {'Report':'blue','Meeting':'teal','Minutes':'teal',
                 'Audit Grid':'purple','Decision':'amber','Task':'grey'};
 
 function ItemTable({rows,dateLabel}){
-  const {go,openMeeting} = use();
-  const open=w=> w.screen==='mtg' ? openMeeting(w.rid,w.tab||'detail') : go(w.screen,w.rid);
+  const {go,openMeeting,openDvRec} = use();
+  const open=w=> w._dv ? openDvRec(w.area==='Report'?'Report':'Meeting', w._rec)
+    : w.screen==='mtg' ? openMeeting(w.rid,w.tab||'detail') : go(w.screen,w.rid);
   return <div className="t-wrap"><table className="data">
     <thead><tr><th>Area</th><th>Record</th><th>What it needs</th><th>Accountable</th>
       <th>{dateLabel||'Date'}</th><th></th></tr></thead>
@@ -2146,7 +2379,8 @@ function Bucket({dot,title,sub,rows,dateLabel,empty}){
 }
 
 function ScreenWorkspace(){
-  const {db,work,cal,go,openMeeting,S} = use();
+  const {work,cal,go,openMeeting,openDvRec,dvMeetingOccs,dvReportOccs} = use();
+  const [newReport,setNewReport]=useState(false);
   const [tab,setTab]     = useState('All');
   const [quick,setQuick] = useState('all');
   const overdue = work.all.filter(w=>w.date && w.date<TODAY);
@@ -2197,25 +2431,26 @@ function ScreenWorkspace(){
   const meetingsThisWeek = cal.filter(i=>i.kind==='Meeting' && i.date>=weekBounds[0] && i.date<=weekBounds[1]);
   const overdueReports = overdue.filter(w=>w.area==='Report').length;
 
-  const meetingsHeld = db.occs.filter(o=>o.status==='Held').length;
-  const meetingsTotal = db.occs.filter(o=>o.status!=='Cancelled').length;
-  const momApproved = db.moms.filter(m=>m.status==='Approved'||m.status==='Closed').length;
-  const reportsSubmitted = db.reports.filter(r=>r.status!=='Draft').length;
-  const decisionsClosed = db.decisions.filter(d=>d.status==='Closed').length;
-  const decisionsTotal = db.decisions.filter(d=>!d.draft).length;
-  const scoredGrids = db.grids.filter(g=>g.score!=null);
-  const gridRate = scoredGrids.length
-    ? (S.passThreshold
-        ? Math.round(scoredGrids.filter(g=>g.score>=S.passThreshold).length/scoredGrids.length*100)
-        : Math.round(scoredGrids.reduce((a,g)=>a+g.score,0)/scoredGrids.length))
-    : null;
+  /* Activity, read from the occurrence tables. Minutes, Decisions and Audit
+     Grid figures are gone from here -- those records do not exist in Dataverse,
+     so there is nothing real to count. */
+  const meetingsHeld  = dvMeetingOccs.filter(o=>o.status==='Held').length;
+  const meetingsTotal = dvMeetingOccs.filter(o=>o.status!=='Cancelled').length;
+  const reportsSubmitted = dvReportOccs.filter(r=>r.status && r.status!=='Draft').length;
+  const reportsApproved  = dvReportOccs.filter(r=>r.status==='Approved').length;
+  const agendaRecorded = dvMeetingOccs.filter(o=>o.status==='Held'
+    && o.agenda.length && o.agenda.every(a=>a.covered && a.covered!=='Not Yet Recorded')).length;
+
 
   return <>
     <div className="ph ph-row">
       <div style={{flex:1}}><h1>My Workspace</h1>
         <div className="sub">Your pending tasks, upcoming meetings, and action items across all modules.</div></div>
+      <Btn onClick={()=>setNewReport(true)}>+ Ad Hoc Report</Btn>
       <Btn k="pri" onClick={()=>go('mtg')}>+ New Meeting</Btn>
     </div>
+
+    {newReport && <DvAdHocReportModal onClose={()=>setNewReport(false)}/>}
 
     <div className="tabs">
       {TABS.map(t=>{
@@ -2260,7 +2495,9 @@ function ScreenWorkspace(){
               <th>Due</th><th>Action</th></tr></thead>
             <tbody>{rows.map((w,i)=>{
               const st = statusOf(w);
-              const openRow = ()=> w.screen==='mtg' ? openMeeting(w.rid,w.tab||'detail') : go(w.screen,w.rid);
+              const openRow = ()=> w._dv
+                ? openDvRec(w.area==='Report'?'Report':'Meeting', w._rec)
+                : w.screen==='mtg' ? openMeeting(w.rid,w.tab||'detail') : go(w.screen,w.rid);
               return <tr key={w.bucket+w.area+w.rid+i} className="click" onClick={openRow}>
                 <td><Tag c={AREA_C[w.area]}>{w.area}</Tag></td>
                 <td><div className="t-main">{w.title}</div><div className="t-sub">{w.sub}</div></td>
@@ -2287,7 +2524,9 @@ function ScreenWorkspace(){
           {upcoming.length===0 ? <Empty ic="🗓">Nothing scheduled yet.</Empty>
           : upcoming.map((i,n)=>{
               return <div key={i.kind+i.id+n} className="wa-up-r"
-                  onClick={()=> i.screen==='mtg' ? openMeeting(i.id,i.tab||'detail') : go(i.screen,i.id)}>
+                  onClick={()=> i._dv
+                    ? openDvRec(i.kind==='Report'?'Report':'Meeting', i._rec)
+                    : i.screen==='mtg' ? openMeeting(i.id,i.tab||'detail') : go(i.screen,i.id)}>
                 <div className="wa-date"><span className="dd">{i.date.slice(8)}</span>
                   <span className="mo">{MONTHS[+i.date.slice(5,7)-1]}</span></div>
                 <div className="wa-up-t">
@@ -2303,18 +2542,15 @@ function ScreenWorkspace(){
             <div className="wa-icon amber">📈</div>
             <h2 style={{flex:1}}>This Month</h2>
           </div>
-          <div className="csub" style={{marginBottom:2}}>Governance activity across the module.</div>
+          <div className="csub" style={{marginBottom:2}}>Read from the Meeting and Report Occurrence tables.</div>
           <div className="wa-mo-r"><label>Meetings Held</label>
             <span className="v">{meetingsHeld} / {meetingsTotal}</span></div>
-          <div className="wa-mo-r"><label>MOM Approved</label>
-            <span className="v">{momApproved} / {db.moms.length}</span></div>
+          <div className="wa-mo-r"><label>Agenda Fully Recorded</label>
+            <span className="v">{agendaRecorded} / {meetingsHeld}</span></div>
           <div className="wa-mo-r"><label>Reports Submitted</label>
-            <span className="v">{reportsSubmitted} / {db.reports.length}</span></div>
-          <div className="wa-mo-r"><label>Decisions Closed</label>
-            <span className="v">{decisionsClosed} / {decisionsTotal}</span></div>
-          <div className="wa-mo-r">
-            <label>Audit Grid {S.passThreshold?'Pass Rate':'Avg Score'}</label>
-            <span className="v">{gridRate==null?'—':gridRate+'%'}</span></div>
+            <span className="v">{reportsSubmitted} / {dvReportOccs.length}</span></div>
+          <div className="wa-mo-r"><label>Reports Approved</label>
+            <span className="v">{reportsApproved} / {dvReportOccs.length}</span></div>
         </div>
       </div>
     </div>
@@ -2697,7 +2933,13 @@ const WIZ_STEPS = [
   {id:'files',    n:3, label:'Attachments', hint:'Upload files'},
   {id:'submit',   n:4, label:'Submit',      hint:'Review & submit'},
 ];
-const WIZ_DEPTS = ['Hospital-Wide','Quality','Nursing','Pharmacy','Facilities','Emergency','Executive'];
+/* Departments for the Report wizard, read live from cr603_chklst_departmentses.
+   Falls back to the seeded names only when the table has not loaded, so the
+   field is never an empty dropdown. */
+const WIZ_DEPTS_FALLBACK = ['Hospital-Wide','Quality','Nursing','Pharmacy','Facilities','Emergency','Executive'];
+const wizDepts = () => DV_DEPT_LIST.length
+  ? DV_DEPT_LIST.map(d=>d.name).filter(Boolean)
+  : WIZ_DEPTS_FALLBACK;
 const TPL_STYLE = {
   rs1:{ic:'📊', bg:'var(--teal-l)',  fg:'var(--teal-d)'},
   rs2:{ic:'👥', bg:'var(--blue-bg)', fg:'var(--blue)'},
@@ -2818,9 +3060,11 @@ function ReportWizard({onClose}){
           <div className="f-row">
             <Field label="Setup / Committee" req hint={!isCustom?'Auto-filled from template':null}>
               <input type="text" value={setupLabel} disabled/></Field>
-            <Field label="Department" req>
+            <Field label="Department" req
+              hint={DV_DEPT_LIST.length?'Read from the Departments table.':null}>
               <select value={f.dept} onChange={e=>set('dept',e.target.value)}>
-                {WIZ_DEPTS.map(d=><option key={d}>{d}</option>)}</select></Field>
+                <option value="">Select…</option>
+                {wizDepts().map(d=><option key={d}>{d}</option>)}</select></Field>
           </div>
         </div>
 
@@ -2941,6 +3185,149 @@ function ReportWizard({onClose}){
   </>;
 }
 
+/* Ad Hoc Report — writes straight to lm_reportoccurrences.
+
+   Scope here is a Business Unit only: unlike the Meeting Occurrence table, this
+   one carries no Region and no Stage column, so there is nothing to record them
+   in and no Stage machinery to drive. Department and Creator Position narrow to
+   the chosen Business Unit through the Organization Structure, the same way the
+   Meeting form does. */
+function DvAdHocReportModal({onClose}){
+  const {toast,refreshOccurrences}=use();
+  const [f,setF]=useState({
+    name:'', objective:'', fileUrl:'',
+    period: TODAY.slice(0,7),          // month the Report covers
+    stage:'Business Unit',
+    dvBusinessUnitId:'', dvRegionId:'', dvDepartmentId:'', dvCreatorPositionId:'',
+  });
+  const [saving,setSaving]=useState(false);
+  const set=(k,v)=>setF(x=>({...x,[k]:v}));
+
+  /* Stage decides what the Report is scoped to, exactly as it does for a
+     Meeting: Stage 1 runs in a Business Unit, Stage 2 in a Region, Group and
+     ExCom once group-wide. Department and Creator narrow to whichever applies. */
+  const stageBU     = f.stage==='Business Unit';
+  const stageRegion = f.stage==='Region';
+  const scopeChosen = !(stageBU && !f.dvBusinessUnitId) && !(stageRegion && !f.dvRegionId);
+  const deptOpts = departmentsForScope(f.stage, f.dvBusinessUnitId, f.dvRegionId);
+  const posOpts  = positionsForScope(f.stage, f.dvBusinessUnitId, f.dvRegionId);
+  const scopeHint = stageBU ? 'Narrowed to the chosen Business Unit.'
+    : stageRegion ? 'Narrowed to every Business Unit in the chosen Region.'
+    : 'Group and ExCom Reports are not narrowed — everything is offered.';
+  const ok = f.name.trim() && f.objective.trim() && scopeChosen
+    && f.dvCreatorPositionId && f.period;
+
+  const save=async()=>{
+    setSaving(true);
+    try{
+      const {id,errors}=await createReportOccurrence({
+        name:f.name.trim(),
+        objective:f.objective.trim(),
+        stage:f.stage,
+        businessUnitId:(stageBU && f.dvBusinessUnitId) ? f.dvBusinessUnitId : undefined,
+        regionId:(stageRegion && f.dvRegionId) ? f.dvRegionId : undefined,
+        departmentId:f.dvDepartmentId||undefined,
+        creatorPositionId:f.dvCreatorPositionId||undefined,
+        // A month is stored as its first day -- the column is a date, and the
+        // Report covers the period, not a particular day in it.
+        period:f.period ? f.period+'-01' : undefined,
+        fileUrl:f.fileUrl.trim()||undefined,
+        status:'Draft',
+        version:1,
+        reviewStep:0,
+        noSetupFlag:true,          // an Ad Hoc Report has no approved Setup behind it
+      });
+      if(!id){
+        console.warn('[dataverse] Report Occurrence create failed:', errors);
+        toast('Not saved','Creating the Report Occurrence in Dataverse failed. Check the console for details.','err');
+        return;
+      }
+      toast('Ad Hoc Report created',
+        'Saved to lm_reportoccurrences as a Draft, flagged as having no Setup. It now appears in your Workspace.','ok');
+      await refreshOccurrences();
+      onClose();
+    }catch(e){
+      console.warn('[dataverse] Report Occurrence create threw unexpectedly:', e);
+      toast('Not saved','Creating the Report Occurrence in Dataverse failed. Check the console for details.','err');
+    }finally{ setSaving(false); }
+  };
+
+  return <Modal title="Create an Ad Hoc Report" wide onClose={onClose}
+    sub="Use this where no approved Report Template exists. It is written straight to lm_reportoccurrences as a Draft, flagged as having no Setup."
+    footer={<><Btn onClick={onClose} disabled={saving}>Cancel</Btn>
+      <Btn k="pri" disabled={!ok||saving} onClick={save}>
+        {saving?'Saving…':'Create the Report'}</Btn></>}>
+
+    <Note k="info" ic="i">Business Unit, Department and the Creator are read from Dataverse — the seeded
+      demo people used elsewhere in this module are not real rows and the lookups would reject them.
+      <div style={{marginTop:6}}>Stage, Business Unit / Region, Department and the Creator are all
+      written to lm_reportoccurrences.</div></Note>
+
+    <Field label="Report name" req><input type="text" value={f.name}
+      onChange={e=>set('name',e.target.value)}
+      placeholder="e.g. Ophthalmology Laser Utilisation Review"/></Field>
+    <Field label="Report objective" req hint="Written to lm_ReportObjective.">
+      <textarea value={f.objective} onChange={e=>set('objective',e.target.value)}
+        placeholder="What this Report is for."/></Field>
+
+    <div className="f-row">
+      <Field label="Stage" req
+        hint="Stage 1 runs in one Business Unit, Stage 2 in one Region. Group and ExCom run once, group-wide.">
+        <select value={f.stage} onChange={e=>{
+          const v=e.target.value;
+          // Switching Stage drops the scope that no longer applies, and the
+          // Department and Creator that were narrowed by it.
+          setF(x=>({...x, stage:v, dvBusinessUnitId:'', dvRegionId:'',
+                          dvDepartmentId:'', dvCreatorPositionId:''}));
+        }}>
+        {['Business Unit','Region','Group','ExCom'].map(o=><option key={o}>{o}</option>)}</select></Field>
+
+      {stageBU
+        ? <Field label="Business Unit" req hint="Written to the lm_BusinessUnit lookup.">
+            <select value={f.dvBusinessUnitId} onChange={e=>setF(x=>({...x,
+              dvBusinessUnitId:e.target.value, dvDepartmentId:'', dvCreatorPositionId:''}))}>
+              <option value="">{DV_BU_LIST.length?'Select…':'No Business Units loaded'}</option>
+              {DV_BU_LIST.map(b=>{ const rn=dvRegion(b.region);
+                return <option key={b.id} value={b.id}>{rn?`${b.name} — ${rn}`:b.name}</option>; })}
+            </select></Field>
+        : stageRegion
+          ? <Field label="Region" req hint="Written to the lm_Region lookup.">
+              <select value={f.dvRegionId} onChange={e=>setF(x=>({...x,
+                dvRegionId:e.target.value, dvDepartmentId:'', dvCreatorPositionId:''}))}>
+                <option value="">{DV_REGION_LIST.length?'Select…':'No Regions loaded'}</option>
+                {DV_REGION_LIST.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
+              </select></Field>
+          : <Field label="Scope" hint="Group and ExCom Reports run once, group-wide.">
+              <input type="text" value="Group-wide" disabled/></Field>}
+
+      <Field label="Period" req hint="The month this Report covers. Stored as the first of that month.">
+        <input type="month" value={f.period} onChange={e=>set('period',e.target.value)}/></Field>
+    </div>
+
+    <div className="f-row">
+      <Field label="Department" hint={scopeHint}>
+        <select value={f.dvDepartmentId} onChange={e=>set('dvDepartmentId',e.target.value)}
+          disabled={!scopeChosen}>
+          <option value="">{
+            stageBU&&!f.dvBusinessUnitId ? 'Choose a Business Unit first'
+            : stageRegion&&!f.dvRegionId ? 'Choose a Region first'
+            : deptOpts.length ? 'Select…' : 'No Departments in this scope'}</option>
+          {deptOpts.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
+        </select></Field>
+      <Field label="Created by" req
+        hint="The Position accountable for preparing it. Written to lm_CreatorPosition.">
+        <PositionSelect value={f.dvCreatorPositionId} onChange={v=>set('dvCreatorPositionId',v)}
+          opts={posOpts} disabled={!scopeChosen}
+          placeholder={scopeChosen?'Search a Position…':'Choose the scope first'}
+          emptyText="No Positions in this scope"/></Field>
+    </div>
+
+    <Field label="File" hint="The location the working copy lives in. Dataverse keeps the URL (lm_FileURL).">
+      <input type="text" value={f.fileUrl} onChange={e=>set('fileUrl',e.target.value)}
+        placeholder="https://… or Laser_Utilisation_Review_Q3.xlsx"/></Field>
+  </Modal>;
+}
+
 function CustomReportModal({onClose}){
   const {A} = use();
   const [f,setF]=useState({name:'',objective:'',dept:'',site:'Quality',folder:'2026 / Ad Hoc',
@@ -3027,83 +3414,70 @@ const occStatusTag = (o,mom,grid) => {
   return {t:'Closed',c:'green'};
 };
 
+/* Meetings — read entirely from lm_meetingoccurrences. The seeded demo
+   occurrences, and the Minutes / Audit Grid records that hung off them, are no
+   longer shown here: what this screen reports is what the table holds.
+
+   Two consequences worth naming. "Held and closed" can no longer mean a closed
+   Minutes record, because no such record exists in Dataverse yet — a held
+   Meeting counts as settled once every Agenda Item has an outcome and every
+   Attendee has attendance recorded. And quorum is not reported at all: it is a
+   threshold on the Meeting Template, and matching it against live attendance is
+   its own piece of work. */
 function ScreenMeetings(){
-  const {db,me,sel,setSel,go,cal,S} = use();
+  const {sel,setSel,dvMeetingOccs,dvLoading,dvError,openMeeting} = use();
   const [mk,setMk]=useState(null);
   const [tab,setTab]=useState('due');
   const [typeFilter,setTypeFilter]=useState('all');
-  const id=sel.mtg;
-  const list=db.occs.filter(o=>canSeeOcc(o,me));
-  const rec=list.find(o=>o.id===id);
-  if(rec) return <MeetingDetail rec={rec} back={()=>setSel(v=>({...v,mtg:null,mtgTab:null}))}/>;
 
-  const upcoming=list.filter(o=>o.status==='Scheduled').sort((a,b)=>a.date.localeCompare(b.date));
-  const held=list.filter(o=>o.status==='Held').sort((a,b)=>b.date.localeCompare(a.date));
-  const openAfter = held.filter(o=>{
-    const m=db.moms.find(x=>x.occ===o.id), g=db.grids.find(x=>x.occ===o.id);
-    return !m || m.status!=='Closed' || (g && g.state!=='Approved');
-  });
-  const settled = held.filter(o=>!openAfter.includes(o));
-  const cancelled=list.filter(o=>o.status==='Cancelled');
+  const list=dvMeetingOccs;
+  const rec=list.find(o=>o.id===sel.mtg);
+  if(rec) return <DvMeetingDetail rec={rec} back={()=>setSel(v=>({...v,mtg:null,mtgTab:null}))}/>;
+
+  /* A live Meeting's governance record is its own agenda outcomes and
+     attendance — there is nothing else behind it to close. */
+  const fullyRecorded = o =>
+    o.agenda.length>0 && o.attendees.length>0
+    && o.agenda.every(a=>a.covered && a.covered!=='Not Yet Recorded')
+    && o.attendees.every(a=>a.present && a.present!=='Not Yet Recorded');
+
+  const byDateAsc  = (a,b)=>(a.date||'').localeCompare(b.date||'');
+  const byDateDesc = (a,b)=>(b.date||'').localeCompare(a.date||'');
+  const upcoming  = list.filter(o=>o.status==='Scheduled').sort(byDateAsc);
+  const held      = list.filter(o=>o.status==='Held').sort(byDateDesc);
+  const cancelled = list.filter(o=>o.status==='Cancelled').sort(byDateDesc);
+  const openAfter = held.filter(o=>!fullyRecorded(o));
+  const settled   = held.filter(o=>fullyRecorded(o));
 
   const TABS=[
-    {id:'due',    label:'Not yet held',        rows:upcoming},
-    {id:'open',   label:'Held, record open',   rows:openAfter},
-    {id:'closed', label:'Held and closed',     rows:settled},
-    {id:'all',    label:'All Meetings',        rows:[...upcoming,...held,...cancelled]},
+    {id:'due',    label:'Not yet held',      rows:upcoming},
+    {id:'open',   label:'Held, record open', rows:openAfter},
+    {id:'closed', label:'Held and closed',   rows:settled},
+    {id:'all',    label:'All Meetings',      rows:[...upcoming,...held,...cancelled]},
   ];
   const wk = rangeBounds('week');
-  const applyType = rows => typeFilter==='accred'
-      ? rows.filter(o=>o.setup && (MS(o.setup).cls||'').includes('Accreditation'))
-    : typeFilter==='business' ? rows.filter(o=>occType(o)==='Business Meeting')
-    : typeFilter==='week' ? rows.filter(o=>o.date>=wk[0] && o.date<=wk[1])
+  const applyType = rows =>
+      typeFilter==='setup' ? rows.filter(o=>o.templateId)
+    : typeFilter==='adhoc' ? rows.filter(o=>!o.templateId)
+    : typeFilter==='week'  ? rows.filter(o=>o.date>=wk[0] && o.date<=wk[1])
     : rows;
-  const rows = applyType((TABS.find(t=>t.id===tab)||TABS[0]).rows)
-    .sort((a,b)=> tab==='due' ? a.date.localeCompare(b.date) : b.date.localeCompare(a.date));
+  const rows = applyType((TABS.find(t=>t.id===tab)||TABS[0]).rows);
 
-  const committeesHeld = held.filter(o=>o.setup && isCommittee(o) && MS(o.setup).quorumPct!=null);
-  const quorumMissed = committeesHeld.filter(o=>{
-    const setup=MS(o.setup); const a=attendance(o,setup,S.delegatedAttend);
-    return a.pct < setup.quorumPct; });
+  const thisWeek = upcoming.filter(o=>o.date>=wk[0] && o.date<=wk[1]).slice(0,5);
 
-  const actionFor = o => {
-    if(o.status==='Cancelled') return 'View';
-    if(o.status==='Scheduled'){
-      const rd=inputReadiness(db,o,S);
-      return (o.agenda.length===0 || rd.some(r=>!r.ready)) ? 'Prepare' : 'View';
-    }
-    const mom=db.moms.find(x=>x.occ===o.id), grid=db.grids.find(x=>x.occ===o.id);
-    if(mom && mom.status!=='Closed') return 'Write MOM';
-    if(isCommittee(o) && grid && grid.state!=='Approved') return 'Review';
-    return 'View';
-  };
-
-  /* -------- This Week -------- */
-  const thisWeek = upcoming.filter(o=>o.date>=wk[0] && o.date<=wk[1]).slice(0,4);
-
-  /* -------- Meeting Health -------- */
-  const heldThisPeriod = held.filter(o=>o.date.slice(0,7)===PERIOD.slice(0,7));
-  const scheduledThisPeriod = list.filter(o=>o.status!=='Cancelled' && o.date.slice(0,7)===PERIOD.slice(0,7)).length;
-  const avgQuorum = committeesHeld.length
-    ? Math.round(committeesHeld.reduce((sum,o)=>{const s=MS(o.setup);
-        return sum+attendance(o,s,S.delegatedAttend).pct;},0)/committeesHeld.length) : null;
-  const pendingMomCt = openAfter.filter(o=>{const m=db.moms.find(x=>x.occ===o.id); return !m||m.status!=='Closed';}).length;
-  const rescheduledCt = list.filter(o=>o.rescheduledFrom).length;
-  const cancelledCt = cancelled.length;
-
-  /* -------- Attention -------- */
-  const overdueMom = held.filter(o=>{
-    const m=db.moms.find(x=>x.occ===o.id);
-    if(!m || m.status!=='Draft' || m.submittedAt || S.momWriteupHours==null) return false;
-    return addHours(o.date+' '+o.end, S.momWriteupHours) < nowStamp();
-  });
-  const inputAlerts = upcoming.map(o=>({o, n:inputReadiness(db,o,S).filter(r=>r.kind==='Report Submission'&&!r.ready).length}))
-    .filter(x=>x.n>0);
+  /* -------- Meeting Health, from what the rows themselves prove -------- */
+  const inPeriod = d => d && d.slice(0,7)===PERIOD.slice(0,7);
+  const scheduledThisPeriod = list.filter(o=>o.status!=='Cancelled' && inPeriod(o.date)).length;
+  const heldThisPeriod      = held.filter(o=>inPeriod(o.date)).length;
+  const rescheduledCt = list.filter(o=>o.rescheduledFromId).length;
+  const noAgendaCt    = upcoming.filter(o=>!o.agenda.length).length;
+  const noAttendeeCt  = upcoming.filter(o=>!o.attendees.length).length;
+  const notSentCt     = upcoming.filter(o=>o.agenda.length && !o.agendaSent).length;
 
   return <>
     <div className="ph ph-row">
       <div style={{flex:1}}><h1>Meetings</h1>
-        <div className="sub">Schedule, manage, and track meetings from your setups.</div></div>
+        <div className="sub">Every Meeting Occurrence in Dataverse — scheduled, held and cancelled.</div></div>
       <div style={{display:'flex',gap:8}}>
         <Btn onClick={()=>setMk('adhoc')}>🗓 Ad Hoc from Setup</Btn>
         <Btn k="pri" onClick={()=>setMk('custom')}>+ New Meeting</Btn>
@@ -3117,69 +3491,77 @@ function ScreenMeetings(){
     </div>
 
     <div className="stats">
-      <Stat label="Not Yet Held" v={upcoming.length} d="scheduled this period" c={upcoming.length?'teal':'muted'}/>
-      <Stat label="Held, Record Open" v={openAfter.length} d="MOM or audit pending"
+      <Stat label="Not Yet Held" v={upcoming.length} d="scheduled" c={upcoming.length?'teal':'muted'}/>
+      <Stat label="Held, Record Open" v={openAfter.length} d="agenda or attendance unrecorded"
         c={openAfter.length?'amber':'muted'}/>
-      <Stat label="Held and Closed" v={settled.length} d="fully documented" c="green"/>
-      <Stat label="Quorum Missed" v={quorumMissed.length}
-        d={quorumMissed.length?occName(quorumMissed[0])+' — '+fmtDS(quorumMissed[0].date):'none'}
-        c={quorumMissed.length?'red':'muted'}/>
+      <Stat label="Held and Closed" v={settled.length} d="fully recorded" c="green"/>
+      <Stat label="Cancelled" v={cancelled.length} d="create no governance record"
+        c={cancelled.length?'red':'muted'}/>
     </div>
 
     <div className="chip-row" style={{alignItems:'center'}}>
-      {[['all','All Types'],['accred','Accreditation'],['business','Business'],['week','This Week']].map(([k,l])=>
+      {[['all','All Types'],['setup','From a Setup'],['adhoc','Ad Hoc'],['week','This Week']].map(([k,l])=>
         <button key={k} className={'pill'+(typeFilter===k?' on':'')} onClick={()=>setTypeFilter(k)}>{l}</button>)}
       <div style={{flex:1}}/>
-      <Btn k="sm" onClick={()=>{setTab('due');setTypeFilter('all');}}>▾ More Filters</Btn>
+      <Btn k="sm" onClick={()=>{setTab('due');setTypeFilter('all');}}>Reset filters</Btn>
     </div>
 
     <div className="wa-grid">
       <div className="card flush">
         <div className="card-hd" style={{display:'flex',alignItems:'center',gap:12}}>
           <div className="wa-icon gold">👥</div>
-          <h2 style={{flex:1}}>{tab==='due'?'Upcoming Meetings':TABS.find(t=>t.id===tab).label}</h2>
-          <Btn k="sm">Export</Btn>
+          <h2 style={{flex:1}}>{tab==='due'?'Upcoming Meetings':TABS.find(t=>t.id===tab).label}
+            <span className="t-sub" style={{fontWeight:400}}> · lm_meetingoccurrences</span></h2>
+          <Tag c="teal">{list.length} in the table</Tag>
         </div>
-        {rows.length===0 ? <div style={{padding:'8px 17px 17px'}}><Empty>Nothing here.</Empty></div>
-        : <div className="t-wrap"><table className="data">
-            <thead><tr><th>Meeting</th><th>Setup / Type</th><th>Date & Time</th><th>Agenda</th>
-              <th>Inputs Ready</th><th>Calendar</th><th>Minutes</th><th>Gov. Score</th>
-              <th>Attendees</th><th>Status</th><th></th></tr></thead>
-            <tbody>{rows.map(o=>{
-              const rd=inputReadiness(db,o,S), notReady=rd.filter(r=>!r.ready).length;
-              const mom=db.moms.find(x=>x.occ===o.id), grid=db.grids.find(x=>x.occ===o.id);
-              const st=occStatusTag(o,mom,grid), chair=occRoles(o).chair;
-              const attendIds=(o.attend||[]).map(a=>typeof a==='string'?a:a.who);
-              const cls = o.setup ? (MS(o.setup).cls||'') : (o.adhoc||'Ad Hoc');
-              return <tr key={o.id} className="click" onClick={()=>go('mtg',o.id)}>
-                <td><div className="t-main">{o.restricted&&'🔒 '}{occName(o)}</div>
-                  {chair && <div className="t-sub">Chair: {P(chair).name}</div>}</td>
-                <td><Tag c={occType(o)==='Committee'?'purple':'blue'}>
-                    {cls.includes('Accreditation')?'Accreditation':occType(o)==='Committee'?'Committee':'Business'}</Tag>
-                  <div className="t-sub">{o.setup?MS(o.setup).name:cls}</div></td>
-                <td className="dim" style={{whiteSpace:'nowrap'}}>{fmtDS(o.date)}
-                  <div className="t-sub">{o.start} – {o.end}</div>
-                  {o.rescheduledFrom && <Tag c="amber">Rescheduled</Tag>}</td>
-                <td>{o.agenda.length?<Tag c="green">{o.agenda.length} item{o.agenda.length>1?'s':''}</Tag>
-                                    :<Tag c="red">None</Tag>}</td>
-                <td>{rd.length===0?<span className="dim">—</span>
-                  : notReady?<Tag c="amber">{rd.length-notReady}/{rd.length}</Tag>:<Tag c="green">{rd.length}/{rd.length}</Tag>}</td>
-                <td>{o.status==='Cancelled'?<span className="dim">—</span>:<Tag c="green">✓ Synced</Tag>}</td>
-                <td>{o.status==='Scheduled'?<span className="dim">—</span>
-                  : mom?<Tag c={mom.status==='Closed'?'green':mom.status==='Approved'?'teal':'red'}>
-                        {mom.status==='Draft'?'Overdue Draft':mom.status}</Tag>
-                     :<span className="dim">Not yet created</span>}</td>
-                <td>{o.status!=='Held' || !isCommittee(o) ? <span className="dim">{o.status!=='Held'?'—':'N/A'}</span>
-                  : !grid ? <span className="dim">Pending</span>
-                  : grid.state==='Approved' ? <b style={{color:`var(--${pctColour(grid.score)})`}}>{grid.score}%</b>
-                  : <Tag c="amber">{grid.state}</Tag>}</td>
-                <td><Avatars ids={attendIds}/></td>
-                <td><Tag c={st.c}>{st.t}</Tag></td>
-                <td style={{textAlign:'right'}}>
-                  <Btn k={actionFor(o)==='Prepare'||actionFor(o)==='Write MOM'?'pri sm':'sm'}
-                    style={{borderRadius:20}}>{actionFor(o)}</Btn></td>
-              </tr>;})}
-            </tbody></table></div>}
+        {dvError
+          ? <div style={{padding:'8px 17px 17px'}}><Note k="warn" ic="⚠">{dvError}</Note></div>
+          : dvLoading
+            ? <div style={{padding:'8px 17px 17px'}}><Empty>Reading from Dataverse…</Empty></div>
+            : rows.length===0
+              ? <div style={{padding:'8px 17px 17px'}}><Empty>
+                  {list.length===0
+                    ? 'No Meeting Occurrence exists yet. Use New Meeting to create one.'
+                    : 'No Meeting Occurrence matches this tab and filter.'}</Empty></div>
+              : <div className="t-wrap"><table className="data">
+                  <thead><tr><th>Meeting</th><th>Stage / Scope</th><th>Date &amp; Time</th><th>Mode</th>
+                    <th>Agenda</th><th>Attendees</th><th>Chair</th><th>Status</th><th></th></tr></thead>
+                  <tbody>{rows.map(o=>{
+                    const scope=dvBu(o.businessUnitId)||dvRegion(o.regionId)||'Group-wide';
+                    const covered=o.agenda.filter(a=>a.covered==='Yes').length;
+                    const present=o.attendees.filter(a=>a.present==='Present').length;
+                    const recd=o.attendees.filter(a=>a.present&&a.present!=='Not Yet Recorded').length;
+                    return <tr key={o.id} className="click"
+                      onClick={()=>openMeeting(o.id,'detail')}>
+                      <td><div className="t-main">{o.restricted&&'🔒 '}{o.name}</div>
+                        <div className="t-sub">{[dvTpl(o.templateId)||(o.adhocType?'Ad Hoc — '+o.adhocType:'Ad Hoc'),
+                          dvDept(o.departmentId)].filter(Boolean).join(' · ')}</div></td>
+                      <td><div className="t-main" style={{fontSize:12.5}}>{scope}</div>
+                        {o.stage?<div className="t-sub">{o.stage.replace(/^Stage (\d) /,'$1 · ')}</div>:null}</td>
+                      <td className="dim" style={{whiteSpace:'nowrap'}}>{o.date?fmtDS(o.date):'—'}
+                        {o.start||o.end?<div className="t-sub">{[o.start,o.end].filter(Boolean).join(' – ')}</div>:null}
+                        {o.rescheduledFromId && <Tag c="amber">Rescheduled</Tag>}</td>
+                      <td className="dim">{o.mode||'—'}</td>
+                      <td>{o.agenda.length
+                        ? <Tag c={o.status==='Held'&&covered<o.agenda.length?'amber':'green'}>
+                            {o.status==='Held'?`${covered}/${o.agenda.length} covered`
+                              :`${o.agenda.length} item${o.agenda.length>1?'s':''}`}</Tag>
+                        : <Tag c="red">None</Tag>}</td>
+                      <td>{o.attendees.length
+                        ? <Tag c={o.status==='Held'&&recd<o.attendees.length?'amber':'grey'}>
+                            {o.status==='Held'?`${present}/${o.attendees.length} present`
+                              :`${o.attendees.length}`}</Tag>
+                        : <Tag c="red">None</Tag>}</td>
+                      <td className="dim" style={{fontSize:12}}>{dvPos(o.chairPositionId)||'—'}
+                        {o.facilitatorPositionId
+                          ? <div className="t-sub">Facilitator: {dvPos(o.facilitatorPositionId)}</div>
+                          : null}</td>
+                      <td><Tag c={o.status==='Held'?'green':o.status==='Cancelled'?'red':'teal'}>
+                        {o.status||'—'}</Tag></td>
+                      <td style={{textAlign:'right'}}>
+                        <Btn k="sm" style={{borderRadius:20}}>View</Btn></td>
+                    </tr>;})}
+                  </tbody></table></div>}
       </div>
 
       <div className="wa-side">
@@ -3188,11 +3570,14 @@ function ScreenMeetings(){
             <div className="wa-icon green">🗓</div><h2 style={{flex:1}}>This Week</h2>
           </div>
           {thisWeek.length===0 ? <Empty ic="🗓">Nothing scheduled this week.</Empty>
-          : thisWeek.map((o,i)=><div key={o.id} className="sched-r" onClick={()=>go('mtg',o.id)}>
-              <div className={'sched-ic mtg'}>🗓</div>
-              <div className="sched-t"><div className="n">{occName(o)}</div>
-                <div className="m">{fmtDS(o.date)} · {o.start}</div></div>
-              <Tag c={i===0?'amber':'grey'}>{i===0?'Next':o.mode}</Tag>
+          : thisWeek.map(o=>
+            <div key={o.id} className="wa-up-r" onClick={()=>openMeeting(o.id,'detail')}>
+              <div className="wa-date"><span className="dd">{o.date.slice(8)}</span>
+                <span className="mo">{MONTHS[+o.date.slice(5,7)-1]}</span></div>
+              <div className="wa-up-t"><div className="n">{o.name}
+                  {o.date===TODAY && <Tag c="amber">Today</Tag>}</div>
+                <div className="m">{[o.start, o.location||o.mode,
+                  dvBu(o.businessUnitId)||dvRegion(o.regionId)].filter(Boolean).join(' · ')}</div></div>
             </div>)}
         </div>
 
@@ -3200,28 +3585,21 @@ function ScreenMeetings(){
           <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:2}}>
             <div className="wa-icon amber">📈</div><h2 style={{flex:1}}>Meeting Health</h2>
           </div>
-          <div className="wa-mo-r"><label>Meetings Held ({MONTHS[+PERIOD.slice(5,7)-1]})</label>
-            <span className="v">{heldThisPeriod.length} / {scheduledThisPeriod}</span></div>
-          <div className="wa-mo-r"><label>Avg Quorum Met</label>
-            <span className="v">{avgQuorum==null?'—':avgQuorum+'%'}</span></div>
-          <div className="wa-mo-r"><label>Pending MOM</label><span className="v">{pendingMomCt}</span></div>
-          <div className="wa-mo-r"><label>Rescheduled</label><span className="v">{rescheduledCt}</span></div>
-          <div className="wa-mo-r"><label>Cancelled</label><span className="v">{cancelledCt}</span></div>
+          <div className="csub" style={{marginBottom:8}}>What the occurrence rows themselves show.</div>
+          {[['Scheduled this period', scheduledThisPeriod, null],
+            ['Held this period',      heldThisPeriod,      null],
+            ['Rescheduled',           rescheduledCt,       rescheduledCt?'amber':null],
+            ['Cancelled',             cancelled.length,    cancelled.length?'red':null],
+            ['Upcoming with no Agenda',    noAgendaCt,   noAgendaCt?'red':null],
+            ['Upcoming with no Attendees', noAttendeeCt, noAttendeeCt?'red':null],
+            ['Agenda not yet distributed', notSentCt,    notSentCt?'amber':null],
+          ].map(([label,val,colour])=>
+            <div key={label} style={{display:'flex',alignItems:'center',gap:8,padding:'5px 0',
+                                     borderBottom:'1px solid var(--border)'}}>
+              <div style={{flex:1,fontSize:12.5,color:'var(--ink-2)'}}>{label}</div>
+              <b style={colour?{color:`var(--${colour})`}:null}>{val}</b>
+            </div>)}
         </div>
-
-        {(overdueMom.length>0 || inputAlerts.length>0) && <div className="card">
-          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:2}}>
-            <div className="wa-icon amber">⚠</div><h2 style={{flex:1}}>Attention</h2>
-          </div>
-          {overdueMom.map(o=><div className="att-alert" key={'m'+o.id} onClick={()=>go('mtg',o.id)}
-              style={{cursor:'pointer'}}>
-            <span style={{color:'var(--red)'}}>⏱</span>
-            <span>MOM overdue for <b>{occName(o)}</b> — {fmtDS(o.date)}</span></div>)}
-          {inputAlerts.map(({o,n})=><div className="att-alert" key={'i'+o.id} onClick={()=>go('mtg',o.id)}
-              style={{cursor:'pointer'}}>
-            <span style={{color:'var(--amber)'}}>▲</span>
-            <span>{n} report{n===1?'':'s'} pending as input{n===1?'':'s'} for <b>{occName(o)}</b></span></div>)}
-        </div>}
       </div>
     </div>
 
@@ -3464,6 +3842,208 @@ function ScreenMinutes(){
         </div>
       </div>
     </div>
+  </>;
+}
+
+/* Meeting Occurrence detail — the full page, read from lm_meetingoccurrences
+   and its two child tables.
+
+   Modelled on the seeded MeetingDetail below it, minus the tabs that have no
+   Dataverse table behind them: Submissions, Documents, Discussions, Actions,
+   Minutes and the Audit Grid all live in seeded state only. What is here is
+   what the occurrence row and its agenda and attendee rows actually hold. */
+function DvMeetingDetail({rec,back}){
+  const {sel,setSel}=use();
+  const tab = sel.mtgTab || 'detail';
+  const setTab = t=>setSel(v=>({...v,mtgTab:t}));
+
+  const posName = id => { const n=dvPos(id); if(!n) return null;
+    const h=id&&DV_POS_HOLDER[id]; return h?`${n} — ${h}`:n; };
+  const scope = dvBu(rec.businessUnitId)||dvRegion(rec.regionId)||'Group-wide';
+  const covered = rec.agenda.filter(a=>a.covered==='Yes').length;
+  const present = rec.attendees.filter(a=>a.present==='Present').length;
+  const required = rec.attendees.filter(a=>(a.type||'Required')==='Required');
+  const requiredPresent = required.filter(a=>a.present==='Present').length;
+  const durMin = (()=>{
+    if(!rec.start||!rec.end) return null;
+    const [sh,sm]=rec.start.split(':').map(Number), [eh,em]=rec.end.split(':').map(Number);
+    if([sh,sm,eh,em].some(n=>Number.isNaN(n))) return null;
+    return (eh*60+em)-(sh*60+sm);
+  })();
+  const dow = rec.date
+    ? new Date(rec.date+'T00:00:00').toLocaleDateString('en-US',{weekday:'long'}).toUpperCase() : '';
+
+  const Row=({label,value})=> value==null||value===''||value==='—' ? null :
+    <div style={{display:'flex',gap:12,padding:'7px 0',borderBottom:'1px solid var(--border)'}}>
+      <div style={{flex:'0 0 190px',fontSize:12,color:'var(--muted)'}}>{label}</div>
+      <div style={{flex:1,fontSize:13,overflowWrap:'anywhere'}}>{value}</div></div>;
+
+  return <>
+    <div className="crumb"><a onClick={back}>Meetings</a> › <b>Meeting Detail</b></div>
+    <div className="ph ph-row">
+      <div style={{flex:1}}><h1>{rec.restricted&&'🔒 '}{rec.name}</h1>
+        <div className="sub" style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+          <Tag c={rec.status==='Held'?'green':rec.status==='Cancelled'?'red':'teal'}>{rec.status||'—'}</Tag>
+          <span>· {dvTpl(rec.templateId)||(rec.adhocType?'Ad Hoc — '+rec.adhocType:'Ad Hoc')}</span>
+          <span>· {scope}</span>
+          {rec.stage && <span>· {rec.stage.replace(/^Stage (\d) /,'Stage $1 · ')}</span>}
+          {rec.restricted && <Tag c="purple">Restricted</Tag>}
+        </div></div>
+      <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+        <Btn onClick={back}>Back to List</Btn>
+      </div>
+    </div>
+
+    <Note k="lock" ic="—">Read-only. This is the Dataverse record as it stands — editing an occurrence,
+      recording attendance and writing Minutes are not wired to these tables yet.</Note>
+    {rec.restricted && <Note k="lock"><b>Restricted.</b> This occurrence is marked visible only to its
+      participants and to permitted governance roles.</Note>}
+    {rec.rescheduledFromId && <Note k="warn"><b>Rescheduled.</b> This occurrence carries a link to the
+      one it was moved from. Only this occurrence moved — the series is unchanged.</Note>}
+    {rec.status==='Cancelled' && <Note k="err"><b>Cancelled.</b> {rec.cancelReason||'No reason recorded.'}</Note>}
+
+    <div className="tabs">
+      <button className={tab==='detail'?'on':''} onClick={()=>setTab('detail')}>Overview</button>
+      <button className={tab==='agenda'?'on':''} onClick={()=>setTab('agenda')}>Agenda
+        <span className="c">{rec.agenda.length}</span></button>
+      <button className={tab==='att'?'on':''} onClick={()=>setTab('att')}>Attendance
+        <span className="c">{rec.attendees.length}</span></button>
+    </div>
+
+    {tab==='detail' && <div className="wa-grid">
+      <div>
+        <div className="stats" style={{gridTemplateColumns:'repeat(3,1fr)',marginBottom:16}}>
+          <div className="stat" style={{textAlign:'center'}}>
+            <div style={{fontSize:18}}>📅</div>
+            <div style={{fontWeight:700,fontSize:14,marginTop:4}}>{rec.date?fmtDS(rec.date):'—'}</div>
+            <label style={{display:'block',marginTop:2}}>{dow||'DATE'}</label>
+          </div>
+          <div className="stat" style={{textAlign:'center'}}>
+            <div style={{fontSize:18}}>⏱</div>
+            <div style={{fontWeight:700,fontSize:14,marginTop:4}}>
+              {[rec.start,rec.end].filter(Boolean).join(' – ')||'—'}</div>
+            <label style={{display:'block',marginTop:2}}>
+              {durMin!=null?durMin+' MINUTES':(rec.timezone||'TIME')}</label>
+          </div>
+          <div className="stat" style={{textAlign:'center'}}>
+            <div style={{fontSize:18}}>{rec.mode==='Online'?'💻':rec.mode==='Hybrid'?'🔀':'📍'}</div>
+            <div style={{fontWeight:700,fontSize:14,marginTop:4}}>{rec.mode||'—'}</div>
+            <label style={{display:'block',marginTop:2}}>
+              {rec.location?rec.location.toUpperCase():(rec.link?'ONLINE':'MODE')}</label>
+          </div>
+        </div>
+
+        <div className="card">
+          <h2>The occurrence</h2>
+          <div className="csub" style={{marginBottom:6}}>lm_meetingoccurrences</div>
+          <Row label="Meeting name" value={rec.name}/>
+          <Row label="Status" value={rec.status}/>
+          <Row label="Stage" value={rec.stage}/>
+          <Row label="Business Unit" value={dvBu(rec.businessUnitId)}/>
+          <Row label="Region" value={dvRegion(rec.regionId)}/>
+          <Row label="Department" value={dvDept(rec.departmentId)}/>
+          <Row label="Meeting Template" value={dvTpl(rec.templateId)
+            ||(rec.templateId?'(not in the loaded list)':null)}/>
+          <Row label="Ad Hoc Type" value={rec.adhocType}/>
+          <Row label="Date" value={rec.date?fmtD(rec.date):null}/>
+          <Row label="Time" value={[rec.start,rec.end].filter(Boolean).join(' – ')||null}/>
+          <Row label="Time zone" value={rec.timezone}/>
+          <Row label="Mode" value={rec.mode}/>
+          <Row label="Location" value={rec.location}/>
+          <Row label="Meeting link" value={rec.link}/>
+          <Row label="Invite sent" value={rec.inviteSent?fmtD(rec.inviteSent):null}/>
+          <Row label="Agenda distributed" value={rec.agendaSent?fmtD(rec.agendaSent):null}/>
+          <Row label="Outlook / Teams sync" value={rec.sync}/>
+          <Row label="Cancellation reason" value={rec.cancelReason}/>
+        </div>
+      </div>
+
+      <div className="wa-side">
+        <div className="card">
+          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:2}}>
+            <div className="wa-icon gold">👤</div><h2 style={{flex:1}}>Who runs it</h2>
+          </div>
+          <Row label="Chair" value={posName(rec.chairPositionId)}/>
+          <Row label="Facilitator" value={posName(rec.facilitatorPositionId)}/>
+          <div style={{fontSize:12,color:'var(--muted)',marginTop:8}}>
+            The Facilitator owns the agenda items and writes up the Minutes.</div>
+        </div>
+
+        <div className="card">
+          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:2}}>
+            <div className="wa-icon green">✓</div><h2 style={{flex:1}}>Where it stands</h2>
+          </div>
+          {[['Agenda Items', rec.agenda.length, null],
+            ['Agenda covered', rec.status==='Held'?`${covered} / ${rec.agenda.length}`:'—',
+              rec.status==='Held'&&covered<rec.agenda.length?'amber':null],
+            ['Attendees', rec.attendees.length, rec.attendees.length?null:'red'],
+            ['Required Attendees', required.length, null],
+            ['Required present', rec.status==='Held'?`${requiredPresent} / ${required.length}`:'—',
+              rec.status==='Held'&&requiredPresent<required.length?'amber':null],
+            ['Present in total', rec.status==='Held'?`${present} / ${rec.attendees.length}`:'—', null],
+          ].map(([label,val,colour])=>
+            <div key={label} style={{display:'flex',alignItems:'center',gap:8,padding:'5px 0',
+                                     borderBottom:'1px solid var(--border)'}}>
+              <div style={{flex:1,fontSize:12.5,color:'var(--ink-2)'}}>{label}</div>
+              <b style={colour?{color:`var(--${colour})`}:null}>{val}</b>
+            </div>)}
+        </div>
+      </div>
+    </div>}
+
+    {tab==='agenda' && <div className="card flush">
+      <div className="card-hd" style={{display:'flex',alignItems:'center',gap:12}}>
+        <div className="wa-icon gold">📋</div>
+        <h2 style={{flex:1}}>Agenda
+          <span className="t-sub" style={{fontWeight:400}}> · lm_meetingoccurrenceagendas</span></h2>
+        {rec.status==='Held' && <Tag c={covered<rec.agenda.length?'amber':'green'}>
+          {covered} of {rec.agenda.length} covered</Tag>}
+      </div>
+      {rec.agenda.length===0
+        ? <div style={{padding:'8px 17px 17px'}}><Empty>
+            No Agenda Item on this occurrence. A Meeting cannot proceed without one.</Empty></div>
+        : <div className="t-wrap"><table className="data">
+            <thead><tr><th style={{width:50}}>#</th><th>Item</th><th>Owner</th><th>Source</th>
+              <th>Covered</th></tr></thead>
+            <tbody>{rec.agenda.map(a=>
+              <tr key={a.id}>
+                <td className="dim">{a.seq??'—'}</td>
+                <td><div className="t-main">{a.title||'—'}</div>
+                  {a.carriedFromId?<div className="t-sub">carried from the Meeting Template</div>:null}</td>
+                <td className="dim" style={{fontSize:12}}>{posName(a.ownerPositionId)||'—'}</td>
+                <td className="dim">{a.source||'—'}</td>
+                <td><Tag c={a.covered==='Yes'?'green':a.covered==='No'?'red':'grey'}>
+                  {a.covered||'Not Yet Recorded'}</Tag></td>
+              </tr>)}
+            </tbody></table></div>}
+    </div>}
+
+    {tab==='att' && <div className="card flush">
+      <div className="card-hd" style={{display:'flex',alignItems:'center',gap:12}}>
+        <div className="wa-icon teal">👥</div>
+        <h2 style={{flex:1}}>Attendance
+          <span className="t-sub" style={{fontWeight:400}}> · lm_meetingoccurrenceattendeeses</span></h2>
+        {rec.status==='Held' && <Tag c={requiredPresent<required.length?'amber':'green'}>
+          {requiredPresent} of {required.length} Required present</Tag>}
+      </div>
+      {rec.attendees.length===0
+        ? <div style={{padding:'8px 17px 17px'}}><Empty>No Attendee on this occurrence.</Empty></div>
+        : <div className="t-wrap"><table className="data">
+            <thead><tr><th>Attendee</th><th>Type</th><th>Delegate</th><th>Attendance</th></tr></thead>
+            <tbody>{rec.attendees.map(a=>
+              <tr key={a.id}>
+                <td><div className="t-main">{dvPos(a.positionId)||a.name||'—'}</div>
+                  {a.positionId&&DV_POS_HOLDER[a.positionId]
+                    ? <div className="t-sub">{DV_POS_HOLDER[a.positionId]}</div> : null}</td>
+                <td><Tag c={(a.type||'Required')==='Optional'?'grey':'teal'}>{a.type||'Required'}</Tag></td>
+                <td className="dim" style={{fontSize:12}}>{posName(a.delegatePositionId)||'—'}</td>
+                <td><Tag c={a.present==='Present'?'green':a.present==='Absent'?'red':'grey'}>
+                  {a.present||'Not Yet Recorded'}</Tag></td>
+              </tr>)}
+            </tbody></table></div>}
+      <div style={{padding:'0 17px 15px',fontSize:12,color:'var(--muted)'}}>
+        Only Required Attendee attendance is measured. Optional attendance is recorded but not counted.</div>
+    </div>}
   </>;
 }
 
@@ -3933,7 +4513,10 @@ function EditOccModal({occ,onClose}){
       <Btn k="pri" disabled={!ok} onClick={()=>{A.editOcc(occ.id,f);onClose();}}>
         Save and resynchronize</Btn></>}>
     <div className="f-row3">
-      <Field label="Date" req err={nw?'This is a configured non-working day — the occurrence will move to the next working day.':null}>
+      <Field label="Date" req
+        err={weekend
+          ? `${dayName(f.date)} is a weekend — the working week is Sunday to Thursday. Choose another day to schedule this Meeting.`
+          : nw ? 'This is a configured public holiday.' : null}>
         <input type="date" value={f.date} onChange={e=>set('date',e.target.value)}/></Field>
       <Field label="Start" req><input type="time" value={f.start} onChange={e=>set('start',e.target.value)}/></Field>
       <Field label="End" req err={badTime?'The end time must be after the start time.':null}>
@@ -4023,59 +4606,227 @@ function LinkInputModal({occ,onClose}){
   </Modal>;
 }
 
-/* Attendees are picked one at a time from Employee Data Management, each recorded
-   as Required or Optional — only Required attendance is measured by AG-09. */
-function AttendeePicker({value,onChange}){
-  const [who,setWho]=useState(''); const [type,setType]=useState('Required');
-  const free=PEOPLE.filter(p=>p.id!=='u0' && !value.some(a=>a.who===p.id));
-  const add=()=>{ if(!who) return; onChange([...value,{who,type}]); setWho(''); };
-  return <Field label="Attendees" req
-    hint="Resolved from Employee Data Management. Only Required Attendee attendance is scored (AG-09).">
-    <div style={{display:'flex',gap:7,flexWrap:'wrap',marginBottom:value.length?9:0}}>
-      <select value={who} onChange={e=>setWho(e.target.value)} style={{flex:'1 1 240px'}}>
-        <option value="">Select an employee…</option>
-        {free.map(p=><option key={p.id} value={p.id}>{p.name} — {p.position}</option>)}
-      </select>
-      <select value={type} onChange={e=>setType(e.target.value)} style={{flex:'0 0 130px'}}>
-        <option>Required</option><option>Optional</option>
-      </select>
+
+/* A searchable Position picker. The Organization Structure runs to hundreds of
+   assignments, so a plain <select> is unusable — this filters as you type, over
+   both the Position name and the person currently holding it.
+
+   `opts` is already narrowed to the Meeting's scope by the caller; this only
+   handles searching and selection. */
+function PositionSelect({value,onChange,opts,placeholder,disabled,emptyText}){
+  const [q,setQ]=useState('');
+  const [open,setOpen]=useState(false);
+  const ref=useRef(null);
+  useEffect(()=>{
+    if(!open) return;
+    const onDoc=e=>{ if(ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const onEsc=e=>{ if(e.key==='Escape') setOpen(false); };
+    document.addEventListener('mousedown',onDoc); document.addEventListener('keydown',onEsc);
+    return ()=>{ document.removeEventListener('mousedown',onDoc); document.removeEventListener('keydown',onEsc); };
+  },[open]);
+
+  const sel=opts.find(o=>o.id===value);
+  const needle=q.trim().toLowerCase();
+  const shown=needle
+    ? opts.filter(o=>(o.name||'').toLowerCase().includes(needle)
+                  || (o.holder||'').toLowerCase().includes(needle))
+    : opts;
+
+  const box={border:'1px solid var(--border-d)',borderRadius:7,padding:'7px 9px',
+             fontSize:13,background:disabled?'var(--surface)':'#fff',
+             cursor:disabled?'not-allowed':'pointer',width:'100%',textAlign:'left',
+             color:sel?'var(--ink)':'var(--muted)'};
+
+  return <div ref={ref} style={{position:'relative'}}>
+    <button type="button" style={box} disabled={disabled}
+      onClick={()=>{ if(!disabled){ setOpen(o=>!o); setQ(''); } }}>
+      {sel ? <>{sel.name}{sel.holder?<span style={{color:'var(--muted)'}}> — {sel.holder}</span>:null}</>
+           : (placeholder||'Select…')}
+    </button>
+    {open && !disabled && <div style={{position:'absolute',top:'calc(100% + 4px)',left:0,right:0,
+        zIndex:30,background:'#fff',border:'1px solid var(--border)',borderRadius:9,
+        boxShadow:'0 12px 28px -12px rgba(33,28,30,.35)',padding:5}}>
+      <input autoFocus type="search" value={q} onChange={e=>setQ(e.target.value)}
+        placeholder="Search a Position or the person holding it…"
+        style={{width:'100%',border:'1px solid var(--border-d)',borderRadius:6,
+                padding:'6px 8px',fontSize:12.5,marginBottom:5,fontFamily:'inherit'}}/>
+      <div style={{maxHeight:210,overflowY:'auto'}}>
+        {shown.length===0
+          ? <div style={{padding:'8px 9px',fontSize:12,color:'var(--muted)',fontStyle:'italic'}}>
+              {opts.length===0 ? (emptyText||'No Positions in this scope') : 'Nothing matches that search.'}</div>
+          : shown.map(o=>
+            <button type="button" key={o.id}
+              onClick={()=>{ onChange(o.id); setOpen(false); setQ(''); }}
+              style={{display:'block',width:'100%',textAlign:'left',border:'none',
+                      background:o.id===value?'var(--teal-l,#F3EAdb)':'transparent',
+                      padding:'7px 9px',borderRadius:6,fontSize:12.5,cursor:'pointer',
+                      fontFamily:'inherit',color:'var(--ink)'}}>
+              {o.name}{o.holder?<div style={{fontSize:11,color:'var(--muted)'}}>{o.holder}</div>:null}
+            </button>)}
+      </div>
+    </div>}
+  </div>;
+}
+
+/* Attendee picker for the Custom Ad Hoc form, sourced from
+   cr603_organizationstructures so each pick is a real
+   row id the lm_AttendeePosition lookup will accept. */
+/* Attendee picker for the Custom Ad Hoc form. Positions come from the
+   Organization Structure, already narrowed to the Meeting's scope, and are
+   searchable — the list is far too long to scroll.
+
+   Each attendee carries a type, chosen alongside the Position before adding
+   and still editable in the list afterwards. It defaults to Required, since
+   that is what attendance is measured against. Written to lm_type. */
+const ATTENDEE_TYPES_OCC=['Required','Optional'];
+
+function DvAttendeePicker({value,onChange,opts,scopeChosen,scopeHint}){
+  const [who,setWho]=useState('');
+  const [type,setType]=useState('Required');
+  const free=opts.filter(p=>!value.some(a=>a.positionId===p.id));
+  const add=()=>{
+    if(!who) return;
+    const p=opts.find(x=>x.id===who);
+    onChange([...value,{positionId:who, name:p?p.name:null, holder:p?p.holder:null, type}]);
+    setWho(''); setType('Required');   // back to the default for the next one
+  };
+  const changeType=(id,t)=>onChange(value.map(a=>a.positionId===id?{...a,type:t}:a));
+
+  return <Field label="Attendees" req hint={scopeHint}>
+    <div style={{display:'flex',gap:7,alignItems:'flex-start',marginBottom:value.length?9:0}}>
+      <div style={{flex:'1 1 260px'}}>
+        <PositionSelect value={who} onChange={setWho} opts={free} disabled={!scopeChosen}
+          placeholder={scopeChosen?'Search a Position to add…':'Choose the scope first'}
+          emptyText="No Positions left in this scope"/>
+      </div>
+      <select value={type} onChange={e=>setType(e.target.value)} disabled={!scopeChosen}
+        style={{flex:'0 0 140px'}}>
+        {ATTENDEE_TYPES_OCC.map(t=><option key={t}>{t}</option>)}</select>
       <Btn disabled={!who} onClick={add}>Add</Btn>
     </div>
     {value.length===0
       ? <div style={{fontSize:12,color:'var(--red)'}}>At least one Attendee is required.</div>
       : <table className="data"><tbody>{value.map(a=>
-          <tr key={a.who}>
-            <td><div className="t-main">{P(a.who).name}</div>
-                <div className="t-sub">{P(a.who).position}</div></td>
-            <td style={{width:110}}><Tag c={a.type==='Required'?'teal':'grey'}>{a.type}</Tag></td>
+          <tr key={a.positionId}>
+            <td><div className="t-main">{a.name}</div>
+                {a.holder?<div className="t-sub">{a.holder}</div>:null}</td>
+            <td style={{width:150}}>
+              <select value={a.type||'Required'} onChange={e=>changeType(a.positionId,e.target.value)}
+                style={{fontSize:12.5,padding:'4px 6px'}}>
+                {ATTENDEE_TYPES_OCC.map(t=><option key={t}>{t}</option>)}</select></td>
             <td style={{width:80,textAlign:'right'}}>
-              <Btn k="sm" onClick={()=>onChange(value.filter(x=>x.who!==a.who))}>Remove</Btn></td>
+              <Btn k="sm" onClick={()=>onChange(value.filter(x=>x.positionId!==a.positionId))}>Remove</Btn></td>
           </tr>)}
         </tbody></table>}
   </Field>;
 }
 
 function NewMeetingModal({kind,onClose}){
-  const {A,me}=use();
+  const {A,me,toast,refreshOccurrences}=use();
   const custom = kind==='custom';
   const [f,setF]=useState({setup: custom?null:'ms1', name:'', purpose:'', bu:'AHJ',
     date:addDays(TODAY,5), start:'09:00', end:'10:00', mode:'Online', location:'',
     adhoc:'Governance', restricted:false, dept:P(me).dept, stage:'Business Unit',
     chair:'u2', facilitator:'u3', recorder:null,
     attend:[{who:'u2',type:'Required'},{who:'u5',type:'Required'}], agenda:[''], inputs:[],
-    inviteSent:TODAY});
+    inviteSent:TODAY, link:'',
+    /* Custom Ad Hoc only — real Dataverse row ids, since the lookups on
+       lm_meetingoccurrences will not accept this module's seeded ids. */
+    dvBusinessUnitId:'', dvRegionId:'', dvDepartmentId:'',
+    dvChairPositionId:'', dvFacilitatorPositionId:'', dvAttend:[], tz:''});
+  const [saving,setSaving]=useState(false);
   const set=(k,v)=>setF(x=>({...x,[k]:v}));
   const agenda=f.agenda.filter(a=>a.trim());
-  const ok = agenda.length>0 && (custom ? f.name.trim() && f.purpose.trim() && f.attend.length : true);
-  const nw = isNonWorking(f.date);
+
+  /* Stage decides what the Meeting is scoped to, and therefore which picker is
+     shown: Stage 1 runs in a Business Unit, Stage 2 in a Region, and Group /
+     ExCom run once group-wide with neither. */
+  const stageBU     = f.stage==='Business Unit';
+  const stageRegion = f.stage==='Region';
+  const scopeOk = stageBU ? !!f.dvBusinessUnitId : stageRegion ? !!f.dvRegionId : true;
+  const deptOpts = departmentsForScope(f.stage, f.dvBusinessUnitId, f.dvRegionId);
+  const chairOpts = positionsForScope(f.stage, f.dvBusinessUnitId, f.dvRegionId);
+  const scopeChosen = !(stageBU && !f.dvBusinessUnitId) && !(stageRegion && !f.dvRegionId);
+  const scopeHint = stageBU
+    ? 'Narrowed to the Positions inside the chosen Business Unit.'
+    : stageRegion
+      ? 'Narrowed to the Positions inside every Business Unit in the chosen Region.'
+      : 'Group and ExCom Meetings are not narrowed — every Position is offered.';
+  const scopePlaceholder = stageBU&&!f.dvBusinessUnitId ? 'Choose a Business Unit first'
+    : stageRegion&&!f.dvRegionId ? 'Choose a Region first' : 'Search a Position…';
+
+  /* A Meeting may not be booked on the weekend (Friday or Saturday) at all. */
+  const weekend = isWeekend(f.date);
+  const nw = isNonWorking(f.date) && !weekend;   // a public holiday — a warning, not a block
+
+  /* Mode decides which of the two destination fields apply. */
+  const needsLink     = f.mode==='Online' || f.mode==='Hybrid';
+  const needsLocation = f.mode==='In person' || f.mode==='Hybrid';
+  const modeOk = (!needsLink || f.link.trim()) && (!needsLocation || f.location.trim());
+
+  const ok = !weekend && (custom
+    ? agenda.length>0 && f.name.trim() && f.purpose.trim() && f.dvAttend.length>0
+      && scopeOk && f.dvChairPositionId && f.dvFacilitatorPositionId && f.tz && modeOk
+    : agenda.length>0);
+
+  /* A Custom Ad Hoc Meeting is written straight to Dataverse -- parent row,
+     then its agenda and attendee rows -- and is NOT also added to the seeded
+     demo state, which would put the same meeting on the calendar twice. */
+  const saveCustom=async()=>{
+    setSaving(true);
+    try{
+      const {id,errors}=await createMeetingOccurrence({
+        name:f.name.trim(),
+        // Scope follows the Stage: a Stage 1 Meeting carries a Business Unit,
+        // a Stage 2 Meeting a Region, and Group / ExCom neither.
+        stage:f.stage,
+        businessUnitId:(stageBU && f.dvBusinessUnitId) ? f.dvBusinessUnitId : undefined,
+        regionId:(stageRegion && f.dvRegionId) ? f.dvRegionId : undefined,
+        departmentId:f.dvDepartmentId||undefined,
+        chairPositionId:f.dvChairPositionId||undefined,
+        facilitatorPositionId:f.dvFacilitatorPositionId||undefined,
+        date:f.date, start:f.start, end:f.end,
+        timezone:f.tz||undefined,
+        mode:f.mode, status:'Scheduled',
+        location:needsLocation ? (f.location.trim()||null) : null,
+        link:needsLink ? (f.link.trim()||null) : null,
+        adhocType:f.adhoc, restricted:!!f.restricted, inviteSent:TODAY,
+        agenda:agenda.map(t=>({title:t, source:'Ad Hoc',
+                               ownerPositionId:f.dvFacilitatorPositionId||f.dvChairPositionId||undefined})),
+        // `type` is carried but not yet written -- lm_meetingoccurrenceattendeeses
+        // has no attendee-type column. See createMeetingOccurrence().
+        attendees:f.dvAttend.map(a=>({positionId:a.positionId, name:a.name||undefined,
+                                      type:a.type||'Required'})),
+      });
+      if(!id){
+        console.warn('[dataverse] Meeting Occurrence create failed:', errors);
+        toast('Not saved','Creating the Meeting Occurrence in Dataverse failed. Check the console for details.','err');
+        return;
+      }
+      if(errors.length){
+        console.warn('[dataverse] Meeting Occurrence saved with some child rows failing:', errors);
+        toast('Saved, with gaps',
+          `The Meeting Occurrence was created, but ${errors.length} related row(s) (${errors.map(e=>e.table).join(', ')}) failed. Check the console for details.`,'warn');
+      }else{
+        toast('Custom Ad Hoc Meeting saved',
+          'Written to lm_meetingoccurrences with its agenda and attendees. It now appears on the Calendar.','ok');
+      }
+      await refreshOccurrences();
+      onClose();
+    }catch(e){
+      console.warn('[dataverse] Meeting Occurrence create threw unexpectedly:', e);
+      toast('Not saved','Creating the Meeting Occurrence in Dataverse failed. Check the console for details.','err');
+    }finally{ setSaving(false); }
+  };
 
   return <Modal wide onClose={onClose}
     title={custom?'Create a Custom Ad Hoc Meeting':'Create an Ad Hoc occurrence from an approved Setup'}
     sub={custom?'Use this only where no approved Setup exists. The Meeting is scheduled immediately and the metadata is sent to Taxonomy with a No-Setup flag.'
                :'The approved Setup and its classification are preserved. Only execution-level information can be changed.'}
-    footer={<><Btn onClick={onClose}>Cancel</Btn>
-      <Btn k="pri" disabled={!ok} onClick={()=>{A.createOcc({...f,agenda});onClose();}}>
-        {custom?'Schedule the Meeting':'Create the occurrence'}</Btn></>}>
+    footer={<><Btn onClick={onClose} disabled={saving}>Cancel</Btn>
+      <Btn k="pri" disabled={!ok||saving}
+        onClick={()=>{ if(custom) saveCustom(); else { A.createOcc({...f,agenda}); onClose(); } }}>
+        {custom?(saving?'Saving…':'Schedule the Meeting'):'Create the occurrence'}</Btn></>}>
 
     {!custom && <>
       <Field label="Approved Setup" req>
@@ -4087,27 +4838,89 @@ function NewMeetingModal({kind,onClose}){
     </>}
 
     {custom && <>
+      <Note k="info" ic="i">This form writes straight to <b>lm_meetingoccurrences</b>, with its agenda and
+        attendees. Business Unit, Chair and Attendees are therefore read from Dataverse — the seeded demo
+        people used elsewhere in this module are not real rows and the lookups would reject them.
+        <div style={{marginTop:6}}><b>Purpose</b> is the one field not saved — the occurrence table has
+        no column for it.</div></Note>
       <Field label="Meeting name" req><input type="text" value={f.name}
         onChange={e=>set('name',e.target.value)} placeholder="e.g. Sterilisation incident review"/></Field>
-      <Field label="Purpose" req><textarea value={f.purpose}
-        onChange={e=>set('purpose',e.target.value)}/></Field>
+      <Field label="Purpose" req hint="Not stored — the occurrence table has no Purpose column.">
+        <textarea value={f.purpose} onChange={e=>set('purpose',e.target.value)}/></Field>
       <div className="f-row">
-        <Field label="Meeting Chair" req><select value={f.chair} onChange={e=>set('chair',e.target.value)}>
-          {PEOPLE.filter(p=>p.id!=='u0').map(p=>
-            <option key={p.id} value={p.id}>{p.name} — {p.position}</option>)}</select></Field>
-        <Field label="Facilitator" req
-          hint="The Facilitator writes up the Minutes for an Ad Hoc Meeting. No separate MOM Recorder is named.">
-          <select value={f.facilitator} onChange={e=>set('facilitator',e.target.value)}>
-          {PEOPLE.filter(p=>p.id!=='u0').map(p=>
-            <option key={p.id} value={p.id}>{p.name} — {p.position}</option>)}</select></Field>
-      </div>
-      <AttendeePicker value={f.attend} onChange={v=>set('attend',v)}/>
-      <div className="f-row">
-        <Field label="Department"><input type="text" value={f.dept}
-          onChange={e=>set('dept',e.target.value)}/></Field>
-        <Field label="Organizational Stage"><select value={f.stage} onChange={e=>set('stage',e.target.value)}>
+        <Field label="Organizational Stage" req
+          hint="Stage 1 runs in one Business Unit, Stage 2 in one Region. Group and ExCom run once, group-wide.">
+          <select value={f.stage} onChange={e=>{
+            const v=e.target.value;
+            // Switching Stage clears the scope that no longer applies, so a
+            // Business Unit can never be left behind on a Region Meeting --
+            // and the Department with it, since it is narrowed by that scope.
+            setF(x=>({...x, stage:v, dvBusinessUnitId:'', dvRegionId:'',
+                              dvDepartmentId:'', dvChairPositionId:'', dvFacilitatorPositionId:''}));
+          }}>
           {['Business Unit','Region','Group','ExCom'].map(s=><option key={s}>{s}</option>)}</select></Field>
+
+        {stageBU
+          ? <Field label="Business Unit" req hint="Written to the lm_BusinessUnit lookup. Shown as Business Unit — Region.">
+              <select value={f.dvBusinessUnitId} onChange={e=>{
+                const id=e.target.value;
+                const bu=DV_BU_LIST.find(b=>b.id===id);
+                const rn=bu?dvRegion(bu.region):null;
+                // Picking scope pre-selects the time zone that scope sits in.
+                setF(x=>({...x, dvBusinessUnitId:id, dvDepartmentId:'', dvChairPositionId:'',
+                                dvFacilitatorPositionId:'', dvAttend:[],
+                                tz:rn?tzForRegionName(rn):x.tz}));
+              }}>
+                <option value="">{DV_BU_LIST.length?'Select…':'No Business Units loaded'}</option>
+                {DV_BU_LIST.map(b=>{ const rn=dvRegion(b.region);
+                  return <option key={b.id} value={b.id}>{rn?`${b.name} — ${rn}`:b.name}</option>; })}
+              </select></Field>
+          : stageRegion
+            ? <Field label="Region" req hint="Written to the lm_Region lookup.">
+                <select value={f.dvRegionId} onChange={e=>{
+                  const id=e.target.value;
+                  const rg=DV_REGION_LIST.find(r=>r.id===id);
+                  setF(x=>({...x, dvRegionId:id, dvDepartmentId:'', dvChairPositionId:'',
+                                  dvFacilitatorPositionId:'', dvAttend:[],
+                                  tz:rg?tzForRegionName(rg.name):x.tz}));
+                }}>
+                  <option value="">{DV_REGION_LIST.length?'Select…':'No Regions loaded'}</option>
+                  {DV_REGION_LIST.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
+                </select></Field>
+            : <Field label="Scope" hint="Group and ExCom Meetings run once, group-wide — no Business Unit or Region.">
+                <input type="text" value="Group-wide" disabled/></Field>}
       </div>
+      <div className="f-row">
+        <Field label="Meeting Chair" req hint={scopeHint}>
+          <PositionSelect value={f.dvChairPositionId} onChange={v=>set('dvChairPositionId',v)}
+            opts={chairOpts} disabled={!scopeChosen}
+            placeholder={scopePlaceholder} emptyText="No Positions in this scope"/></Field>
+        <Field label="Facilitator" req
+          hint="Writes to lm_FacilitatorPosition. The Facilitator owns the agenda items and writes up the Minutes.">
+          <PositionSelect value={f.dvFacilitatorPositionId} onChange={v=>set('dvFacilitatorPositionId',v)}
+            opts={chairOpts} disabled={!scopeChosen}
+            placeholder={scopePlaceholder} emptyText="No Positions in this scope"/></Field>
+        <Field label="Time zone" req hint="Written to lm_timezone.">
+          <select value={f.tz} onChange={e=>set('tz',e.target.value)}>
+            <option value="">Select…</option>
+            {TIME_ZONES.map(t=><option key={t.id} value={t.id}>{t.label}</option>)}</select></Field>
+      </div>
+      <DvAttendeePicker value={f.dvAttend} onChange={v=>set('dvAttend',v)}
+        opts={chairOpts} scopeChosen={scopeChosen} scopeHint={scopeHint}/>
+      <Field label="Department"
+        hint={stageBU
+          ? 'Narrowed to the Departments inside the chosen Business Unit.'
+          : stageRegion
+            ? 'Narrowed to the Departments inside every Business Unit in the chosen Region.'
+            : 'Group and ExCom Meetings are not narrowed — every Department is offered.'}>
+        <select value={f.dvDepartmentId} onChange={e=>set('dvDepartmentId',e.target.value)}
+          disabled={(stageBU&&!f.dvBusinessUnitId)||(stageRegion&&!f.dvRegionId)}>
+          <option value="">{
+            stageBU&&!f.dvBusinessUnitId ? 'Choose a Business Unit first'
+            : stageRegion&&!f.dvRegionId ? 'Choose a Region first'
+            : deptOpts.length ? 'Select…' : 'No Departments in this scope'}</option>
+          {deptOpts.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
+        </select></Field>
     </>}
 
     <Field label="Ad Hoc Type" req hint="A one-to-one or skip-level Meeting uses Leadership or Governance.">
@@ -4121,12 +4934,21 @@ function NewMeetingModal({kind,onClose}){
       <Field label="End" req><input type="time" value={f.end}
         onChange={e=>set('end',e.target.value)}/></Field>
     </div>
+    {/* Mode decides what a Meeting needs to be reachable: Online needs a joining
+        link, In person needs a room, Hybrid needs both. Only what applies is shown. */}
     <div className="f-row">
       <Field label="Mode"><select value={f.mode} onChange={e=>set('mode',e.target.value)}>
         {['Online','In person','Hybrid'].map(m=><option key={m}>{m}</option>)}</select></Field>
-      <Field label="Location" hint="Required for an in-person or hybrid Meeting.">
-        <input type="text" value={f.location} onChange={e=>set('location',e.target.value)}
-          disabled={f.mode==='Online'}/></Field>
+      {needsLocation
+        ? <Field label="Location" req hint="The room this Meeting is held in.">
+            <input type="text" value={f.location} onChange={e=>set('location',e.target.value)}
+              placeholder="e.g. Meeting Room 4"/></Field>
+        : null}
+      {needsLink
+        ? <Field label="Meeting link" req hint="The joining URL attendees use.">
+            <input type="text" value={f.link} onChange={e=>set('link',e.target.value)}
+              placeholder="https://teams.microsoft.com/l/meetup-join/…"/></Field>
+        : null}
     </div>
 
     {custom && <Field label="">

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef, createContext, useContext } from 'react';
 import { ClipboardList, ListChecks, ArrowUpRight, FileText, CalendarDays, Check, MoreHorizontal } from 'lucide-react';
-import { fetchRegions, fetchBusinessUnits, fetchDepartments, fetchFunctions, fetchProcesses, fetchKpis, fetchSections, fetchPositions, saveReportTemplateToDataverse, saveMeetingTemplateToDataverse, updateReportTemplateToDataverse, updateMeetingTemplateToDataverse, updateReportTemplateStatus, updateMeetingTemplateStatus, fetchReportTemplatesList, fetchMeetingTemplatesList, fetchReportTemplateDetail, fetchMeetingTemplateDetail, TEMPLATE_STATUS_LABEL } from '../../services/dataverse.js';
+import { fetchRegions, fetchBusinessUnits, fetchDepartments, fetchFunctions, fetchProcesses, fetchKpis, fetchSections, fetchPositions, departmentBuIndex, fetchTeamsChannels, fetchCurrentUser, saveReportTemplateToDataverse, saveMeetingTemplateToDataverse, updateReportTemplateToDataverse, updateMeetingTemplateToDataverse, updateReportTemplateStatus, updateMeetingTemplateStatus, fetchReportTemplatesList, fetchMeetingTemplatesList, fetchReportTemplateDetail, fetchMeetingTemplateDetail, TEMPLATE_STATUS_LABEL } from '../../services/dataverse.js';
 import './governance-modern.css';
 
 
@@ -59,13 +59,15 @@ const REPORT_ROLES=['Input','Output'];
 const REPORT_DELIVERY=['File destination','Source link'];
 
 /* ---- roles (section 5) --------------------------------------------------- */
+/* Both roles author Setups -- the difference is only who may APPROVE one.
+   An Author sends a Setup to Under Review; only an Administrator can move
+   it on to Active / Approved (or expire an approved one). Driven by the
+   Administrator toggle in the top bar. */
 const ROLES={
-  admin   :{label:'Setup Administrator',        write:true,
-            note:'Creates, edits, publishes, versions and expires Setups.'},
-  reviewer:{label:'Governance or Audit Reviewer',write:false,
-            note:'Read-only across every screen.'},
-  taxonomy:{label:'Taxonomy Administrator',      write:false, taxonomy:true,
-            note:'Read-only over Setups. Governed lists are maintained in Taxonomy.'},
+  admin :{label:'Setup Administrator', write:true, approve:true,
+          note:'Creates, edits and publishes Setups, and approves or expires them.'},
+  author:{label:'Setup Author',        write:true, approve:false,
+          note:'Creates, edits and publishes Setups. Approval is an Administrator action.'},
 };
 
 /* ---- organisational cascade (section 3) ---------------------------------- */
@@ -179,48 +181,91 @@ const STAGE_PREFIX=['','Regional','Group','Executive'];
 const GROUP_KEY='__group';
 
 /* ---- where it is discussed: Team, then Channel inside that Team ----------- */
-/* A Team belongs to one Business Unit, one Region, or to the group, so each unit of a
-   Setup picks from its own Teams — and the Channel list narrows to the Team chosen. */
-const TEAMS=[
-  {id:'tm-ahj-q', unit:'bu-ahj', name:'Andalusia Jeddah — Quality'},
-  {id:'tm-ahj-c', unit:'bu-ahj', name:'Andalusia Jeddah — Clinical Governance'},
-  {id:'tm-ahj-o', unit:'bu-ahj', name:'Andalusia Jeddah — Operations'},
-  {id:'tm-adc-q', unit:'bu-adc', name:'Andalusia Dental Clinics — Quality'},
-  {id:'tm-adc-o', unit:'bu-adc', name:'Andalusia Dental Clinics — Clinical Operations'},
-  {id:'tm-ahm-q', unit:'bu-ahm', name:'Andalusia Al Moasah — Quality'},
-  {id:'tm-ahm-n', unit:'bu-ahm', name:'Andalusia Al Moasah — Nursing'},
-  {id:'tm-ahs-o', unit:'bu-ahs', name:'Andalusia Shallalat — Operations'},
-  {id:'tm-ahs-q', unit:'bu-ahs', name:'Andalusia Shallalat — Quality'},
-  {id:'tm-ksa-g', unit:'rg-ksa', name:'Saudi Arabia Region — Governance'},
-  {id:'tm-ksa-q', unit:'rg-ksa', name:'Saudi Arabia Region — Quality and Safety'},
-  {id:'tm-egy-g', unit:'rg-egy', name:'Egypt Region — Governance'},
-  {id:'tm-egy-q', unit:'rg-egy', name:'Egypt Region — Quality and Safety'},
-  {id:'tm-grp-e', unit:GROUP_KEY, name:'Group — Executive Office'},
-  {id:'tm-grp-q', unit:GROUP_KEY, name:'Group — Quality and Safety'}];
-const CHANNELS=(()=>{const o=[];
-  TEAMS.forEach(t=>['General','Committees and Meetings','Reports and Submissions',
-                    'Performance Review','Actions and Decisions']
-    .forEach((c,i)=>o.push({id:`ch-${t.id.slice(3)}-${i}`, team:t.id, name:c})));
-  return o;})();
-const teamsIn = key => TEAMS.filter(t=>t.unit===key);
+/* Read live from and_teamschannels: one row per CHANNEL, carrying the name of
+   the Team it sits in as plain text (lm_team). There is no Teams table -- a
+   Team exists only as that name repeated across its channels' rows -- so TEAMS
+   below is DERIVED from the channel rows, and a Team's id IS its name.
+
+   That also means a Team carries no Business Unit or Region relationship, so
+   Teams can no longer be narrowed to the unit a Setup runs in the way the
+   seeded data allowed: every unit is offered every Team. */
+let TEAMS=[];
+let CHANNELS=[];
+/* Rebuilds both lists from a single fetchTeamsChannels() result. */
+function setTeamsChannels(rows){
+  CHANNELS=rows.map(r=>({id:r.id, name:r.name, team:r.team, link:r.link,
+                         sitePath:r.sitePath, library:r.library, folder:r.folder}));
+  TEAMS=Array.from(new Set(rows.map(r=>r.team).filter(Boolean)))
+    .sort((a,b)=>a.localeCompare(b))
+    .map(name=>({id:name, name}));
+
+  /* Same rows, read a second way: the SharePoint destination cascade. A row
+     that names a Site but no Library contributes only a Site, and so on down,
+     so a half-filled channel still surfaces the part it does have. */
+  const siteMap=new Map(), libMap=new Map(), folderMap=new Map();
+  rows.forEach(r=>{
+    const site=(r.sitePath||'').trim();
+    if(!site) return;
+    if(!siteMap.has(site)) siteMap.set(site,{id:site, name:site});
+    const library=(r.library||'').trim();
+    if(!library) return;
+    const libId=site+' / '+library;
+    if(!libMap.has(libId)) libMap.set(libId,{id:libId, site, name:library});
+    const folder=(r.folder||'').trim();
+    if(!folder) return;
+    const folderId=libId+' / '+folder;
+    if(!folderMap.has(folderId)) folderMap.set(folderId,{id:folderId, library:libId, name:folder});
+  });
+  const byName=(x,y)=>x.name.localeCompare(y.name);
+  SITES=[...siteMap.values()].sort(byName);
+  LIBRARIES=[...libMap.values()].sort(byName);
+  FOLDERS=[...folderMap.values()].sort(byName);
+}
+const teamsIn = () => TEAMS;
+/* The Team a Channel sits in -- needed on read-back, where Dataverse stores
+   only the Channel lookup and the Team has to be recovered from it. */
+const teamOfChannel = channelId => { const c=byId(CHANNELS,channelId); return c?c.team:null; };
 const channelsIn = teamId => CHANNELS.filter(c=>c.team===teamId);
+/* A Channel's document location as one path -- SharePoint Site Path, Document
+   Library and Folder joined, skipping whichever parts are empty. This is what
+   auto-fills a Report Template's Source link when a Channel is chosen. */
+function channelPath(channelId){
+  const c=byId(CHANNELS,channelId);
+  if(!c) return '';
+  return [c.sitePath,c.library,c.folder]
+    .map(x=>(x==null?'':String(x).trim()))
+    .filter(Boolean)
+    .map(x=>x.replace(/^\/+|\/+$/g,''))
+    .join('/');
+}
 
 /* ---- destination cascade (FR-SET-13) ------------------------------------- */
-const SITES=[
-  {id:'st-qly', name:'Quality'},      {id:'st-nur', name:'Nursing'},
-  {id:'st-exe', name:'Executive'},    {id:'st-ops', name:'Operations'}];
-const LIBRARIES=(()=>{const o=[];
-  SITES.forEach(s=>['Core Reports','Executive Reports','Plans'].forEach((l,i)=>
-    o.push({id:`lb-${s.id.slice(3)}-${i}`, site:s.id, name:l})));
-  return o;})();
-const FOLDERS=(()=>{const o=[];
-  LIBRARIES.forEach(l=>['2026 / Q1','2026 / Q2','2026 / Q3','2026 / Q4'].forEach((f,i)=>
-    o.push({id:`fd-${l.id.slice(3)}-${i}`, library:l.id, name:f})));
-  return o;})();
+/* Site, Library and Folder are not tables of their own either -- they are the
+   SharePoint Site Path, Document Library and Folder columns carried on each
+   and_teamschannels row. So all three are DERIVED from the same channel rows
+   in setTeamsChannels() below: a Site is a distinct Site Path, a Library a
+   distinct Site Path + Library, a Folder a distinct Site Path + Library +
+   Folder. Ids are the joined path, since there is no key to use. */
+let SITES=[];
+let LIBRARIES=[];
+let FOLDERS=[];
 
 /* populated alongside PROCESSES/KPIS whenever a live fetch succeeds --
    name -> id, used only at Report Template save time to resolve the
    flat display-name selections back to real Dataverse ids. */
+/* Department -> the Business Units it actually appears in, derived from the
+   Organization Structure (each position assignment names both). The Departments
+   table itself has no Business Unit column -- its "owning business unit" is
+   Dataverse's security owner and is the root org for nearly every row, so it
+   cannot be used to narrow anything. Rebuilt whenever Positions load. */
+let DEPT_BUS={};
+const deptInBu = (deptId, buId) => !buId || !!(DEPT_BUS[deptId] && DEPT_BUS[deptId].has(buId));
+const deptBuNames = deptId => {
+  const set=DEPT_BUS[deptId];
+  if(!set || !set.size) return '—';
+  return Array.from(set).map(id=>nameOf(BUSINESS_UNITS,id)).filter(Boolean).sort().join(', ')||'—';
+};
+
 let PROCESS_ID_BY_NAME={};
 let KPI_ID_BY_NAME={};
 let PROCESS_DEPT_BY_NAME={};
@@ -307,9 +352,8 @@ const buOf=(s,key)=> stageLevel(s)==='bu' ? key : null;
    chosen, and never hides a Position that has no `bu` at all (built-in
    mock data predates the Dataverse wiring and isn't tagged to a unit). */
 /* key, when given, scopes to that ONE unit card's own Business Unit --
-   not the whole Setup's multi-unit selection. Without a key (e.g. the
-   Meeting agenda owner picker, which isn't per-unit), falls back to every
-   Business Unit the Setup as a whole runs in. */
+   not the whole Setup's multi-unit selection. Without a key, falls back to
+   every Business Unit the Setup as a whole runs in. */
 function positionsInScope(s,key){
   const lv=stageLevel(s);
   let buIds;
@@ -325,6 +369,20 @@ function positionsInScope(s,key){
   }
   if(!buIds.length) return POSITIONS;
   return POSITIONS.filter(p=>!p.bu || buIds.includes(p.bu));
+}
+
+/* A Standing Agenda Item's Owner is one of the roles actually named on the Setup's
+   units — the Chairman, Co-Chairman, Facilitator or an Attendee (Core or Supportive) —
+   not just anyone in scope. Pooled across every unit since the agenda is shared. */
+function agendaOwnerOptions(s){
+  const ids=new Set();
+  (s.units||[]).forEach(u=>{
+    if(u.chairman) ids.add(u.chairman);
+    if(u.coChairman) ids.add(u.coChairman);
+    if(u.facilitator) ids.add(u.facilitator);
+    (u.coreMembers||[]).forEach(m=>{ if(m.position) ids.add(m.position); });
+  });
+  return POSITIONS.filter(p=>ids.has(p.id));
 }
 
 /* ---- scope lines: one Department, and optionally one Function inside it --- */
@@ -479,7 +537,7 @@ const BLANK_REPORT={
   kind:'Report Template', objective:'', reportType:null, reportCategory:null,
   qualifier:'',
   stage:null, regions:[], businessUnits:[], lines:[], units:[],
-  delivery:'Source link', site:null, library:null, folder:null, sourceLink:'',
+  delivery:'Source link', site:null, library:null, folder:null, sourceLink:'', sourceLinkAuto:false,
   checklist:[], processes:[], kpis:[],
   frequency:null, dayOfWeek:null, dayOfMonth:null, monthInQuarter:null,
   confidentiality:null, status:'Draft', version:0, updated:TODAY};
@@ -745,12 +803,12 @@ function unitRules(s, stepNo){
   keys.forEach(k=>{
     const u=unitOf(s,k), at=unitLabel(s,k), f='u-'+k;
     if(!u){ r.push({field:f, step:stepNo, msg:`${at}: nothing has been set up yet.`}); return; }
-    // Team/Channel are no longer required to publish -- the underlying
-    // table has no real data yet, so forcing a pick here would just mean
-    // choosing a meaningless mock value. Still optional to select if
-    // useful for context; just not blocking.
-    if(u.team && !u.channel)
-      r.push({field:f, step:stepNo, msg:`${at}: choose the Channel inside ${nameOf(TEAMS,u.team)}.`});
+    // Picking a Team at all stays optional -- not every Setup is discussed in
+    // one. But having picked a Team without a Channel is incomplete, since the
+    // Channel is the part that actually carries a location.
+    const uTeam=u.team||teamOfChannel(u.channel);
+    if(uTeam && !u.channel)
+      r.push({field:f, step:stepNo, msg:`${at}: choose the Channel inside ${uTeam}.`});
     if(s.kind==='Report Template'){
       if(!u.submitter) r.push({field:f, step:stepNo, msg:`${at}: the Position that submits is required.`});
       if(!u.owner)     r.push({field:f, step:stepNo, msg:`${at}: Owner Position is required.`});
@@ -909,6 +967,12 @@ function Field({id,label,req,hint,children,when=true,govern}){
   </div>;
 }
 
+/* A Position in a summary table: the Position itself, and under it the
+   employee currently holding it — the same pair the pickers show. */
+const PosCell=({id})=> !id ? <>—</> : <>
+  {posName(id)}
+  {posHolder(id)?<div className="t-sub">{posHolder(id)}</div>:null}</>;
+
 const Sel=({id,val,onChange,opts,placeholder='Select…',disabled})=>
   <select id={id} value={val||''} disabled={disabled}
     onChange={e=>onChange(e.target.value||null)}>
@@ -916,6 +980,63 @@ const Sel=({id,val,onChange,opts,placeholder='Select…',disabled})=>
     {opts.map(o=>{const v=typeof o==='object'?o.v:o, l=typeof o==='object'?o.label:o;
       return <option key={v} value={v}>{l}</option>;})}
   </select>;
+
+/* Position picker — reads the Organization Structure (cr603_organizationstructures
+   via fetchPositions) and shows, under each Position, the employee who currently
+   holds it, resolved from hr_employees. Same source and same treatment as the
+   execution module's Ad Hoc form.
+
+   Searchable because the Organization Structure runs to hundreds of assignments:
+   the filter matches the Position name AND the holder's name, so typing a
+   person finds their Position. `opts` is already narrowed to the unit's scope by
+   the caller (positionsInScope). */
+function PosSel({id,val,onChange,opts,placeholder='Select…',disabled}){
+  const [q,setQ]=useState('');
+  const [open,setOpen]=useState(false);
+  const ref=useRef(null);
+  useEffect(()=>{
+    if(!open) return;
+    const onDoc=e=>{ if(ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const onEsc=e=>{ if(e.key==='Escape') setOpen(false); };
+    document.addEventListener('mousedown',onDoc); document.addEventListener('keydown',onEsc);
+    return ()=>{ document.removeEventListener('mousedown',onDoc); document.removeEventListener('keydown',onEsc); };
+  },[open]);
+
+  const sel=opts.find(o=>o.id===val);
+  const needle=q.trim().toLowerCase();
+  const shown=needle
+    ? opts.filter(o=>(o.name||'').toLowerCase().includes(needle)
+                  || (o.holder||'').toLowerCase().includes(needle))
+    : opts;
+
+  return <div className="pos-sel" ref={ref}>
+    <button type="button" id={id} className="pos-sel-btn" disabled={disabled}
+      onClick={()=>{ if(!disabled){ setOpen(o=>!o); setQ(''); } }}>
+      {sel
+        ? <span className="pos-sel-v"><b>{sel.name}</b>{sel.holder?<i>{sel.holder}</i>:null}</span>
+        : <span className="pos-sel-ph">{placeholder}</span>}
+      <span className="pos-sel-cv">▾</span>
+    </button>
+    {open && !disabled && <div className="combo-list pos-sel-list">
+      <input autoFocus type="search" className="pos-sel-q" value={q}
+        onChange={e=>setQ(e.target.value)}
+        placeholder="Search a Position or the person holding it…"/>
+      {shown.length===0
+        ? <div className="combo-empty">
+            {opts.length===0 ? 'No Position in this unit’s scope' : 'Nothing matches that search.'}</div>
+        : <>
+            {val ? <button type="button" className="combo-opt pos-sel-clear"
+                     onClick={()=>{ onChange(null); setOpen(false); setQ(''); }}>Clear</button> : null}
+            {shown.map(o=>
+              <button type="button" key={o.id}
+                className={'combo-opt pos-sel-opt'+(o.id===val?' on':'')}
+                onClick={()=>{ onChange(o.id); setOpen(false); setQ(''); }}>
+                <b>{o.name}</b>{o.holder?<i>{o.holder}</i>:null}
+              </button>)}
+          </>}
+    </div>}
+  </div>;
+}
 
 /* segmented control — used for Setup Type, Stage, Nature, Mode, Delivery */
 const Seg=({id,opts,val,onChange,disabled})=>
@@ -1279,7 +1400,12 @@ function UnitSetup({s,set,issues,shared,intro}){
       const closed=shut.has(k);
       const bu=buOf(s,k);
       const secs=sectionsFor(bu);
-      const teams=teamsIn(k);
+      const teams=teamsIn();
+      /* A record read back from Dataverse stores only the Channel lookup, so
+         its Team is recovered from that Channel. Deriving it here rather than
+         trusting the stored value means a template opened before the Channels
+         list finished loading still resolves its Team once it arrives. */
+      const uTeam=u.team||teamOfChannel(u.channel);
       return <div className={'unit-card'+(bad?' bad':'')+(closed?' shut':'')} key={k} id={'u-'+k}>
         <button type="button" className="unit-hd"
           onClick={()=>setShut(p=>{const n=new Set(p); n.has(k)?n.delete(k):n.add(k); return n;})}>
@@ -1302,16 +1428,36 @@ function UnitSetup({s,set,issues,shared,intro}){
 
             <div className="f-row">
               <Field id={'u-team-'+k} label="Team" govern
-                hint="The Team this unit discusses it in. Only this unit’s Teams are offered. Optional for now — this table has no data yet.">
-                <Sel id={'u-team-'+k} val={u.team} opts={teams.map(t=>({v:t.id,label:t.name}))}
-                  placeholder={teams.length?'Select…':'No Team for this unit'}
+                hint="The Team this unit discusses it in. Every Team is offered — the Teams table carries no Business Unit or Region, so it can't be narrowed to this unit.">
+                <Sel id={'u-team-'+k} val={uTeam} opts={teams.map(t=>({v:t.id,label:t.name}))}
+                  placeholder={teams.length?'Select…':'No Teams found'}
                   onChange={v=>setUnit(k,{team:v,channel:null})}/></Field>
-              <Field id={'u-chan-'+k} label="Channel" req={!!u.team} govern
-                hint={u.team?'Narrowed to the Channels inside that Team.':null}>
-                <Sel id={'u-chan-'+k} val={u.channel} disabled={!u.team}
-                  placeholder={u.team?'Select…':'Choose a Team first'}
-                  opts={channelsIn(u.team).map(c=>({v:c.id,label:c.name}))}
-                  onChange={v=>setUnit(k,{channel:v})}/></Field>
+              <Field id={'u-chan-'+k} label="Channel" req={!!uTeam} govern
+                hint={uTeam
+                  ? (report
+                      ? 'Narrowed to the Channels inside that Team. Choosing one fills in the Source link from its SharePoint path.'
+                      : 'Narrowed to the Channels inside that Team.')
+                  : null}>
+                <Sel id={'u-chan-'+k} val={u.channel} disabled={!uTeam}
+                  placeholder={uTeam?'Select…':'Choose a Team first'}
+                  opts={channelsIn(uTeam).map(c=>({v:c.id,label:c.name}))}
+                  onChange={v=>{
+                    setUnit(k,{channel:v});
+                    /* A Report's Source link is one template-level field while
+                       Channels are per-unit, so the first Channel that resolves
+                       to a path fills it in. Only ever overwrites a link this
+                       same auto-fill wrote (or an empty one) -- anything typed
+                       by hand is left alone, see f-sourceLink below. */
+                    if(report && v){
+                      const path=channelPath(v);
+                      if(path && (!(s.sourceLink||'').trim() || s.sourceLinkAuto))
+                        set({sourceLink:path, sourceLinkAuto:true});
+                    }
+                  }}/>
+                {report && u.channel && channelPath(u.channel)
+                  ? <div className="holder">SharePoint path: {channelPath(u.channel)}</div>
+                  : null}
+              </Field>
             </div>
 
             {report
@@ -1319,16 +1465,13 @@ function UnitSetup({s,set,issues,shared,intro}){
                   <div className="f-row">
                     <Field id={'u-sub-'+k} label="Submitting Position" req govern
                       hint="Who prepares and submits this report in this unit.">
-                      <Sel id={'u-sub-'+k} val={u.submitter}
-                        opts={positionsInScope(s,k).map(p=>({v:p.id,label:p.name}))}
+                      <PosSel id={'u-sub-'+k} val={u.submitter} opts={positionsInScope(s,k)}
                         onChange={v=>setUnit(k,{submitter:v})}/>
-                      {posHolder(u.submitter)?<div className="holder">currently: {posHolder(u.submitter)}</div>:null}
                     </Field>
                     <Field id={'u-own-'+k} label="Owner Position" req govern
                       hint="Accountable for the content.">
-                      <Sel id={'u-own-'+k} val={u.owner} opts={positionsInScope(s,k).map(p=>({v:p.id,label:p.name}))}
+                      <PosSel id={'u-own-'+k} val={u.owner} opts={positionsInScope(s,k)}
                         onChange={v=>setUnit(k,{owner:v})}/>
-                      {posHolder(u.owner)?<div className="holder">currently: {posHolder(u.owner)}</div>:null}
                     </Field>
                   </div>
                   <UnitChain u={u} k={k} s={s} setUnit={setUnit}/>
@@ -1338,10 +1481,9 @@ function UnitSetup({s,set,issues,shared,intro}){
                     {[['Chairman','chairman',true],['Co-Chairman','coChairman',false],
                       ['Organizer / Facilitator','facilitator',true]].map(([label,key,req])=>
                       <Field key={key} id={'u-'+key+'-'+k} label={label} req={req} govern>
-                        <Sel id={'u-'+key+'-'+k} val={u[key]} placeholder={req?'Select…':'None'}
-                          opts={positionsInScope(s,k).map(p=>({v:p.id,label:p.name}))}
+                        <PosSel id={'u-'+key+'-'+k} val={u[key]} placeholder={req?'Select…':'None'}
+                          opts={positionsInScope(s,k)}
                           onChange={v=>setUnit(k,{[key]:v})}/>
-                        {posHolder(u[key])?<div className="holder">currently: {posHolder(u[key])}</div>:null}
                       </Field>)}
                   </div>
                   <Field id={'u-cm-'+k} label="Attendees" req
@@ -1352,8 +1494,8 @@ function UnitSetup({s,set,issues,shared,intro}){
                       onAdd={()=>setUnit(k,{coreMembers:(u.coreMembers||[])
                         .concat([{id:uid('cm'),position:null,type:'Core'}])})}
                       render={(r,i2)=><div className="f-row">
-                        <Sel val={r.position} placeholder="Position…"
-                          opts={positionsInScope(s,k).map(p=>({v:p.id,label:p.name}))}
+                        <PosSel val={r.position} placeholder="Position…"
+                          opts={positionsInScope(s,k)}
                           onChange={v=>setUnit(k,{coreMembers:u.coreMembers
                             .map((x,j)=>j===i2?{...x,position:v}:x)})}/>
                         <Sel val={r.type} opts={ATTENDEE_TYPES}
@@ -1388,8 +1530,8 @@ function UnitChain({u,k,s,setUnit}){
       addLabel="Add review step" empty="No review step for this unit yet."
       onAdd={()=>{setRejected(false);setUnit(k,{reviewChain:chain.concat([null])});}}
       render={(r,i)=><div className="chain-row">
-        <Sel val={r.pos} placeholder="Position…"
-          opts={positionsInScope(s,k).filter(p=>!chain.includes(p.id)||p.id===r.pos).map(p=>({v:p.id,label:p.name}))}
+        <PosSel val={r.pos} placeholder="Position…"
+          opts={positionsInScope(s,k).filter(p=>!chain.includes(p.id)||p.id===r.pos)}
           onChange={v=>{ if(v && v===u.submitter){setRejected(true);return;} setRejected(false);
             setUnit(k,{reviewChain:chain.map((x,j)=>j===i?v:x)});}}/>
         {i===chain.length-1?<Tag c="green">approves</Tag>:<Tag c="teal">reviews</Tag>}
@@ -1564,7 +1706,8 @@ function MeetingWizard({rec,onClose}){
           <input id="f-torLink" type="text" value={s.torLink||''}
             onChange={e=>set({torLink:e.target.value})}
             placeholder="https://taxonomy.andalusia.local/tor/…"/></Field>
-        <Field id="f-agenda" label="Standing Agenda Items" req>
+        <Field id="f-agenda" label="Standing Agenda Items" req
+          hint="Owner is picked from the Chairman, Co-Chairman, Facilitator and Attendees named on this Setup's units.">
           <RowEditor id="f-agenda" rows={s.agenda||[]} onChange={v=>set({agenda:v})} reorder
             addLabel="Add agenda item" empty="No standing agenda items yet."
             onAdd={()=>set({agenda:[...(s.agenda||[]),
@@ -1572,7 +1715,7 @@ function MeetingWizard({rec,onClose}){
             render={(r,i)=><div className="f-row3">
               <input type="text" value={r.text} placeholder="Item"
                 onChange={e=>set({agenda:s.agenda.map((x,j)=>j===i?{...x,text:e.target.value}:x)})}/>
-              <Sel val={r.owner} placeholder="Owner…" opts={positionsInScope(s).map(p=>({v:p.id,label:p.name}))}
+              <PosSel val={r.owner} placeholder="Owner…" opts={agendaOwnerOptions(s)}
                 onChange={v=>set({agenda:s.agenda.map((x,j)=>j===i?{...x,owner:v}:x)})}/>
               <span className="agenda-src" title="Set automatically; not editable">
                 <Tag c={r.source==='Added'?'teal':'grey'}>{r.source}</Tag></span>
@@ -1639,15 +1782,15 @@ function UnitsTable({s}){
             <div className="t-sub">{unitSub(s,k)}</div></td>
           {lv==='bu'?<td className="d">{u.section?nameOf(SECTIONS,u.section):'Whole Business Unit'}</td>:null}
           {report
-            ? <><td>{posName(u.submitter)}</td><td>{posName(u.owner)}</td>
+            ? <><td><PosCell id={u.submitter}/></td><td><PosCell id={u.owner}/></td>
                 <td className="d">{(u.reviewChain||[]).filter(Boolean).map(posName).join(' → ')||'—'}</td></>
-            : <><td>{posName(u.chairman)}
+            : <><td><PosCell id={u.chairman}/>
                   {u.coChairman?<div className="t-sub">co-chair {posName(u.coChairman)}</div>:null}</td>
-                <td>{posName(u.facilitator)}</td>
+                <td><PosCell id={u.facilitator}/></td>
                 <td className="d">{core.length
                   ? `${core.filter(m=>m.type==='Core').length} core · ${core.filter(m=>m.type!=='Core').length} supportive`
                   : '—'}</td></>}
-          <td className="d">{u.team?nameOf(TEAMS,u.team):'—'}
+          <td className="d">{(u.team||teamOfChannel(u.channel))||'—'}
             {u.channel?<div className="t-sub">{nameOf(CHANNELS,u.channel)}</div>:null}</td>
         </tr>;})}
       </tbody></table></div>
@@ -1765,10 +1908,16 @@ function ReportWizard({rec,onClose}){
                   opts={folders.map(x=>({v:x.id,label:x.name}))}
                   onChange={v=>set({folder:v})}/></Field>
             </div>
-            : <Field id="f-sourceLink" label="Source link" req>
+            : <Field id="f-sourceLink" label="Source link" req
+                hint={s.sourceLinkAuto
+                  ? 'Filled in from the SharePoint path of the Channel chosen in Setup per unit. Typing here replaces it and it stops updating.'
+                  : 'Choosing a Channel in Setup per unit fills this in from that Channel’s SharePoint path.'}>
                 <input id="f-sourceLink" type="text" value={s.sourceLink||''}
-                  onChange={e=>set({sourceLink:e.target.value})}
-                  placeholder="https://bi.andalusia.local/reports/…"/></Field>}
+                  onChange={e=>set({sourceLink:e.target.value, sourceLinkAuto:false})}
+                  placeholder="https://bi.andalusia.local/reports/…"/>
+                {s.sourceLinkAuto
+                  ? <div className="holder">auto-filled from the Channel’s SharePoint path</div>
+                  : null}</Field>}
           <Field id="f-checklist" label="Expected Content Checklist"
             hint="The components a submission must contain each period.">
             <RowEditor id="f-checklist" rows={s.checklist||[]} onChange={v=>set({checklist:v})} reorder
@@ -1883,6 +2032,7 @@ function buildReportTemplatePayload(f){
         specialityId: u.section || undefined,
         ownerPositionId: u.owner || undefined,
         submittingPositionId: u.submitter || undefined,
+        channelId: u.channel || undefined,
         reviewChain: (u.reviewChain||[]).map((posId,i)=>({
           step: i+1,
           positionId: posId || undefined,
@@ -1946,6 +2096,7 @@ function buildMeetingTemplatePayload(f){
         chairmanId: u.chairman || undefined,
         coChairmanId: u.coChairman || undefined,
         facilitatorId: u.facilitator || undefined,
+        channelId: u.channel || undefined,
         attendeePositionIds: (u.coreMembers||[]).filter(m=>m.position).map(m=>m.position),
       };
     }),
@@ -2178,14 +2329,16 @@ function dataverseReportToSetup(detail){
   const p=detail.parent;
   const buUnits=(detail.businessUnits||[]).map(bu=>({
     id:'dvu-'+bu.lm_reporttemplatebusinessunitsid, key:bu._lm_businessunit_value,
-    section:bu._lm_speciality_value||null, team:null, channel:null,
+    section:bu._lm_speciality_value||null,
+    channel:bu._lm_teamchannel_value||null, team:teamOfChannel(bu._lm_teamchannel_value),
     submitter:bu._lm_submittingposition_value||null, owner:bu._lm_ownerposition_value||null,
     reviewChain:(bu.reviewChain||[]).slice().sort((a,b)=>(a.lm_step||0)-(b.lm_step||0))
       .map(r=>r._lm_reviewerposition_value||null),
   }));
   const regionUnits=(detail.regions||[]).map(rg=>({
     id:'dvu-'+rg.lm_reporttemplateregionid, key:rg._lm_region_value,
-    section:rg._lm_reportspeciality_value||null, team:null, channel:null,
+    section:rg._lm_reportspeciality_value||null,
+    channel:rg._lm_teamchannel_value||null, team:teamOfChannel(rg._lm_teamchannel_value),
     submitter:rg._lm_submittingposition_value||null, owner:rg._lm_ownerposition_value||null,
     reviewChain:(rg.reviewChain||[]).slice().sort((a,b)=>(a.lm_step||0)-(b.lm_step||0))
       .map(r=>r._lm_reviewerposition_value||null),
@@ -2233,14 +2386,16 @@ function dataverseMeetingToSetup(detail){
   const p=detail.parent;
   const buUnits=(detail.businessUnits||[]).map(bu=>({
     id:'dvu-'+bu.lm_meetingtemplatebusinessunitsid, key:bu._lm_businessunit_value,
-    section:null, team:null, channel:null,
+    section:null,
+    channel:bu._lm_teamchannel_value||null, team:teamOfChannel(bu._lm_teamchannel_value),
     chairman:bu._lm_meetingchairman_value||null, coChairman:bu._lm_meetingcochairman_value||null,
     facilitator:bu._lm_meetingorganizerfacilitator_value||null,
     coreMembers:(bu.attendees||[]).map(a=>({position:a._lm_attendeeposition_value||null})),
   }));
   const regionUnits=(detail.regions||[]).map(rg=>({
     id:'dvu-'+rg.lm_meetingtemplateregionid, key:rg._lm_region_value,
-    section:null, team:null, channel:null,
+    section:null,
+    channel:rg._lm_teamchannel_value||null, team:teamOfChannel(rg._lm_teamchannel_value),
     chairman:rg._lm_meetingchairman_value||null, coChairman:rg._lm_meetingcochairman_value||null,
     facilitator:rg._lm_meetingorganizerfacilitator_value||null,
     coreMembers:(rg.attendees||[]).map(a=>({position:a._lm_attendeeposition_value||null})),
@@ -2297,11 +2452,17 @@ function dataverseMeetingToSetup(detail){
    ========================================================================= */
 function ScreenRegister(){
   const {db,A,role,open,dvReports,dvMeetings,dvOpening}=use();
-  const w=ROLES[role].write;
+  const w=ROLES[role].write, canApprove=ROLES[role].approve;
   const [fKind,setFKind]=useState('All'), [fType,setFType]=useState('All');
   const [fCat,setFCat]=useState('All'), [fStage,setFStage]=useState('All');
   const [fStatus,setFStatus]=useState('All'), [q,setQ]=useState('');
+  /* Both confirm modals below work off one flat shape, so a row that has
+     been loaded into this session and a Dataverse row that hasn't both
+     describe themselves the same way -- the latter has no full Setup to
+     run scopeString()/displayName() against. */
   const [confirm,setConfirm]=useState(null);
+  const confirmFor=(s,action)=>({_action:action, _dv:false, id:s.id,
+    name:displayName(s), kind:s.kind, version:s.version, scope:scopeString(s)});
 
   // Only real data: Setups opened from Dataverse, or created fresh this
   // session. The built-in demo/seed Setups never existed in Dataverse, so
@@ -2309,31 +2470,80 @@ function ScreenRegister(){
   // opened-id dedup used to decide which Dataverse shadow rows to show.
   const realSetups=db.setups.filter(s=>!s._seed);
 
-  const rows=realSetups.filter(s=>
-    (fKind==='All'||s.kind===fKind) &&
-    (fType==='All'||s.setupType===fType) &&
-    (fCat==='All'||s.category===fCat) &&
-    (fStage==='All'||s.stage===fStage) &&
-    (fStatus==='All'||s.status===fStatus) &&
-    (!q||displayName(s).toLowerCase().includes(q.toLowerCase())));
+  /* Every row in this table -- one already loaded into this session's `db`,
+     or one still listed straight from Dataverse -- is reduced to the same few
+     fields the filter bar works on, and those same values are what the row
+     renders. That keeps the two in step: a row can never display "2 · Regional"
+     and then fail a Stage 2 filter.
+
+     Two of the columns hold a different field depending on the kind (a
+     Meeting's Setup Type vs a Report's Report Type; a Meeting's Type /
+     Classification vs a Report's Report Category), so each row is filtered on
+     whichever one applies to it, and those two dropdowns offer both sets. */
+  const filterFace=s=>({
+    kind:s.kind,
+    type:s.kind==='Report Template'?s.reportType:s.setupType,
+    category:s.kind==='Report Template'?s.reportCategory:s.category,
+    stage:s.stage, status:s.status, name:displayName(s),
+  });
+  const matches=f=>
+    (fKind==='All'  ||f.kind===fKind) &&
+    (fType==='All'  ||f.type===fType) &&
+    (fCat==='All'   ||f.category===fCat) &&
+    (fStage==='All' ||f.stage===fStage) &&
+    (fStatus==='All'||f.status===fStatus) &&
+    (!q||(f.name||'').toLowerCase().includes(q.toLowerCase()));
+
+  const rows=realSetups.filter(s=>matches(filterFace(s)));
 
   /* Dataverse-sourced rows the register hasn't loaded into this session's
-     `db` yet -- shown as a lightweight "shadow" row until opened (at
-     which point they become a real Setup and disappear from here, since
-     they now show up via `rows` above). Only Kind and the name search
-     apply to these, since the other filters need fields that aren't in
-     the lightweight list fetch -- opening one is exactly what pulls in
-     the rest. */
-  const openedDvIds=new Set(realSetups.filter(s=>s._dataverseId).map(s=>s._dataverseId));
-  const otherFiltersActive=fType!=='All'||fCat!=='All'||fStage!=='All'||fStatus!=='All';
-  const dvRows=otherFiltersActive ? [] : [
-    ...(fKind==='All'||fKind==='Report Template' ? dvReports : []).filter(r=>!openedDvIds.has(r.id))
-      .map(r=>({...r, _dv:true, dvKind:'Report Template', dvId:r.id})),
-    ...(fKind==='All'||fKind==='Committee / Meeting' ? dvMeetings : []).filter(r=>!openedDvIds.has(r.id))
-      .map(r=>({...r, _dv:true, dvKind:'Committee / Meeting', dvId:r.id})),
-  ].filter(r=>!q||r.name.toLowerCase().includes(q.toLowerCase()));
+     `db` yet -- shown as a lightweight "shadow" row until opened (at which
+     point they become a real Setup and drop out of here, since they then show
+     up via `rows` above).
 
-  const available=realSetups.filter(s=>s.status==='Active / Approved').length;
+     Everything the filter bar and the cells need is derived once, here, the
+     same way opening the record would derive it: Stage from which per-unit
+     table carries rows, and a row saved before the status column existed
+     reading as Active / Approved. So filtering by Stage or Status now includes
+     these rows instead of hiding every one of them. */
+  const openedDvIds=new Set(realSetups.filter(s=>s._dataverseId).map(s=>s._dataverseId));
+  const dvFace=(r,kind)=>{
+    const isReport=kind==='Report Template';
+    const buNames=(r.businessUnitIds||[]).map(id=>nameOf(BUSINESS_UNITS,id)).filter(Boolean);
+    const rgNames=(r.regionIds||[]).map(id=>nameOf(REGIONS,id)).filter(Boolean);
+    const unitCount=(r.businessUnitIds||[]).length || (r.regionIds||[]).length;
+    const isRegionLevel=(r.regionIds||[]).length>0 && (r.businessUnitIds||[]).length===0;
+    return {
+      _dv:true, dvKind:kind, dvId:r.id, kind, name:r.name,
+      type: isReport ? byCode1(DV_REPORT_TYPE,r.reportTypeCode)
+                     : (DV_MEETING_SETUP_TYPE[r.setupTypeCode]||null),
+      category: isReport ? byCode1(DV_REPORT_CATEGORY,r.reportCategoryCode)
+                         : (DV_MEETING_CATEGORY[r.categoryCode]||null),
+      stage: isReport ? (unitCount?(isRegionLevel?STAGES[1]:STAGES[0]):null)
+                      : (isRegionLevel?STAGES[1]:(DV_MEETING_STAGE[r.stageCode]||null)),
+      status: TEMPLATE_STATUS_LABEL[r.statusCode]||'Active / Approved',
+      statusAssumed: !TEMPLATE_STATUS_LABEL[r.statusCode],
+      frequency: byCode1(DV_FREQUENCY,r.frequencyCode),
+      version:r.version, updated:r.updated,
+      buNames, rgNames, unitCount, isRegionLevel,
+      scopeLabel: buNames.length ? buNames.join(', ')
+        : rgNames.length ? rgNames.join(', ') : '—',
+    };
+  };
+  const dvAll=[
+    ...dvReports.filter(r=>!openedDvIds.has(r.id)).map(r=>dvFace(r,'Report Template')),
+    ...dvMeetings.filter(r=>!openedDvIds.has(r.id)).map(r=>dvFace(r,'Committee / Meeting')),
+  ];
+  const dvRows=dvAll.filter(matches);
+
+  // The stat cards read from the tables, not just this session's loaded-in
+  // Setups: every real Setup plus every Dataverse row not yet opened into this
+  // session. Deliberately built from the UNFILTERED lists -- they are totals
+  // for the register, not counts of what the current filters leave showing.
+  const allKnown=[...realSetups.map(s=>({kind:s.kind,status:s.status})),
+                  ...dvAll.map(r=>({kind:r.kind,status:r.status}))];
+  const countAll=pred=>allKnown.filter(pred).length;
+  const available=countAll(x=>x.status==='Active / Approved');
   const clearAll=()=>{setFKind('All');setFType('All');setFCat('All');setFStage('All');
                       setFStatus('All');setQ('');};
   const filtered=fKind!=='All'||fType!=='All'||fCat!=='All'||fStage!=='All'||fStatus!=='All'||q;
@@ -2349,11 +2559,11 @@ function ScreenRegister(){
 
     <div className="stats">
       <Stat label="Available for use" v={available} d="Active / Approved" c="green"/>
-      <Stat label="Draft" v={realSetups.filter(s=>s.status==='Draft').length} d="not yet published" c="amber"/>
-      <Stat label="Under Review" v={realSetups.filter(s=>s.status==='Under Review').length}
+      <Stat label="Draft" v={countAll(x=>x.status==='Draft')} d="not yet published" c="amber"/>
+      <Stat label="Under Review" v={countAll(x=>x.status==='Under Review')}
             d="pending approval" c="amber"/>
-      <Stat label="Expired" v={realSetups.filter(s=>s.status==='Expired').length} d="create no occurrences"/>
-      <Stat label="Report Templates" v={realSetups.filter(s=>s.kind==='Report Template').length} d="published and draft"/>
+      <Stat label="Expired" v={countAll(x=>x.status==='Expired')} d="create no occurrences"/>
+      <Stat label="Report Templates" v={countAll(x=>x.kind==='Report Template')} d="published and draft"/>
     </div>
 
     <div className="fltr">
@@ -2363,12 +2573,25 @@ function ScreenRegister(){
       <label htmlFor="q-kind">Kind</label>
       <select id="q-kind" value={fKind} onChange={e=>setFKind(e.target.value)}>
         <option>All</option><option>Committee / Meeting</option><option>Report Template</option></select>
-      <label htmlFor="q-type">Setup Type</label>
+      {/* Both of these columns show a Meeting's field or a Report's, depending
+          on the row, so both dropdowns carry both sets — grouped, since a
+          value only ever applies to one kind. */}
+      <label htmlFor="q-type">Type</label>
       <select id="q-type" value={fType} onChange={e=>setFType(e.target.value)}>
-        <option>All</option>{SETUP_TYPES.map(t=><option key={t}>{t}</option>)}</select>
+        <option>All</option>
+        <optgroup label="Committee / Meeting">
+          {SETUP_TYPES.map(t=><option key={t}>{t}</option>)}</optgroup>
+        <optgroup label="Report Template">
+          {REPORT_TYPES.map(t=><option key={t}>{t}</option>)}</optgroup>
+      </select>
       <label htmlFor="q-cat">Category</label>
       <select id="q-cat" value={fCat} onChange={e=>setFCat(e.target.value)}>
-        <option>All</option>{CATEGORIES.map(c=><option key={c}>{c}</option>)}</select>
+        <option>All</option>
+        <optgroup label="Committee / Meeting">
+          {CATEGORIES.map(c=><option key={c}>{c}</option>)}</optgroup>
+        <optgroup label="Report Template">
+          {REPORT_CATEGORIES.map(c=><option key={c}>{c}</option>)}</optgroup>
+      </select>
       <label htmlFor="q-stage">Stage</label>
       <select id="q-stage" value={fStage} onChange={e=>setFStage(e.target.value)}>
         <option>All</option>{STAGES.map(s=><option key={s}>{s}</option>)}</select>
@@ -2380,7 +2603,7 @@ function ScreenRegister(){
 
     <div className="card flush">
       <div className="t-wrap"><table className="data reg-table">
-        <thead><tr><th>Setup name</th><th>Kind</th><th>Setup Type</th><th>Category</th><th>Stage</th>
+        <thead><tr><th>Setup name</th><th>Kind</th><th>Type</th><th>Category</th><th>Stage</th>
           <th>Scope and units</th><th>Frequency</th><th>Status</th><th className="reg-th-num">Ver</th><th>Updated</th>
           <th className="reg-th-actions"></th></tr></thead>
         <tbody>{rows.length===0 && dvRows.length===0
@@ -2398,7 +2621,7 @@ function ScreenRegister(){
             <td>{s.kind==='Report Template'
               ?(s.reportType?<Tag c={REPORT_TYPE_TAG_COLOR[s.reportType]||'grey'}>{s.reportType}</Tag>:<span className="dim">—</span>)
               :<Tag c={s.setupType==='Accreditation Committee'?'purple':'blue'}>{s.setupType}</Tag>}</td>
-            <td className="dim">{s.category||'—'}</td>
+            <td className="dim">{(s.kind==='Report Template'?s.reportCategory:s.category)||'—'}</td>
             <td className="dim">{(s.stage||'—').replace(/^Stage (\d) /,'$1 · ')}</td>
             <td className="dim" style={{fontSize:11.5,maxWidth:230}}
               title={keys.length?scopeNames(s).join(', '):''}>
@@ -2413,10 +2636,14 @@ function ScreenRegister(){
             <td className="dim">{fmtD(s.updated)}</td>
             <td className="reg-actions" onClick={e=>e.stopPropagation()}>
               <Btn k="reg-open" onClick={()=>open(s.id)}>Open</Btn>
+              {w?<Btn k="reg-act" onClick={()=>A.duplicate(s.id)}
+                title="Copy this Setup, and everything in it, to a new Draft">Duplicate</Btn>:null}
+              {canApprove&&s.status!=='Expired'
+                ? <Btn k="reg-act dgr" onClick={()=>setConfirm(confirmFor(s,'expire'))}
+                    title="Expire this Setup — it stays readable but creates no new occurrences">Expire</Btn>
+                : null}
               <RowMenu items={[
-                w&&s.status==='Under Review'?{label:'Approve', onClick:()=>setConfirm({...s,_action:'approve'})}:null,
-                w?{label:'Duplicate', onClick:()=>A.duplicate(s.id)}:null,
-                w&&s.status==='Active / Approved'?{label:'Expire', danger:true, onClick:()=>setConfirm({...s,_action:'expire'})}:null,
+                canApprove&&s.status==='Under Review'?{label:'Approve', onClick:()=>setConfirm(confirmFor(s,'approve'))}:null,
               ]}/>
             </td>
           </tr>;})}
@@ -2424,15 +2651,10 @@ function ScreenRegister(){
             const isOpening=dvOpening===r.dvId;
             const isReport=r.dvKind==='Report Template';
             const KindIcon=isReport?ClipboardList:CalendarDays;
-            const buNames=(r.businessUnitIds||[]).map(id=>nameOf(BUSINESS_UNITS,id)).filter(Boolean);
-            const rgNames=(r.regionIds||[]).map(id=>nameOf(REGIONS,id)).filter(Boolean);
-            const unitCount=(r.businessUnitIds||[]).length || (r.regionIds||[]).length;
-            const isRegionLevel=(r.regionIds||[]).length>0 && (r.businessUnitIds||[]).length===0;
-            const scopeLabel = buNames.length ? buNames.join(', ')
-              : rgNames.length ? rgNames.join(', ') : '—';
-            const stageLabel = isReport
-              ? (isRegionLevel ? '2 · Regional' : (unitCount?'1 · BU Operational':'—'))
-              : (DV_MEETING_STAGE[r.stageCode] ? DV_MEETING_STAGE[r.stageCode].replace(/^Stage (\d) /,'$1 · ') : '—');
+            // Every value below was derived once in dvFace() above — the same
+            // ones the filter ran on, so a row can't display one thing and
+            // filter as another.
+            const {buNames,rgNames,unitCount,isRegionLevel,scopeLabel}=r;
             return <tr key={'dv-'+r.dvId} className={'click reg-shadow'+(isOpening?' opening':'')}
               onClick={()=>{ if(!isOpening) A.openDataverse(r.dvKind,r.dvId); }}>
               <td><div className="t-main reg-name">
@@ -2441,15 +2663,12 @@ function ScreenRegister(){
                 </div>
                 <div className="t-sub">{isOpening?'Loading…':'Not loaded into this session yet — open to view/edit.'}</div></td>
               <td className="dim">{r.dvKind}</td>
-              <td>{isReport
-                ?(byCode1(DV_REPORT_TYPE,r.reportTypeCode)
-                    ?<Tag c={REPORT_TYPE_TAG_COLOR[byCode1(DV_REPORT_TYPE,r.reportTypeCode)]||'grey'}>{byCode1(DV_REPORT_TYPE,r.reportTypeCode)}</Tag>
-                    :<span className="dim">—</span>)
-                :<Tag c={DV_MEETING_SETUP_TYPE[r.setupTypeCode]==='Accreditation Committee'?'purple':'blue'}>
-                    {DV_MEETING_SETUP_TYPE[r.setupTypeCode]||'—'}</Tag>}</td>
-              <td className="dim">{isReport ? (byCode1(DV_REPORT_CATEGORY,r.reportCategoryCode)||'—')
-                : (DV_MEETING_CATEGORY[r.categoryCode]||'—')}</td>
-              <td className="dim">{stageLabel}</td>
+              <td>{!r.type ? <span className="dim">—</span>
+                : isReport
+                  ? <Tag c={REPORT_TYPE_TAG_COLOR[r.type]||'grey'}>{r.type}</Tag>
+                  : <Tag c={r.type==='Accreditation Committee'?'purple':'blue'}>{r.type}</Tag>}</td>
+              <td className="dim">{r.category||'—'}</td>
+              <td className="dim">{(r.stage||'—').replace(/^Stage (\d) /,'$1 · ')}</td>
               <td className="dim" style={{fontSize:11.5,maxWidth:230}}
                 title={[...buNames,...rgNames].join(', ')}>
                 {scopeLabel}
@@ -2457,37 +2676,49 @@ function ScreenRegister(){
                   ? <div style={{marginTop:3}}><Tag c="teal">runs in {unitCount}{' '}
                       {isRegionLevel?'regions':'units'}</Tag></div>
                   : null}</td>
-              <td className="dim">{byCode1(DV_FREQUENCY,r.frequencyCode)||'—'}</td>
-              <td>{TEMPLATE_STATUS_LABEL[r.statusCode]
-                ?<StatusPill s={TEMPLATE_STATUS_LABEL[r.statusCode]}/>
-                :<span className="dim" title="Saved before this environment tracked lifecycle status">—</span>}</td>
+              <td className="dim">{r.frequency||'—'}</td>
+              <td title={r.statusAssumed
+                ? 'Saved before this environment tracked lifecycle status — read as Active / Approved, which is what opening it would show.'
+                : undefined}>
+                <StatusPill s={r.status}/></td>
               <td className="num">{r.version??'—'}</td>
               <td className="dim">{r.updated?fmtD(r.updated.slice(0,10)):'—'}</td>
               <td className="reg-actions" onClick={e=>e.stopPropagation()}>
                 <Btn k="reg-open" disabled={isOpening} onClick={()=>A.openDataverse(r.dvKind,r.dvId)}>
-                  {isOpening?'Opening…':'Open'}</Btn>
+                  {isOpening?'Working…':'Open'}</Btn>
+                {w?<Btn k="reg-act" disabled={isOpening} onClick={()=>A.duplicateDataverse(r.dvKind,r.dvId)}
+                  title="Read this record in full and copy it, and everything in it, to a new Draft">Duplicate</Btn>:null}
+                {canApprove&&r.status!=='Expired'
+                  ? <Btn k="reg-act dgr" disabled={isOpening}
+                      onClick={()=>setConfirm({_action:'expire', _dv:true, dvKind:r.dvKind, dvId:r.dvId,
+                        name:r.name, kind:r.dvKind, version:r.version, scope:r.scopeLabel})}
+                      title="Expire this Setup — it stays readable but creates no new occurrences">Expire</Btn>
+                  : null}
               </td>
             </tr>;})}
           </>}
         </tbody></table></div>
     </div>
 
-    {confirm&&confirm._action==='approve'?<Modal title="Approve this Setup?" onClose={()=>setConfirm(null)}
-      sub="It moves to Active / Approved and becomes available for records to be created from it."
-      footer={<><Btn onClick={()=>setConfirm(null)}>Cancel</Btn>
-        <Btn k="pri" onClick={()=>{A.approve(confirm.id);setConfirm(null);}}>Approve</Btn></>}>
+    {confirm?<Modal
+      title={confirm._action==='approve'?'Approve this Setup?':'Expire this Setup?'}
+      onClose={()=>setConfirm(null)}
+      sub={confirm._action==='approve'
+        ? 'It moves to Active / Approved and becomes available for records to be created from it.'
+        : 'Nothing is deleted. An expired Setup creates no new occurrences and stays readable.'}
+      footer={confirm._action==='approve'
+        ? <><Btn onClick={()=>setConfirm(null)}>Cancel</Btn>
+            <Btn k="pri" onClick={()=>{A.approve(confirm.id);setConfirm(null);}}>Approve</Btn></>
+        : <><Btn onClick={()=>setConfirm(null)}>Keep it as it is</Btn>
+            <Btn k="dgr" onClick={()=>{
+              if(confirm._dv) A.expireDataverse(confirm.dvKind,confirm.dvId,confirm.name);
+              else A.expire(confirm.id);
+              setConfirm(null);
+            }}>Expire the Setup</Btn></>}>
       <div className="readonly"><b>{confirm.name}</b>
         <div style={{fontSize:12,color:'var(--muted)',marginTop:4}}>
-          {confirm.kind} · version {confirm.version} · {scopeString(confirm)}</div></div>
-    </Modal>:null}
-
-    {confirm&&confirm._action==='expire'?<Modal title="Expire this Setup?" onClose={()=>setConfirm(null)}
-      sub="Nothing is deleted. An expired Setup creates no new occurrences and stays readable."
-      footer={<><Btn onClick={()=>setConfirm(null)}>Keep it Active</Btn>
-        <Btn k="dgr" onClick={()=>{A.expire(confirm.id);setConfirm(null);}}>Expire the Setup</Btn></>}>
-      <div className="readonly"><b>{confirm.name}</b>
-        <div style={{fontSize:12,color:'var(--muted)',marginTop:4}}>
-          {confirm.kind} · version {confirm.version} · {scopeString(confirm)}</div></div>
+          {confirm.kind}{confirm.version?` · version ${confirm.version}`:''}
+          {confirm.scope&&confirm.scope!=='—'?` · ${confirm.scope}`:''}</div></div>
     </Modal>:null}
   </>;
 }
@@ -2511,7 +2742,8 @@ function ScreenDetail({rec,onClose}){
   const {db,A,role}=use();
   const [tab,setTab]=useState('summary');
   const [confirmApprove,setConfirmApprove]=useState(false);
-  const w=ROLES[role].write;
+  const [confirmExpire,setConfirmExpire]=useState(false);
+  const w=ROLES[role].write, canApprove=ROLES[role].approve;
   const usage=db.usage.filter(u=>u.setup===rec.id);
   const audit=db.audit.filter(a=>a.setup===rec.id).slice().reverse();
   const issues=validate(rec,db.setups);
@@ -2523,8 +2755,14 @@ function ScreenDetail({rec,onClose}){
         <div className="sub">{rec.kind} · version {rec.version||'—'} · <StatusPill s={rec.status}/>
           {rec.confidentiality?<> · <Tag c="grey">{rec.confidentiality}</Tag></>:null}</div>
         <div className="sub" style={{marginTop:4}}>{scopeString(rec)}</div></div>
-      {w&&rec.status==='Under Review'?<Btn k="pri" onClick={()=>setConfirmApprove(true)}>Approve</Btn>:null}
+      {canApprove&&rec.status==='Under Review'?<Btn k="pri" onClick={()=>setConfirmApprove(true)}>Approve</Btn>:null}
       {w&&rec.status!=='Expired'?<Btn onClick={()=>A.edit(rec.id)}>Edit</Btn>:null}
+      {w?<Btn onClick={()=>A.duplicate(rec.id)}
+        title="Copy this Setup, and everything in it, to a new Draft">Duplicate</Btn>:null}
+      {canApprove&&rec.status!=='Expired'
+        ? <Btn k="dgr" onClick={()=>setConfirmExpire(true)}
+            title="Expire this Setup — it stays readable but creates no new occurrences">Expire</Btn>
+        : null}
       <Btn onClick={onClose}>Close</Btn>
     </div>
 
@@ -2534,7 +2772,9 @@ function ScreenDetail({rec,onClose}){
       : null}
     {rec.status==='Under Review'
       ? <Note k="info" ic="i">This Setup is Under Review. It needs to be Approved before records are
-          created from it. Use Edit to change it further, or Approve it as-is.</Note>
+          created from it. {canApprove
+            ? 'Use Edit to change it further, or Approve it as-is.'
+            : 'Approval is an Administrator action — turn on the Administrator toggle in the top bar to approve it.'}</Note>
       : null}
     {issues.length>0 && rec.status!=='Expired'
       ? <Note k="warn" ic="⚠"><b>{issues.length} rule{issues.length>1?'s are':' is'} unmet.</b> This Setup
@@ -2545,6 +2785,15 @@ function ScreenDetail({rec,onClose}){
       sub="It moves to Active / Approved and becomes available for records to be created from it."
       footer={<><Btn onClick={()=>setConfirmApprove(false)}>Cancel</Btn>
         <Btn k="pri" onClick={()=>{A.approve(rec.id);setConfirmApprove(false);}}>Approve</Btn></>}>
+      <div className="readonly"><b>{displayName(rec)}</b>
+        <div style={{fontSize:12,color:'var(--muted)',marginTop:4}}>
+          {rec.kind} · version {rec.version||'—'} · {scopeString(rec)}</div></div>
+    </Modal>:null}
+
+    {confirmExpire?<Modal title="Expire this Setup?" onClose={()=>setConfirmExpire(false)}
+      sub="Nothing is deleted. An expired Setup creates no new occurrences and stays readable."
+      footer={<><Btn onClick={()=>setConfirmExpire(false)}>Keep it as it is</Btn>
+        <Btn k="dgr" onClick={()=>{A.expire(rec.id);setConfirmExpire(false);}}>Expire the Setup</Btn></>}>
       <div className="readonly"><b>{displayName(rec)}</b>
         <div style={{fontSize:12,color:'var(--muted)',marginTop:4}}>
           {rec.kind} · version {rec.version||'—'} · {scopeString(rec)}</div></div>
@@ -2610,14 +2859,14 @@ const LIST_DEFS=[
    rows:p=>BUSINESS_UNITS.filter(b=>!p||b.region===p).map(x=>[x.name,nameOf(REGIONS,x.region)])},
   {id:'dept',         name:'Department',     parent:'Business Unit',
    parentOpts:()=>BUSINESS_UNITS.map(x=>({v:x.id,label:x.name})),
-   rows:p=>DEPARTMENTS.filter(d=>!p||d.bu===p).map(x=>[x.name,nameOf(BUSINESS_UNITS,x.bu)]),
+   rows:p=>DEPARTMENTS.filter(d=>deptInBu(d.id,p)).map(x=>[x.name,deptBuNames(x.id)]),
    note:'A Setup selects Departments by name, so the same Department covers every unit it runs in.'},
   {id:'section',      name:'Section / Specialty', parent:'Business Unit',
    parentOpts:()=>BUSINESS_UNITS.map(x=>({v:x.id,label:x.name})),
    rows:p=>SECTIONS.filter(s=>!p||s.bu===p).map(x=>[x.name,nameOf(BUSINESS_UNITS,x.bu)]),
    note:'Only some Business Units have Specialties. Choosing one without any shows an empty list.'},
   {id:'function',     name:'Function',       parent:'Department',
-   parentOpts:()=>DEPARTMENTS.map(x=>({v:x.id,label:`${x.name} · ${nameOf(BUSINESS_UNITS,x.bu)}`})),
+   parentOpts:()=>DEPARTMENTS.map(x=>({v:x.id,label:`${x.name} · ${deptBuNames(x.id)}`})),
    rows:p=>FUNCTIONS.filter(f=>!p||f.dept===p).map(x=>[x.name,nameOf(DEPARTMENTS,x.dept)])},
   {id:'naming',       name:'How a name is built',
    rows:()=>STAGES.map((st,i)=>[st, STAGE_PREFIX[i]||'(no prefix)'])
@@ -2630,25 +2879,29 @@ const LIST_DEFS=[
    rows:()=>POSITIONS.map(p=>[p.name, nameOf(BUSINESS_UNITS,p.bu)||'—',
      nameOf(DEPARTMENTS,p.dept)||'—', nameOf(FUNCTIONS,p.fn)||'—', p.holder||'—']),
    note:'One row per assignment (Position + Business Unit + current employee), not one per Position title.'},
-  {id:'teams',        name:'Teams',          locked:true,
-   lockedHint:'Coming soon — Teams isn\u2019t wired to a Dataverse table yet.',
-   rows:()=>TEAMS.map(t=>[t.name, t.unit===GROUP_KEY?'Group-wide'
-     :(nameOf(BUSINESS_UNITS,t.unit)||nameOf(REGIONS,t.unit)||'—')]),
-   note:'A Team belongs to one Business Unit, one Region, or to the group.'},
-  {id:'channels',     name:'Channels',       parent:'Team',       locked:true,
-   lockedHint:'Coming soon — Channels has no Team relationship in Dataverse yet.',
+  {id:'teams',        name:'Teams',
+   rows:()=>TEAMS.map(t=>{ const n=channelsIn(t.id).length;
+     return [t.name, `${n} channel${n===1?'':'s'}`]; }),
+   note:'Read from the Teams Channels table. A Team is not a record of its own — it is the name '+
+     'its Channels carry, which is why it has no Business Unit or Region of its own.'},
+  {id:'channels',     name:'Channels',       parent:'Team',
    parentOpts:()=>TEAMS.map(t=>({v:t.id,label:t.name})),
-   rows:p=>CHANNELS.filter(c=>!p||c.team===p).map(x=>[x.name,nameOf(TEAMS,x.team)])},
-  {id:'sites',        name:'Sites',          locked:true,
-   lockedHint:'Coming soon — Sites isn\u2019t wired to a Dataverse table yet.',
-   rows:()=>SITES.map(x=>[x.name])},
-  {id:'libraries',    name:'Libraries',      parent:'Site',       locked:true,
-   lockedHint:'Coming soon — Libraries isn\u2019t wired to a Dataverse table yet.',
+   rows:p=>CHANNELS.filter(c=>!p||c.team===p)
+     .map(x=>[x.name, x.team||'—', channelPath(x.id)||'—', x.link||'—']),
+   note:'Channel, Team, SharePoint path, then the Teams channel link. The SharePoint path is the '+
+     'Site Path, Document Library and Folder joined — it is what auto-fills a Report '+
+     'Template’s Source link when that Channel is chosen.'},
+  {id:'sites',        name:'Sites',
+   rows:()=>SITES.map(x=>{ const n=LIBRARIES.filter(l=>l.site===x.id).length;
+     return [x.name, `${n} librar${n===1?'y':'ies'}`]; }),
+   note:'Read from the SharePoint Site Path on the Teams Channels table — one row per distinct path.'},
+  {id:'libraries',    name:'Libraries',      parent:'Site',
    parentOpts:()=>SITES.map(x=>({v:x.id,label:x.name})),
-   rows:p=>LIBRARIES.filter(l=>!p||l.site===p).map(x=>[x.name,nameOf(SITES,x.site)])},
-  {id:'folders',      name:'Folders',        cascade2:true,       locked:true,
-   lockedHint:'Coming soon — Folders isn\u2019t wired to a Dataverse table yet.',
-   note:'A Folder belongs to a Library, which belongs to a Site. Choose both.'},
+   rows:p=>LIBRARIES.filter(l=>!p||l.site===p).map(x=>[x.name,nameOf(SITES,x.site)]),
+   note:'Read from the Document Library on the Teams Channels table, under the Site Path it sits in.'},
+  {id:'folders',      name:'Folders',        cascade2:true,
+   note:'A Folder belongs to a Library, which belongs to a Site. Choose both. All three are read '+
+     'from the Teams Channels table.'},
   {id:'processes',    name:'Processes',      filterByBuDept:true,
    rows:()=>PROCESSES.map(p=>[p])},
   {id:'kpis',         name:'KPIs',           filterByBuDept:true,
@@ -2656,14 +2909,13 @@ const LIST_DEFS=[
 ];
 
 function ScreenLists(){
-  const {role}=use();
   const [cur,setCur]=useState('region');
   const [parent,setParent]=useState(null);
   const [site,setSite]=useState(null); const [lib,setLib]=useState(null);
   const [buF,setBuF]=useState(null); const [deptF,setDeptF]=useState(null); const [fnF,setFnF]=useState(null);
   const def=LIST_DEFS.find(l=>l.id===cur);
   const libs=LIBRARIES.filter(l=>l.site===site);
-  const deptOptsForBu=DEPARTMENTS.filter(d=>!buF||d.bu===buF);
+  const deptOptsForBu=DEPARTMENTS.filter(d=>deptInBu(d.id,buF));
   const fnOptsForDept=FUNCTIONS.filter(fn=>!deptF||fn.dept===deptF);
   const deptByName=cur==='kpis'?KPI_DEPT_BY_NAME:PROCESS_DEPT_BY_NAME;
   const reset=()=>{setParent(null);setSite(null);setLib(null);setBuF(null);setDeptF(null);setFnF(null);};
@@ -2673,11 +2925,11 @@ function ScreenLists(){
       ? def.rows().filter(r=>{
           const dId=deptByName[r[0]];
           if(deptF) return dId===deptF;
-          if(buF){ const d=byId(DEPARTMENTS,dId); return d&&d.bu===buF; }
+          if(buF){ return dId && deptInBu(dId,buF); }
           return true;
         }).map(r=>{
           const dId=deptByName[r[0]], d=byId(DEPARTMENTS,dId);
-          return [r[0], d?d.name:'—', d?nameOf(BUSINESS_UNITS,d.bu):'—'];
+          return [r[0], d?d.name:'—', d?deptBuNames(d.id):'—'];
         })
       : def.filterPositions
         ? POSITIONS.filter(p=>
@@ -2692,9 +2944,8 @@ function ScreenLists(){
         the child list — the same cascade the wizards use.</div></div>
 
     <Note k="lock" ic="—"><b>Taxonomy-owned. Read-only in Leadership Practice.</b>
-      {ROLES[role].taxonomy
-        ? ' These values are editable in the Taxonomy application, not here.'
-        : ' Values are selected from these lists and can never be added, edited or deleted.'}</Note>
+      {' '}Values are selected from these lists and can never be added, edited or deleted here —
+      they are maintained in the Taxonomy application.</Note>
 
     <div className="lists">
       <nav className="lists-rail" aria-label="Governed lists">
@@ -2779,25 +3030,24 @@ function App({onSwitch}){
   const [refDataTick,setRefDataTick]=useState(0);
   const [dvReports,setDvReports]=useState([]);
   const [dvMeetings,setDvMeetings]=useState([]);
-  const [dvOpening,setDvOpening]=useState(null); // id currently being fetched+opened, for a loading state
-  useEffect(()=>{
-    let cancelled=false;
-    (async()=>{
-      try{
-        const list=await fetchReportTemplatesList();
-        if(cancelled) return;
-        console.log(`[dataverse] fetchReportTemplatesList() returned ${list?list.length:0} row(s)`, list);
-        setDvReports(list||[]);
-      }catch(e){ console.warn('[dataverse] fetchReportTemplatesList() failed:', e); }
-      try{
-        const list=await fetchMeetingTemplatesList();
-        if(cancelled) return;
-        console.log(`[dataverse] fetchMeetingTemplatesList() returned ${list?list.length:0} row(s)`, list);
-        setDvMeetings(list||[]);
-      }catch(e){ console.warn('[dataverse] fetchMeetingTemplatesList() failed:', e); }
-    })();
-    return ()=>{cancelled=true;};
-  },[]);
+  const [dvOpening,setDvOpening]=useState(null); // id currently being fetched+opened/duplicated, for a loading state
+  /* Re-reads both register listings from Dataverse. Run on mount, and again
+     after any action that changes what's in those tables (duplicate creates
+     a row, expire changes a row's status) so the register reflects the
+     tables rather than a snapshot taken when the app loaded. */
+  const refreshDvLists=async()=>{
+    try{
+      const list=await fetchReportTemplatesList();
+      console.log(`[dataverse] fetchReportTemplatesList() returned ${list?list.length:0} row(s)`, list);
+      setDvReports(list||[]);
+    }catch(e){ console.warn('[dataverse] fetchReportTemplatesList() failed:', e); }
+    try{
+      const list=await fetchMeetingTemplatesList();
+      console.log(`[dataverse] fetchMeetingTemplatesList() returned ${list?list.length:0} row(s)`, list);
+      setDvMeetings(list||[]);
+    }catch(e){ console.warn('[dataverse] fetchMeetingTemplatesList() failed:', e); }
+  };
+  useEffect(()=>{ refreshDvLists(); },[]);
   useEffect(()=>{
     let cancelled=false;
     (async()=>{
@@ -2870,15 +3120,53 @@ function App({onSwitch}){
         const positions=await fetchPositions();
         if(cancelled) return;
         console.log(`[dataverse] fetchPositions() returned ${positions?positions.length:0} row(s)`, positions);
-        if(positions&&positions.length){ POSITIONS=positions; changed=true; }
+        if(positions&&positions.length){
+          POSITIONS=positions;
+          // Same rows give the Department <-> Business Unit relationship.
+          const {buIdsByDept}=departmentBuIndex(positions);
+          DEPT_BUS={}; buIdsByDept.forEach((set,deptId)=>{ DEPT_BUS[deptId]=set; });
+          changed=true;
+        }
       }catch(e){
         console.warn('[dataverse] fetchPositions() failed, using built-in list:', e);
+      }
+      try{
+        const tc=await fetchTeamsChannels();
+        if(cancelled) return;
+        console.log(`[dataverse] fetchTeamsChannels() returned ${tc?tc.length:0} channel row(s)`, tc);
+        // Set even when empty: unlike the lists above there is no built-in
+        // fallback to preserve -- Teams/Channels are whatever the table says,
+        // and an empty table should show as empty, not as stale mock data.
+        if(tc){ setTeamsChannels(tc); changed=true; }
+      }catch(e){
+        console.warn('[dataverse] fetchTeamsChannels() failed -- Team/Channel pickers will be empty:', e);
       }
       if(changed&&!cancelled) setRefDataTick(t=>t+1);
     })();
     return ()=>{cancelled=true;};
   },[]);
-  const [role,setRole]=useState('admin');
+  /* Who is signed in, linked to their Dataverse systemusers row. Null while
+     still loading, and stays null when there's no Power Apps host to ask
+     (e.g. plain `npm run dev`) -- the top bar just falls back to the role
+     label in that case. */
+  const [currentUser,setCurrentUser]=useState(null);
+  useEffect(()=>{
+    let cancelled=false;
+    (async()=>{
+      try{
+        const u=await fetchCurrentUser();
+        if(cancelled) return;
+        console.log('[dataverse] fetchCurrentUser() returned', u);
+        setCurrentUser(u);
+      }catch(e){ console.warn('[dataverse] fetchCurrentUser() failed:', e); }
+    })();
+    return ()=>{cancelled=true;};
+  },[]);
+
+  /* Administrator toggle. Off = Setup Author: authors and publishes, but
+     cannot approve. On = Setup Administrator: can also approve and expire. */
+  const [isAdmin,setIsAdmin]=useState(false);
+  const role=isAdmin?'admin':'author';
   const [screen,setScreen]=useState('register');
   const [openId,setOpenId]=useState(null);
   const [editing,setEditing]=useState(false);
@@ -2891,8 +3179,14 @@ function App({onSwitch}){
   const mut=fn=>setDb(p=>{const n={setups:p.setups.map(s=>({...s})),
     usage:p.usage.slice(), audit:p.audit.slice()}; fn(n); return n;});
 
+  /* The audit trail names the real signed-in person when we know who they
+     are, with the role they acted in -- falling back to the role alone when
+     there's no host identity to read. */
+  const actorName=()=>currentUser?.fullName
+    ? `${currentUser.fullName} (${ROLES[role].label})`
+    : ROLES[role].label;
   const logIt=(n,setupId,action,field,before,after)=>
-    n.audit.push({id:uid('g'),setup:setupId,at:stamp(),actor:ROLES[role].label,
+    n.audit.push({id:uid('g'),setup:setupId,at:stamp(),actor:actorName(),
                   action,field,before:before==null?'—':String(before),
                   after:after==null?'—':String(after)});
 
@@ -2938,15 +3232,23 @@ function App({onSwitch}){
             console.warn(`[dataverse] Report Template ${isUpdate?'update':'save'} failed entirely:`, errors);
             toast('Dataverse save failed',
               `${displayName(f)} was ${actionLabel} locally, but the Dataverse ${isUpdate?'update':'write'} failed. Check the console for details.`,'err');
-          }else if(errors.length){
+            return;
+          }
+          if(!isUpdate){
+            REPORT_DATAVERSE_ID={...REPORT_DATAVERSE_ID, [f.id]:id}; saveReportDvIds(REPORT_DATAVERSE_ID);
+            mut(n=>{ const i=n.setups.findIndex(x=>x.id===f.id);
+              if(i>=0) n.setups[i]={...n.setups[i], _dataverseId:id}; });
+          }
+          if(errors.length){
             console.warn(`[dataverse] Report Template ${isUpdate?'updated':'saved'} with some child rows failing:`, errors);
             toast(`Report Template ${isUpdate?'updated':'saved'}, with gaps`,
               `${errors.length} related row(s) (${errors.map(e=>e.table).join(', ')}) failed to save. Check the console for details.`,'warn');
-            if(!isUpdate){ REPORT_DATAVERSE_ID={...REPORT_DATAVERSE_ID, [f.id]:id}; saveReportDvIds(REPORT_DATAVERSE_ID); }
           }else{
             console.log(`[dataverse] Report Template ${isUpdate?'updated':'saved'}:`, id);
-            if(!isUpdate){ REPORT_DATAVERSE_ID={...REPORT_DATAVERSE_ID, [f.id]:id}; saveReportDvIds(REPORT_DATAVERSE_ID); }
           }
+          // Refresh so the register and the Linked Report Templates picker
+          // pick up the new/updated row instead of the snapshot from mount.
+          refreshDvLists();
         })
         .catch(e=>{
           console.warn(`[dataverse] Report Template ${isUpdate?'update':'save'} threw unexpectedly:`, e);
@@ -2964,13 +3266,22 @@ function App({onSwitch}){
             console.warn(`[dataverse] Meeting Template ${isUpdate?'update':'save'} failed entirely:`, errors);
             toast('Dataverse save failed',
               `${displayName(f)} was ${actionLabel} locally, but the Dataverse ${isUpdate?'update':'write'} failed. Check the console for details.`,'err');
-          }else if(errors.length){
+            return;
+          }
+          if(!isUpdate){
+            mut(n=>{ const i=n.setups.findIndex(x=>x.id===f.id);
+              if(i>=0) n.setups[i]={...n.setups[i], _dataverseId:id}; });
+          }
+          if(errors.length){
             console.warn(`[dataverse] Meeting Template ${isUpdate?'updated':'saved'} with some child rows failing:`, errors);
             toast(`Meeting Template ${isUpdate?'updated':'saved'}, with gaps`,
               `${errors.length} related row(s) (${errors.map(e=>e.table).join(', ')}) failed to save. Check the console for details.`,'warn');
           }else{
             console.log(`[dataverse] Meeting Template ${isUpdate?'updated':'saved'}:`, id);
           }
+          // Refresh so the register and the Linked Report Templates picker
+          // pick up the new/updated row instead of the snapshot from mount.
+          refreshDvLists();
         })
         .catch(e=>{
           console.warn(`[dataverse] Meeting Template ${isUpdate?'update':'save'} threw unexpectedly:`, e);
@@ -2978,6 +3289,83 @@ function App({onSwitch}){
             `${displayName(f)} was ${actionLabel} locally, but the Dataverse ${isUpdate?'update':'write'} failed. Check the console for details.`,'err');
         });
     }
+  };
+
+  /* Reads a Report/Meeting Template that lives in Dataverse into a real
+     Setup object. Shared by opening one, and by duplicating/expiring one
+     straight from its register row without opening it first. */
+  const loadDvSetup=async(kind,dvId)=> kind==='Report Template'
+    ? dataverseReportToSetup(await fetchReportTemplateDetail(dvId))
+    : dataverseMeetingToSetup(await fetchMeetingTemplateDetail(dvId));
+
+  /* Duplicates a Setup, carrying every piece of its content across, and
+     creates the copy in Dataverse straight away as a Draft -- parent row
+     plus every child row (per-unit Business Unit/Region rows and their
+     chairs/reviewers/attendees, agenda, checklist, lines, KPIs, processes,
+     supportive functions, linked reports), via the same create path a
+     brand-new Setup uses.
+
+     The copy is always a NEW Dataverse record: _dataverseId is dropped
+     before the write and set from whatever the create returns, so editing
+     or publishing the copy can never reach back and overwrite the original.
+     Every nested row gets a fresh local id for the same reason. */
+  const duplicateFrom=async src=>{
+    const nid=uid('su');
+    const copy={...src, id:nid, status:'Draft', version:0, updated:TODAY,
+      _dataverseId:undefined,
+      qualifier:((src.qualifier||'')+' copy').trim(),
+      regions:(src.regions||[]).slice(),
+      businessUnits:(src.businessUnits||[]).slice(),
+      lines:(src.lines||[]).map(l=>({...l,id:uid('ln')})),
+      checklist:(src.checklist||[]).map(c=>({...c,id:uid('ck')})),
+      agenda:(src.agenda||[]).map(a=>({...a,id:uid('ag')})),
+      supportive:(src.supportive||[]).slice(),
+      kpis:(src.kpis||[]).slice(),
+      processes:(src.processes||[]).slice(),
+      linkedTemplates:(src.linkedTemplates||[]).map(t=>({...t})),
+      units:(src.units||[]).map(u=>({...u, id:uid('un'),
+        coreMembers:(u.coreMembers||[]).map(m=>({...m,id:uid('cm')})),
+        reviewChain:(u.reviewChain||[]).slice()}))};
+    copy.name=derivedName(copy);
+
+    mut(n=>{ n.setups.push(copy);
+      logIt(n,nid,'Created','Lifecycle Status','—','Draft — duplicated from '+displayName(src)); });
+
+    const saver = copy.kind==='Report Template'
+      ? saveReportTemplateToDataverse : saveMeetingTemplateToDataverse;
+    const payload = copy.kind==='Report Template'
+      ? buildReportTemplatePayload(copy) : buildMeetingTemplatePayload(copy);
+    try{
+      const {id:newDvId, errors} = await saver(payload);
+      if(!newDvId){
+        console.warn('[dataverse] Duplicate failed entirely:', errors);
+        toast('Duplicate not saved',
+          `"${displayName(src)}" was copied in this session, but creating the copy in Dataverse failed. Check the console for details.`,'err');
+        return copy;
+      }
+      // Link the local copy to the row that was just created, so a later
+      // edit updates that row instead of creating yet another one.
+      mut(n=>{ const i=n.setups.findIndex(x=>x.id===nid);
+        if(i>=0) n.setups[i]={...n.setups[i], _dataverseId:newDvId}; });
+      if(copy.kind==='Report Template'){
+        REPORT_DATAVERSE_ID={...REPORT_DATAVERSE_ID, [nid]:newDvId}; saveReportDvIds(REPORT_DATAVERSE_ID);
+      }
+      if(errors.length){
+        console.warn('[dataverse] Duplicate created with some child rows failing:', errors);
+        toast('Duplicated, with gaps',
+          `The copy was created as a Draft, but ${errors.length} related row(s) (${errors.map(e=>e.table).join(', ')}) failed. Check the console for details.`,'warn');
+      }else{
+        console.log('[dataverse] Duplicated as', newDvId);
+        toast('Setup duplicated',
+          `"${displayName(src)}" was copied to Dataverse as a Draft, with all of its related rows. It carries the qualifier "copy" so the two names differ.`,'ok');
+      }
+      refreshDvLists();
+    }catch(e){
+      console.warn('[dataverse] Duplicate threw unexpectedly:', e);
+      toast('Duplicate not saved',
+        `"${displayName(src)}" was copied in this session, but creating the copy in Dataverse failed. Check the console for details.`,'err');
+    }
+    return copy;
   };
 
   const A={
@@ -3001,9 +3389,7 @@ function App({onSwitch}){
       const localId='dv-'+(kind==='Report Template'?'rpt':'mtg')+'-'+dvId;
       setDvOpening(dvId);
       try{
-        const setup = kind==='Report Template'
-          ? dataverseReportToSetup(await fetchReportTemplateDetail(dvId))
-          : dataverseMeetingToSetup(await fetchMeetingTemplateDetail(dvId));
+        const setup = await loadDvSetup(kind,dvId);
         mut(n=>{
           const i=n.setups.findIndex(x=>x.id===localId);
           if(i>=0) n.setups[i]=setup; else n.setups.push(setup);
@@ -3097,22 +3483,45 @@ function App({onSwitch}){
           });
       }},
 
-    duplicate:id=>{ const src=db.setups.find(s=>s.id===id); const nid=uid('su');
-      /* the per-unit rows are copied, not shared — editing the copy must never reach the original.
-         The copy carries a qualifier because the name it derives is otherwise identical, and never
-         carries over _dataverseId -- it is a new, never-published Setup, not the same Dataverse row. */
-      mut(n=>{ n.setups.push({...src,id:nid,status:'Draft',version:0,updated:TODAY,
-          _dataverseId:undefined,
-          qualifier:((src.qualifier||'')+' copy').trim(),
-          regions:(src.regions||[]).slice(), businessUnits:(src.businessUnits||[]).slice(),
-          lines:(src.lines||[]).map(l=>({...l,id:uid('ln')})),
-          units:(src.units||[]).map(u=>({...u, id:uid('un'),
-            coreMembers:(u.coreMembers||[]).map(m=>({...m,id:uid('cm')})),
-            reviewChain:(u.reviewChain||[]).slice()}))});
-        logIt(n,nid,'Created','Lifecycle Status','—','Draft — duplicated from '+displayName(src));});
-      toast('Setup duplicated',
-        `"${displayName(src)}" copied as a Draft. It carries the qualifier "copy" so the two names differ.`,
-        'ok');},
+    duplicate: async id=>{
+      const src=db.setups.find(s=>s.id===id);
+      if(src) await duplicateFrom(src);
+    },
+
+    /* Duplicating a Dataverse row the register lists but hasn't loaded into
+       this session yet: read it in full first, then duplicate exactly as
+       above -- so the copy carries every child row, not just the handful of
+       columns the lightweight register listing holds. */
+    duplicateDataverse: async(kind,dvId)=>{
+      setDvOpening(dvId);
+      try{
+        await duplicateFrom(await loadDvSetup(kind,dvId));
+      }catch(e){
+        console.warn(`[dataverse] Failed to duplicate ${kind} ${dvId}:`, e);
+        toast('Could not duplicate', 'Reading this record from Dataverse failed, so nothing was copied. Check the console for details.', 'err');
+      }finally{ setDvOpening(null); }
+    },
+
+    /* Expiring a Dataverse row without loading it in: a status-only patch,
+       no child rows touched. */
+    expireDataverse: async(kind,dvId,name)=>{
+      setDvOpening(dvId);
+      try{
+        const {id,errors} = kind==='Report Template'
+          ? await updateReportTemplateStatus(dvId,'Expired')
+          : await updateMeetingTemplateStatus(dvId,'Expired');
+        if(!id||errors.length){
+          console.warn(`[dataverse] Expire failed for ${dvId}:`, errors);
+          toast('Could not expire', `Updating "${name}" in Dataverse failed. Check the console for details.`,'err');
+        }else{
+          toast('Setup expired','It creates no new occurrences and stays readable.','warn');
+          await refreshDvLists();
+        }
+      }catch(e){
+        console.warn(`[dataverse] Expire threw unexpectedly for ${dvId}:`, e);
+        toast('Could not expire', `Updating "${name}" in Dataverse failed. Check the console for details.`,'err');
+      }finally{ setDvOpening(null); }
+    },
 
     expire:id=>{
       let rec=null;
@@ -3125,13 +3534,15 @@ function App({onSwitch}){
         const writer = rec.kind==='Report Template'
           ? updateReportTemplateStatus(rec._dataverseId,'Expired')
           : updateMeetingTemplateStatus(rec._dataverseId,'Expired');
-        writer.catch(e=>console.warn(`[dataverse] Expire status update threw unexpectedly for ${rec._dataverseId}:`, e));
+        writer
+          .then(()=>refreshDvLists())
+          .catch(e=>console.warn(`[dataverse] Expire status update threw unexpectedly for ${rec._dataverseId}:`, e));
       }},
   };
 
   const rec=openId?db.setups.find(s=>s.id===openId):null;
   const close=()=>{setOpenId(null);setEditing(false);};
-  const ctx={db,setDb,mut,role,A,open:A.open,toast,dvReports,dvMeetings,dvOpening};
+  const ctx={db,setDb,mut,role,A,open:A.open,toast,dvReports,dvMeetings,dvOpening,currentUser};
 
   let body;
   if(rec && editing)
@@ -3144,7 +3555,18 @@ function App({onSwitch}){
 
   const NAV=[{id:'register',n:1,label:'Setup Register',Icon:ClipboardList},
              {id:'lists',n:2,label:'Governed Lists',Icon:ListChecks}];
-  const initials=ROLES[role].label.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
+  /* Initials from the real person once we know them, from the role label
+     otherwise (nothing to personalise with before that resolves). */
+  const initialsFrom=t=>t.trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase();
+  const initials=initialsFrom(currentUser?.fullName || ROLES[role].label);
+  const userLabel=currentUser?.fullName || ROLES[role].label;
+  const userTitle=currentUser
+    ? `${currentUser.fullName||'Signed in'}${currentUser.email?` · ${currentUser.email}`:''}\n`+
+      (currentUser.linked
+        ? `Linked to Dataverse user ${currentUser.systemUserId}`
+        : 'No matching Dataverse user record found for this account.')+
+      `\n${ROLES[role].note}`
+    : ROLES[role].note;
   const canWrite=ROLES[role].write;
 
   return <Ctx.Provider value={ctx}>
@@ -3156,19 +3578,22 @@ function App({onSwitch}){
         </button>
         <div className="tb-brand gov-brand"><b>ANDALUSIA PULSE</b><span>Leadership Practice · Governance Setup</span></div>
         <div className="tb-sp"/>
-        <div className="tb-f gov-role">
-          <label htmlFor="role-sw">Acting as</label>
-          <select id="role-sw" value={role} onChange={e=>setRole(e.target.value)}
-            title={ROLES[role].note}>
-            {Object.keys(ROLES).map(k=><option key={k} value={k}>{ROLES[k].label}</option>)}
-          </select>
-        </div>
-        <span className={'tb-scope gov-scope'+(ROLES[role].write?' gov-scope-rw':' gov-scope-ro')}>
-          <i className="gov-dot" aria-hidden="true"/>{ROLES[role].write?'Read and write':'Read-only'}</span>
+        <label className={'gov-admin-tgl'+(isAdmin?' on':'')} title={ROLES[role].note}>
+          <input type="checkbox" checked={isAdmin} onChange={e=>setIsAdmin(e.target.checked)}/>
+          <span className="gov-admin-track" aria-hidden="true"><span className="gov-admin-knob"/></span>
+          <span className="gov-admin-label">Administrator</span>
+        </label>
+        <span className={'tb-scope gov-scope'+(ROLES[role].approve?' gov-scope-rw':' gov-scope-ro')}>
+          <i className="gov-dot" aria-hidden="true"/>{ROLES[role].approve?'Can approve':'Author only'}</span>
         <span className="tb-scope gov-date">{fmtD(TODAY)}</span>
-        <button type="button" className="gov-user" title={ROLES[role].note}>
+        <button type="button" className="gov-user" title={userTitle}>
           <span className="gov-user-av">{initials}</span>
-          <span className="gov-user-name">{ROLES[role].label}</span>
+          <span className="gov-user-name">
+            {userLabel}
+            <span className="gov-user-sub">{currentUser
+              ? (currentUser.linked?ROLES[role].label:'Not linked to Dataverse')
+              : ROLES[role].label}</span>
+          </span>
         </button>
       </div>
       <div className={'shell gov-shell'+(navOpen?'':' gov-nav-closed')}>

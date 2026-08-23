@@ -1,43 +1,15 @@
 {
-  "name": "and_teamschannel",
-  "title": "Teams Channels",
+  "name": "lm_meetingoccurrenceagenda",
+  "title": "Meeting Occurrence Agenda",
   "schema": {
     "type": "array",
     "items": {
       "type": "object",
       "x-ms-dataverse-entity": true,
-      "x-ms-dataverse-entityset": "and_teamschannels",
-      "x-ms-dataverse-primary-id": "and_teamschannelid",
-      "x-ms-dataverse-primary-name": "and_channelname",
+      "x-ms-dataverse-entityset": "lm_meetingoccurrenceagendas",
+      "x-ms-dataverse-primary-id": "lm_meetingoccurrenceagendaid",
+      "x-ms-dataverse-primary-name": "lm_title",
       "properties": {
-        "and_channellink": {
-          "type": "string",
-          "title": "Channel Link",
-          "x-ms-dataverse-attribute": "and_channellink",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "and_ChannelLink",
-          "maxLength": 4000
-        },
-        "and_channelname": {
-          "type": "string",
-          "title": "Channel Name",
-          "x-ms-dataverse-attribute": "and_channelname",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "and_ChannelName",
-          "x-ms-dataverse-primary-name": true,
-          "required": true,
-          "maxLength": 850
-        },
-        "and_teamschannelid": {
-          "type": "string",
-          "title": "Teams Channel",
-          "x-ms-dataverse-attribute": "and_teamschannelid",
-          "x-ms-dataverse-type": "UniqueidentifierType",
-          "x-ms-schema-name": "and_TeamsChannelId",
-          "x-ms-dataverse-primary-id": true,
-          "required": true,
-          "x-ms-keyType": "primary"
-        },
         "createdby": {
           "type": "string",
           "title": "Created By",
@@ -107,37 +79,122 @@
           "x-ms-dataverse-type": "IntegerType",
           "x-ms-schema-name": "ImportSequenceNumber"
         },
-        "lm_documentlibrary": {
+        "lm_carriedfromagendaitem": {
           "type": "string",
-          "title": "Document Library",
-          "x-ms-dataverse-attribute": "lm_documentlibrary",
+          "title": "Carried From Agenda Item",
+          "x-ms-dataverse-attribute": "lm_carriedfromagendaitem",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "lm_CarriedFromAgendaItem"
+        },
+        "lm_carriedfromagendaitemname": {
+          "type": "string",
+          "title": "lm_carriedfromagendaitemname",
+          "x-ms-dataverse-attribute": "lm_carriedfromagendaitemname",
           "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "lm_DocumentLibrary",
+          "x-ms-schema-name": "lm_CarriedFromAgendaItemName",
+          "x-ms-read-only": true,
+          "maxLength": 850
+        },
+        "lm_covered": {
+          "type": "string",
+          "title": "Covered",
+          "x-ms-dataverse-attribute": "lm_covered",
+          "x-ms-dataverse-type": "PicklistType",
+          "x-ms-schema-name": "lm_Covered",
+          "enum": [
+            "Yes ",
+            "No",
+            "Not Yet Recorded"
+          ],
+          "x-ms-enum-values": [
+            1,
+            2,
+            3
+          ],
+          "Color": [
+            null,
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "6c24adc1-5a9d-f111-b8de-00224882d001",
+          "x-ms-isGlobal": true,
+          "x-ms-optionsetdisplayname": "Meeting Agenda Covered",
+          "x-ms-optionSetType": "Picklist"
+        },
+        "lm_coveredname": {
+          "type": "string",
+          "title": "lm_coveredname",
+          "x-ms-dataverse-attribute": "lm_coveredname",
+          "x-ms-dataverse-type": "VirtualType",
+          "x-ms-schema-name": "lm_coveredName",
+          "x-ms-read-only": true
+        },
+        "lm_meetingoccurrence": {
+          "type": "string",
+          "title": "Meeting Occurrence",
+          "x-ms-dataverse-attribute": "lm_meetingoccurrence",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "lm_MeetingOccurrence"
+        },
+        "lm_meetingoccurrenceagendaid": {
+          "type": "string",
+          "title": "Meeting Occurrence Agenda",
+          "x-ms-dataverse-attribute": "lm_meetingoccurrenceagendaid",
+          "x-ms-dataverse-type": "UniqueidentifierType",
+          "x-ms-schema-name": "lm_MeetingOccurrenceAgendaId",
+          "x-ms-dataverse-primary-id": true,
+          "required": true,
+          "x-ms-keyType": "primary"
+        },
+        "lm_meetingoccurrencename": {
+          "type": "string",
+          "title": "lm_meetingoccurrencename",
+          "x-ms-dataverse-attribute": "lm_meetingoccurrencename",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "lm_MeetingOccurrenceName",
+          "x-ms-read-only": true,
+          "maxLength": 850
+        },
+        "lm_ownerposition": {
+          "type": "string",
+          "title": "Owner Position",
+          "x-ms-dataverse-attribute": "lm_ownerposition",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "lm_OwnerPosition"
+        },
+        "lm_ownerpositionname": {
+          "type": "string",
+          "title": "lm_ownerpositionname",
+          "x-ms-dataverse-attribute": "lm_ownerpositionname",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "lm_OwnerPositionName",
+          "x-ms-read-only": true,
+          "maxLength": 850
+        },
+        "lm_sequence": {
+          "type": "string",
+          "title": "Sequence",
+          "x-ms-dataverse-attribute": "lm_sequence",
+          "x-ms-dataverse-type": "IntegerType",
+          "x-ms-schema-name": "lm_Sequence"
+        },
+        "lm_source": {
+          "type": "string",
+          "title": "Source",
+          "x-ms-dataverse-attribute": "lm_source",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "lm_Source",
           "maxLength": 100
         },
-        "lm_folder": {
+        "lm_title": {
           "type": "string",
-          "title": "Folder",
-          "x-ms-dataverse-attribute": "lm_folder",
+          "title": "Title",
+          "x-ms-dataverse-attribute": "lm_title",
           "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "lm_Folder",
-          "maxLength": 100
-        },
-        "lm_sharepointsitepath": {
-          "type": "string",
-          "title": "SharePoint Site Path",
-          "x-ms-dataverse-attribute": "lm_sharepointsitepath",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "lm_SharePointSitePath",
-          "maxLength": 100
-        },
-        "lm_team": {
-          "type": "string",
-          "title": "Team",
-          "x-ms-dataverse-attribute": "lm_team",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "lm_Team",
-          "maxLength": 100
+          "x-ms-schema-name": "lm_Title",
+          "x-ms-dataverse-primary-name": true,
+          "required": true,
+          "maxLength": 850
         },
         "modifiedby": {
           "type": "string",
@@ -297,7 +354,7 @@
             null,
             null
           ],
-          "x-ms-optionsetmetadataid": "251b0931-af22-f111-8341-7ced8d0a6621",
+          "x-ms-optionsetmetadataid": "1d008e3a-599d-f111-b8dd-7ced8d91bb1b",
           "x-ms-isGlobal": false,
           "x-ms-optionsetdisplayname": "Status",
           "x-ms-optionSetType": "State"
@@ -328,7 +385,7 @@
             null,
             null
           ],
-          "x-ms-optionsetmetadataid": "2f1b0931-af22-f111-8341-7ced8d0a6621",
+          "x-ms-optionsetmetadataid": "27008e3a-599d-f111-b8dd-7ced8d91bb1b",
           "x-ms-isGlobal": false,
           "x-ms-optionsetdisplayname": "Status Reason",
           "x-ms-optionSetType": "Status"
@@ -365,10 +422,10 @@
         }
       },
       "required": [
-        "and_channelname",
-        "and_teamschannelid",
         "createdbyyominame",
         "createdonbehalfbyyominame",
+        "lm_meetingoccurrenceagendaid",
+        "lm_title",
         "modifiedbyyominame",
         "modifiedonbehalfbyyominame",
         "ownerid",

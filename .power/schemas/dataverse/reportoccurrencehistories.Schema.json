@@ -1,43 +1,15 @@
 {
-  "name": "and_teamschannel",
-  "title": "Teams Channels",
+  "name": "lm_reportoccurrencehistory",
+  "title": "Report Occurrence Histories",
   "schema": {
     "type": "array",
     "items": {
       "type": "object",
       "x-ms-dataverse-entity": true,
-      "x-ms-dataverse-entityset": "and_teamschannels",
-      "x-ms-dataverse-primary-id": "and_teamschannelid",
-      "x-ms-dataverse-primary-name": "and_channelname",
+      "x-ms-dataverse-entityset": "lm_reportoccurrencehistories",
+      "x-ms-dataverse-primary-id": "lm_reportoccurrencehistoryid",
+      "x-ms-dataverse-primary-name": "lm_action",
       "properties": {
-        "and_channellink": {
-          "type": "string",
-          "title": "Channel Link",
-          "x-ms-dataverse-attribute": "and_channellink",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "and_ChannelLink",
-          "maxLength": 4000
-        },
-        "and_channelname": {
-          "type": "string",
-          "title": "Channel Name",
-          "x-ms-dataverse-attribute": "and_channelname",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "and_ChannelName",
-          "x-ms-dataverse-primary-name": true,
-          "required": true,
-          "maxLength": 850
-        },
-        "and_teamschannelid": {
-          "type": "string",
-          "title": "Teams Channel",
-          "x-ms-dataverse-attribute": "and_teamschannelid",
-          "x-ms-dataverse-type": "UniqueidentifierType",
-          "x-ms-schema-name": "and_TeamsChannelId",
-          "x-ms-dataverse-primary-id": true,
-          "required": true,
-          "x-ms-keyType": "primary"
-        },
         "createdby": {
           "type": "string",
           "title": "Created By",
@@ -107,37 +79,65 @@
           "x-ms-dataverse-type": "IntegerType",
           "x-ms-schema-name": "ImportSequenceNumber"
         },
-        "lm_documentlibrary": {
+        "lm_action": {
           "type": "string",
-          "title": "Document Library",
-          "x-ms-dataverse-attribute": "lm_documentlibrary",
+          "title": "Action",
+          "x-ms-dataverse-attribute": "lm_action",
           "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "lm_DocumentLibrary",
+          "x-ms-schema-name": "lm_Action",
+          "x-ms-dataverse-primary-name": true,
+          "required": true,
+          "maxLength": 850
+        },
+        "lm_actorposition": {
+          "type": "string",
+          "title": "Actor position",
+          "x-ms-dataverse-attribute": "lm_actorposition",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "lm_Actorposition"
+        },
+        "lm_actorpositionname": {
+          "type": "string",
+          "title": "lm_actorpositionname",
+          "x-ms-dataverse-attribute": "lm_actorpositionname",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "lm_ActorpositionName",
+          "x-ms-read-only": true,
+          "maxLength": 850
+        },
+        "lm_note": {
+          "type": "string",
+          "title": "Note",
+          "x-ms-dataverse-attribute": "lm_note",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "lm_Note",
           "maxLength": 100
         },
-        "lm_folder": {
+        "lm_reportoccurrence": {
           "type": "string",
-          "title": "Folder",
-          "x-ms-dataverse-attribute": "lm_folder",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "lm_Folder",
-          "maxLength": 100
+          "title": "Report Occurrence ",
+          "x-ms-dataverse-attribute": "lm_reportoccurrence",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "lm_ReportOccurrence"
         },
-        "lm_sharepointsitepath": {
+        "lm_reportoccurrencehistoryid": {
           "type": "string",
-          "title": "SharePoint Site Path",
-          "x-ms-dataverse-attribute": "lm_sharepointsitepath",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "lm_SharePointSitePath",
-          "maxLength": 100
+          "title": "Report Occurrence History",
+          "x-ms-dataverse-attribute": "lm_reportoccurrencehistoryid",
+          "x-ms-dataverse-type": "UniqueidentifierType",
+          "x-ms-schema-name": "lm_ReportOccurrenceHistoryId",
+          "x-ms-dataverse-primary-id": true,
+          "required": true,
+          "x-ms-keyType": "primary"
         },
-        "lm_team": {
+        "lm_reportoccurrencename": {
           "type": "string",
-          "title": "Team",
-          "x-ms-dataverse-attribute": "lm_team",
+          "title": "lm_reportoccurrencename",
+          "x-ms-dataverse-attribute": "lm_reportoccurrencename",
           "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "lm_Team",
-          "maxLength": 100
+          "x-ms-schema-name": "lm_ReportOccurrenceName",
+          "x-ms-read-only": true,
+          "maxLength": 850
         },
         "modifiedby": {
           "type": "string",
@@ -297,7 +297,7 @@
             null,
             null
           ],
-          "x-ms-optionsetmetadataid": "251b0931-af22-f111-8341-7ced8d0a6621",
+          "x-ms-optionsetmetadataid": "1e3cbb0a-549d-f111-b8de-000d3a442d79",
           "x-ms-isGlobal": false,
           "x-ms-optionsetdisplayname": "Status",
           "x-ms-optionSetType": "State"
@@ -328,7 +328,7 @@
             null,
             null
           ],
-          "x-ms-optionsetmetadataid": "2f1b0931-af22-f111-8341-7ced8d0a6621",
+          "x-ms-optionsetmetadataid": "283cbb0a-549d-f111-b8de-000d3a442d79",
           "x-ms-isGlobal": false,
           "x-ms-optionsetdisplayname": "Status Reason",
           "x-ms-optionSetType": "Status"
@@ -365,10 +365,10 @@
         }
       },
       "required": [
-        "and_channelname",
-        "and_teamschannelid",
         "createdbyyominame",
         "createdonbehalfbyyominame",
+        "lm_action",
+        "lm_reportoccurrencehistoryid",
         "modifiedbyyominame",
         "modifiedonbehalfbyyominame",
         "ownerid",

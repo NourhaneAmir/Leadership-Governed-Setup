@@ -42,17 +42,6 @@
   background:linear-gradient(90deg,#fff 0%, #E8D3AC 100%);
   -webkit-background-clip:text; background-clip:text; color:transparent;
 }
-.gov-root .gov-role{
-  padding:5px 6px 5px 12px;
-  border-radius:9px;
-  background:rgba(255,255,255,.05);
-  border:1px solid rgba(255,255,255,.10);
-}
-.gov-root .gov-role label{ opacity:.65 }
-.gov-root .gov-role select{
-  background:transparent; border:none; padding:2px 4px;
-  font-weight:600;
-}
 .gov-root .gov-scope{
   display:inline-flex; align-items:center; gap:6px;
   transition:background .2s,border-color .2s;
@@ -61,6 +50,37 @@
 .gov-root .gov-scope-rw{ color:#DCEFD9; border-color:rgba(139,196,120,.4); background:rgba(139,196,120,.12) }
 .gov-root .gov-scope-ro{ color:#E9D9B8; border-color:rgba(233,217,184,.35); background:rgba(233,217,184,.10) }
 .gov-root .gov-date{ opacity:.75; font-weight:500 }
+
+/* Administrator toggle — off = Setup Author (may publish, may not approve),
+   on = Setup Administrator (may also approve and expire) */
+.gov-root .gov-admin-tgl{
+  display:inline-flex; align-items:center; gap:8px; cursor:pointer;
+  padding:5px 12px; border-radius:9px;
+  background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.10);
+  color:rgba(255,255,255,.72); font-size:12.5px; font-weight:600;
+  transition:background .16s,border-color .16s,color .16s;
+}
+.gov-root .gov-admin-tgl:hover{ background:rgba(255,255,255,.10) }
+.gov-root .gov-admin-tgl.on{
+  color:#F3E3C4; border-color:rgba(232,211,172,.42); background:rgba(232,211,172,.14);
+}
+/* the real checkbox stays focusable for keyboard/AT, just visually replaced */
+.gov-root .gov-admin-tgl input{
+  position:absolute; opacity:0; width:0; height:0;
+}
+.gov-root .gov-admin-track{
+  width:32px; height:18px; border-radius:10px; flex:0 0 32px; position:relative;
+  background:rgba(255,255,255,.16); transition:background .18s;
+}
+.gov-root .gov-admin-tgl.on .gov-admin-track{ background:var(--grad-gold) }
+.gov-root .gov-admin-knob{
+  position:absolute; top:2px; left:2px; width:14px; height:14px; border-radius:50%;
+  background:#fff; transition:transform .18s;
+}
+.gov-root .gov-admin-tgl.on .gov-admin-knob{ transform:translateX(14px) }
+.gov-root .gov-admin-tgl input:focus-visible + .gov-admin-track{
+  outline:2px solid #E8D3AC; outline-offset:2px;
+}
 
 /* user chip, top-right */
 .gov-root .gov-user{
@@ -75,7 +95,11 @@
   background:var(--grad-gold); color:#2A1E0F; font-size:10.5px; font-weight:700;
   display:flex; align-items:center; justify-content:center; letter-spacing:.02em;
 }
-.gov-root .gov-user-name{ font-size:12.5px; font-weight:600; white-space:nowrap }
+.gov-root .gov-user-name{
+  display:flex; flex-direction:column; align-items:flex-start; line-height:1.25;
+  font-size:12.5px; font-weight:600; white-space:nowrap;
+}
+.gov-root .gov-user-sub{ font-size:10.5px; font-weight:500; opacity:.6 }
 
 /* module-switch item, bottom of sidebar */
 .gov-root .gov-side-sp{ flex:1 }
@@ -205,7 +229,8 @@
 
 @media(max-width:900px){
   .gov-root .gov-main{ padding:16px 16px 70px }
-  .gov-root .gov-role label{ display:none }
+  .gov-root .gov-admin-label{ display:none }
+  .gov-root .gov-admin-tgl{ padding:5px 8px }
   .gov-root .gov-user-name{ display:none }
   .gov-root .gov-user{ padding:4px }
 }
@@ -215,7 +240,7 @@
   .gov-root .gov-topbar{ flex-wrap:wrap; height:auto; min-height:var(--gov-topbar-h); padding:8px 14px; gap:8px 12px }
   .gov-root .gov-brand{ order:1 }
   .gov-root .gov-user{ order:2; margin-left:auto }
-  .gov-root .gov-role,.gov-root .gov-scope{ order:3 }
+  .gov-root .gov-admin-tgl,.gov-root .gov-scope{ order:3 }
   .gov-root .tb-sp{ display:none }
 
   .gov-root .gov-shell{ flex-direction:column }
@@ -373,6 +398,37 @@
   padding:8px 10px; font-size:12px; color:var(--muted); font-style:italic;
 }
 
+/* Governed Lists — SharePoint paths and Teams channel links are long, so they
+   wrap inside their cell instead of stretching the card wider than the shell */
+.gov-root .lists table.data td{ overflow-wrap:anywhere; word-break:break-word }
+
+/* Position picker — a Position from the Organization Structure, with the
+   employee currently holding it shown beneath, and a search over both. */
+.gov-root .pos-sel{ position:relative }
+.gov-root .pos-sel-btn{
+  width:100%; display:flex; align-items:center; gap:8px; text-align:left;
+  background:#fff; border:1px solid var(--border-d); border-radius:8px;
+  padding:7px 10px; font-family:inherit; font-size:13px; color:var(--ink);
+  cursor:pointer; transition:border-color .15s;
+}
+.gov-root .pos-sel-btn:hover:not(:disabled){ border-color:var(--teal) }
+.gov-root .pos-sel-btn:disabled{ background:var(--surface); cursor:not-allowed; opacity:.7 }
+.gov-root .pos-sel-v{ flex:1; min-width:0; display:flex; flex-direction:column; line-height:1.3 }
+.gov-root .pos-sel-v b{ font-weight:600; font-size:13px; overflow-wrap:anywhere }
+.gov-root .pos-sel-v i{ font-style:normal; font-size:11.5px; color:var(--muted) }
+.gov-root .pos-sel-ph{ flex:1; color:var(--muted) }
+.gov-root .pos-sel-cv{ flex:0 0 auto; font-size:10px; color:var(--muted) }
+.gov-root .pos-sel-list{ padding:5px }
+.gov-root .pos-sel-q{
+  width:100%; border:1px solid var(--border-d); border-radius:6px;
+  padding:6px 8px; font-size:12.5px; margin-bottom:5px; font-family:inherit;
+}
+.gov-root .pos-sel-opt{ display:flex; flex-direction:column; line-height:1.35 }
+.gov-root .pos-sel-opt b{ font-weight:600 }
+.gov-root .pos-sel-opt i{ font-style:normal; font-size:11px; color:var(--muted) }
+.gov-root .pos-sel-opt.on{ background:var(--teal-l) }
+.gov-root .pos-sel-clear{ color:var(--muted); font-style:italic }
+
 /* locked Governed List tabs (Sites/Libraries/Folders/Teams/Channels) */
 .gov-root .lists-rail button.locked{
   opacity:.5; cursor:not-allowed;
@@ -425,6 +481,16 @@
 .gov-root .btn.reg-open{
   padding:6px 14px; border-radius:8px; font-size:12.5px; font-weight:600;
 }
+
+/* secondary row actions (Duplicate / Expire) — same family as the row's
+   "Open" button but quieter, so Open stays the primary action in the row */
+.gov-root .btn.reg-act{
+  padding:6px 11px; border-radius:8px; font-size:12px; font-weight:600;
+  color:var(--muted);
+}
+.gov-root .btn.reg-act:hover:not(:disabled){ color:var(--ink); border-color:var(--border-d) }
+.gov-root .btn.reg-act.dgr{ color:var(--red) }
+.gov-root .btn.reg-act:disabled{ opacity:.45; cursor:not-allowed }
 
 /* header cells: align with the column they head, so "Ver" and the
    trailing actions column don't sit left-aligned over right-aligned data */

@@ -68,6 +68,27 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "lm_meetingoccurrenceagendas": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "lm_meetingoccurrenceagendaid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "lm_meetingoccurrenceattendeeses": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "lm_meetingoccurrenceattendeesid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "lm_meetingoccurrences": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "lm_meetingoccurrenceid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "lm_meetingtemplateagendaitems": {
     "tableId": "",
     "version": "",
@@ -121,6 +142,20 @@ export const dataSourcesInfo = {
     "tableId": "",
     "version": "",
     "primaryKey": "lm_report_templateid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "lm_reportoccurrencehistories": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "lm_reportoccurrencehistoryid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "lm_reportoccurrences": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "lm_reportoccurrenceid",
     "dataSourceType": "Dataverse",
     "apis": {}
   },
