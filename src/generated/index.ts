@@ -11,6 +11,7 @@ export * as Cr301_specialtyksa_service_hubsModel from './models/Cr301_specialtyk
 export * as Cr603_chklst_departmentsesModel from './models/Cr603_chklst_departmentsesModel';
 export * as Cr603_organizationstructuresModel from './models/Cr603_organizationstructuresModel';
 export * as Crd04_regionsesModel from './models/Crd04_regionsesModel';
+export * as DocumentsModel from './models/DocumentsModel';
 export * as Hr_employeesModel from './models/Hr_employeesModel';
 export * as Hr_functionsModel from './models/Hr_functionsModel';
 export * as Lm_meetingattendeeslistsModel from './models/Lm_meetingattendeeslistsModel';
@@ -45,6 +46,7 @@ export * from './services/Cr301_specialtyksa_service_hubsService';
 export * from './services/Cr603_chklst_departmentsesService';
 export * from './services/Cr603_organizationstructuresService';
 export * from './services/Crd04_regionsesService';
+export * from './services/DocumentsService';
 export * from './services/Hr_employeesService';
 export * from './services/Hr_functionsService';
 export * from './services/Lm_meetingattendeeslistsService';

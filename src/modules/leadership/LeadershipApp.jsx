@@ -1,8 +1,9 @@
 import React, { useState, useMemo, useEffect, useRef, createContext, useContext } from 'react';
 import { ArrowUpRight, BarChart3, CalendarDays, CheckSquare, ClipboardList, FileText,
          Gauge, Menu, Settings2, UsersRound, X } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { fetchMeetingOccurrences, fetchReportOccurrences, createMeetingOccurrence,
-         createReportOccurrence,
+         createReportOccurrence, updateReportOccurrenceFile,
          fetchBusinessUnits, fetchPositions, fetchDepartments, fetchRegions,
          fetchMeetingTemplatesList, fetchMeetingTemplateDetail,
          fetchReportTemplatesList, fetchReportTemplateDetail, fetchCurrentUser,
@@ -1694,7 +1695,7 @@ function reportDue(r){
 let DV_BU_NAME={}, DV_POS_NAME={}, DV_POS_HOLDER={}, DV_DEPT_NAME={}, DV_TPL_NAME={}, DV_TPL_DETAIL={};
 /* Same shape, for Report Templates -- kept separate from DV_TPL_NAME above,
    which only ever holds Meeting Templates. */
-let DV_RPT_TPL_NAME={}, DV_RPT_TPL_DETAIL={};
+let DV_RPT_TPL_NAME={}, DV_RPT_TPL_DETAIL={}, DV_RPT_TPL_LIST=[];
 /* The same reference data as lists, for the pickers on the Custom Ad Hoc form
    -- a Dataverse lookup only accepts a real row id, so that form cannot offer
    the seeded PEOPLE/BUS ids the rest of this module uses. */
@@ -1943,37 +1944,6 @@ function App({onSwitch}){
                {at:nowStamp(),who:me,act:'Submitted for review'}]});
     logIt(n,id,'Custom Report created');
     toast('Custom Report submitted','Review started immediately. The metadata is queued for Taxonomy with a No-Setup flag and did not block submission.','ok');
-  }),
-  /* Multi-step Create Report wizard — either from an approved Setup (f.setupId) or Custom
-     (f.setupId==='custom'). f.files is an array of {name,size} picked via the browser's real
-     File API. f.submit decides whether this lands as a Draft or goes straight to In Review. */
-  createReportFromWizard:(f)=>mut(n=>{
-    const id=uid('sub');
-    const isCustom = f.setupId==='custom';
-    const setup = isCustom?null:RPT_SETUPS.find(s=>s.id===f.setupId);
-    const site = isCustom?f.site:setup.site, folder = isCustom?f.folder:setup.folder;
-    const files = f.files||[];
-    n.reports.push({id, setup:isCustom?null:f.setupId, period:f.period, bu:f.bu||'ALL', dept:f.dept,
-      status:f.submit?'In Review':'Draft', creator:me, step:0,
-      file: files[0]?files[0].name:null, files,
-      url: files[0] ? '/'+site+'/'+folder.replace(/ \/ /g,'/')+'/'+files[0].name : null,
-      ver: files.length?1:0, locked:false,
-      custom: isCustom ? {name:f.title, cat:'Custom', objective:f.summary||f.title, site:f.site,
-        folder:f.folder, reviewers:f.reviewers, kpis:[], processes:[], noSetupFlag:true,
-        taxonomyState:'Queued'} : null,
-      summary:f.summary||null, actions:f.actions||null,
-      history:[
-        {at:nowStamp(),who:me,act:isCustom?'Custom Report created — no approved Setup exists'
-                                          :'Report created from approved Setup'},
-        ...(isCustom?[{at:nowStamp(),who:null,act:'Metadata queued for Taxonomy with a No-Setup flag'}]:[]),
-        ...(files.length?[{at:nowStamp(),who:me,
-            act:files.length+' attachment'+(files.length===1?'':'s')+' uploaded'}]:[]),
-        ...(f.submit?[{at:nowStamp(),who:me,act:'Submitted for review'}]:[]),
-      ]});
-    logIt(n,id,f.submit?'Report submitted for review':'Report saved as Draft');
-    toast(f.submit?'Report submitted for review':'Draft saved',
-      f.submit?`Routed to ${P((isCustom?f.reviewers:setup.reviewers)[0]).name} as review step 1.`
-              :'Find it any time under Due to Submit in My Reports.','ok');
   }),
 
   /* ---------------- meeting actions ------------------------------------ */
@@ -2330,7 +2300,8 @@ function App({onSwitch}){
           DV_TPL_LIST=rows.slice().sort((x,y)=>(x.name||'').localeCompare(y.name||'')); }),
         load(fetchReportTemplatesList,'fetchReportTemplatesList',rows=>{
           DV_RPT_TPL_NAME={}; DV_RPT_TPL_DETAIL={};
-          rows.forEach(r=>{ DV_RPT_TPL_NAME[r.id]=r.name; DV_RPT_TPL_DETAIL[r.id]=r; }); }),
+          rows.forEach(r=>{ DV_RPT_TPL_NAME[r.id]=r.name; DV_RPT_TPL_DETAIL[r.id]=r; });
+          DV_RPT_TPL_LIST=rows.slice().sort((x,y)=>(x.name||'').localeCompare(y.name||'')); }),
         load(fetchCurrentUser,'fetchCurrentUser',user=>setCurrentUser(user)),
       ]);
       if(cancelled) return;
@@ -2490,11 +2461,11 @@ function ScreenWorkspace(){
     <div className="ph ph-row">
       <div style={{flex:1}}><h1>My Workspace</h1>
         <div className="sub">Your pending tasks, upcoming meetings, and action items across all modules.</div></div>
-      <Btn onClick={()=>setNewReport(true)}>+ Ad Hoc Report</Btn>
+      <Btn onClick={()=>setNewReport(true)}>+ New Report</Btn>
       <Btn k="pri" onClick={()=>go('mtg')}>+ New Meeting</Btn>
     </div>
 
-    {newReport && <DvAdHocReportModal onClose={()=>setNewReport(false)}/>}
+    {newReport && <NewReportModal onClose={()=>setNewReport(false)}/>}
 
     <div className="tabs">
       {TABS.map(t=>{
@@ -2671,7 +2642,6 @@ function ScreenReports(){
   const list = db.reports.filter(r=>canSeeReport(r,me));
   const rec  = list.find(r=>r.id===id);
   if(rec) return <ReportDetail rec={rec} back={()=>setSel(v=>({...v,rpt:null}))}/>;
-  if(creating) return <ReportWizard onClose={()=>setCreating(false)}/>;
 
   const due      = list.filter(r=>r.status==='Draft'     && r.period<=PERIOD);
   const upcoming = list.filter(r=>r.status==='Draft'     && r.period> PERIOD);
@@ -2693,6 +2663,8 @@ function ScreenReports(){
         <div className="sub">Create, track, and review every Report linked to an approved Setup.</div></div>
       <Btn k="pri" onClick={()=>setCreating(true)}>+ New Report</Btn>
     </div>
+
+    {creating && <NewReportModal onClose={()=>setCreating(false)}/>}
 
     <div className="tabs">
       {TABS.map(t=>
@@ -3015,286 +2987,70 @@ function FollowUp({src,intro,onTask,onDec,agenda}){
   </div>;
 }
 
-/* =========================================================================
-   CREATE REPORT — multi-step wizard (Template → Details → Attachments → Submit)
-   ========================================================================= */
-const shiftPeriod = (p,n) => { const [y,m]=p.split('-').map(Number);
-  const d=new Date(y,m-1+n,1); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); };
-const WIZ_STEPS = [
-  {id:'template', n:1, label:'Template',    hint:'Select template'},
-  {id:'details',  n:2, label:'Details',     hint:'Fill fields'},
-  {id:'files',    n:3, label:'Attachments', hint:'Upload files'},
-  {id:'submit',   n:4, label:'Submit',      hint:'Review & submit'},
-];
-/* Departments for the Report wizard, read live from cr603_chklst_departmentses.
-   Falls back to the seeded names only when the table has not loaded, so the
-   field is never an empty dropdown. */
-const WIZ_DEPTS_FALLBACK = ['Hospital-Wide','Quality','Nursing','Pharmacy','Facilities','Emergency','Executive'];
-const wizDepts = () => DV_DEPT_LIST.length
-  ? DV_DEPT_LIST.map(d=>d.name).filter(Boolean)
-  : WIZ_DEPTS_FALLBACK;
-const TPL_STYLE = {
-  rs1:{ic:'📊', bg:'var(--teal-l)',  fg:'var(--teal-d)'},
-  rs2:{ic:'👥', bg:'var(--blue-bg)', fg:'var(--blue)'},
-  rs3:{ic:'📈', bg:'var(--green-bg)',fg:'var(--green)'},
-  rs4:{ic:'🛠', bg:'var(--amber-bg)',fg:'var(--amber)'},
-};
 const fmtFileSize = b => b<1024?b+' B' : b<1048576?(b/1024).toFixed(1)+' KB' : (b/1048576).toFixed(1)+' MB';
 
-function WizSteps({step,onJump}){
-  const idx = WIZ_STEPS.findIndex(s=>s.id===step);
-  return <div className="wiz-steps">
-    {WIZ_STEPS.map((s,i)=><React.Fragment key={s.id}>
-      {i>0 && <div className="wiz-line"/>}
-      <div className="wiz-step" style={{cursor:'pointer'}} onClick={()=>onJump(s.id)}>
-        <div className={'wiz-num '+(i<idx?'done':i===idx?'now':'')}>{i<idx?'✓':s.n}</div>
-        <div className="t"><b>{s.label}</b><span>{s.hint}</span></div>
-      </div>
-    </React.Fragment>)}
-  </div>;
+/* Create a Report Occurrence — writes straight to lm_reportoccurrences, either
+   from an approved Report Template or as a fully Ad Hoc / Custom Report with
+   no Setup behind it. Mirrors NewMeetingModal's shape: pick a real Setup (or
+   Custom), the form pre-fills from the Template's per-unit placement and
+   review chain, and everything is still real Dataverse row ids -- the seeded
+   demo people used elsewhere in this module are not real rows and the
+   lookups would reject them.
+
+   A Report Occurrence carries no reviewer list of its own -- the review chain
+   lives on the Template, resolved per Business Unit/Region (same as a
+   Meeting's per-unit Chair/Facilitator), so this form only ever *previews*
+   it. A Custom/No-Setup Report has no Template and therefore no configured
+   review chain at all, matching what DvReportDetail already shows. */
+/* Proof of concept: read an uploaded workbook entirely in the browser and log
+   what it finds as "components" -- one per sheet, plus any named range the
+   template author defined -- so we can see whether Excel's own structure is
+   enough to locate a checklist's required content before wiring this to
+   Dataverse. Nothing here is uploaded or saved. */
+async function readExcelComponents(file){
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, {type:'array'});
+  const names = wb.Workbook?.Names || [];
+  console.log(`[Excel] "${file.name}" — ${wb.SheetNames.length} sheet(s), ${names.length} named range(s)`);
+
+  wb.SheetNames.forEach(sheetName=>{
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, defval:''});
+    console.log(`[Excel] Sheet "${sheetName}" — ${rows.length} row(s)`);
+    console.table(rows);
+  });
+
+  names.forEach(n=>{
+    try{
+      const [rangeSheet, rangeRef] = n.Ref.split('!');
+      const sheetName = rangeSheet.replace(/^'|'$/g,'');
+      const sheet = wb.Sheets[sheetName];
+      const range = XLSX.utils.decode_range(rangeRef.replace(/\$/g,''));
+      const rows = XLSX.utils.sheet_to_json(sheet, {header:1, defval:'', range});
+      console.log(`[Excel] Named range "${n.Name}" → ${n.Ref} — ${rows.length} row(s)`);
+      console.table(rows);
+    }catch(e){ console.warn(`[Excel] Could not read named range "${n.Name}":`, e); }
+  });
+
+  console.log(`[Excel] Done — "${file.name}".`);
 }
 
-function ReportWizard({onClose}){
-  const {A,S} = use();
-  const [step,setStep]=useState('template');
-  const [setupId,setSetupId]=useState(null);
-  const [f,setF]=useState({title:'',period:PERIOD,dept:'Hospital-Wide',bu:'ALL',
-    summary:'',actions:'',reviewers:['u5'],site:'Quality',folder:'2026 / Ad Hoc',files:[]});
-  const set=(k,v)=>setF(x=>({...x,[k]:v}));
-  const fileInputRef = useRef(null);
-  const [dragOver,setDragOver]=useState(false);
-
-  const isCustom = setupId==='custom';
-  const setup = (setupId && !isCustom) ? RPT_SETUPS.find(s=>s.id===setupId) : null;
-  const chain = isCustom ? f.reviewers : (setup?setup.reviewers:[]);
-  const setupLabel = isCustom ? 'Custom — no approved Setup' : setup ? setup.name : 'No template selected yet';
-
-  const chooseTpl = id => { setSetupId(id);
-    const s = id!=='custom' ? RPT_SETUPS.find(x=>x.id===id) : null;
-    setF(x=>({...x, title: s ? s.name+' — '+fmtP(x.period) : x.title})); };
-
-  const required = [!!f.dept.trim(), !!f.period, !!f.summary.trim(),
-    isCustom?!!f.title.trim():true, isCustom?f.reviewers.length>0:true];
-  const filledCount = required.filter(Boolean).length, totalCount = required.length;
-  const detailsOk = filledCount===totalCount;
-  const filesOk = f.files.length>0;
-
-  const next = () => {
-    if(step==='template') setStep('details');
-    else if(step==='details') setStep('files');
-    else if(step==='files') setStep('submit');
-  };
-  const nextDisabled = false; // TEMP: validation bypassed for UI review
-  const cancel = () => {
-    if(step!=='template' && !window.confirm('Discard this new Report? Nothing entered will be saved.')) return;
-    onClose();
-  };
-  const saveDraft = () => { if(!setupId) return; A.createReportFromWizard({...f,setupId,submit:false}); onClose(); };
-  const submit    = () => { if(!setupId) return; A.createReportFromWizard({...f,setupId,submit:true});  onClose(); };
-
-  const addFiles = fileList => setF(x=>({...x,
-    files:[...x.files, ...Array.from(fileList).map(file=>({name:file.name,size:file.size}))]}));
-  const removeFile = i => setF(x=>({...x, files:x.files.filter((_,j)=>j!==i)}));
-
-  return <>
-    <div className="crumb"><a onClick={cancel}>Reports</a> › <b>New Report</b></div>
-    <div className="ph ph-row">
-      <div style={{flex:1}}><h1>Create Report</h1>
-        <div className="sub">Select a template, fill in the details, and submit for review.</div></div>
-      <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-        <Btn onClick={cancel}>Cancel</Btn>
-        {step!=='submit' && <Btn disabled={!setupId} onClick={saveDraft}>Save Draft</Btn>}
-        {step!=='submit' && <Btn k="pri" disabled={nextDisabled} onClick={next}>Next Step</Btn>}
-      </div>
-    </div>
-
-    <WizSteps step={step} onJump={setStep}/>
-
-    {step==='template' && <div>
-      <h2 style={{marginBottom:2}}>Choose a Report Template</h2>
-      <div className="csub">Templates are published through Governance Setup. Only active, approved
-        templates appear here.</div>
-      <Note k="info">Showing {RPT_SETUPS.length} templates from Setup Register. Templates inherit
-        fields, review chain, and cadence from their Setup definition.</Note>
-      <div className="wiz-tpl">
-        {RPT_SETUPS.map(s=>{ const st=TPL_STYLE[s.id]||{ic:'📄',bg:'var(--grey-bg)',fg:'var(--muted)'};
-          return <div key={s.id} className={'wiz-tpl-c'+(setupId===s.id?' on':'')} onClick={()=>chooseTpl(s.id)}>
-            <div className="wiz-tpl-ic" style={{background:st.bg,color:st.fg}}>{st.ic}</div>
-            <h3>{s.name}</h3>
-            <p>{s.objective}</p>
-            <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
-              <Tag c="grey">{s.cat}</Tag><Tag c="grey">{s.freq}</Tag>
-            </div>
-          </div>;})}
-        <div className={'wiz-tpl-c dashed'+(isCustom?' on':'')} onClick={()=>chooseTpl('custom')}>
-          <div className="wiz-tpl-ic" style={{background:'var(--ink)',color:'#fff'}}>🖥</div>
-          <h3>Custom Report</h3>
-          <p>Build a custom report from scratch with flexible fields and layout.</p>
-          <Tag c="amber">Custom</Tag>
-        </div>
-      </div>
-    </div>}
-
-    {step==='details' && <div className="grid2" style={{gridTemplateColumns:'1fr 300px',alignItems:'start'}}>
-      <div>
-        <Note k="info">Template: <b>{setupLabel}</b> — fill all required (*) fields.</Note>
-        <div className="card">
-          <h2>Report Information</h2>
-          <div className="f-row">
-            <Field label="Report Title" req>
-              <input type="text" value={f.title} disabled={!isCustom}
-                onChange={e=>set('title',e.target.value)} placeholder="e.g. Laser Utilisation Review"/></Field>
-            <Field label="Reporting Period" req>
-              <select value={f.period} onChange={e=>set('period',e.target.value)}>
-                {[-2,-1,0,1,2,3].map(n=>{const p=shiftPeriod(PERIOD,n);
-                  return <option key={p} value={p}>{fmtP(p)}</option>;})}
-              </select></Field>
-          </div>
-          <div className="f-row">
-            <Field label="Setup / Committee" req hint={!isCustom?'Auto-filled from template':null}>
-              <input type="text" value={setupLabel} disabled/></Field>
-            <Field label="Department" req
-              hint={DV_DEPT_LIST.length?'Read from the Departments table.':null}>
-              <select value={f.dept} onChange={e=>set('dept',e.target.value)}>
-                <option value="">Select…</option>
-                {wizDepts().map(d=><option key={d}>{d}</option>)}</select></Field>
-          </div>
-        </div>
-
-        <div className="card">
-          <h2>Summary & Actions</h2>
-          <Field label="Executive Summary" req>
-            <textarea value={f.summary} onChange={e=>set('summary',e.target.value)}
-              placeholder="Overall summary for this reporting period."/></Field>
-          <Field label="Improvement Actions" hint="One per line — optional">
-            <textarea value={f.actions} onChange={e=>set('actions',e.target.value)}
-              placeholder={'1. ...\n2. ...'}/></Field>
-          {isCustom && <Field label="Sequential Reviewers" req hint="Reviewed in the order selected.">
-            <Pills multi val={f.reviewers} onChange={v=>set('reviewers',v)}
-              opts={['u5','u2','u7','u10'].map(id=>({v:id,label:P(id).name}))}/></Field>}
-        </div>
-      </div>
-
-      <div>
-        <div className="card">
-          <h2>Report Details</h2>
-          <div className="wa-mo-r"><label>Template</label>
-            <span className="v" style={{fontFamily:'inherit'}}>{isCustom?'Custom':setupLabel}</span></div>
-          <div className="wa-mo-r"><label>Setup</label>
-            <span className="v" style={{fontFamily:'inherit'}}>{isCustom?'—':setupLabel}</span></div>
-          <div className="wa-mo-r"><label>Created</label>
-            <span className="v" style={{fontFamily:'inherit'}}>{fmtD(TODAY)}</span></div>
-          <div className="wa-mo-r"><label>Status</label><Tag c="grey">Draft</Tag></div>
-        </div>
-
-        <div className="card">
-          <h2>Review Chain</h2>
-          <div className="csub">Sequential review — each must approve before next.</div>
-          {chain.length===0 ? <Empty>Choose at least one Reviewer.</Empty> : chain.map((rv,i)=>
-            <div className="rev-row" key={i}>
-              <div className={'rev-num '+(i===0?'now':'pending')}>{i+1}</div>
-              <div style={{flex:1,minWidth:0}}>
-                <div className="t-main" style={{fontSize:12.5}}>{P(rv).name}</div>
-                <div className="t-sub">{P(rv).position}</div>
-              </div>
-            </div>)}
-          {S.reviewTimeoutDays!=null && <div className="csub" style={{marginTop:8,marginBottom:0}}>
-            {S.reviewTimeoutDays}-day timeout per reviewer. Auto-escalates.</div>}
-        </div>
-
-        <div className="card">
-          <h2>Completion</h2>
-          <Bar v={Math.round(filledCount/totalCount*100)} c={detailsOk?'green':'teal'}/>
-          <div className="csub" style={{marginTop:6,marginBottom:0}}>
-            {filledCount} of {totalCount} required fields filled</div>
-        </div>
-      </div>
-    </div>}
-
-    {step==='files' && <div className="card" style={{maxWidth:560}}>
-      <h2>Attachments</h2>
-      <div className="csub">Upload supporting documents, data files, or evidence.</div>
-      <div className={'dropzone'+(dragOver?' over':'')}
-        onClick={()=>fileInputRef.current.click()}
-        onDragOver={e=>{e.preventDefault();setDragOver(true);}}
-        onDragLeave={()=>setDragOver(false)}
-        onDrop={e=>{e.preventDefault();setDragOver(false);addFiles(e.dataTransfer.files);}}>
-        <div className="up-ic">⇧</div>
-        <div style={{fontWeight:650,fontSize:12.5}}>Drop files here or click to browse</div>
-        <div className="csub" style={{marginBottom:0,marginTop:2}}>PDF, Word, Excel, images up to 25MB each</div>
-      </div>
-      <input ref={fileInputRef} type="file" multiple style={{display:'none'}}
-        onChange={e=>{addFiles(e.target.files); e.target.value='';}}/>
-      {f.files.length>0 && <div style={{marginTop:12}}>
-        {f.files.map((file,i)=><div className="att-row" key={i}>
-          <div className="att-ic">📄</div>
-          <div style={{flex:1,minWidth:0}}>
-            <div className="t-main" style={{fontSize:12.5}}>{file.name}</div>
-            <div className="t-sub">Uploaded just now</div>
-          </div>
-          <span className="dim" style={{fontSize:11}}>{fmtFileSize(file.size)}</span>
-          <button type="button" onClick={()=>removeFile(i)} style={{border:'none',background:'transparent',
-            color:'var(--muted)',fontSize:15,cursor:'pointer',padding:'0 4px'}}>✕</button>
-        </div>)}
-      </div>}
-    </div>}
-
-    {step==='submit' && <div style={{maxWidth:530}}>
-      <h2 style={{marginBottom:2}}>Review & Submit</h2>
-      <div className="csub">Review before submitting. Once submitted, it enters the sequential review chain.</div>
-      <Note k="warn">Once submitted, you cannot edit.
-        {S.reviewTimeoutDays!=null && ` Each reviewer has a ${S.reviewTimeoutDays}-day window.`}</Note>
-
-      <div className="card">
-        <h2>Report Summary</h2>
-        <div className="rs-grid">
-          <div className="rs-cell"><label>Title</label><div>{f.title||'—'}</div></div>
-          <div className="rs-cell"><label>Period</label><div>{fmtP(f.period)}</div></div>
-          <div className="rs-cell full"><label>Executive Summary</label><div style={{fontWeight:500}}>{f.summary||'—'}</div></div>
-          <div className="rs-cell full"><label>Attachments</label>
-            <div>{f.files.length} file{f.files.length===1?'':'s'}</div></div>
-        </div>
-      </div>
-
-      <div className="card">
-        <h2>Review Chain</h2>
-        {chain.map((rv,i)=>
-          <div className="rev-row" key={i}>
-            <div className={'rev-num '+(i===0?'now':'pending')}>{i+1}</div>
-            <div style={{flex:1,minWidth:0}}>
-              <div className="t-main" style={{fontSize:12.5}}>{P(rv).name}</div>
-              <div className="t-sub">{P(rv).position}
-                {S.reviewTimeoutDays!=null && ' · '+S.reviewTimeoutDays+'-day window'}</div>
-            </div>
-            <Tag c={i===0?'amber':'grey'}>{i===0?'First':'Waiting'}</Tag>
-          </div>)}
-      </div>
-
-      <div className="btn-row" style={{marginTop:2}}>
-        <Btn style={{flex:1}} onClick={()=>setStep('files')}>Back to Edit</Btn>
-        <Btn k="grn" style={{flex:1}} onClick={submit}>➤ Submit for Review</Btn>
-      </div>
-    </div>}
-  </>;
-}
-
-/* Ad Hoc Report — writes straight to lm_reportoccurrences.
-
-   Scope here is a Business Unit only: unlike the Meeting Occurrence table, this
-   one carries no Region and no Stage column, so there is nothing to record them
-   in and no Stage machinery to drive. Department and Creator Position narrow to
-   the chosen Business Unit through the Organization Structure, the same way the
-   Meeting form does. */
-function DvAdHocReportModal({onClose}){
+function NewReportModal({onClose}){
   const {toast,refreshOccurrences}=use();
   const [f,setF]=useState({
+    setup:'', tplUnitKey:'',
     name:'', objective:'', fileUrl:'',
     period: TODAY.slice(0,7),          // month the Report covers
     stage:'Business Unit',
     dvBusinessUnitId:'', dvRegionId:'', dvDepartmentId:'', dvCreatorPositionId:'',
   });
   const [saving,setSaving]=useState(false);
+  const [tplDetail,setTplDetail]=useState(null);
+  const [tplLoading,setTplLoading]=useState(false);
   const set=(k,v)=>setF(x=>({...x,[k]:v}));
+  const custom = f.setup==='custom';
+
+  const pos = id => { const n=dvPos(id); if(!n) return null;
+    const h=id&&DV_POS_HOLDER[id]; return h?`${n} — ${h}`:n; };
 
   /* Stage decides what the Report is scoped to, exactly as it does for a
      Meeting: Stage 1 runs in a Business Unit, Stage 2 in a Region, Group and
@@ -3307,8 +3063,74 @@ function DvAdHocReportModal({onClose}){
   const scopeHint = stageBU ? 'Narrowed to the chosen Business Unit.'
     : stageRegion ? 'Narrowed to every Business Unit in the chosen Region.'
     : 'Group and ExCom Reports are not narrowed — everything is offered.';
-  const ok = f.name.trim() && f.objective.trim() && scopeChosen
-    && f.dvCreatorPositionId && f.period;
+
+  /* Every Business Unit / Region the selected Report Template is actually
+     approved to run in, each carrying that unit's own review chain -- read
+     straight from lm_reporttemplatebusinessunitses / lm_reporttemplateregions
+     via fetchReportTemplateDetail(). */
+  const tplUnits = tplDetail ? [
+    ...(tplDetail.businessUnits||[]).map(b=>({
+      key:b._lm_businessunit_value, kind:'bu',
+      label: dvBu(b._lm_businessunit_value) || '(Business Unit not in the loaded list)',
+      reviewChain: (b.reviewChain||[]).slice().sort((a,b2)=>(a.lm_step||0)-(b2.lm_step||0)),
+    })),
+    ...(tplDetail.regions||[]).map(r=>({
+      key:r._lm_region_value, kind:'region',
+      label: dvRegion(r._lm_region_value) || '(Region not in the loaded list)',
+      reviewChain: (r.reviewChain||[]).slice().sort((a,b2)=>(a.lm_step||0)-(b2.lm_step||0)),
+    })),
+  ].filter(u=>u.key) : [];
+
+  const applyUnit = unit => {
+    setF(x=>({...x,
+      tplUnitKey: unit ? unit.key : '',
+      // A Setup with no approved Business Unit or Region runs once, group-wide
+      // -- unlike a Meeting Template, a Report Template carries no lm_stages
+      // field to say Group vs ExCom, so this always resolves to 'Group'.
+      // Leaving the initial 'Business Unit' default in place here previously
+      // left scopeChosen permanently false for a group-wide Setup, which
+      // stuck Department and Created By disabled with no way to enable them.
+      stage: unit ? (unit.kind==='bu'?'Business Unit':'Region') : 'Group',
+      dvBusinessUnitId: unit&&unit.kind==='bu' ? unit.key : '',
+      dvRegionId: unit&&unit.kind==='region' ? unit.key : '',
+      dvDepartmentId:'',
+    }));
+  };
+
+  /* Reading a Template's own per-unit placement and review chain is a
+     separate, heavier call than the lightweight list the picker is built
+     from, so it only runs once a real Template is actually chosen. */
+  useEffect(()=>{
+    if(custom || !f.setup){ setTplDetail(null); setTplLoading(false); return; }
+    let cancelled=false;
+    setTplLoading(true); setTplDetail(null);
+    setF(x=>({...x, tplUnitKey:'', dvBusinessUnitId:'', dvRegionId:'', dvDepartmentId:''}));
+    fetchReportTemplateDetail(f.setup)
+      .then(d=>{
+        if(cancelled) return;
+        setTplDetail(d);
+        // The Template's own objective is a reasonable starting point for
+        // this occurrence's -- still freely editable below.
+        if(d?.parent?.lm_objective) setF(x=>({...x, objective: x.objective||d.parent.lm_objective}));
+        if(d?.parent?.lm_newcolumn) setF(x=>({...x, name: x.name||d.parent.lm_newcolumn}));
+      })
+      .catch(e=>console.warn('[dataverse] fetchReportTemplateDetail() failed:', e))
+      .finally(()=>{ if(!cancelled) setTplLoading(false); });
+    return ()=>{cancelled=true;};
+  },[custom, f.setup]);
+
+  /* Auto-apply the single placement a Template is approved for -- a
+     Template approved for more than one Business Unit or Region waits on
+     the picker below instead. */
+  useEffect(()=>{
+    if(custom || !tplDetail) return;
+    if(tplUnits.length<=1) applyUnit(tplUnits[0]||null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[tplDetail]);
+
+  const ok = !!f.setup && f.name.trim() && f.objective.trim() && scopeChosen
+    && f.dvCreatorPositionId && f.period
+    && (custom || (!tplLoading && (tplUnits.length<=1 || !!f.tplUnitKey)));
 
   const save=async()=>{
     setSaving(true);
@@ -3316,6 +3138,7 @@ function DvAdHocReportModal({onClose}){
       const {id,errors}=await createReportOccurrence({
         name:f.name.trim(),
         objective:f.objective.trim(),
+        templateId: custom ? undefined : f.setup,
         stage:f.stage,
         businessUnitId:(stageBU && f.dvBusinessUnitId) ? f.dvBusinessUnitId : undefined,
         regionId:(stageRegion && f.dvRegionId) ? f.dvRegionId : undefined,
@@ -3328,15 +3151,17 @@ function DvAdHocReportModal({onClose}){
         status:'Draft',
         version:1,
         reviewStep:0,
-        noSetupFlag:true,          // an Ad Hoc Report has no approved Setup behind it
+        noSetupFlag: custom,
       });
       if(!id){
         console.warn('[dataverse] Report Occurrence create failed:', errors);
         toast('Not saved','Creating the Report Occurrence in Dataverse failed. Check the console for details.','err');
         return;
       }
-      toast('Ad Hoc Report created',
-        'Saved to lm_reportoccurrences as a Draft, flagged as having no Setup. It now appears in your Workspace.','ok');
+      toast(custom?'Ad Hoc Report created':'Report created from the approved Setup',
+        custom
+          ? 'Saved to lm_reportoccurrences as a Draft, flagged as having no Setup. It now appears in your Workspace.'
+          : 'Saved to lm_reportoccurrences as a Draft, linked to its approved Report Template.','ok');
       await refreshOccurrences();
       onClose();
     }catch(e){
@@ -3345,79 +3170,129 @@ function DvAdHocReportModal({onClose}){
     }finally{ setSaving(false); }
   };
 
-  return <Modal title="Create an Ad Hoc Report" wide onClose={onClose}
-    sub="Use this where no approved Report Template exists. It is written straight to lm_reportoccurrences as a Draft, flagged as having no Setup."
+  return <Modal title="Create a Report" wide onClose={onClose}
+    sub="Pick an approved Report Template, or use Custom where none exists. Either way this writes straight to lm_reportoccurrences as a Draft."
     footer={<><Btn onClick={onClose} disabled={saving}>Cancel</Btn>
       <Btn k="pri" disabled={!ok||saving} onClick={save}>
-        {saving?'Saving…':'Create the Report'}</Btn></>}>
+        {saving?'Saving…':(custom?'Create the Report':'Create from the Setup')}</Btn></>}>
 
-    <Note k="info" ic="i">Business Unit, Department and the Creator are read from Dataverse — the seeded
-      demo people used elsewhere in this module are not real rows and the lookups would reject them.
-      <div style={{marginTop:6}}>Stage, Business Unit / Region, Department and the Creator are all
-      written to lm_reportoccurrences.</div></Note>
+    <Field label="Report Setup" req hint="Read live from Dataverse — lm_report_templates.">
+      <select value={f.setup} onChange={e=>set('setup',e.target.value)}>
+        <option value="">Select…</option>
+        <option value="custom">Custom Report — no approved Setup</option>
+        {DV_RPT_TPL_LIST.map(t=>
+          <option key={t.id} value={t.id}>
+            {t.name}{t.reportCategoryCode?` — ${REPORT_CATEGORY[t.reportCategoryCode]||''}`:''}</option>)}
+      </select></Field>
 
-    <Field label="Report name" req><input type="text" value={f.name}
-      onChange={e=>set('name',e.target.value)}
-      placeholder="e.g. Ophthalmology Laser Utilisation Review"/></Field>
-    <Field label="Report objective" req hint="Written to lm_ReportObjective.">
-      <textarea value={f.objective} onChange={e=>set('objective',e.target.value)}
-        placeholder="What this Report is for."/></Field>
+    {f.setup && !custom && tplLoading &&
+      <Note k="info" ic="i">Reading this Setup's organizational placement and review chain from Dataverse…</Note>}
+    {f.setup && !custom && !tplLoading && tplUnits.length>1 &&
+      <Field label="Business Unit / Region" req
+        hint="This Setup is approved for more than one place — choose which one this Report belongs to.">
+        <select value={f.tplUnitKey} onChange={e=>applyUnit(tplUnits.find(u=>u.key===e.target.value)||null)}>
+          <option value="">Select…</option>
+          {tplUnits.map(u=><option key={u.key} value={u.key}>{u.label}</option>)}
+        </select></Field>}
+    {f.setup && !custom && !tplLoading && tplUnits.length===1 &&
+      <Note k="info" ic="i">Business Unit / Region: <b>{tplUnits[0].label}</b> — the only place this
+        Setup is approved to run.</Note>}
+    {f.setup && !custom && !tplLoading && tplUnits.length===0 &&
+      <Note k="info" ic="i">This Setup runs once, group-wide — no Business Unit or Region scope applies.</Note>}
+    {custom && <Note k="info" ic="i">Business Unit, Department and the Creator are read from Dataverse —
+      the seeded demo people used elsewhere in this module are not real rows and the lookups would
+      reject them. A Custom Report has no Template, so it carries no configured review chain.</Note>}
 
-    <div className="f-row">
-      <Field label="Stage" req
-        hint="Stage 1 runs in one Business Unit, Stage 2 in one Region. Group and ExCom run once, group-wide.">
-        <select value={f.stage} onChange={e=>{
-          const v=e.target.value;
-          // Switching Stage drops the scope that no longer applies, and the
-          // Department and Creator that were narrowed by it.
-          setF(x=>({...x, stage:v, dvBusinessUnitId:'', dvRegionId:'',
-                          dvDepartmentId:'', dvCreatorPositionId:''}));
-        }}>
-        {['Business Unit','Region','Group','ExCom'].map(o=><option key={o}>{o}</option>)}</select></Field>
+    {(custom || (f.setup && !tplLoading)) && <>
+      <Field label="Report name" req><input type="text" value={f.name}
+        onChange={e=>set('name',e.target.value)}
+        placeholder="e.g. Ophthalmology Laser Utilisation Review"/></Field>
+      <Field label="Report objective" req hint="Written to lm_ReportObjective.">
+        <textarea value={f.objective} onChange={e=>set('objective',e.target.value)}
+          placeholder="What this Report is for."/></Field>
 
-      {stageBU
-        ? <Field label="Business Unit" req hint="Written to the lm_BusinessUnit lookup.">
-            <select value={f.dvBusinessUnitId} onChange={e=>setF(x=>({...x,
-              dvBusinessUnitId:e.target.value, dvDepartmentId:'', dvCreatorPositionId:''}))}>
-              <option value="">{DV_BU_LIST.length?'Select…':'No Business Units loaded'}</option>
-              {DV_BU_LIST.map(b=>{ const rn=dvRegion(b.region);
-                return <option key={b.id} value={b.id}>{rn?`${b.name} — ${rn}`:b.name}</option>; })}
-            </select></Field>
-        : stageRegion
-          ? <Field label="Region" req hint="Written to the lm_Region lookup.">
-              <select value={f.dvRegionId} onChange={e=>setF(x=>({...x,
-                dvRegionId:e.target.value, dvDepartmentId:'', dvCreatorPositionId:''}))}>
-                <option value="">{DV_REGION_LIST.length?'Select…':'No Regions loaded'}</option>
-                {DV_REGION_LIST.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
+      <div className="f-row">
+        {custom
+          ? <Field label="Stage" req
+              hint="Stage 1 runs in one Business Unit, Stage 2 in one Region. Group and ExCom run once, group-wide.">
+              <select value={f.stage} onChange={e=>{
+                const v=e.target.value;
+                setF(x=>({...x, stage:v, dvBusinessUnitId:'', dvRegionId:'',
+                                dvDepartmentId:'', dvCreatorPositionId:''}));
+              }}>
+              {['Business Unit','Region','Group','ExCom'].map(o=><option key={o}>{o}</option>)}</select></Field>
+          : null}
+
+        {custom && stageBU
+          ? <Field label="Business Unit" req hint="Written to the lm_BusinessUnit lookup.">
+              <select value={f.dvBusinessUnitId} onChange={e=>setF(x=>({...x,
+                dvBusinessUnitId:e.target.value, dvDepartmentId:'', dvCreatorPositionId:''}))}>
+                <option value="">{DV_BU_LIST.length?'Select…':'No Business Units loaded'}</option>
+                {DV_BU_LIST.map(b=>{ const rn=dvRegion(b.region);
+                  return <option key={b.id} value={b.id}>{rn?`${b.name} — ${rn}`:b.name}</option>; })}
               </select></Field>
-          : <Field label="Scope" hint="Group and ExCom Reports run once, group-wide.">
-              <input type="text" value="Group-wide" disabled/></Field>}
+          : custom && stageRegion
+            ? <Field label="Region" req hint="Written to the lm_Region lookup.">
+                <select value={f.dvRegionId} onChange={e=>setF(x=>({...x,
+                  dvRegionId:e.target.value, dvDepartmentId:'', dvCreatorPositionId:''}))}>
+                  <option value="">{DV_REGION_LIST.length?'Select…':'No Regions loaded'}</option>
+                  {DV_REGION_LIST.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
+                </select></Field>
+            : custom
+              ? <Field label="Scope" hint="Group and ExCom Reports run once, group-wide.">
+                  <input type="text" value="Group-wide" disabled/></Field>
+              : null}
 
-      <Field label="Period" req hint="The month this Report covers. Stored as the first of that month.">
-        <input type="month" value={f.period} onChange={e=>set('period',e.target.value)}/></Field>
-    </div>
+        <Field label="Period" req hint="The month this Report covers. Stored as the first of that month.">
+          <input type="month" value={f.period} onChange={e=>set('period',e.target.value)}/></Field>
+      </div>
 
-    <div className="f-row">
-      <Field label="Department" hint={scopeHint}>
-        <select value={f.dvDepartmentId} onChange={e=>set('dvDepartmentId',e.target.value)}
-          disabled={!scopeChosen}>
-          <option value="">{
-            stageBU&&!f.dvBusinessUnitId ? 'Choose a Business Unit first'
-            : stageRegion&&!f.dvRegionId ? 'Choose a Region first'
-            : deptOpts.length ? 'Select…' : 'No Departments in this scope'}</option>
-          {deptOpts.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
-        </select></Field>
-      <Field label="Created by" req
-        hint="The Position accountable for preparing it. Written to lm_CreatorPosition.">
-        <PositionSelect value={f.dvCreatorPositionId} onChange={v=>set('dvCreatorPositionId',v)}
-          opts={posOpts} disabled={!scopeChosen}
-          placeholder={scopeChosen?'Search a Position…':'Choose the scope first'}
-          emptyText="No Positions in this scope"/></Field>
-    </div>
+      {!custom && f.dvBusinessUnitId && <Note k="info" ic="i">Business Unit: <b>{dvBu(f.dvBusinessUnitId)}</b>
+        {' '}— set by the Setup's approved placement above.</Note>}
+      {!custom && f.dvRegionId && <Note k="info" ic="i">Region: <b>{dvRegion(f.dvRegionId)}</b> — set by
+        the Setup's approved placement above.</Note>}
 
-    <Field label="File" hint="The location the working copy lives in. Dataverse keeps the URL (lm_FileURL).">
-      <input type="text" value={f.fileUrl} onChange={e=>set('fileUrl',e.target.value)}
-        placeholder="https://… or Laser_Utilisation_Review_Q3.xlsx"/></Field>
+      <div className="f-row">
+        <Field label="Department" hint={scopeHint}>
+          <select value={f.dvDepartmentId} onChange={e=>set('dvDepartmentId',e.target.value)}
+            disabled={!scopeChosen}>
+            <option value="">{
+              stageBU&&!f.dvBusinessUnitId ? 'Choose a Business Unit first'
+              : stageRegion&&!f.dvRegionId ? 'Choose a Region first'
+              : deptOpts.length ? 'Select…' : 'No Departments in this scope'}</option>
+            {deptOpts.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
+          </select></Field>
+        <Field label="Created by" req
+          hint="The Position accountable for preparing it. Written to lm_CreatorPosition.">
+          <PositionSelect value={f.dvCreatorPositionId} onChange={v=>set('dvCreatorPositionId',v)}
+            opts={posOpts} disabled={!scopeChosen}
+            placeholder={scopeChosen?'Search a Position…':'Choose the scope first'}
+            emptyText="No Positions in this scope"/></Field>
+      </div>
+
+      {!custom && f.tplUnitKey && tplUnits.find(u=>u.key===f.tplUnitKey)?.reviewChain.length>0 &&
+        <Field label="Review chain" hint="Resolved from the Setup for this unit — read-only, not stored on the occurrence.">
+          <div style={{border:'1px solid var(--border)',borderRadius:8,overflow:'hidden'}}>
+            {tplUnits.find(u=>u.key===f.tplUnitKey).reviewChain.map((r,i)=>
+              <div key={i} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',
+                borderBottom:i<tplUnits.find(u=>u.key===f.tplUnitKey).reviewChain.length-1?'1px solid var(--border)':'none'}}>
+                <span style={{color:'var(--teal-d)',fontWeight:700,fontSize:12,width:16}}>{i+1}.</span>
+                <span style={{fontSize:12.5}}>{pos(r._lm_reviewerposition_value)||'—'}</span>
+              </div>)}
+          </div></Field>}
+
+      <Field label="File" hint="The location the working copy lives in. Dataverse keeps the URL (lm_FileURL).">
+        <input type="text" value={f.fileUrl} onChange={e=>set('fileUrl',e.target.value)}
+          placeholder="https://… or Laser_Utilisation_Review_Q3.xlsx"/></Field>
+
+      <Field label="Read components from an Excel file (proof of concept)"
+        hint="Reads the workbook in your browser only -- nothing is uploaded. Sheets and named ranges are logged to the console; nothing is saved yet.">
+        <input type="file" accept=".xlsx,.xls" onChange={e=>{
+          const file=e.target.files?.[0];
+          if(file) readExcelComponents(file).catch(err=>console.warn('[Excel] read failed:', err));
+          e.target.value='';
+        }}/></Field>
+    </>}
   </Modal>;
 }
 
@@ -4241,10 +4116,40 @@ function DvMeetingDetail({rec,back}){
    step approves next) is read from the linked Report Template's per-unit
    row, the same way a Meeting Template's Chairman/Facilitator are. */
 function DvReportDetail({rec,back}){
+  const {toast,refreshOccurrences}=use();
   const pos = id => { const n=dvPos(id); if(!n) return null;
     const h=id&&DV_POS_HOLDER[id]; return h?`${n} — ${h}`:n; };
   const [tplDetail,setTplDetail]=useState(null);
   const [tplLoading,setTplLoading]=useState(false);
+  const [fileUrlInput,setFileUrlInput]=useState('');
+  const [savingFile,setSavingFile]=useState(false);
+
+  const saveFileUrl = async url => {
+    setSavingFile(true);
+    try{
+      const {id,errors} = await updateReportOccurrenceFile(rec.id, url);
+      if(!id){
+        console.warn('[dataverse] updateReportOccurrenceFile() failed:', errors);
+        toast('Not saved','Setting the file URL failed. Check the console for details.','err');
+        return;
+      }
+      toast('File recorded','Saved to lm_FileURL on this Report Submission.','ok');
+      setFileUrlInput('');
+      await refreshOccurrences();
+    }catch(e){
+      console.warn('[dataverse] updateReportOccurrenceFile() threw unexpectedly:', e);
+      toast('Not saved','Setting the file URL failed. Check the console for details.','err');
+    }finally{ setSavingFile(false); }
+  };
+
+  // Reads the workbook client-side (same proof-of-concept as the create
+  // form) and, since picking a file here means attaching it, records its
+  // name to lm_FileURL the same way a typed URL would be.
+  const onPickExcel = async file => {
+    try{ await readExcelComponents(file); }
+    catch(e){ console.warn('[Excel] read failed:', e); }
+    await saveFileUrl(file.name);
+  };
 
   useEffect(()=>{
     if(!rec.templateId){ setTplDetail(null); return; }
@@ -4286,8 +4191,8 @@ function DvReportDetail({rec,back}){
       </div>
     </div>
 
-    <Note k="lock" ic="—">Read-only. This is the Dataverse record as it stands — reviewing, approving and
-      uploading a working copy are not wired to this table yet.</Note>
+    <Note k="lock" ic="—">Read-only, except the file below — this is the Dataverse record as it stands.
+      Reviewing and approving are not wired to this table yet.</Note>
     {rec.noSetupFlag && <Note k="warn"><b>No approved Setup.</b> This Report's metadata is queued for
       Taxonomy with a No-Setup flag — review proceeds on this record regardless.</Note>}
     {rec.locked && <Note k="lock"><b>Approved and locked.</b> The file URL, version and complete
@@ -4323,6 +4228,26 @@ function DvReportDetail({rec,back}){
                 </div>
               </div>
             : <Empty ic="📄">No file URL recorded on this Report Submission.</Empty>}
+
+          <div style={{marginTop:12,paddingTop:12,borderTop:'1px solid var(--border)'}}>
+            <Field label={rec.fileUrl?'Replace the working copy':'Attach a working copy'}
+              hint="Reads the workbook in your browser and logs its sheets and named ranges to the
+                console (proof of concept) — then records the file name to lm_FileURL. No file
+                storage is wired yet, so only the name is saved, not the file's contents.">
+              <input type="file" accept=".xlsx,.xls" disabled={savingFile}
+                onChange={e=>{ const file=e.target.files?.[0]; e.target.value='';
+                  if(file) onPickExcel(file); }}/>
+            </Field>
+            <Field label="Or set the file URL directly"
+              hint="If the working copy already lives somewhere — SharePoint, Teams, etc.">
+              <div style={{display:'flex',gap:8}}>
+                <input type="text" value={fileUrlInput} onChange={e=>setFileUrlInput(e.target.value)}
+                  placeholder="https://…" disabled={savingFile}/>
+                <Btn k="pri" disabled={savingFile||!fileUrlInput.trim()}
+                  onClick={()=>saveFileUrl(fileUrlInput.trim())}>{savingFile?'Saving…':'Save'}</Btn>
+              </div>
+            </Field>
+          </div>
         </div>
       </div>
 

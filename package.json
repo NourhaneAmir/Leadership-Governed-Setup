@@ -16,7 +16,8 @@
     "@microsoft/power-apps": "^1.2.13",
     "lucide-react": "^1.31.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-latest/xlsx-latest.tgz"
   },
   "devDependencies": {
     "@microsoft/power-apps-cli": "0.15.3",

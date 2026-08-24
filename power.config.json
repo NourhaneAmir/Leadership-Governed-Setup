@@ -10,7 +10,24 @@
   "buildEntryPoint": "index.html",
   "localAppUrl": "http://localhost:3000",
   "logoPath": "Default",
-  "connectionReferences": {},
+  "connectionReferences": {
+    "06859f41-412e-450f-b52c-485f65bed72b": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+      "displayName": "SharePoint",
+      "dataSources": [
+        "documents"
+      ],
+      "dataSets": {
+        "https://andalusiagroupegypt.sharepoint.com/sites/SMO-AndalusialeadershipPractice": {
+          "dataSources": {
+            "documents": {
+              "tableName": "20a0173f-dfd6-4537-84ca-ff60b9a09c79"
+            }
+          }
+        }
+      }
+    }
+  },
   "databaseReferences": {
     "default.cds": {
       "dataSources": {

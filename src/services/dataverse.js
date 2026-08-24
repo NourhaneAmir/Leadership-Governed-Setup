@@ -1713,3 +1713,15 @@ export async function createReportOccurrence(payload){
     return { id: null, errors: [{ table:'lm_reportoccurrences', error:e }] };
   }
 }
+
+/** Patches ONLY the file URL on an existing lm_reportoccurrences row -- the
+ *  working copy's location is set after the occurrence exists, from the
+ *  Report Detail page's Attachments card. */
+export async function updateReportOccurrenceFile(id, fileUrl){
+  try{
+    await Lm_reportoccurrencesService.update(id, { lm_fileurl: fileUrl || null });
+    return { id, errors: [] };
+  }catch(e){
+    return { id: null, errors: [{ table:'lm_reportoccurrences', error:e }] };
+  }
+}
