@@ -156,7 +156,23 @@
           "title": "Locked",
           "x-ms-dataverse-attribute": "lm_locked",
           "x-ms-dataverse-type": "BooleanType",
-          "x-ms-schema-name": "lm_Locked"
+          "x-ms-schema-name": "lm_Locked",
+          "enum": [
+            "No",
+            "Yes"
+          ],
+          "x-ms-enum-values": [
+            0,
+            1
+          ],
+          "Color": [
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "effa421a-559d-f111-b8de-00224882d001",
+          "x-ms-isGlobal": false,
+          "x-ms-optionsetdisplayname": "Locked",
+          "x-ms-optionSetType": "Boolean"
         },
         "lm_lockedname": {
           "type": "string",
@@ -181,7 +197,23 @@
           "title": "No Setup Flag",
           "x-ms-dataverse-attribute": "lm_nosetupflag",
           "x-ms-dataverse-type": "BooleanType",
-          "x-ms-schema-name": "lm_NoSetupFlag"
+          "x-ms-schema-name": "lm_NoSetupFlag",
+          "enum": [
+            "No",
+            "Yes"
+          ],
+          "x-ms-enum-values": [
+            0,
+            1
+          ],
+          "Color": [
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "4e64ed3e-559d-f111-b8de-00224882d001",
+          "x-ms-isGlobal": false,
+          "x-ms-optionsetdisplayname": "No Setup Flag",
+          "x-ms-optionSetType": "Boolean"
         },
         "lm_nosetupflagname": {
           "type": "string",
@@ -515,7 +547,23 @@
           "title": "Status Reason",
           "x-ms-dataverse-attribute": "statuscode",
           "x-ms-dataverse-type": "StatusType",
-          "x-ms-schema-name": "statuscode"
+          "x-ms-schema-name": "statuscode",
+          "enum": [
+            "Active",
+            "Inactive"
+          ],
+          "x-ms-enum-values": [
+            1,
+            2
+          ],
+          "Color": [
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "c685c3fd-1994-f111-8075-000d3a24e669",
+          "x-ms-isGlobal": false,
+          "x-ms-optionsetdisplayname": "Status Reason",
+          "x-ms-optionSetType": "Status"
         },
         "statuscodename": {
           "type": "string",

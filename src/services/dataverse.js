@@ -15,6 +15,29 @@ export const DATAVERSE_CONFIG = {
   publisherPrefix: 'lp',
 };
 
+/** Pulls the new row's id out of a create() result, or throws with
+ *  Dataverse's OWN error message when the SDK reports the operation
+ *  actually failed (created.success === false / created.error) --
+ *  previously every create() call here assumed success whenever no
+ *  exception was thrown and, finding no id, threw a generic "succeeded
+ *  but no id was returned" that buried the real reason (a validation
+ *  or permission error) the SDK had already captured on the result. */
+function idOrThrow(created, idField){
+  const id = created?.data?.[idField] ?? null;
+  if(id) return id;
+  if(created?.error) throw new Error(created.error.message || String(created.error));
+  throw new Error('Create succeeded but no id was returned in the response.');
+}
+
+/** Same blind spot as idOrThrow above, for update() calls -- these have no
+ *  id to look for, so a failed update() otherwise looks identical to a
+ *  successful one unless result.success / result.error is actually read. */
+function assertSuccess(result){
+  if(result?.success===false || result?.error){
+    throw new Error(result?.error?.message || String(result?.error) || 'The operation did not succeed.');
+  }
+}
+
 /* ---------------------------------------------------------------------
    WIRED: Regions (crd04_regions) and Business Units (businessunit)
    ---------------------------------------------------------------------
@@ -729,8 +752,7 @@ export async function saveReportTemplateToDataverse(payload){
   let templateId = null;
   try{
     const created = await Lm_report_templatesService.create(reportTemplateParentPayload(payload));
-    templateId = created?.data?.lm_report_templateid ?? null;
-    if(!templateId) throw new Error('Create succeeded but no id was returned');
+    templateId = idOrThrow(created, 'lm_report_templateid');
   }catch(e){
     errors.push({ table:'lm_report_templates', error:e });
     return { id:null, errors }; // nothing else can be linked without a parent id
@@ -1089,8 +1111,7 @@ export async function saveMeetingTemplateToDataverse(payload){
   let templateId = null;
   try{
     const created = await Lm_meetingtemplatesService.create(meetingTemplateParentPayload(payload));
-    templateId = created?.data?.lm_meetingtemplateid ?? null;
-    if(!templateId) throw new Error('Create succeeded but no id was returned');
+    templateId = idOrThrow(created, 'lm_meetingtemplateid');
   }catch(e){
     errors.push({ table:'lm_meetingtemplates', error:e });
     return { id:null, errors };
@@ -1156,7 +1177,8 @@ export async function updateMeetingTemplateToDataverse(dvId, payload){
  *  a full delete-and-recreate of every child row would be pointless risk. */
 export async function updateReportTemplateStatus(dvId, status){
   try{
-    await Lm_report_templatesService.update(dvId, { lm_reportstatus: TEMPLATE_STATUS_KEY[status] ?? null });
+    const result = await Lm_report_templatesService.update(dvId, { lm_reportstatus: TEMPLATE_STATUS_KEY[status] ?? null });
+    assertSuccess(result);
     return { id: dvId, errors: [] };
   }catch(e){
     return { id: null, errors: [{ table:'lm_report_templates', error:e }] };
@@ -1166,7 +1188,8 @@ export async function updateReportTemplateStatus(dvId, status){
 /** Same as updateReportTemplateStatus above, for the Meeting side. */
 export async function updateMeetingTemplateStatus(dvId, status){
   try{
-    await Lm_meetingtemplatesService.update(dvId, { lm_meetingstatus: TEMPLATE_STATUS_KEY[status] ?? null });
+    const result = await Lm_meetingtemplatesService.update(dvId, { lm_meetingstatus: TEMPLATE_STATUS_KEY[status] ?? null });
+    assertSuccess(result);
     return { id: dvId, errors: [] };
   }catch(e){
     return { id: null, errors: [{ table:'lm_meetingtemplates', error:e }] };
@@ -1620,8 +1643,7 @@ export async function createMeetingOccurrence(payload){
   let occId = null;
   try{
     const created = await Lm_meetingoccurrencesService.create(parent);
-    occId = created?.data?.lm_meetingoccurrenceid ?? null;
-    if(!occId) throw new Error('Create succeeded but no id was returned');
+    occId = idOrThrow(created, 'lm_meetingoccurrenceid');
   }catch(e){
     errors.push({ table:'lm_meetingoccurrences', error:e });
     return { id:null, errors };
@@ -1659,6 +1681,61 @@ export async function createMeetingOccurrence(payload){
   }
 
   return { id: occId, errors };
+}
+
+/** Patches ONLY the status on an existing lm_meetingoccurrences row -- the
+ *  Mark as Held / Cancel actions, distinct from a full edit. */
+export async function updateMeetingOccurrenceStatus(id, status){
+  try{
+    const result = await Lm_meetingoccurrencesService.update(id, {
+      lm_meetingstatus: MEETING_OCC_STATUS_KEY[status] ?? null,
+    });
+    assertSuccess(result);
+    return { id, errors: [] };
+  }catch(e){
+    return { id: null, errors: [{ table:'lm_meetingoccurrences', error:e }] };
+  }
+}
+
+/** Patches ONLY lm_present on one lm_meetingoccurrenceattendeeses row. */
+export async function updateMeetingOccurrenceAttendance(attendeeId, present){
+  try{
+    const result = await Lm_meetingoccurrenceattendeesesService.update(attendeeId, {
+      lm_present: ATTENDEE_PRESENT_KEY[present] ?? null,
+    });
+    assertSuccess(result);
+    return { id: attendeeId, errors: [] };
+  }catch(e){
+    return { id: null, errors: [{ table:'lm_meetingoccurrenceattendeeses', error:e }] };
+  }
+}
+
+/** Patches date/time/mode/location/link on an existing lm_meetingoccurrences
+ *  row -- the controlled name, Setup, classification and scope stay
+ *  Taxonomy's, so none of those are touched here.
+ * @param {object} payload
+ * @param {string} payload.date
+ * @param {string} payload.start
+ * @param {string} payload.end
+ * @param {string} payload.mode one of MEETING_OCC_MODE_KEY's keys
+ * @param {string} [payload.location]
+ * @param {string} [payload.link]
+ */
+export async function updateMeetingOccurrence(id, payload){
+  try{
+    const result = await Lm_meetingoccurrencesService.update(id, {
+      lm_date: payload.date || null,
+      lm_starttime: payload.start || null,
+      lm_endtime: payload.end || null,
+      lm_mode: payload.mode ? (MEETING_OCC_MODE_KEY[payload.mode] ?? null) : null,
+      lm_meetinglocation: payload.location || null,
+      lm_meetinglink: payload.link || null,
+    });
+    assertSuccess(result);
+    return { id, errors: [] };
+  }catch(e){
+    return { id: null, errors: [{ table:'lm_meetingoccurrences', error:e }] };
+  }
 }
 
 /**
@@ -1706,8 +1783,7 @@ export async function createReportOccurrence(payload){
 
   try{
     const created = await Lm_reportoccurrencesService.create(row);
-    const id = created?.data?.lm_reportoccurrenceid ?? null;
-    if(!id) throw new Error('Create succeeded but no id was returned');
+    const id = idOrThrow(created, 'lm_reportoccurrenceid');
     return { id, errors: [] };
   }catch(e){
     return { id: null, errors: [{ table:'lm_reportoccurrences', error:e }] };
@@ -1719,7 +1795,8 @@ export async function createReportOccurrence(payload){
  *  Report Detail page's Attachments card. */
 export async function updateReportOccurrenceFile(id, fileUrl){
   try{
-    await Lm_reportoccurrencesService.update(id, { lm_fileurl: fileUrl || null });
+    const result = await Lm_reportoccurrencesService.update(id, { lm_fileurl: fileUrl || null });
+    assertSuccess(result);
     return { id, errors: [] };
   }catch(e){
     return { id: null, errors: [{ table:'lm_reportoccurrences', error:e }] };

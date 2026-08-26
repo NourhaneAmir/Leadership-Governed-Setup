@@ -22,6 +22,11 @@ export const Lm_reportoccurrencesstatecode = {
   1: 'Inactive'
 } as const;
 export type Lm_reportoccurrencesstatecode = keyof typeof Lm_reportoccurrencesstatecode;
+export const Lm_reportoccurrencesstatuscode = {
+  1: 'Active',
+  2: 'Inactive'
+} as const;
+export type Lm_reportoccurrencesstatuscode = keyof typeof Lm_reportoccurrencesstatuscode;
 
 export interface Lm_reportoccurrencesBase {
   importsequencenumber?: number;
@@ -45,7 +50,7 @@ export interface Lm_reportoccurrencesBase {
   lm_version?: number;
   overriddencreatedon?: string;
   statecode: Lm_reportoccurrencesstatecode;
-  statuscode?: string;
+  statuscode?: Lm_reportoccurrencesstatuscode;
   timezoneruleversionnumber?: number;
   utcconversiontimezonecode?: number;
 }

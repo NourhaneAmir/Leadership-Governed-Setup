@@ -129,7 +129,7 @@
           "x-ms-dataverse-attribute": "lm_sharepointsitepath",
           "x-ms-dataverse-type": "StringType",
           "x-ms-schema-name": "lm_SharePointSitePath",
-          "maxLength": 100
+          "maxLength": 300
         },
         "lm_team": {
           "type": "string",

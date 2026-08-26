@@ -4,6 +4,7 @@ import { ArrowUpRight, BarChart3, CalendarDays, CheckSquare, ClipboardList, File
 import * as XLSX from 'xlsx';
 import { fetchMeetingOccurrences, fetchReportOccurrences, createMeetingOccurrence,
          createReportOccurrence, updateReportOccurrenceFile,
+         updateMeetingOccurrenceStatus, updateMeetingOccurrenceAttendance, updateMeetingOccurrence,
          fetchBusinessUnits, fetchPositions, fetchDepartments, fetchRegions,
          fetchMeetingTemplatesList, fetchMeetingTemplateDetail,
          fetchReportTemplatesList, fetchReportTemplateDetail, fetchCurrentUser,
@@ -28,6 +29,12 @@ const ymd = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-$
    overdue. The seeded records elsewhere keep their own literal dates. */
 const TODAY = ymd(new Date());
 const PERIOD = TODAY.slice(0,7);
+
+/* lm_fileurl on lm_reportoccurrences is a Dataverse text column, widened to
+   300 characters to hold a real SharePoint link directly -- Dataverse
+   rejects the whole create/update with a 400 rather than truncating, so
+   this is enforced client-side before either request. */
+const FILE_URL_MAX = 300;
 
 const REGIONS = ['KSA','Egypt'];
 const BUS = [
@@ -3129,7 +3136,7 @@ function NewReportModal({onClose}){
   },[tplDetail]);
 
   const ok = !!f.setup && f.name.trim() && f.objective.trim() && scopeChosen
-    && f.dvCreatorPositionId && f.period
+    && f.dvCreatorPositionId && f.period && f.fileUrl.trim().length<=FILE_URL_MAX
     && (custom || (!tplLoading && (tplUnits.length<=1 || !!f.tplUnitKey)));
 
   const save=async()=>{
@@ -3281,7 +3288,10 @@ function NewReportModal({onClose}){
               </div>)}
           </div></Field>}
 
-      <Field label="File" hint="The location the working copy lives in. Dataverse keeps the URL (lm_FileURL).">
+      <Field label="File"
+        hint={`The location the working copy lives in. Dataverse keeps the URL (lm_FileURL) — max ${FILE_URL_MAX} characters.`}
+        err={f.fileUrl.trim().length>FILE_URL_MAX
+          ? `${f.fileUrl.trim().length} characters — ${FILE_URL_MAX} max.` : null}>
         <input type="text" value={f.fileUrl} onChange={e=>set('fileUrl',e.target.value)}
           placeholder="https://… or Laser_Utilisation_Review_Q3.xlsx"/></Field>
 
@@ -3813,6 +3823,74 @@ function ScreenMinutes(){
   </>;
 }
 
+/* Edits date/time/mode/location/link on a live Meeting Occurrence -- the
+   controlled name, Setup, classification and scope stay Taxonomy's, so this
+   only ever touches the fields lm_meetingoccurrences itself owns. Modelled
+   on the dead-code EditOccModal above, rebuilt against updateMeetingOccurrence(). */
+function DvEditOccModal({rec,onClose}){
+  const {toast,refreshOccurrences}=use();
+  const [f,setF]=useState({date:rec.date||'', start:rec.start||'', end:rec.end||'',
+    mode:rec.mode||'In person', location:rec.location||'', link:rec.link||''});
+  const [saving,setSaving]=useState(false);
+  const set=(k,v)=>setF(x=>({...x,[k]:v}));
+
+  const weekend = isWeekend(f.date);
+  const nw = isNonWorking(f.date) && !weekend;
+  const badTime = f.start && f.end && f.end<=f.start;
+  const needsLink     = f.mode==='Online' || f.mode==='Hybrid';
+  const needsLocation = f.mode==='In person' || f.mode==='Hybrid';
+  const modeOk = (!needsLink || f.link.trim()) && (!needsLocation || f.location.trim());
+  const ok = !!f.date && !weekend && !badTime && !!f.start && !!f.end && modeOk;
+
+  const save = async () => {
+    setSaving(true);
+    try{
+      const {id,errors} = await updateMeetingOccurrence(rec.id, {
+        date:f.date, start:f.start, end:f.end, mode:f.mode,
+        location:needsLocation ? f.location.trim() : '',
+        link:needsLink ? f.link.trim() : '',
+      });
+      if(!id){
+        console.warn('[dataverse] updateMeetingOccurrence() failed:', errors);
+        toast('Not saved','Saving this occurrence failed. Check the console for details.','err');
+        return;
+      }
+      toast('Occurrence updated','Saved to lm_meetingoccurrences.','ok');
+      await refreshOccurrences();
+      onClose();
+    }catch(e){
+      console.warn('[dataverse] updateMeetingOccurrence() threw unexpectedly:', e);
+      toast('Not saved','Saving this occurrence failed. Check the console for details.','err');
+    }finally{ setSaving(false); }
+  };
+
+  return <Modal title="Edit this occurrence" wide onClose={onClose}
+    sub="Execution-level information only. The controlled name, Setup and classification stay Taxonomy's."
+    footer={<><Btn onClick={onClose} disabled={saving}>Cancel</Btn>
+      <Btn k="pri" disabled={!ok||saving} onClick={save}>{saving?'Saving…':'Save'}</Btn></>}>
+    <div className="f-row3">
+      <Field label="Date" req
+        err={weekend
+          ? `${dayName(f.date)} is a weekend — the working week is Sunday to Thursday. Choose another day.`
+          : nw ? 'This is a configured public holiday.' : null}>
+        <input type="date" value={f.date} onChange={e=>set('date',e.target.value)}/></Field>
+      <Field label="Start" req><input type="time" value={f.start} onChange={e=>set('start',e.target.value)}/></Field>
+      <Field label="End" req err={badTime?'The end time must be after the start time.':null}>
+        <input type="time" value={f.end} onChange={e=>set('end',e.target.value)}/></Field>
+    </div>
+    <Field label="Mode" req hint="Online meets in Teams, In person needs a location, Hybrid needs both.">
+      <Pills opts={['In person','Online','Hybrid']} val={f.mode} onChange={v=>set('mode',v)}/></Field>
+    {needsLocation &&
+      <Field label="Location" req err={!f.location.trim()?'A location is required for an in-person or hybrid Meeting.':null}>
+        <input type="text" value={f.location} onChange={e=>set('location',e.target.value)}
+          placeholder="e.g. Board Room, Level 3"/></Field>}
+    {needsLink &&
+      <Field label="Online link" req err={!f.link.trim()?'An online link is required for an online or hybrid Meeting.':null}>
+        <input type="text" value={f.link} onChange={e=>set('link',e.target.value)}
+          placeholder="https://teams.microsoft.com/l/meetup-join/…"/></Field>}
+  </Modal>;
+}
+
 /* Meeting Occurrence detail — the full page, read from lm_meetingoccurrences
    and its two child tables.
 
@@ -3821,9 +3899,45 @@ function ScreenMinutes(){
    Minutes and the Audit Grid all live in seeded state only. What is here is
    what the occurrence row and its agenda and attendee rows actually hold. */
 function DvMeetingDetail({rec,back}){
-  const {sel,setSel}=use();
+  const {sel,setSel,toast,refreshOccurrences}=use();
   const tab = sel.mtgTab || 'detail';
   const setTab = t=>setSel(v=>({...v,mtgTab:t}));
+  const [markingHeld,setMarkingHeld]=useState(false);
+  const [attSavingId,setAttSavingId]=useState(null);
+  const [editing,setEditing]=useState(false);
+
+  const markHeld = async () => {
+    setMarkingHeld(true);
+    try{
+      const {id,errors} = await updateMeetingOccurrenceStatus(rec.id, 'Held');
+      if(!id){
+        console.warn('[dataverse] updateMeetingOccurrenceStatus() failed:', errors);
+        toast('Not saved','Marking the meeting as Held failed. Check the console for details.','err');
+        return;
+      }
+      toast('Meeting held','Attendance can now be recorded.','ok');
+      await refreshOccurrences();
+    }catch(e){
+      console.warn('[dataverse] updateMeetingOccurrenceStatus() threw unexpectedly:', e);
+      toast('Not saved','Marking the meeting as Held failed. Check the console for details.','err');
+    }finally{ setMarkingHeld(false); }
+  };
+
+  const setAttendance = async (attendeeId, present) => {
+    setAttSavingId(attendeeId);
+    try{
+      const {id,errors} = await updateMeetingOccurrenceAttendance(attendeeId, present);
+      if(!id){
+        console.warn('[dataverse] updateMeetingOccurrenceAttendance() failed:', errors);
+        toast('Not saved','Recording attendance failed. Check the console for details.','err');
+        return;
+      }
+      await refreshOccurrences();
+    }catch(e){
+      console.warn('[dataverse] updateMeetingOccurrenceAttendance() threw unexpectedly:', e);
+      toast('Not saved','Recording attendance failed. Check the console for details.','err');
+    }finally{ setAttSavingId(null); }
+  };
 
   const posName = id => { const n=dvPos(id); if(!n) return null;
     const h=id&&DV_POS_HOLDER[id]; return h?`${n} — ${h}`:n; };
@@ -3866,11 +3980,18 @@ function DvMeetingDetail({rec,back}){
         </div></div>
       <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
         <Btn onClick={back}>Back to List</Btn>
+        {rec.status==='Scheduled' && <Btn onClick={()=>setEditing(true)}>✎ Edit</Btn>}
+        {rec.status==='Scheduled' &&
+          <Btn k="grn" disabled={markingHeld||!rec.agenda.length} onClick={markHeld}>
+            {markingHeld?'Marking…':'✓ Mark as Held'}</Btn>}
       </div>
     </div>
+    {editing && <DvEditOccModal rec={rec} onClose={()=>setEditing(false)}/>}
 
-    <Note k="lock" ic="—">Read-only. This is the Dataverse record as it stands — editing an occurrence,
-      recording attendance and writing Minutes are not wired to these tables yet.</Note>
+    <Note k="lock" ic="—">Writing Minutes is not wired to this table yet — editing, marking Held and
+      recording Attendance below are.</Note>
+    {rec.status==='Scheduled' && !rec.agenda.length &&
+      <Note k="warn">An occurrence needs at least one Agenda item before it can be marked Held.</Note>}
     {rec.restricted && <Note k="lock"><b>Restricted.</b> This occurrence is marked visible only to its
       participants and to permitted governance roles.</Note>}
     {rec.rescheduledFromId && <Note k="warn"><b>Rescheduled.</b> This occurrence carries a link to the
@@ -4090,6 +4211,9 @@ function DvMeetingDetail({rec,back}){
         {rec.status==='Held' && <Tag c={requiredPresent<required.length?'amber':'green'}>
           {requiredPresent} of {required.length} Required present</Tag>}
       </div>
+      {rec.status!=='Held' &&
+        <div style={{padding:'0 17px 12px',fontSize:12,color:'var(--muted)'}}>
+          Attendance is recorded after the meeting is held — mark it Held above to enable this.</div>}
       {rec.attendees.length===0
         ? <div style={{padding:'8px 17px 17px'}}><Empty>No Attendee on this occurrence.</Empty></div>
         : <div className="t-wrap"><table className="data">
@@ -4101,8 +4225,17 @@ function DvMeetingDetail({rec,back}){
                     ? <div className="t-sub">{DV_POS_HOLDER[a.positionId]}</div> : null}</td>
                 <td><Tag c={(a.type||'Required')==='Optional'?'grey':'teal'}>{a.type||'Required'}</Tag></td>
                 <td className="dim" style={{fontSize:12}}>{posName(a.delegatePositionId)||'—'}</td>
-                <td><Tag c={a.present==='Present'?'green':a.present==='Absent'?'red':'grey'}>
-                  {a.present||'Not Yet Recorded'}</Tag></td>
+                <td>{rec.status==='Held'
+                  ? <div style={{display:'flex',alignItems:'center',gap:6}}>
+                      <Tag c={a.present==='Present'?'green':a.present==='Absent'?'red':'grey'}>
+                        {a.present||'Not Yet Recorded'}</Tag>
+                      <Btn k="sm" disabled={attSavingId===a.id||a.present==='Present'}
+                        onClick={()=>setAttendance(a.id,'Present')}>Present</Btn>
+                      <Btn k="sm" disabled={attSavingId===a.id||a.present==='Absent'}
+                        onClick={()=>setAttendance(a.id,'Absent')}>Absent</Btn>
+                    </div>
+                  : <Tag c={a.present==='Present'?'green':a.present==='Absent'?'red':'grey'}>
+                      {a.present||'Not Yet Recorded'}</Tag>}</td>
               </tr>)}
             </tbody></table></div>}
       <div style={{padding:'0 17px 15px',fontSize:12,color:'var(--muted)'}}>
@@ -4124,7 +4257,32 @@ function DvReportDetail({rec,back}){
   const [fileUrlInput,setFileUrlInput]=useState('');
   const [savingFile,setSavingFile]=useState(false);
 
+  useEffect(()=>{
+    if(!rec.templateId){ setTplDetail(null); return; }
+    let cancelled=false;
+    setTplLoading(true);
+    fetchReportTemplateDetail(rec.templateId)
+      .then(d=>{ if(!cancelled) setTplDetail(d); })
+      .catch(e=>console.warn('[dataverse] fetchReportTemplateDetail() failed:', e))
+      .finally(()=>{ if(!cancelled) setTplLoading(false); });
+    return ()=>{cancelled=true;};
+  },[rec.templateId]);
+
+  // The review chain is scoped to whichever Business Unit or Region this
+  // occurrence actually belongs to -- a Report Template approved for
+  // several units can name a different reviewer chain in each one.
+  const unit = tplDetail
+    ? (tplDetail.businessUnits||[]).find(b=>b._lm_businessunit_value===rec.businessUnitId)
+      || (tplDetail.regions||[]).find(r=>r._lm_region_value===rec.regionId)
+    : null;
+  const reviewChain = unit
+    ? (unit.reviewChain||[]).slice().sort((a,b)=>(a.lm_step||0)-(b.lm_step||0)) : [];
+
   const saveFileUrl = async url => {
+    if(url.length>FILE_URL_MAX){
+      toast('Too long',`lm_FileURL allows at most ${FILE_URL_MAX} characters — this is ${url.length}.`,'err');
+      return;
+    }
     setSavingFile(true);
     try{
       const {id,errors} = await updateReportOccurrenceFile(rec.id, url);
@@ -4150,27 +4308,6 @@ function DvReportDetail({rec,back}){
     catch(e){ console.warn('[Excel] read failed:', e); }
     await saveFileUrl(file.name);
   };
-
-  useEffect(()=>{
-    if(!rec.templateId){ setTplDetail(null); return; }
-    let cancelled=false;
-    setTplLoading(true);
-    fetchReportTemplateDetail(rec.templateId)
-      .then(d=>{ if(!cancelled) setTplDetail(d); })
-      .catch(e=>console.warn('[dataverse] fetchReportTemplateDetail() failed:', e))
-      .finally(()=>{ if(!cancelled) setTplLoading(false); });
-    return ()=>{cancelled=true;};
-  },[rec.templateId]);
-
-  // The review chain is scoped to whichever Business Unit or Region this
-  // occurrence actually belongs to -- a Report Template approved for
-  // several units can name a different reviewer chain in each one.
-  const unit = tplDetail
-    ? (tplDetail.businessUnits||[]).find(b=>b._lm_businessunit_value===rec.businessUnitId)
-      || (tplDetail.regions||[]).find(r=>r._lm_region_value===rec.regionId)
-    : null;
-  const reviewChain = unit
-    ? (unit.reviewChain||[]).slice().sort((a,b)=>(a.lm_step||0)-(b.lm_step||0)) : [];
 
   const tplRow = dvRptTplDetail(rec.templateId);
   const statusColour = rec.status==='Approved' ? 'green' : rec.status==='Rejected' ? 'red'
@@ -4224,7 +4361,10 @@ function DvReportDetail({rec,back}){
                 <div className="att-ic">📄</div>
                 <div style={{flex:1,minWidth:0}}>
                   <div className="t-main" style={{fontSize:12.5}}>{rec.name}</div>
-                  <div className="t-sub mono" style={{fontSize:10.5}}>{rec.fileUrl}</div>
+                  {/^https?:\/\//i.test(rec.fileUrl)
+                    ? <a className="t-sub mono" style={{fontSize:10.5}} href={rec.fileUrl}
+                        target="_blank" rel="noreferrer">{rec.fileUrl}</a>
+                    : <div className="t-sub mono" style={{fontSize:10.5}}>{rec.fileUrl}</div>}
                 </div>
               </div>
             : <Empty ic="📄">No file URL recorded on this Report Submission.</Empty>}
@@ -4239,11 +4379,14 @@ function DvReportDetail({rec,back}){
                   if(file) onPickExcel(file); }}/>
             </Field>
             <Field label="Or set the file URL directly"
-              hint="If the working copy already lives somewhere — SharePoint, Teams, etc.">
+              hint={`If the working copy already lives somewhere — SharePoint, Teams, etc. Max ${FILE_URL_MAX} characters.`}
+              err={fileUrlInput.trim().length>FILE_URL_MAX
+                ? `${fileUrlInput.trim().length} characters — ${FILE_URL_MAX} max.` : null}>
               <div style={{display:'flex',gap:8}}>
                 <input type="text" value={fileUrlInput} onChange={e=>setFileUrlInput(e.target.value)}
                   placeholder="https://…" disabled={savingFile}/>
-                <Btn k="pri" disabled={savingFile||!fileUrlInput.trim()}
+                <Btn k="pri"
+                  disabled={savingFile||!fileUrlInput.trim()||fileUrlInput.trim().length>FILE_URL_MAX}
                   onClick={()=>saveFileUrl(fileUrlInput.trim())}>{savingFile?'Saving…':'Save'}</Btn>
               </div>
             </Field>
