@@ -1381,6 +1381,13 @@ import { Lm_meetingoccurrencesService } from '../generated/services/Lm_meetingoc
 import { Lm_meetingoccurrenceagendasService } from '../generated/services/Lm_meetingoccurrenceagendasService';
 import { Lm_meetingoccurrenceattendeesesService } from '../generated/services/Lm_meetingoccurrenceattendeesesService';
 import { Lm_reportoccurrencesService } from '../generated/services/Lm_reportoccurrencesService';
+import { Lm_meetingminutesesService } from '../generated/services/Lm_meetingminutesesService';
+import { Lm_momnotesesService } from '../generated/services/Lm_momnotesesService';
+import { Lm_auditgridinstancesService } from '../generated/services/Lm_auditgridinstancesService';
+import { Lm_auditgridanswersService } from '../generated/services/Lm_auditgridanswersService';
+import { Lm_approvalcyclesService } from '../generated/services/Lm_approvalcyclesService';
+import { Lm_approvalcyclestepsService } from '../generated/services/Lm_approvalcyclestepsService';
+import { Lm_authoritymatrixrowsService } from '../generated/services/Lm_authoritymatrixrowsService';
 
 export const MEETING_OCC_STATUS = { 1:'Scheduled', 2:'Held', 3:'Cancelled' };
 export const MEETING_OCC_STATUS_KEY = { 'Scheduled':1, 'Held':2, 'Cancelled':3 };
@@ -1801,4 +1808,651 @@ export async function updateReportOccurrenceFile(id, fileUrl){
   }catch(e){
     return { id: null, errors: [{ table:'lm_reportoccurrences', error:e }] };
   }
+}
+
+/* ---------------------------------------------------------------------
+   WIRED: Meeting Minutes (lm_meetingminuteses), MOM Notes (lm_momnoteses),
+          Audit Grid Instances (lm_auditgridinstances) and their Answers
+          (lm_auditgridanswers)
+   ---------------------------------------------------------------------
+   The four tables behind the Committee Score. A Meeting Occurrence owns one
+   Meeting Minutes row; the Minutes own one MOM Note per Agenda Item; closing
+   the Minutes of a Committee occurrence creates one Audit Grid Instance,
+   which owns one Answer row per manually scored question.
+
+   Auto-scored questions are NOT stored -- they are derived from the
+   occurrence, its agenda, its attendance and the Minutes every time the Grid
+   is rendered, so a stored copy could only ever drift. Only the Facilitator's
+   manual answers and evidence need a home, which is what lm_auditgridanswers
+   is. The exception is an APPROVED Instance: lm_score / lm_coverage / lm_total
+   are written once on approval and never recomputed, which is what freezes
+   the published score against a later settings or Template change.
+   --------------------------------------------------------------------- */
+
+/* Dataverse spells these without spaces ('PendingFacilitatorReview'), so like
+   ATTENDEE_TYPE above these map by code rather than by label -- the app's own
+   wording is the one that reaches the UI. */
+export const MOM_STATUS      = { 1:'Draft', 2:'Approved', 3:'Closed' };
+export const MOM_STATUS_KEY  = { 'Draft':1, 'Approved':2, 'Closed':3 };
+export const GRID_STATE      = { 1:'Pending Facilitator Review', 2:'Submitted for Approval',
+                                 3:'Approved', 4:'Returned for Revision', 5:'Void' };
+export const GRID_STATE_KEY  = { 'Pending Facilitator Review':1, 'Submitted for Approval':2,
+                                 'Approved':3, 'Returned for Revision':4, 'Void':5 };
+
+/* Four columns on these tables were created at Dataverse's default 100
+   characters -- long enough for a label, not for the prose they actually hold.
+   Dataverse rejects an over-long value with a 400 rather than truncating,
+   exactly as lm_fileurl does on the Report side, so every write below is
+   checked first and fails with a message naming the column. Widen the columns
+   in Dataverse and these can go. */
+export const MOM_NOTE_MAX      = 100;   // lm_momnoteses.lm_notes
+export const GRID_EVIDENCE_MAX = 100;   // lm_auditgridanswers.lm_evidence
+export const REASON_MAX        = 100;   // lm_returnreason / lm_correctionreason on both
+
+function capped(value, max, column){
+  const v = (value ?? '').toString().trim();
+  if(v.length > max) throw new Error(column + ' allows at most ' + max + ' characters — this is ' + v.length + '.');
+  return v || null;
+}
+
+/** Groups child rows by the GUID in `key`. The occurrence fetch above keeps its
+ *  own local copy of this; kept separate rather than refactoring that working
+ *  path. */
+function groupBy(rows, key){
+  const m = new Map();
+  (rows ?? []).forEach(r => {
+    const k = r[key]; if(!k) return;
+    if(!m.has(k)) m.set(k, []);
+    m.get(k).push(r);
+  });
+  return m;
+}
+
+const nowIso = () => new Date().toISOString();
+
+const MOM_SELECT = ['lm_meetingminutesid','lm_name','lm_status','lm_submittedat','lm_approvedat',
+                    'lm_closedat','lm_returnreason','lm_signeddate','lm_signedtime','lm_signedname',
+                    '_lm_meetingoccurrence_value','_lm_signedbyposition_value','modifiedon','createdon'];
+const NOTE_SELECT = ['lm_momnotesid','lm_name','lm_notes','_lm_meetingminutes_value','_lm_agendaitem_value'];
+
+/* One Minutes row plus the Notes belonging to it, in the shape the Minutes tab
+   and the scoring engine already expect. `notes` carries the row ids an edit
+   needs; `notesByAgenda` is the plain {agendaItemId: text} map the Audit Grid's
+   AG-06 reads. Both are returned because they serve different callers. */
+function shapeMinutes(m, noteRows){
+  const notes = (noteRows || []).map(n => ({
+    id: n.lm_momnotesid,
+    agendaItemId: n._lm_agendaitem_value || null,
+    text: n.lm_notes || '',
+  }));
+  const notesByAgenda = {};
+  notes.forEach(n => { if(n.agendaItemId) notesByAgenda[n.agendaItemId] = n.text; });
+  return {
+    id: m.lm_meetingminutesid,
+    name: m.lm_name || '(untitled minutes)',
+    occurrenceId: m._lm_meetingoccurrence_value || null,
+    status: MOM_STATUS[m.lm_status] || null,
+    submittedAt: m.lm_submittedat || null,
+    approvedAt: m.lm_approvedat || null,
+    closedAt: m.lm_closedat || null,
+    returnReason: m.lm_returnreason || null,
+    signedByPositionId: m._lm_signedbyposition_value || null,
+    signedName: m.lm_signedname || null,
+    signedDate: isoDay(m.lm_signeddate),
+    signedTime: m.lm_signedtime || null,
+    updated: m.modifiedon || m.createdon || null,
+    notes,
+    notesByAgenda,
+  };
+}
+
+/** Every Meeting Minutes row with its Notes attached. Two requests, grouped
+ *  client-side -- the same shape as fetchMeetingOccurrences above, and for the
+ *  same reason. A Notes failure leaves the Minutes usable. */
+export async function fetchMeetingMinutes(){
+  const [momRes, noteRes] = await Promise.all([
+    Lm_meetingminutesesService.getAll({ select: MOM_SELECT }),
+    Lm_momnotesesService.getAll({ select: NOTE_SELECT })
+      .catch(e=>{ console.warn('[dataverse] MOM notes fetch failed:', e); return null; }),
+  ]);
+  const notesBy = groupBy(noteRes?.data, '_lm_meetingminutes_value');
+  return (momRes?.data ?? []).map(m => shapeMinutes(m, notesBy.get(m.lm_meetingminutesid)));
+}
+
+/** The Minutes of one occurrence, or null. Server-side filtered so the Meeting
+ *  detail page does not pull the whole table to find one row. */
+export async function fetchMeetingMinutesByOccurrence(occurrenceId){
+  const res = await Lm_meetingminutesesService.getAll({
+    filter: `_lm_meetingoccurrence_value eq ${occurrenceId}`,
+    select: MOM_SELECT,
+  });
+  const m = (res?.data ?? [])[0];
+  if(!m) return null;
+  const noteRes = await Lm_momnotesesService.getAll({
+    filter: `_lm_meetingminutes_value eq ${m.lm_meetingminutesid}`,
+    select: NOTE_SELECT,
+  }).catch(e=>{ console.warn('[dataverse] MOM notes fetch failed:', e); return null; });
+  return shapeMinutes(m, noteRes?.data);
+}
+
+/**
+ * Creates the Meeting Minutes row for one occurrence, then one MOM Note per
+ * Agenda Item carrying text. A Note that fails is collected rather than
+ * aborting the rest, since the Minutes themselves are already real by then.
+ *
+ * @param {object} payload
+ * @param {string} payload.occurrenceId lm_meetingoccurrences id
+ * @param {string} [payload.name]
+ * @param {string} [payload.status] 'Draft'|'Approved'|'Closed', defaults to Draft
+ * @param {{agendaItemId:string, text:string}[]} [payload.notes]
+ * @returns {Promise<{id:string|null, errors:{table:string,error:any}[]}>}
+ */
+export async function createMeetingMinutes(payload){
+  const errors = [];
+  let momId = null;
+  try{
+    const row = {
+      lm_name: payload.name || 'Meeting Minutes',
+      lm_status: MOM_STATUS_KEY[payload.status || 'Draft'] ?? MOM_STATUS_KEY.Draft,
+    };
+    if(payload.occurrenceId) row['lm_MeetingOccurrence@odata.bind'] = `/lm_meetingoccurrences(${payload.occurrenceId})`;
+    const created = await Lm_meetingminutesesService.create(row);
+    momId = idOrThrow(created, 'lm_meetingminutesid');
+  }catch(e){
+    errors.push({ table:'lm_meetingminuteses', error:e });
+    return { id:null, errors };   // no parent id, so no Note can be linked
+  }
+
+  for(const n of (payload.notes || [])){
+    if(!n?.text) continue;
+    try{
+      await createMomNoteRow(momId, n.agendaItemId, n.text);
+    }catch(e){ errors.push({ table:'lm_momnoteses', error:e }); }
+  }
+  return { id: momId, errors };
+}
+
+/* The bare Note create, shared by createMeetingMinutes and saveMomNote. */
+async function createMomNoteRow(minutesId, agendaItemId, text){
+  const row = {
+    lm_name: 'MOM Note',
+    lm_notes: capped(text, MOM_NOTE_MAX, 'lm_notes'),
+    'lm_MeetingMinutes@odata.bind': `/lm_meetingminuteses(${minutesId})`,
+  };
+  if(agendaItemId) row['lm_AgendaItem@odata.bind'] = `/lm_meetingoccurrenceagendas(${agendaItemId})`;
+  const created = await Lm_momnotesesService.create(row);
+  return idOrThrow(created, 'lm_momnotesid');
+}
+
+/**
+ * Writes one Agenda Item's discussion note. Pass `noteId` to patch the existing
+ * row, omit it to create one -- the Minutes tab holds the id it read back, so
+ * this stays a plain upsert rather than a read-before-write.
+ */
+export async function saveMomNote(minutesId, agendaItemId, text, noteId){
+  try{
+    if(noteId){
+      const result = await Lm_momnotesesService.update(noteId, {
+        lm_notes: capped(text, MOM_NOTE_MAX, 'lm_notes'),
+      });
+      assertSuccess(result);
+      return { id: noteId, errors: [] };
+    }
+    return { id: await createMomNoteRow(minutesId, agendaItemId, text), errors: [] };
+  }catch(e){
+    return { id: null, errors: [{ table:'lm_momnoteses', error:e }] };
+  }
+}
+
+/** Removes one MOM Note row -- an Agenda Item whose note was cleared. */
+export async function deleteMomNote(noteId){
+  try{
+    await Lm_momnotesesService.delete(noteId);
+    return { id: noteId, errors: [] };
+  }catch(e){
+    return { id: null, errors: [{ table:'lm_momnoteses', error:e }] };
+  }
+}
+
+/**
+ * Moves the Minutes along their lifecycle and stamps the matching clock in the
+ * same PATCH. The two clocks are deliberately separate columns because the
+ * Audit Grid measures them against different people: lm_submittedat starts the
+ * Facilitator's write-up window (AG-16) and lm_approvedat closes the Chair's
+ * approval window (AG-05).
+ *
+ * @param {string} id
+ * @param {string} status 'Draft'|'Approved'|'Closed'
+ * @param {object} [stamps] ISO strings; omit to stamp the transition's own
+ *        clock with now. Pass `{submittedAt}` when submitting a Draft.
+ */
+export async function updateMeetingMinutesStatus(id, status, stamps = {}){
+  try{
+    const row = { lm_status: MOM_STATUS_KEY[status] ?? null };
+    if(stamps.submittedAt !== undefined)   row.lm_submittedat = stamps.submittedAt;
+    if(stamps.approvedAt !== undefined)    row.lm_approvedat  = stamps.approvedAt;
+    else if(status === 'Approved')         row.lm_approvedat  = nowIso();
+    if(stamps.closedAt !== undefined)      row.lm_closedat    = stamps.closedAt;
+    else if(status === 'Closed')           row.lm_closedat    = nowIso();
+
+    const result = await Lm_meetingminutesesService.update(id, row);
+    assertSuccess(result);
+    return { id, errors: [] };
+  }catch(e){
+    return { id: null, errors: [{ table:'lm_meetingminuteses', error:e }] };
+  }
+}
+
+/** Submits a Draft: stamps lm_submittedat, which is what starts AG-16's clock.
+ *  Status stays Draft -- submission is not approval. */
+export async function submitMeetingMinutes(id){
+  try{
+    const result = await Lm_meetingminutesesService.update(id, { lm_submittedat: nowIso() });
+    assertSuccess(result);
+    return { id, errors: [] };
+  }catch(e){
+    return { id: null, errors: [{ table:'lm_meetingminuteses', error:e }] };
+  }
+}
+
+/** Returns the Minutes to the Recorder with a reason. The status goes back to
+ *  Draft; lm_submittedat is deliberately left standing so the original write-up
+ *  time is not rewritten by a revision. */
+export async function returnMeetingMinutes(id, reason){
+  try{
+    const result = await Lm_meetingminutesesService.update(id, {
+      lm_status: MOM_STATUS_KEY.Draft,
+      lm_returnreason: capped(reason, REASON_MAX, 'lm_returnreason'),
+    });
+    assertSuccess(result);
+    return { id, errors: [] };
+  }catch(e){
+    return { id: null, errors: [{ table:'lm_meetingminuteses', error:e }] };
+  }
+}
+
+/** Records the Chair's signature on the Minutes. Separate from the status patch
+ *  because a Committee classification may require the signature while the
+ *  approval itself is the same act. */
+export async function signMeetingMinutes(id, { positionId, name, date, time } = {}){
+  try{
+    const row = {
+      lm_signedname: capped(name, 100, 'lm_signedname'),
+      lm_signeddate: date || isoDay(nowIso()),
+      lm_signedtime: time || null,
+    };
+    if(positionId) row['lm_SignedByPosition@odata.bind'] = `/cr603_organizationstructures(${positionId})`;
+    const result = await Lm_meetingminutesesService.update(id, row);
+    assertSuccess(result);
+    return { id, errors: [] };
+  }catch(e){
+    return { id: null, errors: [{ table:'lm_meetingminuteses', error:e }] };
+  }
+}
+
+/* ---- Audit Grid ------------------------------------------------------- */
+
+const GRID_SELECT = ['lm_auditgridinstanceid','lm_name','lm_state','lm_score','lm_coverage','lm_total',
+                     'lm_version','lm_locked','lm_frozen','lm_approvedat','lm_templateversion',
+                     'lm_returnreason','lm_correctionreason','_lm_meetingoccurrence_value',
+                     '_lm_facilitatorposition_value','_lm_chairposition_value','modifiedon','createdon'];
+const ANSWER_SELECT = ['lm_auditgridanswerid','lm_questionid','lm_score','lm_evidence',
+                       '_lm_auditgridinstance_value'];
+
+/* `manual` and `evidence` come back as {questionId: value} maps because that is
+   exactly the shape scoreGrid() already reads off a Grid -- the stored Answers
+   drop straight in with no adapter. `answers` keeps the row ids an edit needs. */
+function shapeGrid(g, answerRows){
+  const answers = (answerRows || []).map(a => ({
+    id: a.lm_auditgridanswerid,
+    questionId: a.lm_questionid || null,
+    score: a.lm_score ?? null,
+    evidence: a.lm_evidence || null,
+  }));
+  const manual = {}, evidence = {};
+  answers.forEach(a => {
+    if(!a.questionId) return;
+    if(a.score != null)  manual[a.questionId]   = a.score;
+    if(a.evidence)       evidence[a.questionId] = a.evidence;
+  });
+  return {
+    id: g.lm_auditgridinstanceid,
+    name: g.lm_name || '(untitled grid)',
+    occurrenceId: g._lm_meetingoccurrence_value || null,
+    state: GRID_STATE[g.lm_state] || null,
+    score: g.lm_score ?? null,
+    coverage: g.lm_coverage ?? null,     // count of applicable questions, not a percentage
+    total: g.lm_total ?? null,
+    version: g.lm_version ?? 1,
+    locked: !!g.lm_locked,
+    frozen: !!g.lm_frozen,
+    approvedAt: g.lm_approvedat || null,
+    templateVersion: g.lm_templateversion || null,
+    returnReason: g.lm_returnreason || null,
+    correctionReason: g.lm_correctionreason || null,
+    facilitatorPositionId: g._lm_facilitatorposition_value || null,
+    chairPositionId: g._lm_chairposition_value || null,
+    updated: g.modifiedon || g.createdon || null,
+    answers, manual, evidence,
+  };
+}
+
+/** Every Audit Grid Instance with its Answers attached. */
+export async function fetchAuditGridInstances(){
+  const [gridRes, ansRes] = await Promise.all([
+    Lm_auditgridinstancesService.getAll({ select: GRID_SELECT }),
+    Lm_auditgridanswersService.getAll({ select: ANSWER_SELECT })
+      .catch(e=>{ console.warn('[dataverse] Audit Grid answers fetch failed:', e); return null; }),
+  ]);
+  const ansBy = groupBy(ansRes?.data, '_lm_auditgridinstance_value');
+  return (gridRes?.data ?? []).map(g => shapeGrid(g, ansBy.get(g.lm_auditgridinstanceid)));
+}
+
+/** Every Instance for one occurrence, newest version first. More than one is
+ *  normal: a correction opens a new version rather than editing the approved
+ *  Instance, so the history is a list, not a row. */
+export async function fetchAuditGridInstancesByOccurrence(occurrenceId){
+  const res = await Lm_auditgridinstancesService.getAll({
+    filter: `_lm_meetingoccurrence_value eq ${occurrenceId}`,
+    select: GRID_SELECT,
+  });
+  const rows = res?.data ?? [];
+  if(!rows.length) return [];
+  const ansRes = await Lm_auditgridanswersService.getAll({ select: ANSWER_SELECT })
+    .catch(e=>{ console.warn('[dataverse] Audit Grid answers fetch failed:', e); return null; });
+  const ansBy = groupBy(ansRes?.data, '_lm_auditgridinstance_value');
+  return rows
+    .map(g => shapeGrid(g, ansBy.get(g.lm_auditgridinstanceid)))
+    .sort((a,b) => (b.version||1) - (a.version||1));
+}
+
+/**
+ * Creates one Audit Grid Instance. Called on closure of a Committee
+ * occurrence's Minutes, and again -- with a higher `version` and a
+ * `correctionReason` -- when a Chair opens a correction against an approved
+ * Instance. Score and Coverage are deliberately left null: nothing is published
+ * until the Chair approves.
+ *
+ * @param {object} payload
+ * @param {string} payload.occurrenceId
+ * @param {string} [payload.name]
+ * @param {string} [payload.templateVersion] e.g. 'AGT v1.2'
+ * @param {number} [payload.total] active question count the Template carried
+ * @param {number} [payload.version] defaults to 1
+ * @param {string} [payload.correctionReason] set only on a correction version
+ * @param {string} [payload.facilitatorPositionId]
+ * @param {string} [payload.chairPositionId]
+ * @param {{questionId:string, score?:number, evidence?:string}[]} [payload.answers]
+ *        carried forward when a correction version reopens an approved Grid
+ */
+export async function createAuditGridInstance(payload){
+  const errors = [];
+  let gridId = null;
+  try{
+    const row = {
+      lm_name: payload.name || 'Audit Grid Instance',
+      lm_state: GRID_STATE_KEY['Pending Facilitator Review'],
+      lm_templateversion: payload.templateVersion || null,
+      lm_total: payload.total ?? null,
+      lm_version: payload.version ?? 1,
+      lm_locked: false,
+      lm_frozen: false,
+      lm_correctionreason: payload.correctionReason
+        ? capped(payload.correctionReason, REASON_MAX, 'lm_correctionreason') : null,
+    };
+    if(payload.occurrenceId)          row['lm_MeetingOccurrence@odata.bind']   = `/lm_meetingoccurrences(${payload.occurrenceId})`;
+    if(payload.facilitatorPositionId) row['lm_FacilitatorPosition@odata.bind'] = `/cr603_organizationstructures(${payload.facilitatorPositionId})`;
+    if(payload.chairPositionId)       row['lm_ChairPosition@odata.bind']       = `/cr603_organizationstructures(${payload.chairPositionId})`;
+    const created = await Lm_auditgridinstancesService.create(row);
+    gridId = idOrThrow(created, 'lm_auditgridinstanceid');
+  }catch(e){
+    errors.push({ table:'lm_auditgridinstances', error:e });
+    return { id:null, errors };
+  }
+
+  for(const a of (payload.answers || [])){
+    if(!a?.questionId) continue;
+    try{
+      await createAuditGridAnswerRow(gridId, a.questionId, a.score, a.evidence);
+    }catch(e){ errors.push({ table:'lm_auditgridanswers', error:e }); }
+  }
+  return { id: gridId, errors };
+}
+
+/* The bare Answer create, shared by createAuditGridInstance and
+   saveAuditGridAnswer. */
+async function createAuditGridAnswerRow(instanceId, questionId, score, evidence){
+  const created = await Lm_auditgridanswersService.create({
+    lm_name: questionId,
+    lm_questionid: capped(questionId, 100, 'lm_questionid'),
+    lm_score: score ?? null,
+    lm_evidence: evidence ? capped(evidence, GRID_EVIDENCE_MAX, 'lm_evidence') : null,
+    'lm_AuditGridInstance@odata.bind': `/lm_auditgridinstances(${instanceId})`,
+  });
+  return idOrThrow(created, 'lm_auditgridanswerid');
+}
+
+/**
+ * Writes one question's manual score and evidence note. Pass `answerId` to
+ * patch, omit it to create. Only manual questions reach this -- an auto-scored
+ * value is never stored, so it can never disagree with the rule that produced
+ * it, though an evidence note may be attached to one.
+ */
+export async function saveAuditGridAnswer(instanceId, questionId, { score, evidence } = {}, answerId){
+  try{
+    if(answerId){
+      const row = {};
+      if(score !== undefined)    row.lm_score    = score ?? null;
+      if(evidence !== undefined) row.lm_evidence = evidence
+        ? capped(evidence, GRID_EVIDENCE_MAX, 'lm_evidence') : null;
+      const result = await Lm_auditgridanswersService.update(answerId, row);
+      assertSuccess(result);
+      return { id: answerId, errors: [] };
+    }
+    return { id: await createAuditGridAnswerRow(instanceId, questionId, score, evidence), errors: [] };
+  }catch(e){
+    return { id: null, errors: [{ table:'lm_auditgridanswers', error:e }] };
+  }
+}
+
+/** Removes one Answer row -- a manual score the Facilitator cleared. */
+export async function deleteAuditGridAnswer(answerId){
+  try{
+    await Lm_auditgridanswersService.delete(answerId);
+    return { id: answerId, errors: [] };
+  }catch(e){
+    return { id: null, errors: [{ table:'lm_auditgridanswers', error:e }] };
+  }
+}
+
+/** Moves the Instance between states that publish nothing -- Submitted for
+ *  Approval, Returned for Revision, Void. Approval is separate below because it
+ *  is the only transition that writes a score. */
+export async function updateAuditGridState(id, state, reason){
+  try{
+    const row = { lm_state: GRID_STATE_KEY[state] ?? null };
+    if(state === 'Returned for Revision')
+      row.lm_returnreason = capped(reason, REASON_MAX, 'lm_returnreason');
+    const result = await Lm_auditgridinstancesService.update(id, row);
+    assertSuccess(result);
+    return { id, errors: [] };
+  }catch(e){
+    return { id: null, errors: [{ table:'lm_auditgridinstances', error:e }] };
+  }
+}
+
+/**
+ * Approves the Instance and publishes the score in one PATCH. This is the only
+ * write that sets lm_score / lm_coverage, and it also sets lm_locked and
+ * lm_frozen -- together they are what stops a later change to a governance
+ * setting or to the Taxonomy Template from rewriting a published result. The
+ * caller passes the totals it computed from the rendered Grid.
+ *
+ * @param {string} id
+ * @param {object} totals
+ * @param {number} totals.score      overall percentage, e.g. 83.1
+ * @param {number} totals.coverage   COUNT of applicable questions, not a percentage
+ * @param {number} [totals.total]    active question count
+ */
+export async function approveAuditGridInstance(id, { score, coverage, total } = {}){
+  try{
+    const row = {
+      lm_state: GRID_STATE_KEY.Approved,
+      lm_score: score ?? null,
+      lm_coverage: coverage ?? null,
+      lm_locked: true,
+      lm_frozen: true,
+      lm_approvedat: nowIso(),
+    };
+    if(total != null) row.lm_total = total;
+    const result = await Lm_auditgridinstancesService.update(id, row);
+    assertSuccess(result);
+    return { id, errors: [] };
+  }catch(e){
+    return { id: null, errors: [{ table:'lm_auditgridinstances', error:e }] };
+  }
+}
+
+/* ---------------------------------------------------------------------
+   WIRED (READ-ONLY): Authority Matrix (lm_authoritymatrixrows), Approval
+                      Cycles (lm_approvalcycles) and their Steps
+                      (lm_approvalcyclesteps)
+   ---------------------------------------------------------------------
+   The Authority Matrix is owned OUTSIDE Leadership Practice. This module
+   sends criteria and applies the returned result and route unmodified -- it
+   never authors, edits or substitutes an authority rule. So everything below
+   is deliberately read-only: there is no create/update/delete here, and there
+   should not be one. A missing mapping is reported as 'No mapping found' and
+   blocks submission; it never falls back to an invented route.
+   --------------------------------------------------------------------- */
+
+/* The option set spells these without spaces; the app's own wording is the
+   one that reaches the UI and matches DECISION_TYPES. Mapped by code rather
+   than by label, as elsewhere in this file. Note 124330002 is unused. */
+export const DECISION_TYPE = {
+  124330000: 'Quality Improvement Action',
+  124330001: 'Clinical Protocol Change',
+  124330004: 'Establishment or Staffing Change',
+  124330005: 'Capital Expenditure',
+  124330003: 'Technology Adoption',
+};
+export const DECISION_TYPE_KEY = {
+  'Quality Improvement Action':124330000,
+  'Clinical Protocol Change':124330001,
+  'Establishment or Staffing Change':124330004,
+  'Capital Expenditure':124330005,
+  'Technology Adoption':124330003,
+};
+
+/** Every Approval Cycle with its ordered steps attached. Returned both as a
+ *  list and as a {code: cycle} map, because the Authority Matrix references a
+ *  cycle by row while the UI renders one by code. */
+export async function fetchApprovalCycles(){
+  const [cycleRes, stepRes] = await Promise.all([
+    Lm_approvalcyclesService.getAll({
+      select: ['lm_approvalcycleid','lm_name','lm_code','statecode'],
+    }),
+    Lm_approvalcyclestepsService.getAll({
+      select: ['lm_approvalcyclestepid','lm_name','lm_steporder',
+               '_lm_approvalcycle_value','_lm_positionrole_value','lm_positionrolename'],
+    }).catch(e=>{ console.warn('[dataverse] approval cycle steps fetch failed:', e); return null; }),
+  ]);
+  const stepsBy = groupBy(stepRes?.data, '_lm_approvalcycle_value');
+
+  const list = (cycleRes?.data ?? []).map(c => ({
+    id: c.lm_approvalcycleid,
+    code: c.lm_code || null,
+    name: c.lm_name || '(unnamed cycle)',
+    /* Ordered by lm_steporder -- a cycle is a sequence, so an unordered read
+       would route a Decision to the wrong approver. */
+    steps: (stepsBy.get(c.lm_approvalcycleid) || [])
+      .slice().sort((a,b)=>(a.lm_steporder??0)-(b.lm_steporder??0))
+      .map(s=>({ id: s.lm_approvalcyclestepid,
+                 order: s.lm_steporder ?? null,
+                 positionId: s._lm_positionrole_value || null,
+                 position: s.lm_positionrolename || null })),
+  })).sort((a,b)=>(a.code||'').localeCompare(b.code||''));
+
+  const byCode = {};
+  list.forEach(c => { if(c.code) byCode[c.code] = c; });
+  return { list, byCode };
+}
+
+/**
+ * Every Authority Matrix row, with its Approval Cycle resolved.
+ *
+ * `max` is lm_maxvalue, a currency column: null means "no ceiling on this
+ * row". authorityCheckLive() below sorts on it, so the tiers order themselves
+ * by value -- there is no separate sequence column to keep in step, and none
+ * is needed.
+ */
+export async function fetchAuthorityMatrix(){
+  const [rowRes, cycles] = await Promise.all([
+    Lm_authoritymatrixrowsService.getAll({
+      select: ['lm_authoritymatrixrowid','lm_name','lm_decisiontype','lm_maxvalue',
+               'lm_requiredlevel','_lm_approvalcycle_value','statecode'],
+    }),
+    fetchApprovalCycles().catch(e=>{
+      console.warn('[dataverse] approval cycles fetch failed:', e); return { list:[], byCode:{} }; }),
+  ]);
+  const cycleById = new Map(cycles.list.map(c=>[c.id, c]));
+
+  const rows = (rowRes?.data ?? []).map(r => {
+    const cycle = r._lm_approvalcycle_value ? cycleById.get(r._lm_approvalcycle_value) : null;
+    return {
+      id: r.lm_authoritymatrixrowid,
+      name: r.lm_name || null,
+      type: DECISION_TYPE[r.lm_decisiontype] || null,
+      max: r.lm_maxvalue ?? null,
+      reqLvl: r.lm_requiredlevel ?? null,
+      cycleId: r._lm_approvalcycle_value || null,
+      cycle: cycle ? cycle.code : null,
+      cycleName: cycle ? cycle.name : null,
+    };
+  });
+  return { rows, cycles };
+}
+
+/**
+ * The Authority Check, run against rows read from Dataverse rather than the
+ * hard-coded table in the module. A pure function so the Decision intake can
+ * preview the result before anything is written, and the Audit Grid (AG-12)
+ * can re-run it later against the same rows.
+ *
+ * Mirrors the documented algorithm exactly: filter by type, order the tiers by
+ * ceiling, take the first tier the value fits, then compare the creator's
+ * authority level to that tier's requirement. A type with no row returns
+ * 'No mapping found' -- submission is blocked and NO substitute route is
+ * invented, which is the whole point of the rule.
+ *
+ * @param {{type:string,max:number|null,reqLvl:number|null,cycle:string|null}[]} rows
+ *        from fetchAuthorityMatrix().rows
+ * @param {string} type one of DECISION_TYPE's values
+ * @param {number|null} value the Decision's amount; treated as 0 when absent
+ * @param {number|null} creatorLevel the creator's authority level (0-6)
+ */
+export function authorityCheckLive(rows, type, value, creatorLevel){
+  const cands = (rows || [])
+    .filter(r => r.type === type)
+    .sort((a,b) => (a.max==null?Infinity:a.max) - (b.max==null?Infinity:b.max));
+
+  if(!cands.length)
+    return { result:'No mapping found', reqLvl:null, cycle:null, matched:null };
+
+  const v = value == null ? 0 : value;
+  const row = cands.find(r => r.max == null || v <= r.max) || cands[cands.length-1];
+  const lvl = creatorLevel == null ? -1 : creatorLevel;
+
+  const label = row.max != null
+    ? `${row.type} up to ${row.max.toLocaleString('en-US')} SAR`
+    : cands.length > 1 && cands[0].max != null
+      ? `${row.type} over ${cands[0].max.toLocaleString('en-US')} SAR`
+      : row.type;
+
+  return {
+    result: lvl >= row.reqLvl ? 'Authority confirmed' : 'Authority not held',
+    reqLvl: row.reqLvl,
+    cycle:  lvl >= row.reqLvl ? null : row.cycle,
+    matched: label,
+  };
 }

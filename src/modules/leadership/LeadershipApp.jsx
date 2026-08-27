@@ -8,6 +8,8 @@ import { fetchMeetingOccurrences, fetchReportOccurrences, createMeetingOccurrenc
          fetchBusinessUnits, fetchPositions, fetchDepartments, fetchRegions,
          fetchMeetingTemplatesList, fetchMeetingTemplateDetail,
          fetchReportTemplatesList, fetchReportTemplateDetail, fetchCurrentUser,
+         fetchMeetingMinutesByOccurrence, fetchAuditGridInstancesByOccurrence,
+         fetchAuthorityMatrix,
          MEETING_SETUP_TYPE, MEETING_CATEGORY, MEETING_FREQUENCY, MEETING_DAY_OF_WEEK,
          ATTENDEE_TYPE, REPORT_TYPE, REPORT_CATEGORY, REPORT_FREQUENCY } from '../../services/dataverse.js';
 
@@ -3898,13 +3900,44 @@ function DvEditOccModal({rec,onClose}){
    Dataverse table behind them: Submissions, Documents, Discussions, Actions,
    Minutes and the Audit Grid all live in seeded state only. What is here is
    what the occurrence row and its agenda and attendee rows actually hold. */
+/* Dataverse returns a full ISO timestamp ('2026-08-26T14:39:18Z'); fmtDT above
+   expects the app's own 'YYYY-MM-DD HH:mm' stamps and splits on the space, so
+   an ISO value needs its own formatter rather than being pushed through that
+   one. Trimmed rather than re-parsed, so the day never shifts a time zone. */
+const fmtISODT = s => { if(!s) return '—';
+  const day = s.slice(0,10), time = s.length>=16 ? s.slice(11,16) : null;
+  return `${fmtD(day)}${time?' · '+time:''}`; };
+
 function DvMeetingDetail({rec,back}){
-  const {sel,setSel,toast,refreshOccurrences}=use();
+  const {sel,setSel,toast,refreshOccurrences,S}=use();
   const tab = sel.mtgTab || 'detail';
   const setTab = t=>setSel(v=>({...v,mtgTab:t}));
   const [markingHeld,setMarkingHeld]=useState(false);
   const [attSavingId,setAttSavingId]=useState(null);
   const [editing,setEditing]=useState(false);
+
+  /* The Minutes row and the Audit Grid Instances belonging to this occurrence,
+     read from lm_meetingminuteses / lm_momnoteses / lm_auditgridinstances /
+     lm_auditgridanswers. Read-only for now: the two tabs below show what
+     Dataverse actually holds and write nothing back. A failure on either leaves
+     the rest of the page working, the same way the occurrence's own child
+     tables do. */
+  const [minutes,setMinutes]=useState(null);
+  const [grids,setGrids]=useState([]);
+  const [govLoading,setGovLoading]=useState(true);
+
+  useEffect(()=>{
+    let cancelled=false;
+    setGovLoading(true);
+    Promise.all([
+      fetchMeetingMinutesByOccurrence(rec.id).catch(e=>{
+        console.warn('[dataverse] fetchMeetingMinutesByOccurrence() failed:', e); return null; }),
+      fetchAuditGridInstancesByOccurrence(rec.id).catch(e=>{
+        console.warn('[dataverse] fetchAuditGridInstancesByOccurrence() failed:', e); return []; }),
+    ]).then(([m,g])=>{ if(cancelled) return; setMinutes(m); setGrids(g||[]); })
+      .finally(()=>{ if(!cancelled) setGovLoading(false); });
+    return ()=>{cancelled=true;};
+  },[rec.id]);
 
   const markHeld = async () => {
     setMarkingHeld(true);
@@ -3988,8 +4021,8 @@ function DvMeetingDetail({rec,back}){
     </div>
     {editing && <DvEditOccModal rec={rec} onClose={()=>setEditing(false)}/>}
 
-    <Note k="lock" ic="—">Writing Minutes is not wired to this table yet — editing, marking Held and
-      recording Attendance below are.</Note>
+    <Note k="lock" ic="—">Editing, marking Held and recording Attendance write to Dataverse. The
+      Minutes and Audit Grid tabs read their four tables but write nothing back yet.</Note>
     {rec.status==='Scheduled' && !rec.agenda.length &&
       <Note k="warn">An occurrence needs at least one Agenda item before it can be marked Held.</Note>}
     {rec.restricted && <Note k="lock"><b>Restricted.</b> This occurrence is marked visible only to its
@@ -4004,6 +4037,11 @@ function DvMeetingDetail({rec,back}){
         <span className="c">{rec.agenda.length}</span></button>
       <button className={tab==='att'?'on':''} onClick={()=>setTab('att')}>Attendance
         <span className="c">{rec.attendees.length}</span></button>
+      <button className={tab==='minutes'?'on':''} onClick={()=>setTab('minutes')}>Minutes
+        {minutes && <span className="c">{minutes.notes.length}</span>}</button>
+      {accred &&
+        <button className={tab==='grid'?'on':''} onClick={()=>setTab('grid')}>Audit Grid
+          {grids.length>0 && <span className="c">{grids.length}</span>}</button>}
     </div>
 
     {tab==='detail' && <div className="wa-grid">
@@ -4241,6 +4279,111 @@ function DvMeetingDetail({rec,back}){
       <div style={{padding:'0 17px 15px',fontSize:12,color:'var(--muted)'}}>
         Only Required Attendee attendance is measured. Optional attendance is recorded but not counted.</div>
     </div>}
+
+    {tab==='minutes' && <>
+      {govLoading && <div className="card"><Empty>Reading lm_meetingminuteses…</Empty></div>}
+      {!govLoading && !minutes &&
+        <div className="card"><Empty ic="📝">No Minutes row exists for this occurrence.</Empty>
+          <div style={{fontSize:12,color:'var(--muted)',textAlign:'center',padding:'0 17px 14px'}}>
+            A Meeting Minutes row is created after the Meeting is Held. Writing Minutes from here is not
+            wired yet — this tab reads lm_meetingminuteses and lm_momnoteses only.</div></div>}
+      {!govLoading && minutes && <>
+        <div className="card">
+          <div style={{display:'flex',alignItems:'center',gap:9,marginBottom:12,flexWrap:'wrap'}}>
+            <Tag c={minutes.status==='Closed'?'green':minutes.status==='Approved'?'teal':'amber'}>
+              {minutes.status||'—'}</Tag>
+            {minutes.signedName && <Tag c="grey">Signed</Tag>}
+          </div>
+          <KVBlock items={[
+            ['Submitted', fmtISODT(minutes.submittedAt)],
+            ['Approved',  fmtISODT(minutes.approvedAt)],
+            ['Closed',    fmtISODT(minutes.closedAt)],
+            ['Signed by', posName(minutes.signedByPositionId)||minutes.signedName||'—'],
+            ['Signed on', minutes.signedDate
+              ? fmtD(minutes.signedDate)+(minutes.signedTime?' · '+minutes.signedTime:'') : '—'],
+          ]}/>
+          {minutes.returnReason &&
+            <Note k="err"><b>Returned for revision.</b> {minutes.returnReason}</Note>}
+          <Note k="lock" ic="—">Read-only. The two clocks above are what the Audit Grid measures:
+            Submitted starts the Facilitator's write-up window (AG-16) and Approved closes the Meeting
+            Chair's approval window (AG-05).</Note>
+        </div>
+
+        <div className="card flush">
+          <div className="card-hd"><h2>Discussion Notes</h2>
+            <div className="csub">One MOM Note per Agenda Item. AG-06 counts an Agenda Item as having
+              an outcome when it carries a note or an Output.</div></div>
+          {rec.agenda.length===0
+            ? <div style={{padding:'8px 17px 17px'}}><Empty>No Agenda Item on this occurrence.</Empty></div>
+            : <div className="t-wrap"><table className="data">
+                <thead><tr><th style={{width:38}}>#</th><th>Agenda Item</th>
+                  <th>Discussion Note</th></tr></thead>
+                <tbody>{rec.agenda.map((a,i)=>{
+                  const note = minutes.notesByAgenda[a.id];
+                  return <tr key={a.id}>
+                    <td className="dim">{a.seq??i+1}</td>
+                    <td><div className="t-main">{a.title||'—'}</div></td>
+                    <td className={note?'':'dim'} style={{fontSize:12.5}}>{note||'No note recorded'}</td>
+                  </tr>;})}
+                </tbody></table></div>}
+        </div>
+      </>}
+    </>}
+
+    {tab==='grid' && <>
+      {govLoading && <div className="card"><Empty>Reading lm_auditgridinstances…</Empty></div>}
+      {!govLoading && grids.length===0 &&
+        <div className="card"><Empty ic="▦">No Audit Grid Instance exists for this occurrence.</Empty>
+          <div style={{fontSize:12,color:'var(--muted)',textAlign:'center',padding:'0 17px 14px'}}>
+            An Instance is created on closure of a Committee occurrence's Minutes. Scoring one from here
+            is not wired yet — this tab reads lm_auditgridinstances and lm_auditgridanswers only.</div></div>}
+      {!govLoading && grids.map(g=>{
+        const covPct = g.coverage!=null && g.total ? Math.round(g.coverage/g.total*1000)/10 : null;
+        return <div className="card" key={g.id}>
+          <div style={{display:'flex',alignItems:'center',gap:9,marginBottom:12,flexWrap:'wrap'}}>
+            <Tag c={g.state==='Approved'?'green':g.state==='Void'?'grey':'amber'}>{g.state||'—'}</Tag>
+            {g.templateVersion && <Tag>Template {g.templateVersion}</Tag>}
+            <Tag>Version {g.version}</Tag>
+            {g.locked && <Tag c="grey">🔒 Locked</Tag>}
+          </div>
+
+          <ScoreHero score={g.score} coverage={covPct??0} applicable={g.coverage??0}
+            total={g.total??0} threshold={S.passThreshold} state={g.state}/>
+
+          <div className="sep"/>
+          <KVBlock items={[
+            ['Facilitator', posName(g.facilitatorPositionId)||'—'],
+            ['Meeting Chair', posName(g.chairPositionId)||'—'],
+            ['Approved at', fmtISODT(g.approvedAt)],
+          ]}/>
+          {g.returnReason &&
+            <Note k="err"><b>Returned for revision.</b> {g.returnReason}</Note>}
+          {g.correctionReason &&
+            <Note k="warn"><b>Correction version.</b> {g.correctionReason}</Note>}
+
+          {g.answers.length>0 && <>
+            <div className="sep"/>
+            <h2 style={{marginBottom:4}}>Stored answers</h2>
+            <div className="csub">Only manually scored questions are stored. An auto-scored value is
+              derived from the occurrence every time the Grid is rendered, so it can never disagree
+              with the rule that produced it.</div>
+            <div className="t-wrap"><table className="data">
+              <thead><tr><th>Question</th><th>Manual score</th><th>Evidence</th></tr></thead>
+              <tbody>{g.answers.slice()
+                .sort((a,b)=>(a.questionId||'').localeCompare(b.questionId||''))
+                .map(a=><tr key={a.id}>
+                  <td className="t-main">{a.questionId||'—'}</td>
+                  <td><Tag c={scoreColour(a.score)}>{a.score??'—'}</Tag></td>
+                  <td className="dim" style={{fontSize:12}}>{a.evidence||'—'}</td>
+                </tr>)}
+              </tbody></table></div>
+          </>}
+
+          {g.state!=='Approved' &&
+            <Note k="info">Nothing is published until the Meeting Chair approves. The Overall Score is
+              written to lm_score once, on approval, and never recomputed.</Note>}
+        </div>;})}
+    </>}
   </>;
 }
 
@@ -6871,6 +7014,89 @@ function DecisionDetail({rec,back}){
 /* =========================================================================
    8 · GOVERNANCE SETTINGS
    ========================================================================= */
+/* The live Authority Matrix, read from lm_authoritymatrixrows and its Approval
+   Cycles. Read-only by design, not by staging: this module sends criteria and
+   applies the route it gets back, so there is deliberately no edit affordance
+   here and no create/update function behind it. A Decision Type with no row is
+   shown as such, because that gap is what blocks submission rather than
+   producing a fallback route. */
+function AuthorityMatrixPanel(){
+  const [matrix,setMatrix]=useState(null);
+  const [loading,setLoading]=useState(true);
+  const [failed,setFailed]=useState(false);
+
+  useEffect(()=>{
+    let cancelled=false;
+    fetchAuthorityMatrix()
+      .then(m=>{ if(!cancelled) setMatrix(m); })
+      .catch(e=>{ console.warn('[dataverse] fetchAuthorityMatrix() failed:', e);
+                  if(!cancelled) setFailed(true); })
+      .finally(()=>{ if(!cancelled) setLoading(false); });
+    return ()=>{cancelled=true;};
+  },[]);
+
+  const rows = matrix?.rows || [];
+  /* Ordered the way the check itself orders them -- by type, then by ceiling --
+     so what is read here is the order a Decision is actually evaluated against. */
+  const ordered = rows.slice().sort((a,b)=>
+    (a.type||'').localeCompare(b.type||'') ||
+    ((a.max==null?Infinity:a.max)-(b.max==null?Infinity:b.max)));
+  const mapped = new Set(rows.map(r=>r.type).filter(Boolean));
+  const unmapped = DECISION_TYPES.filter(t=>!mapped.has(t));
+
+  return <div className="card">
+    <h2>Authority Matrix — owned outside Leadership Practice</h2>
+    <div className="csub">Read live from lm_authoritymatrixrows. This module sends the criteria and
+      applies the result and route unmodified — it never authors or substitutes an authority rule.</div>
+
+    {loading && <Empty>Reading lm_authoritymatrixrows…</Empty>}
+    {failed && <Note k="err">The Authority Matrix could not be read. Decision routing cannot be
+      previewed until it loads — check the console for details.</Note>}
+
+    {!loading && !failed && <>
+      {ordered.length===0
+        ? <Empty ic="▦">No Authority Matrix row exists yet.</Empty>
+        : <div className="t-wrap"><table className="data">
+            <thead><tr><th>Decision Type</th><th>Up to</th><th>Required level</th>
+              <th>Approval Cycle</th></tr></thead>
+            <tbody>{ordered.map(r=><tr key={r.id}>
+              <td className="t-main">{r.type||'—'}</td>
+              <td className="dim">{r.max==null?'No ceiling':r.max.toLocaleString('en-US')+' SAR'}</td>
+              <td className="num">{r.reqLvl??'—'}
+                {r.reqLvl!=null && AUTH_LEVELS[r.reqLvl]
+                  ? <div className="t-sub">{AUTH_LEVELS[r.reqLvl]}</div> : null}</td>
+              <td>{r.cycle
+                ? <><b>{r.cycle}</b>{r.cycleName?<div className="t-sub">{r.cycleName}</div>:null}</>
+                : <span className="dim">Authority confirmed at this level</span>}</td>
+            </tr>)}
+            </tbody></table></div>}
+
+      {unmapped.length>0 &&
+        <Note k="warn"><b>{unmapped.length} Decision Type
+          {unmapped.length>1?'s have':' has'} no mapping:</b> {unmapped.join(' · ')}. A Decision of
+          that type is logged and its submission blocked — no substitute route is created. The fix is
+          owned by the Authority Matrix Owner, not here.</Note>}
+
+      {(matrix?.cycles?.list||[]).length>0 && <>
+        <div className="sep"/>
+        <h2 style={{marginBottom:4}}>Approval Cycles</h2>
+        <div className="csub">Ordered position chains. A Decision Request routes through these steps in
+          sequence.</div>
+        {matrix.cycles.list.map(c=>
+          <div key={c.id} style={{marginBottom:12}}>
+            <div style={{display:'flex',alignItems:'baseline',gap:9,marginBottom:4}}>
+              <b style={{fontSize:13}}>{c.code||'—'}</b>
+              <span style={{fontSize:12.5,color:'var(--muted)'}}>{c.name}</span>
+            </div>
+            {c.steps.length===0
+              ? <div className="dim" style={{fontSize:12}}>No step configured on this cycle.</div>
+              : <Rail steps={c.steps.map(s=>s.position||'(unnamed position)')} now={null} done={[]}/>}
+          </div>)}
+      </>}
+    </>}
+  </div>;
+}
+
 function ScreenSettings(){
   const {db,S,A,go,me}=use();
   const live=db.grids.filter(g=>!g.frozen);
@@ -7015,6 +7241,8 @@ function ScreenSettings(){
           <OD id="OD-30"/>. The values above stand in for it.</Note>
       </div>
     </div>
+
+    <AuthorityMatrixPanel/>
 
     <div className="card">
       <h2>Decisions already closed by the latest stakeholder review</h2>

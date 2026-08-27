@@ -189,6 +189,34 @@
           "entitySetName": "lm_meetingoccurrenceattendeeses",
           "logicalName": "lm_meetingoccurrenceattendees",
           "isHidden": false
+        },
+        "meetingminutes": {
+          "entitySetName": "lm_meetingminuteses",
+          "logicalName": "lm_meetingminutes"
+        },
+        "auditgridinstances": {
+          "entitySetName": "lm_auditgridinstances",
+          "logicalName": "lm_auditgridinstance"
+        },
+        "auditgridanswers": {
+          "entitySetName": "lm_auditgridanswers",
+          "logicalName": "lm_auditgridanswer"
+        },
+        "momnotes": {
+          "entitySetName": "lm_momnoteses",
+          "logicalName": "lm_momnotes"
+        },
+        "approvalcycles": {
+          "entitySetName": "lm_approvalcycles",
+          "logicalName": "lm_approvalcycle"
+        },
+        "approvalcyclesteps": {
+          "entitySetName": "lm_approvalcyclesteps",
+          "logicalName": "lm_approvalcyclestep"
+        },
+        "authoritymatrixrows": {
+          "entitySetName": "lm_authoritymatrixrows",
+          "logicalName": "lm_authoritymatrixrow"
         }
       },
       "environmentVariableName": ""
