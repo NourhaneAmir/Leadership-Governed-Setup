@@ -212,6 +212,38 @@
           "x-ms-schema-name": "lm_frequencyName",
           "x-ms-read-only": true
         },
+        "lm_meetingchairman": {
+          "type": "string",
+          "title": "Meeting Chairman",
+          "x-ms-dataverse-attribute": "lm_meetingchairman",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "lm_MeetingChairman"
+        },
+        "lm_meetingchairmanname": {
+          "type": "string",
+          "title": "lm_meetingchairmanname",
+          "x-ms-dataverse-attribute": "lm_meetingchairmanname",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "lm_MeetingChairmanName",
+          "x-ms-read-only": true,
+          "maxLength": 850
+        },
+        "lm_meetingcochairman": {
+          "type": "string",
+          "title": "Meeting Co-Chairman",
+          "x-ms-dataverse-attribute": "lm_meetingcochairman",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "lm_MeetingCoChairman"
+        },
+        "lm_meetingcochairmanname": {
+          "type": "string",
+          "title": "lm_meetingcochairmanname",
+          "x-ms-dataverse-attribute": "lm_meetingcochairmanname",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "lm_MeetingCoChairmanName",
+          "x-ms-read-only": true,
+          "maxLength": 850
+        },
         "lm_meetingconfidentiality": {
           "type": "string",
           "title": "Meeting Confidentiality ",
@@ -251,6 +283,22 @@
           "x-ms-dataverse-type": "VirtualType",
           "x-ms-schema-name": "lm_meetingconfidentialityName",
           "x-ms-read-only": true
+        },
+        "lm_meetingorganizerfacilitator": {
+          "type": "string",
+          "title": "Meeting Organizer/ Facilitator",
+          "x-ms-dataverse-attribute": "lm_meetingorganizerfacilitator",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "lm_MeetingOrganizerFacilitator"
+        },
+        "lm_meetingorganizerfacilitatorname": {
+          "type": "string",
+          "title": "lm_meetingorganizerfacilitatorname",
+          "x-ms-dataverse-attribute": "lm_meetingorganizerfacilitatorname",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "lm_MeetingOrganizerFacilitatorName",
+          "x-ms-read-only": true,
+          "maxLength": 850
         },
         "lm_meetingstatus": {
           "type": "string",

@@ -338,6 +338,22 @@
           "x-ms-schema-name": "lm_Objective",
           "maxLength": 100
         },
+        "lm_ownerposition": {
+          "type": "string",
+          "title": "Owner Position",
+          "x-ms-dataverse-attribute": "lm_ownerposition",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "lm_OwnerPosition"
+        },
+        "lm_ownerpositionname": {
+          "type": "string",
+          "title": "lm_ownerpositionname",
+          "x-ms-dataverse-attribute": "lm_ownerpositionname",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "lm_OwnerPositionName",
+          "x-ms-read-only": true,
+          "maxLength": 850
+        },
         "lm_report_templateid": {
           "type": "string",
           "title": "Report_Template",
@@ -384,6 +400,22 @@
           "x-ms-dataverse-type": "VirtualType",
           "x-ms-schema-name": "lm_reportcategoryName",
           "x-ms-read-only": true
+        },
+        "lm_reportspecialty": {
+          "type": "string",
+          "title": "Report Specialty",
+          "x-ms-dataverse-attribute": "lm_reportspecialty",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "lm_ReportSpecialty"
+        },
+        "lm_reportspecialtyname": {
+          "type": "string",
+          "title": "lm_reportspecialtyname",
+          "x-ms-dataverse-attribute": "lm_reportspecialtyname",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "lm_ReportSpecialtyName",
+          "x-ms-read-only": true,
+          "maxLength": 850
         },
         "lm_reportstatus": {
           "type": "string",
@@ -455,6 +487,38 @@
           "x-ms-dataverse-type": "VirtualType",
           "x-ms-schema-name": "lm_reporttypeName",
           "x-ms-read-only": true
+        },
+        "lm_submittingposition": {
+          "type": "string",
+          "title": "Submitting Position ",
+          "x-ms-dataverse-attribute": "lm_submittingposition",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "lm_SubmittingPosition"
+        },
+        "lm_submittingpositionname": {
+          "type": "string",
+          "title": "lm_submittingpositionname",
+          "x-ms-dataverse-attribute": "lm_submittingpositionname",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "lm_SubmittingPositionName",
+          "x-ms-read-only": true,
+          "maxLength": 850
+        },
+        "lm_teamchannel": {
+          "type": "string",
+          "title": "Team Channel",
+          "x-ms-dataverse-attribute": "lm_teamchannel",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "lm_TeamChannel"
+        },
+        "lm_teamchannelname": {
+          "type": "string",
+          "title": "lm_teamchannelname",
+          "x-ms-dataverse-attribute": "lm_teamchannelname",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "lm_TeamChannelName",
+          "x-ms-read-only": true,
+          "maxLength": 850
         },
         "lm_version": {
           "type": "string",

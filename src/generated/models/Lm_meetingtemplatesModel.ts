@@ -88,7 +88,10 @@ export interface Lm_meetingtemplatesBase {
   lm_daysoftheweek?: Lm_meetingtemplateslm_daysoftheweek;
   lm_defaultmeetingmode?: Lm_meetingtemplateslm_defaultmeetingmode;
   lm_frequency?: Lm_meetingtemplateslm_frequency;
+  "lm_MeetingChairman@odata.bind"?: string;
+  "lm_MeetingCoChairman@odata.bind"?: string;
   lm_meetingconfidentiality?: Lm_meetingtemplateslm_meetingconfidentiality;
+  "lm_MeetingOrganizerFacilitator@odata.bind"?: string;
   lm_meetingstatus?: Lm_meetingtemplateslm_meetingstatus;
   lm_meetingtemplateid: string;
   lm_meetingtemplatename?: string;
@@ -115,7 +118,10 @@ export interface Lm_meetingtemplates extends Lm_meetingtemplatesBase {
   lm_daysoftheweekname?: string;
   lm_defaultmeetingmodename?: string;
   lm_frequencyname?: string;
+  lm_meetingchairmanname?: string;
+  lm_meetingcochairmanname?: string;
   lm_meetingconfidentialityname?: string;
+  lm_meetingorganizerfacilitatorname?: string;
   lm_meetingstatusname?: string;
   lm_monthofthequartername?: string;
   lm_setuptypename?: string;
@@ -138,6 +144,12 @@ export interface Lm_meetingtemplates extends Lm_meetingtemplatesBase {
   _createdby_value?: string;
   createdonbehalfby?: object;
   _createdonbehalfby_value?: string;
+  lm_meetingchairman?: object;
+  _lm_meetingchairman_value?: string;
+  lm_meetingcochairman?: object;
+  _lm_meetingcochairman_value?: string;
+  lm_meetingorganizerfacilitator?: object;
+  _lm_meetingorganizerfacilitator_value?: string;
   modifiedby?: object;
   _modifiedby_value?: string;
   modifiedonbehalfby?: object;

@@ -540,8 +540,17 @@ export const TEMPLATE_STATUS_LABEL = { 1:'Under Review', 2:'Expired', 3:'Draft',
 // explicit (null, never omitted) so that update() actually clears a field
 // the user emptied out in the wizard, instead of silently leaving Dataverse's
 // old value in place because an omitted key never reaches the PATCH body.
+// Owner Position/Submitting Position/Team Channel/Speciality are normally
+// per-unit (see the loop above) -- but a Stage 3/4 (group-wide) Setup has
+// no per-unit child table, so its one "section" is payload.units[0], and
+// these four now live on the parent row instead (added to
+// lm_report_templates specifically to cover this case), same reasoning as
+// meetingTemplateParentPayload()'s Chairman/Co-Chairman/Facilitator.
+// Conditionally SET only, never explicitly cleared -- same as every other
+// lookup written by this file.
 function reportTemplateParentPayload(payload){
-  return {
+  const groupUnit = payload.stageLevel==='group' ? (payload.units||[])[0] : null;
+  const row = {
     lm_newcolumn: payload.name || payload.objective || 'Untitled Report Template',
     lm_objective: payload.objective || null,
     lm_reporttype: payload.reportType ? REPORT_TYPE_KEY[payload.reportType] : null,
@@ -555,6 +564,11 @@ function reportTemplateParentPayload(payload){
     lm_reportstatus: payload.status ? TEMPLATE_STATUS_KEY[payload.status] : null,
     lm_version: typeof payload.version === 'number' ? payload.version : null,
   };
+  if(groupUnit?.ownerPositionId)      row['lm_OwnerPosition@odata.bind']      = `/cr603_organizationstructures(${groupUnit.ownerPositionId})`;
+  if(groupUnit?.submittingPositionId) row['lm_SubmittingPosition@odata.bind'] = `/cr603_organizationstructures(${groupUnit.submittingPositionId})`;
+  if(groupUnit?.channelId)            row['lm_TeamChannel@odata.bind']        = `/and_teamschannels(${groupUnit.channelId})`;
+  if(groupUnit?.specialityId)         row['lm_ReportSpecialty@odata.bind']    = `/cr301_specialtyksa_service_hubs(${groupUnit.specialityId})`;
+  return row;
 }
 
 /** Deletes a batch of already-fetched rows by id, one service.delete() call
@@ -908,8 +922,18 @@ export const MEETING_DAY_OF_WEEK = {
 // Same reasoning as reportTemplateParentPayload above: shared by create and
 // update, every field explicit (null, never omitted) so update() can
 // actually clear a field the user emptied out.
+//
+// Chairman/Co-Chairman/Facilitator are normally per-unit (see
+// createMeetingTemplateChildren) -- but a Stage 3/4 (group-wide) Setup has
+// no per-unit child table, so its one "section" is payload.units[0], and
+// these three now live on the parent row instead (added to
+// lm_meetingtemplates specifically to cover this case). Only ever
+// conditionally SET, never explicitly cleared -- same as every other
+// lookup written by this file, since Dataverse doesn't clear a lookup via
+// a plain PATCH value the way it clears a text/choice field.
 function meetingTemplateParentPayload(payload){
-  return {
+  const groupUnit = payload.stageLevel==='group' ? (payload.units||[])[0] : null;
+  const row = {
     lm_meetingtemplatename: payload.name || 'Untitled Meeting Setup',
     lm_setuptype: payload.setupType ? MEETING_SETUP_TYPE_KEY[payload.setupType] : null,
     lm_typeclassification: payload.category ? MEETING_CATEGORY_KEY[payload.category] : null,
@@ -925,6 +949,10 @@ function meetingTemplateParentPayload(payload){
     lm_meetingstatus: payload.status ? TEMPLATE_STATUS_KEY[payload.status] : null,
     lm_version: typeof payload.version === 'number' ? payload.version : null,
   };
+  if(groupUnit?.chairmanId)    row['lm_MeetingChairman@odata.bind']            = `/cr603_organizationstructures(${groupUnit.chairmanId})`;
+  if(groupUnit?.coChairmanId)  row['lm_MeetingCoChairman@odata.bind']          = `/cr603_organizationstructures(${groupUnit.coChairmanId})`;
+  if(groupUnit?.facilitatorId) row['lm_MeetingOrganizerFacilitator@odata.bind'] = `/cr603_organizationstructures(${groupUnit.facilitatorId})`;
+  return row;
 }
 
 /** Same role as createReportTemplateChildren above, for the Meeting side:
@@ -1274,7 +1302,11 @@ export async function fetchReportTemplateDetail(id){
   const parentRes = await Lm_report_templatesService.get(id, {
     select: ['lm_report_templateid','lm_newcolumn','lm_objective','lm_reporttype','lm_reportcategory',
       'lm_frequency','lm_dayoftheweek','lm_dayofthemonth','lm_monthofthequarter','lm_confidentiality',
-      'lm_destinationsharepointlink','lm_reportstatus','lm_version','modifiedon','createdon'],
+      'lm_destinationsharepointlink','lm_reportstatus','lm_version','modifiedon','createdon',
+      // Group-wide (Stage 3/4) Owner/Submitting Position, Team Channel and
+      // Speciality -- see reportTemplateParentPayload()'s comment for why
+      // these live here instead of on a per-unit child row.
+      '_lm_ownerposition_value','_lm_submittingposition_value','_lm_teamchannel_value','_lm_reportspecialty_value'],
   });
   const parent = parentRes?.data;
   if(!parent) throw new Error(`Report Template ${id} not found`);
@@ -1322,7 +1354,11 @@ export async function fetchMeetingTemplateDetail(id){
   const parentRes = await Lm_meetingtemplatesService.get(id, {
     select: ['lm_meetingtemplateid','lm_meetingtemplatename','lm_setuptype','lm_typeclassification','lm_stages',
       'lm_frequency','lm_daysoftheweek','lm_dayofthemonth','lm_monthofthequarter','lm_defaultmeetingmode',
-      'lm_meetingconfidentiality','lm_quorumthreshold','lm_torpolicylink','lm_meetingstatus','lm_version','modifiedon','createdon'],
+      'lm_meetingconfidentiality','lm_quorumthreshold','lm_torpolicylink','lm_meetingstatus','lm_version','modifiedon','createdon',
+      // Group-wide (Stage 3/4) Chairman/Co-Chairman/Facilitator -- see
+      // meetingTemplateParentPayload()'s comment for why these live here
+      // instead of on a per-unit child row.
+      '_lm_meetingchairman_value','_lm_meetingcochairman_value','_lm_meetingorganizerfacilitator_value'],
   });
   const parent = parentRes?.data;
   if(!parent) throw new Error(`Meeting Template ${id} not found`);
@@ -1454,6 +1490,7 @@ export async function fetchMeetingOccurrences(){
                '_lm_rescheduledfrom_value','modifiedon','createdon'],
     }),
     Lm_meetingoccurrenceagendasService.getAll({
+      filter: 'statecode eq 0',
       select: ['lm_meetingoccurrenceagendaid','lm_title','lm_sequence','lm_source','lm_covered',
                '_lm_meetingoccurrence_value','_lm_ownerposition_value','_lm_carriedfromagendaitem_value'],
     }).catch(e=>{ console.warn('[dataverse] occurrence agenda fetch failed:', e); return null; }),
@@ -1738,6 +1775,37 @@ export async function updateMeetingOccurrence(id, payload){
       lm_mode: payload.mode ? (MEETING_OCC_MODE_KEY[payload.mode] ?? null) : null,
       lm_meetinglocation: payload.location || null,
       lm_meetinglink: payload.link || null,
+    });
+    assertSuccess(result);
+    return { id, errors: [] };
+  }catch(e){
+    return { id: null, errors: [{ table:'lm_meetingoccurrences', error:e }] };
+  }
+}
+
+/** Cancels a live Meeting Occurrence -- status to Cancelled plus the reason,
+ *  in one patch. No governance record (Minutes, Grid) gets created for a
+ *  cancelled occurrence. */
+export async function cancelMeetingOccurrence(id, reason){
+  try{
+    const result = await Lm_meetingoccurrencesService.update(id, {
+      lm_meetingstatus: MEETING_OCC_STATUS_KEY.Cancelled,
+      lm_cancelreason: (reason||'').trim() || null,
+    });
+    assertSuccess(result);
+    return { id, errors: [] };
+  }catch(e){
+    return { id: null, errors: [{ table:'lm_meetingoccurrences', error:e }] };
+  }
+}
+
+/** Stamps today's date as when the Agenda was distributed -- a simple
+ *  action, not tied to any one Agenda Item, matching how invite/agenda lead
+ *  time (AG-03/AG-15) reads a single date off the occurrence itself. */
+export async function recordAgendaDistribution(id){
+  try{
+    const result = await Lm_meetingoccurrencesService.update(id, {
+      lm_agendasentdate: nowIso(),
     });
     assertSuccess(result);
     return { id, errors: [] };
@@ -2129,6 +2197,53 @@ export async function updateAgendaCovered(agendaItemId, covered){
     const result = await Lm_meetingoccurrenceagendasService.update(agendaItemId, {
       lm_covered: AGENDA_COVERED_KEY[covered] ?? AGENDA_COVERED_KEY['Not Yet Recorded'],
     });
+    assertSuccess(result);
+    return { id: agendaItemId, errors: [] };
+  }catch(e){
+    return { id: null, errors: [{ table:'lm_meetingoccurrenceagendas', error:e }] };
+  }
+}
+
+/** Adds one Agenda Item to a live occurrence -- only meaningful before the
+ *  Meeting is Held, since Minutes coverage (AG-04) is written against
+ *  whatever the Agenda held at that point. `sequence` is the caller's job:
+ *  the modal passes rec.agenda.length+1 so a new item always lands last. */
+export async function createMeetingOccurrenceAgendaItem(occurrenceId, { title, sequence, ownerPositionId }){
+  try{
+    const row = {
+      'lm_MeetingOccurrence@odata.bind': `/lm_meetingoccurrences(${occurrenceId})`,
+      lm_title: (title||'').trim(),
+      lm_sequence: sequence,
+      lm_source: 'Ad Hoc',
+      lm_covered: AGENDA_COVERED_KEY['Not Yet Recorded'],
+    };
+    if(ownerPositionId) row['lm_OwnerPosition@odata.bind'] = `/cr603_organizationstructures(${ownerPositionId})`;
+    const created = await Lm_meetingoccurrenceagendasService.create(row);
+    const id = idOrThrow(created, 'lm_meetingoccurrenceagendaid');
+    return { id, errors: [] };
+  }catch(e){
+    return { id: null, errors: [{ table:'lm_meetingoccurrenceagendas', error:e }] };
+  }
+}
+
+/** Archives one Agenda Item rather than deleting it outright -- same
+ *  statecode convention as archiveMomNote()/archiveAuditGridAnswer() below,
+ *  so a removed item can still be traced later rather than vanishing. */
+export async function archiveMeetingOccurrenceAgendaItem(agendaItemId){
+  try{
+    const result = await Lm_meetingoccurrenceagendasService.update(agendaItemId, { statecode: 1 });
+    assertSuccess(result);
+    return { id: agendaItemId, errors: [] };
+  }catch(e){
+    return { id: null, errors: [{ table:'lm_meetingoccurrenceagendas', error:e }] };
+  }
+}
+
+/** Patches ONLY lm_sequence on one Agenda Item -- the Up/Down reorder
+ *  buttons call this twice, once per row being swapped. */
+export async function updateMeetingOccurrenceAgendaSequence(agendaItemId, sequence){
+  try{
+    const result = await Lm_meetingoccurrenceagendasService.update(agendaItemId, { lm_sequence: sequence });
     assertSuccess(result);
     return { id: agendaItemId, errors: [] };
   }catch(e){

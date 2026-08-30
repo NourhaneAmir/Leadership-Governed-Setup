@@ -5,10 +5,12 @@ import * as XLSX from 'xlsx';
 import { fetchMeetingOccurrences, fetchReportOccurrences, createMeetingOccurrence,
          createReportOccurrence, updateReportOccurrenceFile,
          updateMeetingOccurrenceStatus, updateMeetingOccurrenceAttendance, updateMeetingOccurrence,
+         cancelMeetingOccurrence, recordAgendaDistribution, createMeetingOccurrenceAgendaItem,
+         archiveMeetingOccurrenceAgendaItem, updateMeetingOccurrenceAgendaSequence,
          fetchBusinessUnits, fetchPositions, fetchDepartments, fetchRegions,
          fetchMeetingTemplatesList, fetchMeetingTemplateDetail,
          fetchReportTemplatesList, fetchReportTemplateDetail, fetchCurrentUser,
-         fetchMeetingMinutesByOccurrence, fetchAuditGridInstancesByOccurrence,
+         fetchMeetingMinutes, fetchMeetingMinutesByOccurrence, fetchAuditGridInstancesByOccurrence,
          fetchAuthorityMatrix, createMeetingMinutes, saveMomNote, updateAgendaCovered,
          submitMeetingMinutes, updateMeetingMinutesStatus, returnMeetingMinutes,
          signMeetingMinutes, createAuditGridInstance, MOM_NOTE_MAX,
@@ -2283,6 +2285,7 @@ function App({onSwitch}){
      leaves the seeded calendar working on its own. */
   const [dvMeetingOccs,setDvMeetingOccs]=useState([]);
   const [dvReportOccs,setDvReportOccs]=useState([]);
+  const [dvMinutes,setDvMinutes]=useState([]);
   const [dvTick,setDvTick]=useState(0);        // bumped when the name maps change
   const [dvLoading,setDvLoading]=useState(true);
   const [dvError,setDvError]=useState(null);
@@ -2299,6 +2302,11 @@ function App({onSwitch}){
       console.log(`[dataverse] fetchReportOccurrences() returned ${list?list.length:0} row(s)`, list);
       setDvReportOccs(list||[]);
     }catch(e){ console.warn('[dataverse] fetchReportOccurrences() failed:', e); failed=failed||e; }
+    try{
+      const list=await fetchMeetingMinutes();
+      console.log(`[dataverse] fetchMeetingMinutes() returned ${list?list.length:0} row(s)`, list);
+      setDvMinutes(list||[]);
+    }catch(e){ console.warn('[dataverse] fetchMeetingMinutes() failed:', e); failed=failed||e; }
     setDvError(failed?'Live occurrences could not be read from Dataverse. The seeded demo calendar is shown on its own.':null);
   };
 
@@ -2369,7 +2377,7 @@ function App({onSwitch}){
 
   const ctx = {db,setDb,mut,me,bu,setBu,businessUnits,navOpen,setNavOpen,currentUser,screen,go,openMeeting,openWork,sel,setSel,
                toast,toasts,reset,S,A,work,cal,counts,onSwitch,
-               dvMeetingOccs,dvReportOccs,dvLoading,dvError,refreshOccurrences,
+               dvMeetingOccs,dvReportOccs,dvMinutes,dvLoading,dvError,refreshOccurrences,
                dvOpen,setDvOpen,openDvRec};
   const Screen = {work:ScreenWorkspace, cal:ScreenCalendar, rpt:ScreenReports, mtg:ScreenMeetings,
                   mom:ScreenMinutes,
@@ -2664,21 +2672,18 @@ const rptCode = r => 'RPT-'+r.period.slice(0,4)+'-'+r.id.slice(-4).toUpperCase()
 const rptSubmittedAt = r => { const h=r.history.find(x=>x.act==='Submitted for review'); return h?h.at.split(' ')[0]:null; };
 
 function ScreenReports(){
-  const {db,me,sel,setSel,go,S,cal,dvReportOccs} = use();
+  const {sel,setSel,go,cal,dvReportOccs} = use();
   const [creating,setCreating]=useState(false);
   const [tab,setTab]=useState('due');
   const id = sel.rpt;
   const dvRec = dvReportOccs.find(r=>r.id===id);
   if(dvRec) return <DvReportDetail rec={dvRec} back={()=>setSel(v=>({...v,rpt:null}))}/>;
-  const list = db.reports.filter(r=>canSeeReport(r,me));
-  const rec  = list.find(r=>r.id===id);
-  if(rec) return <ReportDetail rec={rec} back={()=>setSel(v=>({...v,rpt:null}))}/>;
 
-  const due      = list.filter(r=>r.status==='Draft'     && r.period<=PERIOD);
-  const upcoming = list.filter(r=>r.status==='Draft'     && r.period> PERIOD);
+  const list = dvReportOccs;
+  const due      = list.filter(r=>r.status==='Draft');
   const inReview = list.filter(r=>r.status==='In Review');
   const done     = list.filter(r=>r.status==='Approved');
-  const overdue  = due.filter(r=>{const d=rptDue(r); return d && d<TODAY;});
+  const needsAttn= list.filter(r=>r.status==='Rejected' || r.status==='Returned');
 
   const TABS = [
     {id:'due',    label:'Due to Submit', rows:due},
@@ -2687,11 +2692,13 @@ function ScreenReports(){
     {id:'all',    label:'All Reports',   rows:list},
   ];
   const rows = (TABS.find(t=>t.id===tab)||TABS[0]).rows;
+  const statusColour = s => s==='Approved'?'green':s==='Rejected'?'red'
+    :s==='Returned'?'amber':s==='In Review'?'teal':'grey';
 
   return <>
     <div className="ph ph-row">
       <div style={{flex:1}}><h1>Reports & Plans</h1>
-        <div className="sub">Create, track, and review every Report linked to an approved Setup.</div></div>
+        <div className="sub">Every Report Occurrence in Dataverse — lm_reportoccurrences.</div></div>
       <Btn k="pri" onClick={()=>setCreating(true)}>+ New Report</Btn>
     </div>
 
@@ -2704,8 +2711,8 @@ function ScreenReports(){
     </div>
 
     <div className="stats">
-      <Stat label="Due to Submit" v={due.length} d="this period or earlier" c={due.length?'amber':'muted'}/>
-      <Stat label="Overdue" v={overdue.length} d="past the due date" c={overdue.length?'red':'muted'}/>
+      <Stat label="Due to Submit" v={due.length} d="not yet submitted" c={due.length?'amber':'muted'}/>
+      <Stat label="Needs Attention" v={needsAttn.length} d="rejected or returned" c={needsAttn.length?'red':'muted'}/>
       <Stat label="In Review" v={inReview.length} d="with a Reviewer" c={inReview.length?'teal':'muted'}/>
       <Stat label="Approved" v={done.length} d="locked" c="green"/>
     </div>
@@ -2716,63 +2723,29 @@ function ScreenReports(){
     <div className="card flush">
       <div className="card-hd" style={{display:'flex',alignItems:'center',gap:12}}>
         <div className="wa-icon gold">📄</div>
-        <h2 style={{flex:1}}>My Reports</h2>
+        <h2 style={{flex:1}}>Reports</h2>
         <Btn k="sm" onClick={()=>setTab('all')}>▾ Filter</Btn>
       </div>
       {rows.length===0 ? <div style={{padding:'8px 17px 17px'}}>
           <Empty ic="✓">Nothing here right now.</Empty></div>
       : <div className="t-wrap"><table className="data">
           <thead><tr><th>Report</th><th>Period</th><th>Working Copy</th><th>Status</th>
-            <th>Submitted</th><th>Reviewer</th></tr></thead>
-          <tbody>{rows.map(r=>{
-            const c=rptCfg(r), revs=c.reviewers, due2=rptDue(r);
-            const late = due2 && due2<TODAY && r.status==='Draft';
-            const statusLabel = late?'Overdue':r.status;
-            const statusC = late?'red':rptTagC(r.status);
-            const sub = rptSubmittedAt(r);
-            return <tr key={r.id} className="click" onClick={()=>go('rpt',r.id)}>
-              <td><div className="t-main">{rptName(r)}</div>
-                <div className="t-sub">{c.cat||'Custom'} · {P(r.creator).name} · {rptCode(r)}</div>
-                {!r.setup && <div style={{marginTop:3}}><Tag c="amber">No approved Setup</Tag></div>}</td>
-              <td className="dim">{fmtP(r.period)}</td>
-              <td>{r.file?<span className="mono" style={{fontSize:11.5}}>{r.file}</span>
-                         :<span className="dim">Not generated</span>}</td>
-              <td><Tag c={statusC}>{statusLabel}</Tag></td>
-              <td className="dim">{sub?fmtDS(sub):'—'}</td>
-              <td className="dim">
-                {r.status==='Approved' ? 'All '+revs.length+' approved'
-                : r.status==='In Review' ? <>Step {r.step+1} of {revs.length} · {P(revs[r.step]).name}</>
-                : late ? <span style={{color:'var(--red)'}}>Escalated to {P(revs[0]).name}</span>
-                : 'Not submitted'}</td>
-            </tr>;})}
+            <th>Last updated</th><th>Review step</th></tr></thead>
+          <tbody>{rows.map(r=>
+            <tr key={r.id} className="click" onClick={()=>go('rpt',r.id)}>
+              <td><div className="t-main">{r.name}</div>
+                <div className="t-sub">{dvRptTpl(r.templateId)||(r.noSetupFlag?'Ad Hoc — no Setup':'Ad Hoc')}
+                  {' · '}{rptCode(r)} · {dvPos(r.creatorPositionId)||'—'}</div>
+                {r.noSetupFlag && <div style={{marginTop:3}}><Tag c="amber">No approved Setup</Tag></div>}</td>
+              <td className="dim">{r.period?fmtP(r.period):'—'}</td>
+              <td>{r.fileUrl?<span className="mono" style={{fontSize:11.5}}>{r.fileUrl}</span>
+                            :<span className="dim">Not attached</span>}</td>
+              <td><Tag c={statusColour(r.status)}>{r.status||'—'}</Tag></td>
+              <td className="dim">{r.updated?fmtDS(r.updated.slice(0,10)):'—'}</td>
+              <td className="dim">{r.reviewStep!=null?'Step '+(r.reviewStep+1):'—'}</td>
+            </tr>)}
           </tbody></table></div>}
     </div>
-
-    {dvReportOccs.length>0 && <div className="card flush">
-      <div className="card-hd" style={{display:'flex',alignItems:'center',gap:12}}>
-        <div className="wa-icon teal">📄</div>
-        <h2 style={{flex:1}}>Live Reports
-          <span className="t-sub" style={{fontWeight:400}}> · lm_reportoccurrences</span></h2>
-        <Tag c="teal">{dvReportOccs.length} in the table</Tag>
-      </div>
-      <div className="t-wrap"><table className="data">
-        <thead><tr><th>Report</th><th>Period</th><th>Status</th><th>Business Unit</th>
-          <th>Review step</th></tr></thead>
-        <tbody>{dvReportOccs.map(r=>{
-          const statusC = r.status==='Approved'?'green':r.status==='Rejected'?'red'
-            :r.status==='Returned'?'amber':r.status==='In Review'?'teal':'grey';
-          return <tr key={r.id} className="click" onClick={()=>go('rpt',r.id)}>
-            <td><div className="t-main">{r.name}</div>
-              <div className="t-sub">{dvRptTpl(r.templateId)||(r.noSetupFlag?'Ad Hoc — no Setup':'Ad Hoc')}</div>
-              {r.noSetupFlag && <div style={{marginTop:3}}><Tag c="amber">No approved Setup</Tag></div>}</td>
-            <td className="dim">{r.period?fmtP(r.period):'—'}</td>
-            <td><Tag c={statusC}>{r.status||'—'}</Tag></td>
-            <td className="dim">{dvBu(r.businessUnitId)||dvRegion(r.regionId)||'Group-wide'}</td>
-            <td className="dim">{r.reviewStep!=null?'Step '+(r.reviewStep+1):'—'}</td>
-          </tr>;})}
-        </tbody></table></div>
-    </div>}
-
   </>;
 }
 
@@ -3710,25 +3683,27 @@ function OccRow({o,past}){
 }
 
 /* =========================================================================
-   MEETING MINUTES — all MOMs across every Meeting, reachable from the sidebar
-   ========================================================================= */
+   MEETING MINUTES — every lm_meetingminuteses row, reachable from the sidebar.
+   Minutes have no page of their own -- clicking one opens its Meeting
+   Occurrence with the Minutes tab selected (openMeeting), the same live
+   DvMinutesBody the Meeting's own detail page already uses. Task/Decision
+   "Outputs" tracking from the old seeded version is dropped here rather than
+   faked: lm_tasks/lm_decisions don't exist yet, so there is nothing live to
+   count. */
 function ScreenMinutes(){
-  const {db,me,go,sel,setSel,S} = use();
+  const {go,openMeeting,dvMeetingOccs,dvMinutes,S} = use();
   const [tab,setTab]=useState('draft');
 
-  const list = db.moms
-    .map(m=>({...m, occ_:db.occs.find(o=>o.id===m.occ)}))
-    .filter(m=>m.occ_ && canSeeOcc(m.occ_,me));
-
-  const selRec = sel.mom ? list.find(m=>m.id===sel.mom) : null;
-  if(selRec) return <MomDetail rec={selRec} occ={selRec.occ_} back={()=>setSel(v=>({...v,mom:null}))}/>;
+  const list = dvMinutes
+    .map(m=>({...m, occ_:dvMeetingOccs.find(o=>o.id===m.occurrenceId)}))
+    .filter(m=>m.occ_);
 
   const draft    = list.filter(m=>m.status==='Draft' && !m.submittedAt);
   const pending  = list.filter(m=>m.status==='Draft' && m.submittedAt);
   const approved = list.filter(m=>m.status==='Approved');
   const closed   = list.filter(m=>m.status==='Closed');
 
-  const overdue = draft.filter(m=>S.momWriteupHours!=null &&
+  const overdue = draft.filter(m=>S.momWriteupHours!=null && m.occ_.end &&
     addHours(m.occ_.date+' '+m.occ_.end, S.momWriteupHours) < nowStamp());
 
   const TABS=[
@@ -3738,19 +3713,13 @@ function ScreenMinutes(){
     {id:'closed',   label:'Closed',            rows:closed},
     {id:'all',      label:'All Minutes',       rows:list},
   ];
-  const rows = [...(TABS.find(t=>t.id===tab)||TABS[0]).rows].sort((a,b)=>b.occ_.date.localeCompare(a.occ_.date));
+  const rows = [...(TABS.find(t=>t.id===tab)||TABS[0]).rows]
+    .sort((a,b)=>(b.occ_.date||'').localeCompare(a.occ_.date||''));
 
   const approvalRate = list.length ? Math.round((approved.length+closed.length)/list.length*100) : null;
   const waits = list.filter(m=>m.submittedAt && m.approvedAt).map(m=>hoursBetween(m.submittedAt,m.approvedAt));
   const avgWaitDays = waits.length ? (waits.reduce((a,b)=>a+b,0)/waits.length/24) : null;
-  const createdThisMonth = list.filter(m=>m.history[0] && m.history[0].at.slice(0,7)===PERIOD.slice(0,7)).length;
   const approvedThisMonth = list.filter(m=>m.approvedAt && m.approvedAt.slice(0,7)===PERIOD.slice(0,7)).length;
-
-  const allOutputs = list.flatMap(m=>momOutputs(db,m));
-  const openOutputs = allOutputs.filter(o=>o.rec.status!=='Closed').length;
-  const allDoneMoms = list.filter(m=>{const o=momOutputs(db,m); return o.length>0 && o.every(x=>x.rec.status==='Closed');}).length;
-  const tasksFromMom = db.tasks.filter(t=>t.src.k==='mom');
-  const decsFromMom  = db.decisions.filter(d=>d.src && d.src.k==='mom');
 
   const needsAction = [
     ...overdue.map(m=>({m, label:'Draft overdue — '+daysBetween(m.occ_.date,TODAY)+' days'})),
@@ -3760,8 +3729,8 @@ function ScreenMinutes(){
   return <>
     <div className="ph ph-row">
       <div style={{flex:1}}><h1>Meeting Minutes</h1>
-        <div className="sub">Record, approve, and track meeting outcomes and action items.</div></div>
-      <Btn k="pri" onClick={()=>go('mtg')}>✎ New MOM</Btn>
+        <div className="sub">Every Minutes row in Dataverse — lm_meetingminuteses.</div></div>
+      <Btn k="pri" onClick={()=>go('mtg')}>Go to Meetings →</Btn>
     </div>
 
     <div className="tabs">
@@ -3771,13 +3740,13 @@ function ScreenMinutes(){
     </div>
 
     <div className="stats">
-      <Stat label="Total MOMs" v={list.length} d={'+'+createdThisMonth+' this month'}/>
+      <Stat label="Total MOMs" v={list.length} d="from lm_meetingminuteses"/>
       <Stat label="Approved" v={approved.length+closed.length}
         d={approvalRate==null?'—':approvalRate+'% approval rate'} c="green"/>
       <Stat label="Pending Signature" v={pending.length}
         d={avgWaitDays==null?'awaiting approval':'Avg wait '+avgWaitDays.toFixed(1)+'d'}
         c={pending.length?'amber':'muted'}/>
-      <Stat label="Overdue" v={overdue.length} d={overdue.length?occName(overdue[0].occ_):'none'}
+      <Stat label="Overdue" v={overdue.length} d={overdue.length?fmtDS(overdue[0].occ_.date):'none'}
         c={overdue.length?'red':'muted'}/>
     </div>
 
@@ -3785,24 +3754,19 @@ function ScreenMinutes(){
       <div className="card flush">
         <div className="card-hd" style={{display:'flex',alignItems:'center',gap:12}}>
           <div className="wa-icon gold">💬</div><h2 style={{flex:1}}>Meeting Minutes</h2>
-          <Btn k="sm">▾ Filter</Btn>
         </div>
         {rows.length===0 ? <div style={{padding:'8px 17px 17px'}}><Empty ic="💬">Nothing here.</Empty></div>
         : <div className="t-wrap"><table className="data">
-            <thead><tr><th>MOM</th><th>Meeting</th><th>Status</th><th>Outputs</th><th>Date</th><th></th></tr></thead>
+            <thead><tr><th>MOM</th><th>Meeting</th><th>Status</th><th>Date</th></tr></thead>
             <tbody>{rows.map(m=>{
-              const r=occRoles(m.occ_), outs=momOutputs(db,m);
               const isOverdue = overdue.includes(m);
-              return <tr key={m.id} className="click" onClick={()=>setSel(v=>({...v,mom:m.id}))}>
-                <td><div className="t-main">{occName(m.occ_)} — {fmtDS(m.occ_.date)}</div>
-                  <div className="t-sub">{momCode(m)} · Recorder: {P(r.recorder).name}</div></td>
-                <td className="dim">{occCls(m.occ_)}</td>
+              return <tr key={m.id} className="click" onClick={()=>openMeeting(m.occurrenceId,'minutes')}>
+                <td><div className="t-main">{m.occ_.name||'(untitled meeting)'} — {fmtDS(m.occ_.date)}</div>
+                  <div className="t-sub">{momCode(m)} · Facilitator: {dvPos(m.occ_.facilitatorPositionId)||'—'}</div></td>
+                <td className="dim">{dvTpl(m.occ_.templateId)||(m.occ_.adhocType?'Ad Hoc — '+m.occ_.adhocType:'Ad Hoc')}</td>
                 <td><Tag c={isOverdue?'red':momTagC(m.status)}>
                   {isOverdue?'Overdue Draft':m.status==='Draft'&&m.submittedAt?'Pending Approval':m.status}</Tag></td>
-                <td className="dim">{outs.length?outs.length+' item'+(outs.length===1?'':'s'):'Not yet added'}</td>
                 <td className="dim">{fmtDS(m.occ_.date)}</td>
-                <td style={{textAlign:'right'}}>
-                  <Btn k="pri sm" style={{borderRadius:20}}>Edit</Btn></td>
               </tr>;})}
             </tbody></table></div>}
       </div>
@@ -3815,8 +3779,6 @@ function ScreenMinutes(){
           <div className="wa-mo-r"><label>Approved This Month</label><span className="v">{approvedThisMonth}</span></div>
           <div className="wa-mo-r"><label>Avg Approval Time</label>
             <span className="v">{avgWaitDays==null?'—':avgWaitDays.toFixed(1)+'d'}</span></div>
-          <div className="wa-mo-r"><label>Open Outputs</label><span className="v">{openOutputs}</span></div>
-          <div className="wa-mo-r"><label>Closed (All Outputs Done)</label><span className="v">{allDoneMoms}</span></div>
         </div>
 
         {needsAction.length>0 && <div className="card">
@@ -3825,24 +3787,13 @@ function ScreenMinutes(){
           </div>
           {needsAction.map(({m,label},i)=>
             <div key={m.id+i} className="att-alert" style={{cursor:'pointer'}}
-              onClick={()=>setSel(v=>({...v,mom:m.id}))}>
+              onClick={()=>openMeeting(m.occurrenceId,'minutes')}>
               <span style={{color: overdue.includes(m)?'var(--red)':'var(--amber)'}}>
                 {overdue.includes(m)?'⏱':'✎'}</span>
-              <span><b>{occName(m.occ_)} — {fmtDS(m.occ_.date)}</b><br/>
+              <span><b>{m.occ_.name||'(untitled meeting)'} — {fmtDS(m.occ_.date)}</b><br/>
                 <span className="dim" style={{fontSize:11}}>{label}</span></span>
             </div>)}
         </div>}
-
-        <div className="card">
-          <h2>Output Tracker</h2>
-          <div className="csub">MOM auto-closes when all outputs are activated.</div>
-          <div className="wa-mo-r"><label>Tasks Created</label><span className="v">{tasksFromMom.length}</span></div>
-          <div className="wa-mo-r"><label>Tasks Activated</label>
-            <span className="v">{tasksFromMom.filter(t=>!t.draft).length}</span></div>
-          <div className="wa-mo-r"><label>Decisions Created</label><span className="v">{decsFromMom.length}</span></div>
-          <div className="wa-mo-r"><label>Decisions Activated</label>
-            <span className="v">{decsFromMom.filter(d=>!d.draft).length}</span></div>
-        </div>
       </div>
     </div>
   </>;
@@ -3915,6 +3866,109 @@ function DvEditOccModal({rec,onClose}){
       <Field label="Online link" req err={!f.link.trim()?'An online link is required for an online or hybrid Meeting.':null}>
         <input type="text" value={f.link} onChange={e=>set('link',e.target.value)}
           placeholder="https://teams.microsoft.com/l/meetup-join/…"/></Field>}
+  </Modal>;
+}
+
+/* Reschedules a live Meeting Occurrence to a new date/time. Unlike Edit
+   (which patches the same row), this is deliberately a new row: it creates
+   a fresh lm_meetingoccurrences record carrying the same Setup, scope,
+   Chair/Facilitator, Agenda and Attendees across, with lm_RescheduledFrom
+   pointing back at the original -- then cancels the original, so there is
+   never a stale Scheduled row left sitting on the wrong date. The Agenda's
+   coverage and any Attendance already recorded stay behind on the original;
+   only the content itself (titles, owners, positions) carries forward. */
+function DvRescheduleOccModal({rec,onClose}){
+  const {toast,refreshOccurrences,openMeeting}=use();
+  const [f,setF]=useState({date:'', start:rec.start||'', end:rec.end||'',
+    mode:rec.mode||'In person', location:rec.location||'', link:rec.link||''});
+  const [saving,setSaving]=useState(false);
+  const set=(k,v)=>setF(x=>({...x,[k]:v}));
+
+  const weekend = isWeekend(f.date);
+  const nw = isNonWorking(f.date) && !weekend;
+  const badTime = f.start && f.end && f.end<=f.start;
+  const sameDate = f.date && f.date===rec.date;
+  const needsLink     = f.mode==='Online' || f.mode==='Hybrid';
+  const needsLocation = f.mode==='In person' || f.mode==='Hybrid';
+  const modeOk = (!needsLink || f.link.trim()) && (!needsLocation || f.location.trim());
+  const ok = !!f.date && !weekend && !sameDate && !badTime && !!f.start && !!f.end && modeOk;
+
+  const save = async () => {
+    setSaving(true);
+    try{
+      const { id:newId, errors } = await createMeetingOccurrence({
+        name: rec.name,
+        templateId: rec.templateId||undefined,
+        stage: rec.stage||undefined,
+        businessUnitId: rec.businessUnitId||undefined,
+        regionId: rec.regionId||undefined,
+        departmentId: rec.departmentId||undefined,
+        chairPositionId: rec.chairPositionId||undefined,
+        facilitatorPositionId: rec.facilitatorPositionId||undefined,
+        date:f.date, start:f.start, end:f.end,
+        timezone: rec.timezone||undefined,
+        mode:f.mode, status:'Scheduled',
+        location:needsLocation ? (f.location.trim()||null) : null,
+        link:needsLink ? (f.link.trim()||null) : null,
+        adhocType: rec.adhocType||undefined,
+        restricted: !!rec.restricted,
+        inviteSent: TODAY,
+        rescheduledFromId: rec.id,
+        agenda: rec.agenda.map(a=>({title:a.title, source:'Rescheduled', ownerPositionId:a.ownerPositionId||undefined})),
+        attendees: rec.attendees.filter(a=>a.positionId)
+          .map(a=>({positionId:a.positionId, name:a.name||undefined, type:a.type||'Required'})),
+      });
+      if(!newId){
+        console.warn('[dataverse] createMeetingOccurrence() (reschedule) failed:', errors);
+        toast('Not saved','Creating the rescheduled occurrence failed. Check the console for details.','err');
+        return;
+      }
+      const cancelled = await cancelMeetingOccurrence(rec.id, `Rescheduled to ${fmtD(f.date)}.`);
+      if(!cancelled.id){
+        console.warn('[dataverse] cancelMeetingOccurrence() (reschedule) failed:', cancelled.errors);
+        toast('Partially saved','The new occurrence was created, but the original could not be marked '+
+          'Cancelled. Check the console for details.','err');
+      }else{
+        toast('Occurrence rescheduled', `Moved to ${fmtD(f.date)}. The original is now Cancelled.`,'ok');
+      }
+      await refreshOccurrences();
+      onClose();
+      openMeeting(newId,'detail');
+    }catch(e){
+      console.warn('[dataverse] reschedule threw unexpectedly:', e);
+      toast('Not saved','Rescheduling this occurrence failed. Check the console for details.','err');
+    }finally{ setSaving(false); }
+  };
+
+  return <Modal title="Reschedule this occurrence" wide onClose={onClose}
+    sub="Creates a new occurrence at the new date, carrying the Agenda and Attendees across, and cancels this one."
+    footer={<><Btn onClick={onClose} disabled={saving}>Cancel</Btn>
+      <Btn k="pri" disabled={!ok||saving} onClick={save}>{saving?'Rescheduling…':'Reschedule'}</Btn></>}>
+    <div className="f-row3">
+      <Field label="New date" req
+        err={weekend
+          ? `${dayName(f.date)} is a weekend — the working week is Sunday to Thursday. Choose another day.`
+          : sameDate ? 'Choose a date different from the current one.'
+          : nw ? 'This is a configured public holiday.' : null}>
+        <input type="date" value={f.date} onChange={e=>set('date',e.target.value)}/></Field>
+      <Field label="Start" req><input type="time" value={f.start} onChange={e=>set('start',e.target.value)}/></Field>
+      <Field label="End" req err={badTime?'The end time must be after the start time.':null}>
+        <input type="time" value={f.end} onChange={e=>set('end',e.target.value)}/></Field>
+    </div>
+    <Field label="Mode" req hint="Online meets in Teams, In person needs a location, Hybrid needs both.">
+      <Pills opts={['In person','Online','Hybrid']} val={f.mode} onChange={v=>set('mode',v)}/></Field>
+    {needsLocation &&
+      <Field label="Location" req err={!f.location.trim()?'A location is required for an in-person or hybrid Meeting.':null}>
+        <input type="text" value={f.location} onChange={e=>set('location',e.target.value)}
+          placeholder="e.g. Board Room, Level 3"/></Field>}
+    {needsLink &&
+      <Field label="Online link" req err={!f.link.trim()?'An online link is required for an online or hybrid Meeting.':null}>
+        <input type="text" value={f.link} onChange={e=>set('link',e.target.value)}
+          placeholder="https://teams.microsoft.com/l/meetup-join/…"/></Field>}
+    <Note k="info" ic="i">The {rec.agenda.length} Agenda item{rec.agenda.length===1?'':'s'} and{' '}
+      {rec.attendees.length} Attendee{rec.attendees.length===1?'':'s'} on this occurrence carry across to
+      the new one. Coverage and attendance already recorded here do not — they stay on the original,
+      cancelled occurrence.</Note>
   </Modal>;
 }
 
@@ -4171,13 +4225,54 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload}){
   </>;
 }
 
+/* Cancels a live Meeting Occurrence -- same wording/danger styling as the
+   dead-code CancelModal below, rebuilt against cancelMeetingOccurrence(). */
+function DvCancelOccModal({rec,onClose}){
+  const {toast,refreshOccurrences}=use();
+  const [reason,setReason]=useState('');
+  const [saving,setSaving]=useState(false);
+
+  const save = async () => {
+    setSaving(true);
+    try{
+      const {id,errors} = await cancelMeetingOccurrence(rec.id, reason);
+      if(!id){
+        console.warn('[dataverse] cancelMeetingOccurrence() failed:', errors);
+        toast('Not saved','Cancelling this occurrence failed. Check the console for details.','err');
+        return;
+      }
+      toast('Occurrence cancelled','No governance record is produced for a cancelled occurrence.','ok');
+      await refreshOccurrences();
+      onClose();
+    }catch(e){
+      console.warn('[dataverse] cancelMeetingOccurrence() threw unexpectedly:', e);
+      toast('Not saved','Cancelling this occurrence failed. Check the console for details.','err');
+    }finally{ setSaving(false); }
+  };
+
+  return <Modal title="Cancel this Meeting Occurrence" onClose={onClose}
+    sub="No governance score is produced for a cancelled occurrence. This cannot be undone from here."
+    footer={<><Btn onClick={onClose} disabled={saving}>Keep the occurrence</Btn>
+      <Btn k="dgr" disabled={!reason.trim()||saving} onClick={save}>
+        {saving?'Cancelling…':'Cancel the occurrence'}</Btn></>}>
+    <Field label="Reason" req><textarea value={reason} onChange={e=>setReason(e.target.value)}/></Field>
+  </Modal>;
+}
+
 function DvMeetingDetail({rec,back}){
-  const {sel,setSel,toast,refreshOccurrences,S}=use();
+  const {sel,setSel,toast,refreshOccurrences,openMeeting,S}=use();
   const tab = sel.mtgTab || 'detail';
   const setTab = t=>setSel(v=>({...v,mtgTab:t}));
   const [markingHeld,setMarkingHeld]=useState(false);
   const [attSavingId,setAttSavingId]=useState(null);
   const [editing,setEditing]=useState(false);
+  const [cancelling,setCancelling]=useState(false);
+  const [rescheduling,setRescheduling]=useState(false);
+  const [addingAgenda,setAddingAgenda]=useState(false);
+  const [newAgendaTitle,setNewAgendaTitle]=useState('');
+  const [savingAgenda,setSavingAgenda]=useState(false);
+  const [agendaBusyId,setAgendaBusyId]=useState(null);
+  const [sendingAgenda,setSendingAgenda]=useState(false);
 
   /* The Minutes row and the Audit Grid Instances belonging to this occurrence,
      read from lm_meetingminuteses / lm_momnoteses / lm_auditgridinstances /
@@ -4269,6 +4364,82 @@ function DvMeetingDetail({rec,back}){
     }finally{ setAttSavingId(null); }
   };
 
+  const addAgendaItem = async () => {
+    const title = newAgendaTitle.trim();
+    if(!title) return;
+    setSavingAgenda(true);
+    try{
+      const {id,errors} = await createMeetingOccurrenceAgendaItem(rec.id,
+        { title, sequence: rec.agenda.length+1 });
+      if(!id){
+        console.warn('[dataverse] createMeetingOccurrenceAgendaItem() failed:', errors);
+        toast('Not saved','Adding the Agenda item failed. Check the console for details.','err');
+        return;
+      }
+      setNewAgendaTitle(''); setAddingAgenda(false);
+      await refreshOccurrences();
+    }catch(e){
+      console.warn('[dataverse] createMeetingOccurrenceAgendaItem() threw unexpectedly:', e);
+      toast('Not saved','Adding the Agenda item failed. Check the console for details.','err');
+    }finally{ setSavingAgenda(false); }
+  };
+
+  const removeAgendaItem = async agendaId => {
+    setAgendaBusyId(agendaId);
+    try{
+      const {id,errors} = await archiveMeetingOccurrenceAgendaItem(agendaId);
+      if(!id){
+        console.warn('[dataverse] archiveMeetingOccurrenceAgendaItem() failed:', errors);
+        toast('Not saved','Removing the Agenda item failed. Check the console for details.','err');
+        return;
+      }
+      await refreshOccurrences();
+    }catch(e){
+      console.warn('[dataverse] archiveMeetingOccurrenceAgendaItem() threw unexpectedly:', e);
+      toast('Not saved','Removing the Agenda item failed. Check the console for details.','err');
+    }finally{ setAgendaBusyId(null); }
+  };
+
+  const moveAgendaItem = async (a, dir) => {
+    const sorted = rec.agenda.slice().sort((x,y)=>(x.seq||0)-(y.seq||0));
+    const idx = sorted.findIndex(x=>x.id===a.id);
+    const other = sorted[idx+dir];
+    if(idx<0 || !other) return;
+    setAgendaBusyId(a.id);
+    try{
+      const [r1,r2] = await Promise.all([
+        updateMeetingOccurrenceAgendaSequence(a.id, other.seq),
+        updateMeetingOccurrenceAgendaSequence(other.id, a.seq),
+      ]);
+      if(!r1.id || !r2.id){
+        console.warn('[dataverse] updateMeetingOccurrenceAgendaSequence() failed:', r1.errors, r2.errors);
+        toast('Not saved','Reordering the Agenda failed. Check the console for details.','err');
+        return;
+      }
+      await refreshOccurrences();
+    }catch(e){
+      console.warn('[dataverse] updateMeetingOccurrenceAgendaSequence() threw unexpectedly:', e);
+      toast('Not saved','Reordering the Agenda failed. Check the console for details.','err');
+    }finally{ setAgendaBusyId(null); }
+  };
+
+  const sendAgenda = async () => {
+    setSendingAgenda(true);
+    try{
+      const {id,errors} = await recordAgendaDistribution(rec.id);
+      if(!id){
+        console.warn('[dataverse] recordAgendaDistribution() failed:', errors);
+        toast('Not saved','Recording agenda distribution failed. Check the console for details.','err');
+        return;
+      }
+      toast('Agenda distribution recorded','Saved to lm_AgendaSentDate.','ok');
+      await refreshOccurrences();
+    }catch(e){
+      console.warn('[dataverse] recordAgendaDistribution() threw unexpectedly:', e);
+      toast('Not saved','Recording agenda distribution failed. Check the console for details.','err');
+    }finally{ setSendingAgenda(false); }
+  };
+
   const posName = id => { const n=dvPos(id); if(!n) return null;
     const h=id&&DV_POS_HOLDER[id]; return h?`${n} — ${h}`:n; };
   const scope = dvBu(rec.businessUnitId)||dvRegion(rec.regionId)||'Group-wide';
@@ -4311,15 +4482,20 @@ function DvMeetingDetail({rec,back}){
       <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
         <Btn onClick={back}>Back to List</Btn>
         {rec.status==='Scheduled' && <Btn onClick={()=>setEditing(true)}>✎ Edit</Btn>}
+        {rec.status==='Scheduled' && <Btn onClick={()=>setRescheduling(true)}>🔄 Reschedule</Btn>}
+        {rec.status==='Scheduled' && <Btn k="dgr" onClick={()=>setCancelling(true)}>✕ Cancel</Btn>}
         {rec.status==='Scheduled' &&
           <Btn k="grn" disabled={markingHeld||!rec.agenda.length} onClick={markHeld}>
             {markingHeld?'Marking…':'✓ Mark as Held'}</Btn>}
       </div>
     </div>
     {editing && <DvEditOccModal rec={rec} onClose={()=>setEditing(false)}/>}
+    {rescheduling && <DvRescheduleOccModal rec={rec} onClose={()=>setRescheduling(false)}/>}
+    {cancelling && <DvCancelOccModal rec={rec} onClose={()=>setCancelling(false)}/>}
 
-    <Note k="lock" ic="—">Editing, marking Held and recording Attendance write to Dataverse. The
-      Minutes and Audit Grid tabs read their four tables but write nothing back yet.</Note>
+    <Note k="lock" ic="—">Editing, rescheduling, cancelling, the Agenda, marking Held and recording
+      Attendance all
+      write to Dataverse. The Minutes and Audit Grid tabs read their four tables but write nothing back yet.</Note>
     {rec.status==='Scheduled' && !rec.agenda.length &&
       <Note k="warn">An occurrence needs at least one Agenda item before it can be marked Held.</Note>}
     {rec.restricted && <Note k="lock"><b>Restricted.</b> This occurrence is marked visible only to its
@@ -4518,14 +4694,29 @@ function DvMeetingDetail({rec,back}){
           <span className="t-sub" style={{fontWeight:400}}> · lm_meetingoccurrenceagendas</span></h2>
         {rec.status==='Held' && <Tag c={covered<rec.agenda.length?'amber':'green'}>
           {covered} of {rec.agenda.length} covered</Tag>}
+        {rec.status==='Scheduled' && (rec.agendaSent
+          ? <Tag c="green">Distributed {fmtDS(rec.agendaSent)}</Tag>
+          : <Btn k="sm" disabled={sendingAgenda||!rec.agenda.length} onClick={sendAgenda}>
+              {sendingAgenda?'Recording…':'Record distribution'}</Btn>)}
+        {rec.status==='Scheduled' &&
+          <Btn k="sm" onClick={()=>setAddingAgenda(v=>!v)}>{addingAgenda?'Close':'+ Add item'}</Btn>}
       </div>
+
+      {addingAgenda && <div style={{display:'flex',gap:8,padding:'0 17px 14px'}}>
+        <input type="text" value={newAgendaTitle} onChange={e=>setNewAgendaTitle(e.target.value)}
+          placeholder="New Agenda item" style={{flex:1}}
+          onKeyDown={e=>{ if(e.key==='Enter') addAgendaItem(); }}/>
+        <Btn k="pri" disabled={!newAgendaTitle.trim()||savingAgenda} onClick={addAgendaItem}>
+          {savingAgenda?'Adding…':'Add'}</Btn>
+      </div>}
+
       {rec.agenda.length===0
         ? <div style={{padding:'8px 17px 17px'}}><Empty>
             No Agenda Item on this occurrence. A Meeting cannot proceed without one.</Empty></div>
         : <div className="t-wrap"><table className="data">
             <thead><tr><th style={{width:50}}>#</th><th>Item</th><th>Owner</th><th>Source</th>
-              <th>Covered</th></tr></thead>
-            <tbody>{rec.agenda.map(a=>
+              <th>Covered</th>{rec.status==='Scheduled' && <th></th>}</tr></thead>
+            <tbody>{rec.agenda.slice().sort((a,b)=>(a.seq||0)-(b.seq||0)).map((a,i,arr)=>
               <tr key={a.id}>
                 <td className="dim">{a.seq??'—'}</td>
                 <td><div className="t-main">{a.title||'—'}</div>
@@ -4534,6 +4725,12 @@ function DvMeetingDetail({rec,back}){
                 <td className="dim">{a.source||'—'}</td>
                 <td><Tag c={a.covered==='Yes'?'green':a.covered==='No'?'red':'grey'}>
                   {a.covered||'Not Yet Recorded'}</Tag></td>
+                {rec.status==='Scheduled' && <td style={{textAlign:'right',whiteSpace:'nowrap'}}>
+                  <Btn k="sm" disabled={agendaBusyId||i===0} onClick={()=>moveAgendaItem(a,-1)}>↑</Btn>
+                  <Btn k="sm" disabled={agendaBusyId||i===arr.length-1} onClick={()=>moveAgendaItem(a,1)}>↓</Btn>
+                  <Btn k="sm" disabled={agendaBusyId} onClick={()=>removeAgendaItem(a.id)}>
+                    {agendaBusyId===a.id?'…':'Remove'}</Btn>
+                </td>}
               </tr>)}
             </tbody></table></div>}
     </div>}
@@ -5806,7 +6003,11 @@ function NewMeetingModal({kind,onClose}){
   /* Applies one of the Setup's approved units (or, for a Group / ExCom Setup,
      none at all) to the form: its Chairman and Facilitator pre-fill the
      Position pickers below and its core Attendees pre-fill the Attendee list
-     -- every one of them still adjustable for this occurrence only. */
+     -- every one of them still adjustable for this occurrence only.
+
+     A Group/ExCom Setup has no per-unit row to carry these, so its Chairman
+     and Facilitator live on the Setup's own parent row instead -- read here
+     as the fallback when there's no unit at all. */
   const applyUnit = unit => {
     const region = unit && unit.kind==='bu'
       ? dvRegion(DV_BU_LIST.find(b=>b.id===unit.key)?.region) : null;
@@ -5816,8 +6017,8 @@ function NewMeetingModal({kind,onClose}){
       dvBusinessUnitId: unit&&unit.kind==='bu' ? unit.key : '',
       dvRegionId: unit&&unit.kind==='region' ? unit.key : '',
       dvDepartmentId:'',
-      dvChairPositionId: (unit&&unit.chairman) || '',
-      dvFacilitatorPositionId: (unit&&unit.facilitator) || '',
+      dvChairPositionId: unit ? (unit.chairman||'') : (tplDetail?.parent?._lm_meetingchairman_value||''),
+      dvFacilitatorPositionId: unit ? (unit.facilitator||'') : (tplDetail?.parent?._lm_meetingorganizerfacilitator_value||''),
       dvAttend: unit ? unit.attendees.filter(a=>a.positionId).map(a=>({
         positionId:a.positionId, name:dvPos(a.positionId), holder:DV_POS_HOLDER[a.positionId]||null,
         type:a.type,

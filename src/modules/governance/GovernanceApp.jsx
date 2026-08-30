@@ -2016,11 +2016,15 @@ function buildReportTemplatePayload(f){
     monthInQuarter: f.monthInQuarter,
     confidentiality: f.confidentiality,
     destinationLink: f.delivery==='Source link' ? (f.sourceLink||undefined) : undefined,
-    // Business Unit/Speciality/Team-Channel/Owner/Submitter no longer live
-    // on the parent record -- they're per-unit now. Review Chain is now
-    // per-unit too (each unit carries its own `reviewChain`), since
-    // Lm_reporttemplatereviewchains got real lookups back to a specific
-    // Business-Unit or Region row, not just the parent template.
+    // Business Unit is per-unit only. Speciality/Team-Channel/Owner/Submitter
+    // are per-unit too EXCEPT for a group-wide (Stage 3/4) Setup, which has
+    // no per-unit child table at all -- for that case
+    // reportTemplateParentPayload() reads them off units[0] (the single
+    // group section below) and writes them onto the parent row instead.
+    // Review Chain is per-unit only (each unit carries its own
+    // `reviewChain`), since Lm_reporttemplatereviewchains got real lookups
+    // back to a specific Business-Unit or Region row, not just the parent
+    // template -- a group-wide Setup's Review Chain still has nowhere to go.
     stageLevel: lv,
     units: keys.map(k=>{
       const u=unitOf(f,k)||{};
@@ -2299,9 +2303,15 @@ function PublishConfirmModal({original, edited, onConfirm, onCancel}){
    - Linked Reports come back as a name only (no working link back to a
      local Setup id), since the original local id isn't stored anywhere
      in Dataverse.
-   - Group-level Setups never had a per-unit child table to begin with,
-     so nothing comes back for their org placement -- the Setup still
-     converts, just with an empty `units` list.
+   - Group-level (Stage 3/4) Setups have no per-unit child table, so no org
+     placement (Business Unit/Region) ever comes back for one -- but their
+     single section's roles now do: Chairman/Co-Chairman/Facilitator for a
+     Meeting Setup, Owner/Submitting Position/Team Channel/Speciality for a
+     Report Setup, all read from the parent row (lm_meetingtemplates /
+     lm_report_templates) and synthesized into a one-entry `units` list
+     keyed GROUP_KEY, matching what the wizard already expects for a group
+     section. A Report Setup has no stage field at all, so its group-level-
+     ness is inferred from having neither Business Unit nor Region rows.
    ========================================================================= */
 
 const DV_REPORT_TYPE=['Plan','Report','Conclusion'];
@@ -2344,6 +2354,22 @@ function dataverseReportToSetup(detail){
       .map(r=>r._lm_reviewerposition_value||null),
   }));
   const isRegionLevel=regionUnits.length>0 && buUnits.length===0;
+  // lm_report_templates has no stage field at all -- BU/Region-level is
+  // inferred from which child rows exist, and a Stage 3/4 (group-wide)
+  // Setup is the only case with neither, so it's inferred the same way.
+  // Its one section comes from the parent row's own Owner/Submitting
+  // Position, Team Channel and Speciality instead -- see
+  // reportTemplateParentPayload()'s comment in dataverse.js. Stage 3 is
+  // used as the generic "group-wide" label; nothing here can tell Stage 3
+  // apart from Stage 4, same simplification the execution app already makes.
+  const isGroupLevel=!isRegionLevel && buUnits.length===0;
+  const groupUnits=isGroupLevel ? [{
+    id:'dvu-group-'+p.lm_report_templateid, key:GROUP_KEY,
+    section:p._lm_reportspecialty_value||null,
+    channel:p._lm_teamchannel_value||null, team:teamOfChannel(p._lm_teamchannel_value),
+    submitter:p._lm_submittingposition_value||null, owner:p._lm_ownerposition_value||null,
+    reviewChain:[],
+  }] : [];
 
   return {...BLANK_REPORT,
     id:'dv-rpt-'+p.lm_report_templateid,
@@ -2367,11 +2393,11 @@ function dataverseReportToSetup(detail){
     })),
     kpis:(detail.kpiIds||[]).map(id=>idToName(KPI_ID_BY_NAME,id)).filter(Boolean),
     processes:(detail.processIds||[]).map(id=>idToName(PROCESS_ID_BY_NAME,id)).filter(Boolean),
-    stage:isRegionLevel?STAGES[1]:STAGES[0],
+    stage:isRegionLevel?STAGES[1]:isGroupLevel?STAGES[2]:STAGES[0],
     regions:isRegionLevel ? regionUnits.map(u=>u.key)
       : Array.from(new Set(buUnits.map(u=>{const b=byId(BUSINESS_UNITS,u.key);return b?b.region:null;}).filter(Boolean))),
     businessUnits:isRegionLevel ? [] : buUnits.map(u=>u.key),
-    units:[...buUnits,...regionUnits],
+    units:[...buUnits,...regionUnits,...groupUnits],
     // Rows written before lm_reportstatus/lm_version existed have neither --
     // treated as Active / Approved / version 1 so they still register as
     // "available for use" rather than looking unreviewed.
@@ -2401,6 +2427,16 @@ function dataverseMeetingToSetup(detail){
     coreMembers:(rg.attendees||[]).map(a=>({position:a._lm_attendeeposition_value||null})),
   }));
   const isRegionLevel=regionUnits.length>0 && buUnits.length===0;
+  // A Stage 3/4 Setup has no per-unit child table, so its one section comes
+  // from the parent row's own Chairman/Co-Chairman/Facilitator instead --
+  // see meetingTemplateParentPayload()'s comment in dataverse.js.
+  const groupUnits=(p.lm_stages===3 || p.lm_stages===4) ? [{
+    id:'dvu-group-'+p.lm_meetingtemplateid, key:GROUP_KEY, section:null,
+    channel:null, team:null,
+    chairman:p._lm_meetingchairman_value||null, coChairman:p._lm_meetingcochairman_value||null,
+    facilitator:p._lm_meetingorganizerfacilitator_value||null,
+    coreMembers:[],
+  }] : [];
 
   return {...BLANK_MEETING,
     id:'dv-mtg-'+p.lm_meetingtemplateid,
@@ -2437,7 +2473,7 @@ function dataverseMeetingToSetup(detail){
     regions:isRegionLevel ? regionUnits.map(u=>u.key)
       : Array.from(new Set(buUnits.map(u=>{const b=byId(BUSINESS_UNITS,u.key);return b?b.region:null;}).filter(Boolean))),
     businessUnits:isRegionLevel ? [] : buUnits.map(u=>u.key),
-    units:[...buUnits,...regionUnits],
+    units:[...buUnits,...regionUnits,...groupUnits],
     // Same fallback as dataverseReportToSetup above, for rows written before
     // lm_meetingstatus/lm_version existed.
     status:TEMPLATE_STATUS_LABEL[p.lm_meetingstatus]||'Active / Approved',
