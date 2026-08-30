@@ -12,5 +12,13 @@ export default defineConfig({
                           // as data: URIs and get blocked. Force every asset
                           // to stay a real file served from the app's origin.
   },
+  server: {
+    // power.config.json pins localAppUrl to http://localhost:3000, and
+    // `npx power-apps run` waits for the app on that port before handing it
+    // the Dataverse connection. Vite's default is 5173, so without this the
+    // harness times out and the app loads with no data at all.
+    port: 3000,
+    strictPort: true,
+  },
   plugins: [react()],
 })

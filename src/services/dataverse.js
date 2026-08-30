@@ -1388,6 +1388,7 @@ import { Lm_auditgridanswersService } from '../generated/services/Lm_auditgridan
 import { Lm_approvalcyclesService } from '../generated/services/Lm_approvalcyclesService';
 import { Lm_approvalcyclestepsService } from '../generated/services/Lm_approvalcyclestepsService';
 import { Lm_authoritymatrixrowsService } from '../generated/services/Lm_authoritymatrixrowsService';
+import { Lm_reportoccurrencehistoriesService } from '../generated/services/Lm_reportoccurrencehistoriesService';
 
 export const MEETING_OCC_STATUS = { 1:'Scheduled', 2:'Held', 3:'Cancelled' };
 export const MEETING_OCC_STATUS_KEY = { 'Scheduled':1, 'Held':2, 'Cancelled':3 };
@@ -1839,15 +1840,19 @@ export const GRID_STATE      = { 1:'Pending Facilitator Review', 2:'Submitted fo
 export const GRID_STATE_KEY  = { 'Pending Facilitator Review':1, 'Submitted for Approval':2,
                                  'Approved':3, 'Returned for Revision':4, 'Void':5 };
 
-/* Four columns on these tables were created at Dataverse's default 100
-   characters -- long enough for a label, not for the prose they actually hold.
-   Dataverse rejects an over-long value with a 400 rather than truncating,
-   exactly as lm_fileurl does on the Report side, so every write below is
-   checked first and fails with a message naming the column. Widen the columns
-   in Dataverse and these can go. */
-export const MOM_NOTE_MAX      = 100;   // lm_momnoteses.lm_notes
-export const GRID_EVIDENCE_MAX = 100;   // lm_auditgridanswers.lm_evidence
-export const REASON_MAX        = 100;   // lm_returnreason / lm_correctionreason on both
+/* Dataverse rejects an over-long value with a 400 rather than truncating, so
+   every write below is checked against the column's real width first and fails
+   with a message naming the column.
+
+   The two Minutes columns have been widened to hold real prose. The three Audit
+   Grid columns are still at Dataverse's default 100 characters -- long enough
+   for a label, not for an evidence note or a return reason -- so those caps
+   still bite and should be widened next. Keep these numbers in step with the
+   schema; they are not preferences, they are what the columns actually accept. */
+export const MOM_NOTE_MAX      = 4000;  // lm_momnoteses.lm_notes            (widened)
+export const MOM_REASON_MAX    = 2000;  // lm_meetingminuteses.lm_returnreason (widened)
+export const GRID_EVIDENCE_MAX = 100;   // lm_auditgridanswers.lm_evidence   (still narrow)
+export const GRID_REASON_MAX   = 100;   // grid lm_returnreason / lm_correctionreason
 
 function capped(value, max, column){
   const v = (value ?? '').toString().trim();
@@ -1912,7 +1917,7 @@ function shapeMinutes(m, noteRows){
 export async function fetchMeetingMinutes(){
   const [momRes, noteRes] = await Promise.all([
     Lm_meetingminutesesService.getAll({ select: MOM_SELECT }),
-    Lm_momnotesesService.getAll({ select: NOTE_SELECT })
+    Lm_momnotesesService.getAll({ select: NOTE_SELECT, filter: 'statecode eq 0' })
       .catch(e=>{ console.warn('[dataverse] MOM notes fetch failed:', e); return null; }),
   ]);
   const notesBy = groupBy(noteRes?.data, '_lm_meetingminutes_value');
@@ -1929,7 +1934,7 @@ export async function fetchMeetingMinutesByOccurrence(occurrenceId){
   const m = (res?.data ?? [])[0];
   if(!m) return null;
   const noteRes = await Lm_momnotesesService.getAll({
-    filter: `_lm_meetingminutes_value eq ${m.lm_meetingminutesid}`,
+    filter: `_lm_meetingminutes_value eq ${m.lm_meetingminutesid} and statecode eq 0`,
     select: NOTE_SELECT,
   }).catch(e=>{ console.warn('[dataverse] MOM notes fetch failed:', e); return null; });
   return shapeMinutes(m, noteRes?.data);
@@ -2004,10 +2009,17 @@ export async function saveMomNote(minutesId, agendaItemId, text, noteId){
   }
 }
 
-/** Removes one MOM Note row -- an Agenda Item whose note was cleared. */
-export async function deleteMomNote(noteId){
+/** Retires one MOM Note -- an Agenda Item whose note was cleared.
+ *
+ *  Deactivated rather than deleted: a Leadership Practice record is never
+ *  hard-deleted, it is archived after closure and retained for audit, so the
+ *  row stays readable and the trail stays intact. The prototype spec says
+ *  nothing about deletion, so the BRD's retention rule governs.
+ *  Read paths should filter on `statecode eq 0` once archived rows appear. */
+export async function archiveMomNote(noteId){
   try{
-    await Lm_momnotesesService.delete(noteId);
+    const result = await Lm_momnotesesService.update(noteId, { statecode: 1 });
+    assertSuccess(result);
     return { id: noteId, errors: [] };
   }catch(e){
     return { id: null, errors: [{ table:'lm_momnoteses', error:e }] };
@@ -2044,10 +2056,20 @@ export async function updateMeetingMinutesStatus(id, status, stamps = {}){
 }
 
 /** Submits a Draft: stamps lm_submittedat, which is what starts AG-16's clock.
- *  Status stays Draft -- submission is not approval. */
+ *  Status stays Draft -- submission is not approval.
+ *
+ *  Clears any standing return reason at the same time. Without a distinct
+ *  'Returned' status on this table, the reason is the only thing separating
+ *  "the Chair sent this back and it is being revised" from "submitted and
+ *  waiting on the Chair" -- both are Draft with a submitted timestamp. Once the
+ *  Minutes history table exists the reason should be written there instead, so
+ *  the permanent trail survives the resubmission. */
 export async function submitMeetingMinutes(id){
   try{
-    const result = await Lm_meetingminutesesService.update(id, { lm_submittedat: nowIso() });
+    const result = await Lm_meetingminutesesService.update(id, {
+      lm_submittedat: nowIso(),
+      lm_returnreason: null,
+    });
     assertSuccess(result);
     return { id, errors: [] };
   }catch(e){
@@ -2062,7 +2084,7 @@ export async function returnMeetingMinutes(id, reason){
   try{
     const result = await Lm_meetingminutesesService.update(id, {
       lm_status: MOM_STATUS_KEY.Draft,
-      lm_returnreason: capped(reason, REASON_MAX, 'lm_returnreason'),
+      lm_returnreason: capped(reason, MOM_REASON_MAX, 'lm_returnreason'),
     });
     assertSuccess(result);
     return { id, errors: [] };
@@ -2087,6 +2109,30 @@ export async function signMeetingMinutes(id, { positionId, name, date, time } = 
     return { id, errors: [] };
   }catch(e){
     return { id: null, errors: [{ table:'lm_meetingminuteses', error:e }] };
+  }
+}
+
+/**
+ * Marks one Agenda Item covered or not covered while the Minutes are written.
+ *
+ * Lives with the Minutes rather than with the occurrence because coverage is
+ * recorded during the write-up, not during the meeting -- and because AG-04
+ * reads it: fully covered scores 5, uncovered but carried forward scores 4,
+ * uncovered with no carry-forward scores 0. Leaving it at 'Not Yet Recorded'
+ * is therefore not neutral, so the Recorder has to set it either way.
+ *
+ * @param {string} agendaItemId lm_meetingoccurrenceagendas id
+ * @param {string} covered 'Yes' | 'No' | 'Not Yet Recorded'
+ */
+export async function updateAgendaCovered(agendaItemId, covered){
+  try{
+    const result = await Lm_meetingoccurrenceagendasService.update(agendaItemId, {
+      lm_covered: AGENDA_COVERED_KEY[covered] ?? AGENDA_COVERED_KEY['Not Yet Recorded'],
+    });
+    assertSuccess(result);
+    return { id: agendaItemId, errors: [] };
+  }catch(e){
+    return { id: null, errors: [{ table:'lm_meetingoccurrenceagendas', error:e }] };
   }
 }
 
@@ -2141,7 +2187,7 @@ function shapeGrid(g, answerRows){
 export async function fetchAuditGridInstances(){
   const [gridRes, ansRes] = await Promise.all([
     Lm_auditgridinstancesService.getAll({ select: GRID_SELECT }),
-    Lm_auditgridanswersService.getAll({ select: ANSWER_SELECT })
+    Lm_auditgridanswersService.getAll({ select: ANSWER_SELECT, filter: 'statecode eq 0' })
       .catch(e=>{ console.warn('[dataverse] Audit Grid answers fetch failed:', e); return null; }),
   ]);
   const ansBy = groupBy(ansRes?.data, '_lm_auditgridinstance_value');
@@ -2158,7 +2204,7 @@ export async function fetchAuditGridInstancesByOccurrence(occurrenceId){
   });
   const rows = res?.data ?? [];
   if(!rows.length) return [];
-  const ansRes = await Lm_auditgridanswersService.getAll({ select: ANSWER_SELECT })
+  const ansRes = await Lm_auditgridanswersService.getAll({ select: ANSWER_SELECT, filter: 'statecode eq 0' })
     .catch(e=>{ console.warn('[dataverse] Audit Grid answers fetch failed:', e); return null; });
   const ansBy = groupBy(ansRes?.data, '_lm_auditgridinstance_value');
   return rows
@@ -2198,7 +2244,7 @@ export async function createAuditGridInstance(payload){
       lm_locked: false,
       lm_frozen: false,
       lm_correctionreason: payload.correctionReason
-        ? capped(payload.correctionReason, REASON_MAX, 'lm_correctionreason') : null,
+        ? capped(payload.correctionReason, GRID_REASON_MAX, 'lm_correctionreason') : null,
     };
     if(payload.occurrenceId)          row['lm_MeetingOccurrence@odata.bind']   = `/lm_meetingoccurrences(${payload.occurrenceId})`;
     if(payload.facilitatorPositionId) row['lm_FacilitatorPosition@odata.bind'] = `/cr603_organizationstructures(${payload.facilitatorPositionId})`;
@@ -2255,10 +2301,14 @@ export async function saveAuditGridAnswer(instanceId, questionId, { score, evide
   }
 }
 
-/** Removes one Answer row -- a manual score the Facilitator cleared. */
-export async function deleteAuditGridAnswer(answerId){
+/** Retires one Answer row -- a manual score the Facilitator cleared.
+ *  Deactivated, not deleted, for the same retention reason as archiveMomNote
+ *  above. An Audit Grid's answers are accreditation evidence; losing one
+ *  outright would break the trail behind a published score. */
+export async function archiveAuditGridAnswer(answerId){
   try{
-    await Lm_auditgridanswersService.delete(answerId);
+    const result = await Lm_auditgridanswersService.update(answerId, { statecode: 1 });
+    assertSuccess(result);
     return { id: answerId, errors: [] };
   }catch(e){
     return { id: null, errors: [{ table:'lm_auditgridanswers', error:e }] };
@@ -2272,7 +2322,7 @@ export async function updateAuditGridState(id, state, reason){
   try{
     const row = { lm_state: GRID_STATE_KEY[state] ?? null };
     if(state === 'Returned for Revision')
-      row.lm_returnreason = capped(reason, REASON_MAX, 'lm_returnreason');
+      row.lm_returnreason = capped(reason, GRID_REASON_MAX, 'lm_returnreason');
     const result = await Lm_auditgridinstancesService.update(id, row);
     assertSuccess(result);
     return { id, errors: [] };
@@ -2455,4 +2505,141 @@ export function authorityCheckLive(rows, type, value, creatorLevel){
     cycle:  lvl >= row.reqLvl ? null : row.cycle,
     matched: label,
   };
+}
+
+/* ---------------------------------------------------------------------
+   WIRED: the Report Submission review chain
+   ---------------------------------------------------------------------
+   Lifecycle is Draft -> In Review -> Approved, and nothing else. Request
+   More Information is an ACTION, not a status: it returns the submission to
+   Draft and resets the step to 0, so a re-submission restarts the configured
+   route rather than resuming mid-chain. The lm_status option set on this
+   table also carries Rejected and Returned, which this module deliberately
+   never writes -- they are not part of the lifecycle.
+
+   Every transition appends a row to lm_reportoccurrencehistories rather than
+   overwriting anything, which is what keeps the prior review history intact
+   across an RMI. This is the only area of the module with a real audit-trail
+   table; Meetings and Minutes still have nowhere to write one.
+   --------------------------------------------------------------------- */
+
+/* lm_note on the history row is still at Dataverse's default 100 characters --
+   too short for a reviewer's reason, and Dataverse rejects rather than
+   truncating. Widen it and this cap can go. */
+export const REPORT_NOTE_MAX = 100;
+
+const HISTORY_SELECT = ['lm_reportoccurrencehistoryid','lm_name','lm_action','lm_note',
+                        '_lm_reportoccurrence_value','_lm_actorposition_value','createdon'];
+
+/** The full audit trail for one Report Submission, oldest first -- the order a
+ *  reviewer reads it in. */
+export async function fetchReportOccurrenceHistory(occurrenceId){
+  const res = await Lm_reportoccurrencehistoriesService.getAll({
+    filter: `_lm_reportoccurrence_value eq ${occurrenceId}`,
+    select: HISTORY_SELECT,
+  });
+  return (res?.data ?? [])
+    .map(h => ({
+      id: h.lm_reportoccurrencehistoryid,
+      action: h.lm_action || '',
+      note: h.lm_note || null,
+      actorPositionId: h._lm_actorposition_value || null,
+      at: h.createdon || null,
+    }))
+    .sort((a,b) => (a.at||'').localeCompare(b.at||''));
+}
+
+/**
+ * Appends one history row. Every transition below calls this, and a failure to
+ * write history is reported but never rolls back the transition itself -- the
+ * status change is already committed by then, and a missing trail entry is a
+ * smaller problem than a submission stuck in a state nobody can see.
+ */
+export async function addReportHistory(occurrenceId, action, { actorPositionId, note } = {}){
+  try{
+    const row = {
+      lm_name: action.slice(0,100),
+      lm_action: capped(action, 850, 'lm_action'),
+      lm_note: note ? capped(note, REPORT_NOTE_MAX, 'lm_note') : null,
+      'lm_ReportOccurrence@odata.bind': `/lm_reportoccurrences(${occurrenceId})`,
+    };
+    if(actorPositionId) row['lm_ActorPosition@odata.bind'] = `/cr603_organizationstructures(${actorPositionId})`;
+    const created = await Lm_reportoccurrencehistoriesService.create(row);
+    return { id: idOrThrow(created, 'lm_reportoccurrencehistoryid'), errors: [] };
+  }catch(e){
+    return { id: null, errors: [{ table:'lm_reportoccurrencehistories', error:e }] };
+  }
+}
+
+/**
+ * Submits a Draft into the configured review route. Always starts at step 0 --
+ * a re-submission after Request More Information restarts the route rather
+ * than resuming where it stopped.
+ */
+export async function submitReportOccurrence(id, { actorPositionId } = {}){
+  try{
+    const result = await Lm_reportoccurrencesService.update(id, {
+      lm_status: REPORT_OCC_STATUS_KEY['In Review'],
+      lm_reviewstep: 0,
+    });
+    assertSuccess(result);
+    const h = await addReportHistory(id, 'Submitted for review', { actorPositionId });
+    return { id, errors: h.errors };
+  }catch(e){
+    return { id: null, errors: [{ table:'lm_reportoccurrences', error:e }] };
+  }
+}
+
+/**
+ * Approves the current review step.
+ *
+ * Advances to the next step, or -- when this was the last configured reviewer
+ * -- sets the submission to Approved and locks it. Locking is what stops any
+ * further edit; a change after approval has to become a new version.
+ *
+ * @param {string} id
+ * @param {object} opts
+ * @param {number} opts.currentStep zero-based index of the step being approved
+ * @param {number} opts.totalSteps  number of steps in the configured chain
+ * @param {string} [opts.actorPositionId]
+ * @param {string} [opts.note]
+ */
+export async function approveReportStep(id, { currentStep, totalSteps, actorPositionId, note } = {}){
+  const isFinal = (currentStep + 1) >= totalSteps;
+  try{
+    const result = await Lm_reportoccurrencesService.update(id, isFinal
+      ? { lm_status: REPORT_OCC_STATUS_KEY.Approved, lm_locked: true, lm_reviewstep: totalSteps }
+      : { lm_reviewstep: currentStep + 1 });
+    assertSuccess(result);
+    const h = await addReportHistory(id,
+      isFinal ? 'Final review step approved — Report Submission approved and locked'
+              : `Approved review step ${currentStep + 1} of ${totalSteps}`,
+      { actorPositionId, note });
+    return { id, isFinal, errors: h.errors };
+  }catch(e){
+    return { id: null, errors: [{ table:'lm_reportoccurrences', error:e }] };
+  }
+}
+
+/**
+ * Request More Information. Returns the submission to Draft at step 0 with the
+ * reason recorded in history.
+ *
+ * This is deliberately NOT a status of its own: the lifecycle has three states
+ * and this is a review action within it. The prior history is untouched, so the
+ * earlier approvals remain visible after the resubmission.
+ */
+export async function requestMoreInfoOnReport(id, { actorPositionId, reason } = {}){
+  try{
+    const result = await Lm_reportoccurrencesService.update(id, {
+      lm_status: REPORT_OCC_STATUS_KEY.Draft,
+      lm_reviewstep: 0,
+    });
+    assertSuccess(result);
+    const h = await addReportHistory(id, 'Request More Information — returned to Draft',
+      { actorPositionId, note: reason });
+    return { id, errors: h.errors };
+  }catch(e){
+    return { id: null, errors: [{ table:'lm_reportoccurrences', error:e }] };
+  }
 }

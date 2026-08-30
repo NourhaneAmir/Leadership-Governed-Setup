@@ -135,7 +135,7 @@
           "x-ms-dataverse-attribute": "lm_returnreason",
           "x-ms-dataverse-type": "StringType",
           "x-ms-schema-name": "lm_ReturnReason",
-          "maxLength": 100
+          "maxLength": 2000
         },
         "lm_signedbyposition": {
           "type": "string",
@@ -362,23 +362,7 @@
           "x-ms-dataverse-attribute": "statecode",
           "x-ms-dataverse-type": "StateType",
           "x-ms-schema-name": "statecode",
-          "required": true,
-          "enum": [
-            "Active",
-            "Inactive"
-          ],
-          "x-ms-enum-values": [
-            0,
-            1
-          ],
-          "Color": [
-            null,
-            null
-          ],
-          "x-ms-optionsetmetadataid": "27e7104c-a39d-f111-b8de-000d3a442d79",
-          "x-ms-isGlobal": false,
-          "x-ms-optionsetdisplayname": "Status",
-          "x-ms-optionSetType": "State"
+          "required": true
         },
         "statecodename": {
           "type": "string",
@@ -393,23 +377,7 @@
           "title": "Status Reason",
           "x-ms-dataverse-attribute": "statuscode",
           "x-ms-dataverse-type": "StatusType",
-          "x-ms-schema-name": "statuscode",
-          "enum": [
-            "Active",
-            "Inactive"
-          ],
-          "x-ms-enum-values": [
-            1,
-            2
-          ],
-          "Color": [
-            null,
-            null
-          ],
-          "x-ms-optionsetmetadataid": "31e7104c-a39d-f111-b8de-000d3a442d79",
-          "x-ms-isGlobal": false,
-          "x-ms-optionsetdisplayname": "Status Reason",
-          "x-ms-optionSetType": "Status"
+          "x-ms-schema-name": "statuscode"
         },
         "statuscodename": {
           "type": "string",

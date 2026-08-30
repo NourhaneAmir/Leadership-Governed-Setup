@@ -137,7 +137,7 @@
           "x-ms-dataverse-attribute": "lm_notes",
           "x-ms-dataverse-type": "StringType",
           "x-ms-schema-name": "lm_Notes",
-          "maxLength": 100
+          "maxLength": 4000
         },
         "modifiedby": {
           "type": "string",

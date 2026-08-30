@@ -8,16 +8,6 @@ export const Lm_meetingminuteseslm_status = {
   3: 'Closed'
 } as const;
 export type Lm_meetingminuteseslm_status = keyof typeof Lm_meetingminuteseslm_status;
-export const Lm_meetingminutesesstatecode = {
-  0: 'Active',
-  1: 'Inactive'
-} as const;
-export type Lm_meetingminutesesstatecode = keyof typeof Lm_meetingminutesesstatecode;
-export const Lm_meetingminutesesstatuscode = {
-  1: 'Active',
-  2: 'Inactive'
-} as const;
-export type Lm_meetingminutesesstatuscode = keyof typeof Lm_meetingminutesesstatuscode;
 
 export interface Lm_meetingminutesesBase {
   importsequencenumber?: number;
@@ -36,8 +26,8 @@ export interface Lm_meetingminutesesBase {
   overriddencreatedon?: string;
   ownerid: string;
   owneridtype: string;
-  statecode: Lm_meetingminutesesstatecode;
-  statuscode?: Lm_meetingminutesesstatuscode;
+  statecode: string;
+  statuscode?: string;
   timezoneruleversionnumber?: number;
   utcconversiontimezonecode?: number;
 }

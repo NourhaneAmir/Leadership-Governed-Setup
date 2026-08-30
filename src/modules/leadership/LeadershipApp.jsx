@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef, createContext, useContext } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef, createContext, useContext } from 'react';
 import { ArrowUpRight, BarChart3, CalendarDays, CheckSquare, ClipboardList, FileText,
          Gauge, Menu, Settings2, UsersRound, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -9,7 +9,11 @@ import { fetchMeetingOccurrences, fetchReportOccurrences, createMeetingOccurrenc
          fetchMeetingTemplatesList, fetchMeetingTemplateDetail,
          fetchReportTemplatesList, fetchReportTemplateDetail, fetchCurrentUser,
          fetchMeetingMinutesByOccurrence, fetchAuditGridInstancesByOccurrence,
-         fetchAuthorityMatrix,
+         fetchAuthorityMatrix, createMeetingMinutes, saveMomNote, updateAgendaCovered,
+         submitMeetingMinutes, updateMeetingMinutesStatus, returnMeetingMinutes,
+         signMeetingMinutes, createAuditGridInstance, MOM_NOTE_MAX,
+         fetchReportOccurrenceHistory, submitReportOccurrence, approveReportStep,
+         requestMoreInfoOnReport,
          MEETING_SETUP_TYPE, MEETING_CATEGORY, MEETING_FREQUENCY, MEETING_DAY_OF_WEEK,
          ATTENDEE_TYPE, REPORT_TYPE, REPORT_CATEGORY, REPORT_FREQUENCY } from '../../services/dataverse.js';
 
@@ -310,17 +314,35 @@ const OD_NOTES = {
 const WEEKEND = [5,6];              // Fri, Sat — working week is Sun–Thu
 const HOLIDAYS = ['2026-07-05','2026-08-24'];
 const isNonWorking = d => WEEKEND.includes(new Date(d+'T00:00:00').getDay()) || HOLIDAYS.includes(d);
-/* The weekend proper — Friday and Saturday. Kept apart from isNonWorking (which
-   also counts public holidays) because a Meeting may not be BOOKED on a weekend
-   at all, whereas a holiday only shifts a seeded occurrence to the next working
-   day. Booking is blocked on this one. */
-const isWeekend = d => !!d && WEEKEND.includes(new Date(d+'T00:00:00').getDay());
+/* Weekend and public holiday are treated identically: an occurrence landing on
+   either rolls forward to the next working day rather than being refused, so
+   isNonWorking() is the only test any booking path needs. A separate isWeekend()
+   existed while a weekend date was blocked outright; that rule is gone. */
 const WEEKDAY_NAME = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const dayName = d => d ? WEEKDAY_NAME[new Date(d+'T00:00:00').getDay()] : '';
 /* An occurrence landing on a non-working day moves — that occurrence only, never the series. */
 const nextWorkingDay = d => { let x=new Date(d+'T00:00:00');
   do { x.setDate(x.getDate()+1); } while(isNonWorking(ymd(x)));
   return ymd(x); };
+
+/* Every governance lead time and review period is counted in WORKING days, not
+   calendar days — the working week is Sunday to Thursday, so a deadline counted
+   in calendar days across a Friday or Saturday lands up to two days early and
+   silently mis-scores AG-03 and AG-15. The prototype spec says only "days";
+   the BRD is explicit that the agenda lead time and the report review period
+   are two WORKING days, so that is the reading applied here.
+   A negative `n` counts backwards, which is how a lead time is expressed
+   (the deadline sits n working days BEFORE the meeting). */
+const shiftWorkingDays = (d,n) => {
+  if(!d || !n) return d;
+  const step = n<0 ? -1 : 1;
+  let left = Math.abs(n), x = new Date(d+'T00:00:00');
+  while(left>0){
+    x.setDate(x.getDate()+step);
+    if(!isNonWorking(ymd(x))) left--;
+  }
+  return ymd(x);
+};
 /* =========================================================================
    SEED — one Committee carried through four cycles so history is real
    ========================================================================= */
@@ -919,7 +941,7 @@ function scoreGrid(grid, db, S){
     push('AG-03','auto', hasItems?5:0,
       `${occ.agenda.length} Agenda Item(s) recorded. Distribution half not scored — the required lead time is not configured.`);
   } else {
-    const need = addDays(occ.date, -S.agendaLeadDays);
+    const need = shiftWorkingDays(occ.date, -S.agendaLeadDays);
     const onTime = occ.agendaSent && occ.agendaSent <= need;
     push('AG-03','auto', ((hasItems?5:0)+(onTime?5:0))/2,
       `${occ.agenda.length} Agenda Item(s) recorded → ${hasItems?5:0}. Distributed ${occ.agendaSent?fmtD(occ.agendaSent):'not recorded'}, required on or before ${fmtD(need)} → ${onTime?5:0}. Averaged.`);
@@ -1023,7 +1045,7 @@ function scoreGrid(grid, db, S){
   if(S.inviteLeadDays==null)
     push('AG-15','na',null,null,'The Meeting invitation lead time is not configured.');
   else {
-    const need = addDays(occ.date, -S.inviteLeadDays);
+    const need = shiftWorkingDays(occ.date, -S.inviteLeadDays);
     const s = !occ.inviteSent ? 0 : occ.inviteSent <= need ? 5 : 2;
     push('AG-15','auto', s,
       occ.inviteSent
@@ -2772,7 +2794,8 @@ function ReportDetail({rec,back}){
   const stepStartedAt = i => i===0 ? submittedAt
     : (rec.history.find(h=>h.act.startsWith('Approved review step '+i))||{}).at;
   const stepDeadline = i => { const start=stepStartedAt(i);
-    return (start && S.reviewTimeoutDays!=null) ? addDays(start.split(' ')[0],S.reviewTimeoutDays) : null; };
+    return (start && S.reviewTimeoutDays!=null)
+      ? shiftWorkingDays(start.split(' ')[0],S.reviewTimeoutDays) : null; };
 
   return <>
     <div className="crumb"><a onClick={back}>Reports & Plans</a> › <b>Review Report</b></div>
@@ -3836,19 +3859,21 @@ function DvEditOccModal({rec,onClose}){
   const [saving,setSaving]=useState(false);
   const set=(k,v)=>setF(x=>({...x,[k]:v}));
 
-  const weekend = isWeekend(f.date);
-  const nw = isNonWorking(f.date) && !weekend;
+  /* Same rule as creation: a non-working date rolls forward rather than being
+     refused, and only this occurrence moves. */
+  const bookedDate = f.date && isNonWorking(f.date) ? nextWorkingDay(f.date) : f.date;
+  const moved = !!f.date && bookedDate !== f.date;
   const badTime = f.start && f.end && f.end<=f.start;
   const needsLink     = f.mode==='Online' || f.mode==='Hybrid';
   const needsLocation = f.mode==='In person' || f.mode==='Hybrid';
   const modeOk = (!needsLink || f.link.trim()) && (!needsLocation || f.location.trim());
-  const ok = !!f.date && !weekend && !badTime && !!f.start && !!f.end && modeOk;
+  const ok = !!f.date && !badTime && !!f.start && !!f.end && modeOk;
 
   const save = async () => {
     setSaving(true);
     try{
       const {id,errors} = await updateMeetingOccurrence(rec.id, {
-        date:f.date, start:f.start, end:f.end, mode:f.mode,
+        date:bookedDate, start:f.start, end:f.end, mode:f.mode,
         location:needsLocation ? f.location.trim() : '',
         link:needsLink ? f.link.trim() : '',
       });
@@ -3872,9 +3897,9 @@ function DvEditOccModal({rec,onClose}){
       <Btn k="pri" disabled={!ok||saving} onClick={save}>{saving?'Saving…':'Save'}</Btn></>}>
     <div className="f-row3">
       <Field label="Date" req
-        err={weekend
-          ? `${dayName(f.date)} is a weekend — the working week is Sunday to Thursday. Choose another day.`
-          : nw ? 'This is a configured public holiday.' : null}>
+        hint={moved
+          ? `${dayName(f.date)} is a non-working day. This occurrence will move to ${fmtD(bookedDate)} — the series is unchanged.`
+          : 'The working week is Sunday to Thursday.'}>
         <input type="date" value={f.date} onChange={e=>set('date',e.target.value)}/></Field>
       <Field label="Start" req><input type="time" value={f.start} onChange={e=>set('start',e.target.value)}/></Field>
       <Field label="End" req err={badTime?'The end time must be after the start time.':null}>
@@ -3908,6 +3933,244 @@ const fmtISODT = s => { if(!s) return '—';
   const day = s.slice(0,10), time = s.length>=16 ? s.slice(11,16) : null;
   return `${fmtD(day)}${time?' · '+time:''}`; };
 
+/* The Minutes tab, writing to lm_meetingminuteses and lm_momnoteses.
+ *
+ * Lifecycle, per the specification: Draft → (submit) → still Draft but with a
+ * submitted timestamp, which is what puts it in front of the Chair → (approve)
+ * Approved, and the approval IS the signature → Closed.
+ *
+ * There is no 'Returned' value on lm_status, so a returned MOM is Draft with a
+ * return reason standing. That reason is therefore what distinguishes the two
+ * Draft states from each other, and submitting clears it. */
+function DvMinutesBody({rec,minutes,accred,grids,posName,onReload}){
+  const {toast}=use();
+  const [drafts,setDrafts]=useState({});        // agendaItemId -> unsaved text
+  const [savingNote,setSavingNote]=useState(null);
+  const [busy,setBusy]=useState(null);
+  const [returning,setReturning]=useState(false);
+
+  const noteIdFor = {};
+  minutes.notes.forEach(n=>{ if(n.agendaItemId) noteIdFor[n.agendaItemId]=n.id; });
+
+  const closed       = minutes.status==='Closed';
+  const approved     = minutes.status==='Approved';
+  const returned     = minutes.status==='Draft' && !!minutes.returnReason;
+  const awaitingChair= minutes.status==='Draft' && !!minutes.submittedAt && !returned;
+  const drafting     = minutes.status==='Draft' && !awaitingChair;
+  const editable     = drafting;
+
+  const textFor = a => drafts[a.id] !== undefined ? drafts[a.id] : (minutes.notesByAgenda[a.id]||'');
+  /* RULE-MOM-02: an Agenda Item with no Output needs a Discussion Note. No
+     Outputs exist yet (no Task or Decision table), so today that means every
+     item needs a note before the Minutes can be submitted. */
+  const missingNotes = rec.agenda.filter(a=>!textFor(a).trim());
+  const tooLong      = rec.agenda.filter(a=>textFor(a).trim().length>MOM_NOTE_MAX);
+  const canSubmit    = rec.agenda.length>0 && !missingNotes.length && !tooLong.length;
+
+  const saveNote = async a => {
+    const text = textFor(a).trim();
+    if(text === (minutes.notesByAgenda[a.id]||'')) return;   // nothing changed
+    setSavingNote(a.id);
+    try{
+      const {id,errors} = await saveMomNote(minutes.id, a.id, text, noteIdFor[a.id]);
+      if(!id){ console.warn('[dataverse] saveMomNote() failed:', errors);
+               toast('Not saved','The Discussion Note could not be saved.','err'); return; }
+      await onReload();
+      setDrafts(d=>{ const n={...d}; delete n[a.id]; return n; });
+    }catch(e){
+      console.warn('[dataverse] saveMomNote() threw:', e);
+      toast('Not saved','The Discussion Note could not be saved.','err');
+    }finally{ setSavingNote(null); }
+  };
+
+  const setCovered = async (a,v) => {
+    setSavingNote(a.id);
+    try{
+      const {id,errors} = await updateAgendaCovered(a.id, v);
+      if(!id){ console.warn('[dataverse] updateAgendaCovered() failed:', errors);
+               toast('Not saved','The coverage flag could not be saved.','err'); return; }
+      await onReload();
+    }finally{ setSavingNote(null); }
+  };
+
+  const run = async (key, fn, okTitle, okMsg) => {
+    setBusy(key);
+    try{
+      const {id,errors} = await fn();
+      if(!id){ console.warn('[dataverse] '+key+' failed:', errors);
+               toast('Not saved','That step could not be saved. Check the console.','err'); return false; }
+      toast(okTitle, okMsg, 'ok');
+      await onReload();
+      return true;
+    }catch(e){
+      console.warn('[dataverse] '+key+' threw:', e);
+      toast('Not saved','That step could not be saved. Check the console.','err');
+      return false;
+    }finally{ setBusy(null); }
+  };
+
+  const submit = () => run('submit', ()=>submitMeetingMinutes(minutes.id),
+    'Submitted to the Chair','The write-up clock is stamped. The Minutes now sit with the Meeting Chair.');
+
+  /* Approval and signature are one act, not two: the Chair's approval IS the
+     signature, which is why AG-07 was retired. */
+  const approve = async () => {
+    const ok = await run('approve', ()=>updateMeetingMinutesStatus(minutes.id,'Approved'),
+      'Minutes approved','The signature has been captured. Outputs would activate here once Tasks and Decisions exist.');
+    if(!ok) return;
+    const now = new Date();
+    await signMeetingMinutes(minutes.id, {
+      positionId: rec.chairPositionId || undefined,
+      name: (rec.chairPositionId && DV_POS_HOLDER[rec.chairPositionId]) || posName(rec.chairPositionId) || 'Meeting Chair',
+      date: ymd(now),
+      time: now.toTimeString().slice(0,5),
+    });
+    await onReload();
+  };
+
+  /* Closure releases the Audit Grid for a Committee occurrence -- and only for
+     a Committee. Exactly one Instance per occurrence, so an existing Grid is
+     left alone. The Grid never blocks closure: a failure here is reported and
+     the MOM stays Closed. */
+  const close = async () => {
+    const ok = await run('close', ()=>updateMeetingMinutesStatus(minutes.id,'Closed'),
+      'Minutes closed','The record is final.');
+    if(!ok) return;
+    if(accred && grids.length===0){
+      const g = await createAuditGridInstance({
+        occurrenceId: rec.id,
+        name: `Audit Grid — ${rec.name}`,
+        templateVersion: AG_TEMPLATE_VERSION,
+        total: AG_ACTIVE.length,
+        version: 1,
+        facilitatorPositionId: rec.facilitatorPositionId || undefined,
+        chairPositionId: rec.chairPositionId || undefined,
+      });
+      if(g.id) toast('Audit Grid released','An Instance was created for this Committee occurrence.','ok');
+      else { console.warn('[dataverse] createAuditGridInstance() failed:', g.errors);
+             toast('Grid not created','The Minutes are Closed, but the Audit Grid Instance failed. Check the console.','warn'); }
+    }
+    await onReload();
+  };
+
+  const stateTag = closed ? <Tag c="green">Closed</Tag>
+    : approved ? <Tag c="teal">Approved</Tag>
+    : awaitingChair ? <Tag c="amber">Submitted — with the Chair</Tag>
+    : returned ? <Tag c="red">Returned for revision</Tag>
+    : <Tag c="grey">Draft</Tag>;
+
+  return <>
+    <div className="card">
+      <div style={{display:'flex',alignItems:'center',gap:9,marginBottom:12,flexWrap:'wrap'}}>
+        {stateTag}
+        {minutes.signedName && <Tag c="grey">🖊 Signed</Tag>}
+        {closed && <Tag c="grey">🔒 Locked</Tag>}
+      </div>
+      <KVBlock items={[
+        ['Submitted', fmtISODT(minutes.submittedAt)],
+        ['Approved',  fmtISODT(minutes.approvedAt)],
+        ['Closed',    fmtISODT(minutes.closedAt)],
+        ['Signed by', posName(minutes.signedByPositionId)||minutes.signedName||'—'],
+        ['Signed on', minutes.signedDate
+          ? fmtD(minutes.signedDate)+(minutes.signedTime?' · '+minutes.signedTime:'') : '—'],
+      ]}/>
+      {returned && <Note k="err"><b>Returned by the Meeting Chair.</b> {minutes.returnReason}</Note>}
+      {closed && <Note k="lock"><b>Closed and locked.</b> A correction must be made as a new version
+        or an addendum, never by editing this record.</Note>}
+    </div>
+
+    <div className="card flush">
+      <div className="card-hd"><h2>Discussion Notes</h2>
+        <div className="csub">One note per Agenda Item, and a coverage flag.
+          {editable ? ' Notes save when you click away from the box.'
+                    : ' Read-only in this state.'}</div></div>
+      {rec.agenda.length===0
+        ? <div style={{padding:'8px 17px 17px'}}><Empty>No Agenda Item on this occurrence.</Empty></div>
+        : <div style={{padding:'4px 17px 17px',display:'flex',flexDirection:'column',gap:14}}>
+            {rec.agenda.map((a,i)=>{
+              const val = textFor(a);
+              const over = val.trim().length>MOM_NOTE_MAX;
+              return <div key={a.id} style={{borderTop:i?'1px solid var(--border)':'none',paddingTop:i?13:4}}>
+                <div style={{display:'flex',alignItems:'baseline',gap:9,flexWrap:'wrap',marginBottom:6}}>
+                  <span className="dim" style={{fontSize:12}}>{a.seq??i+1}</span>
+                  <b style={{fontSize:13.5,flex:'1 1 220px'}}>{a.title||'—'}</b>
+                  {editable
+                    ? <Pills opts={['Yes','No']} val={a.covered==='Yes'?'Yes':a.covered==='No'?'No':null}
+                        onChange={v=>setCovered(a, v||'Not Yet Recorded')}/>
+                    : <Tag c={a.covered==='Yes'?'green':a.covered==='No'?'red':'grey'}>
+                        {a.covered||'Not Yet Recorded'}</Tag>}
+                </div>
+                {editable
+                  ? <>
+                      <textarea rows={3} value={val} disabled={savingNote===a.id}
+                        placeholder="What was discussed, decided or carried forward…"
+                        onChange={e=>setDrafts(d=>({...d,[a.id]:e.target.value}))}
+                        onBlur={()=>saveNote(a)}
+                        style={{width:'100%',resize:'vertical',fontFamily:'inherit',fontSize:13,
+                                padding:'8px 10px',borderRadius:3,
+                                border:'1px solid var(--'+(over?'red':'border-d')+')',
+                                background:'var(--panel)',color:'var(--ink)'}}/>
+                      <div style={{display:'flex',justifyContent:'space-between',fontSize:11,marginTop:3}}>
+                        <span style={{color:over?'var(--red)':'var(--muted)'}}>
+                          {over ? `${val.trim().length} characters — ${MOM_NOTE_MAX} max.`
+                                : savingNote===a.id ? 'Saving…' : ''}</span>
+                        <span className="dim">{val.trim().length} / {MOM_NOTE_MAX}</span>
+                      </div>
+                    </>
+                  : <div style={{fontSize:12.5,color:val?'var(--ink-2)':'var(--muted)',whiteSpace:'pre-wrap'}}>
+                      {val||'No note recorded'}</div>}
+              </div>;})}
+          </div>}
+    </div>
+
+    <div className="card">
+      <h2>Actions</h2>
+      {drafting && <>
+        <div className="csub">The MOM Recorder writes the Minutes. Every Agenda Item needs a
+          Discussion Note before they can be submitted, because none of them carries an Output yet.</div>
+        {!!missingNotes.length &&
+          <Note k="warn">{missingNotes.length} Agenda Item{missingNotes.length>1?'s have':' has'} no
+            Discussion Note. Submission is blocked until every item records an outcome.</Note>}
+        <Btn k="pri" disabled={!canSubmit||busy==='submit'} onClick={submit}>
+          {busy==='submit'?'Submitting…':'Submit to the Meeting Chair'}</Btn>
+      </>}
+
+      {awaitingChair && <>
+        <div className="csub">Waiting on <b>{posName(rec.chairPositionId)||'the Meeting Chair'}</b>.
+          Approving captures the signature — there is no separate signing step.</div>
+        <div className="btn-row">
+          <Btn k="pri" disabled={busy==='approve'} onClick={approve}>
+            {busy==='approve'?'Approving…':'✓ Approve and sign'}</Btn>
+          <Btn k="wrn" disabled={!!busy} onClick={()=>setReturning(true)}>Return for revision</Btn>
+        </div>
+      </>}
+
+      {approved && <>
+        <div className="csub">Approved and signed. Closing finalises the record
+          {accred ? ' and releases the Meeting Governance Audit Grid.' : '.'}</div>
+        <Btn k="pri" disabled={busy==='close'} onClick={close}>
+          {busy==='close'?'Closing…':'Close the Minutes'}</Btn>
+      </>}
+
+      {closed && <Note k="ok">Closed on {fmtISODT(minutes.closedAt)}. These Minutes can now be used
+        as an input to a later Meeting.</Note>}
+
+      <div className="sep"/>
+      <Note k="info" ic="—">Approving would also activate any draft TMS Tasks and Decision Requests
+        raised from this Meeting. Neither table exists yet, so there is nothing to activate — this
+        becomes correct on its own once they are built.</Note>
+    </div>
+
+    {returning && <ReturnModal title="Return the Minutes to the Recorder"
+      onClose={()=>setReturning(false)}
+      onSave={async reason=>{
+        setReturning(false);
+        await run('return', ()=>returnMeetingMinutes(minutes.id, reason),
+          'Returned to the Recorder','The reason is recorded and every Output stays Draft.');
+      }}/>}
+  </>;
+}
+
 function DvMeetingDetail({rec,back}){
   const {sel,setSel,toast,refreshOccurrences,S}=use();
   const tab = sel.mtgTab || 'detail';
@@ -3925,6 +4188,18 @@ function DvMeetingDetail({rec,back}){
   const [minutes,setMinutes]=useState(null);
   const [grids,setGrids]=useState([]);
   const [govLoading,setGovLoading]=useState(true);
+
+  /* Re-read both after any write, so the tab reflects what Dataverse now holds
+     rather than what the UI hoped it wrote. */
+  const reloadGovernance = useCallback(async ()=>{
+    const [m,g] = await Promise.all([
+      fetchMeetingMinutesByOccurrence(rec.id).catch(e=>{
+        console.warn('[dataverse] fetchMeetingMinutesByOccurrence() failed:', e); return null; }),
+      fetchAuditGridInstancesByOccurrence(rec.id).catch(e=>{
+        console.warn('[dataverse] fetchAuditGridInstancesByOccurrence() failed:', e); return []; }),
+    ]);
+    setMinutes(m); setGrids(g||[]);
+  },[rec.id]);
 
   useEffect(()=>{
     let cancelled=false;
@@ -3948,7 +4223,29 @@ function DvMeetingDetail({rec,back}){
         toast('Not saved','Marking the meeting as Held failed. Check the console for details.','err');
         return;
       }
-      toast('Meeting held','Attendance can now be recorded.','ok');
+      /* Every completed Meeting produces Minutes, so the shell is created the
+         moment the occurrence is Held rather than waiting for someone to open
+         the tab -- otherwise the Minutes only exist if a Recorder happens to
+         visit, and a Meeting with no Minutes row is invisible to the work
+         queue. Created empty and Draft; the notes come later.
+         A failure here is reported but does not undo the Held status, which is
+         already committed by this point. */
+      let minutesNote = 'Attendance can now be recorded.';
+      if(!minutes){
+        const created = await createMeetingMinutes({
+          occurrenceId: rec.id,
+          name: `Minutes — ${rec.name}`,
+          status: 'Draft',
+        });
+        if(created.id){
+          minutesNote = 'Attendance can now be recorded, and the Minutes have been opened in Draft.';
+          setMinutes(await fetchMeetingMinutesByOccurrence(rec.id).catch(()=>null));
+        }else{
+          console.warn('[dataverse] createMeetingMinutes() failed:', created.errors);
+          minutesNote = 'Attendance can now be recorded. The Minutes row could not be created — check the console.';
+        }
+      }
+      toast('Meeting held', minutesNote, 'ok');
       await refreshOccurrences();
     }catch(e){
       console.warn('[dataverse] updateMeetingOccurrenceStatus() threw unexpectedly:', e);
@@ -4285,49 +4582,10 @@ function DvMeetingDetail({rec,back}){
       {!govLoading && !minutes &&
         <div className="card"><Empty ic="📝">No Minutes row exists for this occurrence.</Empty>
           <div style={{fontSize:12,color:'var(--muted)',textAlign:'center',padding:'0 17px 14px'}}>
-            A Meeting Minutes row is created after the Meeting is Held. Writing Minutes from here is not
-            wired yet — this tab reads lm_meetingminuteses and lm_momnoteses only.</div></div>}
-      {!govLoading && minutes && <>
-        <div className="card">
-          <div style={{display:'flex',alignItems:'center',gap:9,marginBottom:12,flexWrap:'wrap'}}>
-            <Tag c={minutes.status==='Closed'?'green':minutes.status==='Approved'?'teal':'amber'}>
-              {minutes.status||'—'}</Tag>
-            {minutes.signedName && <Tag c="grey">Signed</Tag>}
-          </div>
-          <KVBlock items={[
-            ['Submitted', fmtISODT(minutes.submittedAt)],
-            ['Approved',  fmtISODT(minutes.approvedAt)],
-            ['Closed',    fmtISODT(minutes.closedAt)],
-            ['Signed by', posName(minutes.signedByPositionId)||minutes.signedName||'—'],
-            ['Signed on', minutes.signedDate
-              ? fmtD(minutes.signedDate)+(minutes.signedTime?' · '+minutes.signedTime:'') : '—'],
-          ]}/>
-          {minutes.returnReason &&
-            <Note k="err"><b>Returned for revision.</b> {minutes.returnReason}</Note>}
-          <Note k="lock" ic="—">Read-only. The two clocks above are what the Audit Grid measures:
-            Submitted starts the Facilitator's write-up window (AG-16) and Approved closes the Meeting
-            Chair's approval window (AG-05).</Note>
-        </div>
-
-        <div className="card flush">
-          <div className="card-hd"><h2>Discussion Notes</h2>
-            <div className="csub">One MOM Note per Agenda Item. AG-06 counts an Agenda Item as having
-              an outcome when it carries a note or an Output.</div></div>
-          {rec.agenda.length===0
-            ? <div style={{padding:'8px 17px 17px'}}><Empty>No Agenda Item on this occurrence.</Empty></div>
-            : <div className="t-wrap"><table className="data">
-                <thead><tr><th style={{width:38}}>#</th><th>Agenda Item</th>
-                  <th>Discussion Note</th></tr></thead>
-                <tbody>{rec.agenda.map((a,i)=>{
-                  const note = minutes.notesByAgenda[a.id];
-                  return <tr key={a.id}>
-                    <td className="dim">{a.seq??i+1}</td>
-                    <td><div className="t-main">{a.title||'—'}</div></td>
-                    <td className={note?'':'dim'} style={{fontSize:12.5}}>{note||'No note recorded'}</td>
-                  </tr>;})}
-                </tbody></table></div>}
-        </div>
-      </>}
+            Minutes are opened automatically when the Meeting is marked Held.</div></div>}
+      {!govLoading && minutes &&
+        <DvMinutesBody rec={rec} minutes={minutes} accred={accred} grids={grids}
+          posName={posName} onReload={reloadGovernance}/>}
     </>}
 
     {tab==='grid' && <>
@@ -4399,6 +4657,64 @@ function DvReportDetail({rec,back}){
   const [tplLoading,setTplLoading]=useState(false);
   const [fileUrlInput,setFileUrlInput]=useState('');
   const [savingFile,setSavingFile]=useState(false);
+  const [history,setHistory]=useState([]);
+  const [histLoading,setHistLoading]=useState(true);
+  const [busy,setBusy]=useState(null);
+  const [rmi,setRmi]=useState(false);
+
+  const reloadHistory = useCallback(async ()=>{
+    const h = await fetchReportOccurrenceHistory(rec.id).catch(e=>{
+      console.warn('[dataverse] fetchReportOccurrenceHistory() failed:', e); return []; });
+    setHistory(h||[]);
+  },[rec.id]);
+
+  useEffect(()=>{
+    let cancelled=false;
+    setHistLoading(true);
+    fetchReportOccurrenceHistory(rec.id)
+      .then(h=>{ if(!cancelled) setHistory(h||[]); })
+      .catch(e=>console.warn('[dataverse] fetchReportOccurrenceHistory() failed:', e))
+      .finally(()=>{ if(!cancelled) setHistLoading(false); });
+    return ()=>{cancelled=true;};
+  },[rec.id]);
+
+  /* Shared shape for the three review transitions: run it, report honestly,
+     then re-read both the occurrence and its history so the panel reflects
+     Dataverse rather than what the UI hoped it wrote. */
+  const runReview = async (key, fn, okTitle, okMsg) => {
+    setBusy(key);
+    try{
+      const {id,errors} = await fn();
+      if(!id){
+        console.warn('[dataverse] '+key+' failed:', errors);
+        toast('Not saved','That review step could not be saved. Check the console.','err');
+        return;
+      }
+      if(errors && errors.length)
+        console.warn('[dataverse] '+key+' succeeded but history was not written:', errors);
+      toast(okTitle, okMsg, 'ok');
+      await Promise.all([refreshOccurrences(), reloadHistory()]);
+    }catch(e){
+      console.warn('[dataverse] '+key+' threw:', e);
+      toast('Not saved','That review step could not be saved. Check the console.','err');
+    }finally{ setBusy(null); }
+  };
+
+  const submitReport = () => runReview('submit',
+    ()=>submitReportOccurrence(rec.id, { actorPositionId: rec.creatorPositionId || undefined }),
+    'Submitted for review','It now sits with the first configured reviewer.');
+
+  const approveStep = () => {
+    const step = rec.reviewStep ?? 0;
+    const total = reviewChain.length;
+    const final = step + 1 >= total;
+    return runReview('approve',
+      ()=>approveReportStep(rec.id, { currentStep: step, totalSteps: total,
+        actorPositionId: reviewChain[step]?._lm_reviewerposition_value || undefined }),
+      final ? 'Report approved' : 'Step approved',
+      final ? 'The final reviewer has approved. The Report Submission is locked.'
+            : `Routed to reviewer ${step + 2} of ${total}.`);
+  };
 
   useEffect(()=>{
     if(!rec.templateId){ setTplDetail(null); return; }
@@ -4560,6 +4876,73 @@ function DvReportDetail({rec,back}){
                       </div>
                       <Tag c={st==='Approved'?'green':st==='Current'?'amber':'grey'}>{st}</Tag>
                     </div>;})}
+
+          {/* Review actions. The lifecycle is Draft -> In Review -> Approved;
+              Request More Information is an action inside it, not a state. */}
+          <div className="sep"/>
+          {rec.locked || rec.status==='Approved'
+            ? <Note k="ok"><b>Approved and locked.</b> The file URL, version and full approval history
+                are retained. A change after approval has to become a new version.</Note>
+            : !rec.templateId
+              ? <Note k="warn"><b>This Custom Report has no reviewer chain.</b> The chain is configured
+                  on the Report Template, and a Custom Report has no Template — so there is nowhere to
+                  read reviewers from and it cannot be submitted. It needs either a per-occurrence
+                  reviewer table, or a Template to borrow the chain from.</Note>
+              : reviewChain.length===0
+                ? <Note k="warn">No reviewer is configured for this Report's Business Unit or Region,
+                    so there is no route to submit into.</Note>
+                : rec.status==='Draft'
+                  ? <>
+                      <div className="csub">Submitting routes this to
+                        <b> {pos(reviewChain[0]?._lm_reviewerposition_value)||'the first reviewer'}</b>,
+                        the first of {reviewChain.length} step{reviewChain.length>1?'s':''}.</div>
+                      <Btn k="pri" disabled={busy==='submit'} onClick={submitReport}>
+                        {busy==='submit'?'Submitting…':'Submit for review'}</Btn>
+                    </>
+                  : rec.status==='In Review'
+                    ? <>
+                        <div className="csub">Waiting on
+                          <b> {pos(reviewChain[rec.reviewStep??0]?._lm_reviewerposition_value)||'the current reviewer'}</b>
+                          {' '}— step {(rec.reviewStep??0)+1} of {reviewChain.length}.
+                          {(rec.reviewStep??0)+1>=reviewChain.length
+                            ? ' Approving this step approves the Report.' : ''}</div>
+                        <div className="btn-row">
+                          <Btn k="pri" disabled={!!busy} onClick={approveStep}>
+                            {busy==='approve'?'Approving…'
+                              :(rec.reviewStep??0)+1>=reviewChain.length?'✓ Approve and publish':'✓ Approve this step'}</Btn>
+                          <Btn k="wrn" disabled={!!busy} onClick={()=>setRmi(true)}>
+                            Request More Information</Btn>
+                        </div>
+                      </>
+                    : null}
+        </div>
+
+        <div className="card">
+          {rmi && <ReturnModal title="Request More Information"
+            onClose={()=>setRmi(false)}
+            onSave={async reason=>{
+              setRmi(false);
+              await runReview('rmi',
+                ()=>requestMoreInfoOnReport(rec.id, {
+                  actorPositionId: reviewChain[rec.reviewStep??0]?._lm_reviewerposition_value || undefined,
+                  reason,
+                }),
+                'Returned to the Report Creator',
+                'The reason is recorded and the prior review history is kept. Re-submission restarts the configured route.');
+            }}/>}
+          <h2>Review History</h2>
+          <div className="csub">Every review action, retained across a Request More Information —
+            read from lm_reportoccurrencehistories.</div>
+          {histLoading
+            ? <Empty>Reading the history…</Empty>
+            : history.length===0
+              ? <Empty ic="—">Nothing recorded yet.</Empty>
+              : <Hist items={history.map(h=>({
+                  at: h.at ? fmtISODT(h.at) : '—',
+                  who: null,
+                  act: h.action + (h.actorPositionId ? ' — '+(pos(h.actorPositionId)||'') : ''),
+                  note: h.note,
+                }))}/>}
         </div>
 
         <div className="card">
@@ -5134,7 +5517,10 @@ function EditOccModal({occ,onClose}){
   const [f,setF]=useState({date:occ.date,start:occ.start,end:occ.end,mode:occ.mode,
                            location:occ.location||'',link:occ.link||''});
   const set=(k,v)=>setF(x=>({...x,[k]:v}));
-  const nw = isNonWorking(f.date);
+  /* Same rule as the Dataverse paths: a non-working date rolls forward rather
+     than being refused, and only this occurrence moves. */
+  const bookedDate = f.date && isNonWorking(f.date) ? nextWorkingDay(f.date) : f.date;
+  const moved = !!f.date && bookedDate !== f.date;
   const badTime = f.end<=f.start;
   const needLoc = f.mode!=='Online' && !f.location.trim();
   const needLink= f.mode!=='In person' && !f.link.trim();
@@ -5142,13 +5528,13 @@ function EditOccModal({occ,onClose}){
   return <Modal title="Edit this occurrence" wide onClose={onClose}
     sub="Execution-level information only. The approved Setup, its controlled name and its classification are owned by Taxonomy."
     footer={<><Btn onClick={onClose}>Cancel</Btn>
-      <Btn k="pri" disabled={!ok} onClick={()=>{A.editOcc(occ.id,f);onClose();}}>
+      <Btn k="pri" disabled={!ok} onClick={()=>{A.editOcc(occ.id,{...f,date:bookedDate});onClose();}}>
         Save and resynchronize</Btn></>}>
     <div className="f-row3">
       <Field label="Date" req
-        err={weekend
-          ? `${dayName(f.date)} is a weekend — the working week is Sunday to Thursday. Choose another day to schedule this Meeting.`
-          : nw ? 'This is a configured public holiday.' : null}>
+        hint={moved
+          ? `${dayName(f.date)} is a non-working day. This occurrence will move to ${fmtD(bookedDate)} — the series is unchanged.`
+          : 'The working week is Sunday to Thursday.'}>
         <input type="date" value={f.date} onChange={e=>set('date',e.target.value)}/></Field>
       <Field label="Start" req><input type="time" value={f.start} onChange={e=>set('start',e.target.value)}/></Field>
       <Field label="End" req err={badTime?'The end time must be after the start time.':null}>
@@ -5471,16 +5857,18 @@ function NewMeetingModal({kind,onClose}){
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[tplDetail]);
 
-  /* A Meeting may not be booked on the weekend (Friday or Saturday) at all. */
-  const weekend = isWeekend(f.date);
-  const nw = isNonWorking(f.date) && !weekend;   // a public holiday — a warning, not a block
+  /* An occurrence landing on a non-working day is NOT refused — it rolls forward
+     to the next working day, that occurrence only, never the series. Weekend and
+     public holiday behave the same way; isNonWorking() covers both. */
+  const bookedDate = f.date && isNonWorking(f.date) ? nextWorkingDay(f.date) : f.date;
+  const moved = !!f.date && bookedDate !== f.date;
 
   /* Mode decides which of the two destination fields apply. */
   const needsLink     = f.mode==='Online' || f.mode==='Hybrid';
   const needsLocation = f.mode==='In person' || f.mode==='Hybrid';
   const modeOk = (!needsLink || f.link.trim()) && (!needsLocation || f.location.trim());
 
-  const ok = !weekend && agenda.length>0 && f.dvAttend.length>0 && scopeOk
+  const ok = !!f.date && agenda.length>0 && f.dvAttend.length>0 && scopeOk
     && f.dvChairPositionId && f.dvFacilitatorPositionId && f.tz && modeOk
     && (custom
       ? f.name.trim() && f.purpose.trim()
@@ -5507,7 +5895,7 @@ function NewMeetingModal({kind,onClose}){
         departmentId:f.dvDepartmentId||undefined,
         chairPositionId:f.dvChairPositionId||undefined,
         facilitatorPositionId:f.dvFacilitatorPositionId||undefined,
-        date:f.date, start:f.start, end:f.end,
+        date:bookedDate, start:f.start, end:f.end,
         timezone:f.tz||undefined,
         mode:f.mode, status:'Scheduled',
         location:needsLocation ? (f.location.trim()||null) : null,
@@ -5672,7 +6060,10 @@ function NewMeetingModal({kind,onClose}){
       <Pills val={f.adhoc} onChange={v=>set('adhoc',v||'Governance')} opts={ADHOC_TYPES}/></Field>
 
     <div className="f-row3">
-      <Field label="Date" req err={nw?'This is a configured non-working day — the occurrence will move to the next working day.':null}>
+      <Field label="Date" req
+        hint={moved
+          ? `${dayName(f.date)} is a non-working day. This occurrence will be booked on ${fmtD(bookedDate)} — the series is unchanged.`
+          : 'The working week is Sunday to Thursday.'}>
         <input type="date" value={f.date} onChange={e=>set('date',e.target.value)}/></Field>
       <Field label="Start" req><input type="time" value={f.start}
         onChange={e=>set('start',e.target.value)}/></Field>
