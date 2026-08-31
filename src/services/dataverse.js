@@ -888,6 +888,9 @@ export const MEETING_DAY_OF_WEEK = {
   124330000:'Sunday', 124330001:'Monday', 124330002:'Tuesday',
   124330003:'Wednesday', 124330004:'Thursday',
 };
+export const MEETING_MONTH_IN_QUARTER = {
+  124330000:'1st month', 124330001:'2nd month', 124330002:'3rd month',
+};
 
 /**
  * Saves a Committee/Meeting Setup to Dataverse: creates the parent
@@ -1425,6 +1428,7 @@ import { Lm_approvalcyclesService } from '../generated/services/Lm_approvalcycle
 import { Lm_approvalcyclestepsService } from '../generated/services/Lm_approvalcyclestepsService';
 import { Lm_authoritymatrixrowsService } from '../generated/services/Lm_authoritymatrixrowsService';
 import { Lm_reportoccurrencehistoriesService } from '../generated/services/Lm_reportoccurrencehistoriesService';
+import { Wlog_decisionsService } from '../generated/services/Wlog_decisionsService';
 
 export const MEETING_OCC_STATUS = { 1:'Scheduled', 2:'Held', 3:'Cancelled' };
 export const MEETING_OCC_STATUS_KEY = { 'Scheduled':1, 'Held':2, 'Cancelled':3 };
@@ -2756,5 +2760,77 @@ export async function requestMoreInfoOnReport(id, { actorPositionId, reason } = 
     return { id, errors: h.errors };
   }catch(e){
     return { id: null, errors: [{ table:'lm_reportoccurrences', error:e }] };
+  }
+}
+
+/* ---------------------------------------------------------------------
+   WIRED (base only): Decisions (wlog_decisions)
+   ---------------------------------------------------------------------
+   wlog_decisions is a pre-existing corporate "Work Log Decisions" table,
+   not one built for this app. It has no lookup column to
+   lm_meetingoccurrences, lm_reportoccurrences, lm_meetingtemplates or
+   lm_report_templates -- only to an unrelated Work Log (employee
+   time-logging) table. Per the call made when this was wired: the link to
+   a specific Meeting Agenda Item / Report comes later, once those lookup
+   columns exist. Until then this is read + a minimal create, surfaced as
+   its own list on the Decisions tab alongside -- not replacing -- the
+   existing seeded Decision workflow (Direct/Authority-Check types,
+   Approval Cycle, Proposals, exec owner, outputs all stay seeded-only).
+
+   Also unlike every other table in this file: it's registered through the
+   legacy "Common Data Service" connector rather than the direct CDS
+   database binding every MEETING_/REPORT_ table above uses, so its choice
+   columns (Decision Status, Review Status, Escalation Result) are decoded
+   from the `_xxx_label` sibling fields the connector returns -- not a
+   hand-maintained numeric map like MEETING_OCC_STATUS above. The numeric
+   values behind each label were never surfaced by the CLI/schema without
+   an extra live metadata call, and the label is all display needs;
+   createWorkLogDecision() below leaves status unset on create for the
+   same reason, so Dataverse's own option-set default applies. */
+export async function fetchWorkLogDecisions(){
+  const res = await Wlog_decisionsService.getAll({
+    filter: 'statecode eq 0',
+    select: ['wlog_decisionid','wlog_name','wlog_decisiontaken','wlog_expectedoutput',
+             'wlog_managernote','wlog_evidenceurl','wlog_decisionstatus','_wlog_decisionstatus_label',
+             'wlog_reviewstatus','_wlog_reviewstatus_label','wlog_reviewedon',
+             'wlog_escalatedon','wlog_escalationreason','wlog_escalationreply',
+             'wlog_escalationresolvedon','wlog_escalationresult','_wlog_escalationresult_label',
+             'createdon','modifiedon'],
+  });
+  return (res?.data ?? []).map(d => ({
+    id: d.wlog_decisionid,
+    name: d.wlog_name || '(untitled decision)',
+    decisionTaken: d.wlog_decisiontaken || null,
+    expectedOutput: d.wlog_expectedoutput || null,
+    managerNote: d.wlog_managernote || null,
+    evidenceUrl: d.wlog_evidenceurl || null,
+    status: d._wlog_decisionstatus_label || null,
+    reviewStatus: d._wlog_reviewstatus_label || null,
+    reviewedOn: isoDay(d.wlog_reviewedon),
+    escalatedOn: isoDay(d.wlog_escalatedon),
+    escalationReason: d.wlog_escalationreason || null,
+    escalationReply: d.wlog_escalationreply || null,
+    escalationResolvedOn: isoDay(d.wlog_escalationresolvedon),
+    escalationResult: d._wlog_escalationresult_label || null,
+    created: d.createdon || null,
+    updated: d.modifiedon || d.createdon || null,
+  })).sort((a,b)=> (b.created||'').localeCompare(a.created||''));
+}
+
+/** Logs a new Work Log Decision. See the section note above for why there's
+ *  no Meeting/Report link and no status on create yet. */
+export async function createWorkLogDecision({ name, decisionTaken, expectedOutput, managerNote, evidenceUrl } = {}){
+  try{
+    const created = await Wlog_decisionsService.create({
+      wlog_name: (name||'').trim().slice(0,100) || undefined,
+      wlog_decisiontaken: decisionTaken ? decisionTaken.slice(0,4000) : undefined,
+      wlog_expectedoutput: expectedOutput ? expectedOutput.slice(0,1000) : undefined,
+      wlog_managernote: managerNote ? managerNote.slice(0,2000) : undefined,
+      wlog_evidenceurl: evidenceUrl ? evidenceUrl.slice(0,500) : undefined,
+    });
+    const id = idOrThrow(created, 'wlog_decisionid');
+    return { id, errors: [] };
+  }catch(e){
+    return { id: null, errors: [{ table:'wlog_decisions', error:e }] };
   }
 }

@@ -26,6 +26,22 @@
           }
         }
       }
+    },
+    "f39edab8-f2a7-407e-bbf6-2ce98b2ee21d": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_commondataservice",
+      "displayName": "Microsoft Dataverse",
+      "dataSources": [
+        "worklogdecisions"
+      ],
+      "dataSets": {
+        "default.cds": {
+          "dataSources": {
+            "worklogdecisions": {
+              "tableName": "wlog_decisions"
+            }
+          }
+        }
+      }
     }
   },
   "databaseReferences": {

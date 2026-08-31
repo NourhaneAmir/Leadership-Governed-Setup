@@ -1,0 +1,1570 @@
+{
+  "name": "wlog_decisions",
+  "title": "Work Log Decisions",
+  "x-ms-permission": "read-write",
+  "x-ms-capabilities": {
+    "sortRestrictions": {
+      "sortable": true,
+      "unsortableProperties": [
+        "_createdby_value",
+        "_createdby_type",
+        "_createdonbehalfby_value",
+        "_createdonbehalfby_type",
+        "_modifiedby_value",
+        "_modifiedby_type",
+        "_modifiedonbehalfby_value",
+        "_modifiedonbehalfby_type",
+        "_ownerid_type",
+        "_owningbusinessunit_value",
+        "_owningbusinessunit_type",
+        "_wlog_escalatedto_value",
+        "_wlog_escalatedto_type",
+        "_wlog_escalatedtouser_value",
+        "_wlog_escalatedtouser_type",
+        "_wlog_reviewer_value",
+        "_wlog_reviewer_type",
+        "_wlog_revieweruser_value",
+        "_wlog_revieweruser_type",
+        "_wlog_wlogworklogid_value",
+        "_wlog_wlogworklogid_type",
+        "_wlog_worklog_value",
+        "_wlog_worklog_type",
+        "wlog_decisionstatus",
+        "_wlog_decisionstatus_label",
+        "wlog_escalationresult",
+        "_wlog_escalationresult_label",
+        "wlog_reviewstatus",
+        "_wlog_reviewstatus_label",
+        "_statecode_label",
+        "_statuscode_label"
+      ]
+    },
+    "filterRestrictions": {
+      "filterable": true,
+      "nonFilterableProperties": [
+        "_createdby_type",
+        "_createdonbehalfby_type",
+        "_modifiedby_type",
+        "_modifiedonbehalfby_type",
+        "_ownerid_type",
+        "_owningbusinessunit_type",
+        "_wlog_escalatedto_type",
+        "_wlog_escalatedtouser_type",
+        "_wlog_reviewer_type",
+        "_wlog_revieweruser_type",
+        "_wlog_wlogworklogid_type",
+        "_wlog_worklog_type",
+        "_wlog_decisionstatus_label",
+        "_wlog_escalationresult_label",
+        "_wlog_reviewstatus_label",
+        "_statecode_label",
+        "_statuscode_label"
+      ]
+    },
+    "isOnlyServerPagable": true,
+    "filterFunctionSupport": [
+      "eq",
+      "ne",
+      "gt",
+      "ge",
+      "lt",
+      "le",
+      "and",
+      "or",
+      "contains",
+      "startswith",
+      "endswith",
+      "not",
+      "null"
+    ]
+  },
+  "schema": {
+    "type": "array",
+    "locale": 1033,
+    "items": {
+      "type": "object",
+      "properties": {
+        "wlog_evidenceurl": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "maxLength": 500,
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "contains",
+              "startswith",
+              "endswith",
+              "null"
+            ]
+          },
+          "description": "",
+          "title": "Based On / Evidence",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-write"
+        },
+        "createdon": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "Date and time when the record was created.",
+          "title": "Created On",
+          "format": "date-time",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-only"
+        },
+        "wlog_name": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "maxLength": 100,
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "contains",
+              "startswith",
+              "endswith",
+              "null"
+            ]
+          },
+          "description": "",
+          "title": "Decision ID",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-write"
+        },
+        "wlog_decisionstatus": {
+          "x-ms-sort": "none",
+          "type": "integer",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "",
+          "title": "Decision Status Value",
+          "format": "int32",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-write",
+          "x-ms-dynamic-values": {
+            "operationId": "GetOptionSetMetadata",
+            "parameters": {
+              "dataset": {
+                "parameter": "dataset"
+              },
+              "table": {
+                "parameter": "table"
+              },
+              "item": "9f27201c-6d74-f111-ab0d-7ced8d92541b",
+              "type": "Picklist"
+            },
+            "value-path": "value",
+            "value-title": "label",
+            "value-collection": "value"
+          }
+        },
+        "wlog_decisiontaken": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "maxLength": 4000,
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "contains",
+              "startswith",
+              "endswith",
+              "null"
+            ]
+          },
+          "description": "",
+          "title": "Decision Taken",
+          "x-ms-visibility": "important",
+          "x-ms-permission": "read-write"
+        },
+        "wlog_escalatedon": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "",
+          "title": "Escalated On",
+          "format": "date-time",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-write"
+        },
+        "wlog_escalationreason": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "maxLength": 2000,
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "contains",
+              "startswith",
+              "endswith",
+              "null"
+            ]
+          },
+          "description": "",
+          "title": "Escalation Reason",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-write"
+        },
+        "wlog_escalationreply": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "maxLength": 2000,
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "contains",
+              "startswith",
+              "endswith",
+              "null"
+            ]
+          },
+          "description": "",
+          "title": "Escalation Reply",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-write"
+        },
+        "wlog_escalationresolvedon": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "",
+          "title": "Escalation Resolved On",
+          "format": "date-time",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-write"
+        },
+        "wlog_escalationresult": {
+          "x-ms-sort": "none",
+          "type": "integer",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "",
+          "title": "Escalation Result Value",
+          "format": "int32",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-write",
+          "x-ms-dynamic-values": {
+            "operationId": "GetOptionSetMetadata",
+            "parameters": {
+              "dataset": {
+                "parameter": "dataset"
+              },
+              "table": {
+                "parameter": "table"
+              },
+              "item": "c985b65d-7b74-f111-ab0d-7ced8d92541b",
+              "type": "Picklist"
+            },
+            "value-path": "value",
+            "value-title": "label",
+            "value-collection": "value"
+          }
+        },
+        "wlog_expectedoutput": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "maxLength": 1000,
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "contains",
+              "startswith",
+              "endswith",
+              "null"
+            ]
+          },
+          "description": "",
+          "title": "Expected Output",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-write"
+        },
+        "importsequencenumber": {
+          "x-ms-sort": "none",
+          "type": "integer",
+          "maximum": 2147483647,
+          "minimum": -2147483648,
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "Sequence number of the import that created this record.",
+          "title": "Import Sequence Number",
+          "format": "int32",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-write"
+        },
+        "wlog_managernote": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "maxLength": 2000,
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "contains",
+              "startswith",
+              "endswith",
+              "null"
+            ]
+          },
+          "description": "",
+          "title": "Manager Note",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-write"
+        },
+        "modifiedon": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "Date and time when the record was modified.",
+          "title": "Modified On",
+          "format": "date-time",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-only"
+        },
+        "overriddencreatedon": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "Date and time that the record was migrated.",
+          "title": "Record Created On",
+          "format": "date-time",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-write"
+        },
+        "wlog_reviewstatus": {
+          "x-ms-sort": "none",
+          "type": "integer",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "",
+          "title": "Review Status Value",
+          "format": "int32",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-write",
+          "x-ms-dynamic-values": {
+            "operationId": "GetOptionSetMetadata",
+            "parameters": {
+              "dataset": {
+                "parameter": "dataset"
+              },
+              "table": {
+                "parameter": "table"
+              },
+              "item": "e031c62e-6d74-f111-ab0d-7ced8d92541b",
+              "type": "Picklist"
+            },
+            "value-path": "value",
+            "value-title": "label",
+            "value-collection": "value"
+          }
+        },
+        "wlog_reviewedon": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "",
+          "title": "Reviewed On",
+          "format": "date-time",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-write"
+        },
+        "statuscode": {
+          "x-ms-sort": "none",
+          "type": "integer",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "Reason for the status of the Work Log Decision",
+          "title": "Status Reason Value",
+          "format": "int32",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-write",
+          "x-ms-dynamic-values": {
+            "operationId": "GetOptionSetMetadata",
+            "parameters": {
+              "dataset": {
+                "parameter": "dataset"
+              },
+              "table": {
+                "parameter": "table"
+              },
+              "item": "62640af8-f3e8-4d11-b66a-829eaf2b8955",
+              "type": "Status"
+            },
+            "value-path": "value",
+            "value-title": "label",
+            "value-collection": "value"
+          }
+        },
+        "statecode": {
+          "x-ms-sort": "none",
+          "type": "integer",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "Status of the Work Log Decision",
+          "title": "Status Value",
+          "format": "int32",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-write",
+          "x-ms-dynamic-values": {
+            "operationId": "GetOptionSetMetadata",
+            "parameters": {
+              "dataset": {
+                "parameter": "dataset"
+              },
+              "table": {
+                "parameter": "table"
+              },
+              "item": "38543c89-39a9-41e3-a585-a5822b360805",
+              "type": "State"
+            },
+            "value-path": "value",
+            "value-title": "label",
+            "value-collection": "value"
+          }
+        },
+        "timezoneruleversionnumber": {
+          "x-ms-sort": "none",
+          "type": "integer",
+          "maximum": 2147483647,
+          "minimum": -1,
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "For internal use only.",
+          "title": "Time Zone Rule Version Number",
+          "format": "int32",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-write"
+        },
+        "utcconversiontimezonecode": {
+          "x-ms-sort": "none",
+          "type": "integer",
+          "maximum": 2147483647,
+          "minimum": -1,
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "Time zone code that was in use when the record was created.",
+          "title": "UTC Conversion Time Zone Code",
+          "format": "int32",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-write"
+        },
+        "versionnumber": {
+          "x-ms-sort": "none",
+          "type": "integer",
+          "maximum": 9223372036854776000,
+          "minimum": -9223372036854776000,
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "Version Number",
+          "title": "Version Number",
+          "format": "int64",
+          "x-ms-visibility": "internal",
+          "x-ms-permission": "none"
+        },
+        "wlog_decisionid": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "Unique identifier for entity instances",
+          "title": "Work Log Decision",
+          "format": "guid",
+          "x-ms-keyOrder": 0,
+          "x-ms-keyType": "primary",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-only"
+        },
+        "_createdby_value": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "Unique identifier of the user who created the record.",
+          "title": "Created By",
+          "format": "guid",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-only"
+        },
+        "_createdonbehalfby_value": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "Unique identifier of the delegate user who created the record.",
+          "title": "Created By (Delegate)",
+          "format": "guid",
+          "x-ms-visibility": "internal",
+          "x-ms-permission": "none"
+        },
+        "_createdonbehalfby_type": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "Unique identifier of the delegate user who created the record.",
+          "title": "Created By (Delegate) Type",
+          "format": "string",
+          "x-ms-visibility": "internal",
+          "x-ms-permission": "read-only",
+          "enum": [
+            "",
+            "systemusers"
+          ],
+          "default": "",
+          "x-ms-crm-targetentitynames": [
+            "systemusers"
+          ],
+          "x-ms-crm-navigationpropertynames ": [
+            "createdonbehalfby"
+          ]
+        },
+        "_createdby_type": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "Unique identifier of the user who created the record.",
+          "title": "Created By Type",
+          "format": "string",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-only",
+          "enum": [
+            "",
+            "systemusers"
+          ],
+          "default": "",
+          "x-ms-crm-targetentitynames": [
+            "systemusers"
+          ],
+          "x-ms-crm-navigationpropertynames ": [
+            "createdby"
+          ]
+        },
+        "_wlog_decisionstatus_label": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "",
+          "title": "Decision Status",
+          "format": "string",
+          "x-ms-visibility": "internal",
+          "x-ms-permission": "read-write",
+          "x-ms-dynamic-values": {
+            "operationId": "GetOptionSetMetadata",
+            "parameters": {
+              "dataset": {
+                "parameter": "dataset"
+              },
+              "table": {
+                "parameter": "table"
+              },
+              "item": "9f27201c-6d74-f111-ab0d-7ced8d92541b",
+              "type": "Picklist"
+            },
+            "value-path": "value",
+            "value-title": "label",
+            "value-collection": "value"
+          },
+          "enum": [
+            "",
+            "Completed",
+            "Pending",
+            "Waiting",
+            "Escalated"
+          ],
+          "x-ms-crm-enumvalues": [
+            null,
+            1,
+            2,
+            3,
+            4
+          ]
+        },
+        "_wlog_escalatedto_value": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "",
+          "title": "Escalated To",
+          "format": "guid",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-write"
+        },
+        "_wlog_escalatedtouser_value": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "",
+          "title": "Escalated To (User)",
+          "format": "guid",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-write"
+        },
+        "_wlog_escalatedtouser_type": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "",
+          "title": "Escalated To (User) Type",
+          "format": "string",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-only",
+          "enum": [
+            "",
+            "systemusers"
+          ],
+          "default": "",
+          "x-ms-crm-targetentitynames": [
+            "systemusers"
+          ],
+          "x-ms-crm-navigationpropertynames ": [
+            "wlog_escalatedtouser"
+          ]
+        },
+        "_wlog_escalatedto_type": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "",
+          "title": "Escalated To Type",
+          "format": "string",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-only",
+          "enum": [
+            "",
+            "hr_employees"
+          ],
+          "default": "",
+          "x-ms-crm-targetentitynames": [
+            "hr_employees"
+          ],
+          "x-ms-crm-navigationpropertynames ": [
+            "wlog_escalatedto"
+          ]
+        },
+        "_wlog_escalationresult_label": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "",
+          "title": "Escalation Result",
+          "format": "string",
+          "x-ms-visibility": "internal",
+          "x-ms-permission": "read-write",
+          "x-ms-dynamic-values": {
+            "operationId": "GetOptionSetMetadata",
+            "parameters": {
+              "dataset": {
+                "parameter": "dataset"
+              },
+              "table": {
+                "parameter": "table"
+              },
+              "item": "c985b65d-7b74-f111-ab0d-7ced8d92541b",
+              "type": "Picklist"
+            },
+            "value-path": "value",
+            "value-title": "label",
+            "value-collection": "value"
+          },
+          "enum": [
+            "",
+            "Upheld (Validated)",
+            "Overturned (Rejected)",
+            "Returned to reviewer"
+          ],
+          "x-ms-crm-enumvalues": [
+            null,
+            1,
+            2,
+            3
+          ]
+        },
+        "_modifiedby_value": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "Unique identifier of the user who modified the record.",
+          "title": "Modified By",
+          "format": "guid",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-only"
+        },
+        "_modifiedonbehalfby_value": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "Unique identifier of the delegate user who modified the record.",
+          "title": "Modified By (Delegate)",
+          "format": "guid",
+          "x-ms-visibility": "internal",
+          "x-ms-permission": "none"
+        },
+        "_modifiedonbehalfby_type": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "Unique identifier of the delegate user who modified the record.",
+          "title": "Modified By (Delegate) Type",
+          "format": "string",
+          "x-ms-visibility": "internal",
+          "x-ms-permission": "read-only",
+          "enum": [
+            "",
+            "systemusers"
+          ],
+          "default": "",
+          "x-ms-crm-targetentitynames": [
+            "systemusers"
+          ],
+          "x-ms-crm-navigationpropertynames ": [
+            "modifiedonbehalfby"
+          ]
+        },
+        "_modifiedby_type": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "Unique identifier of the user who modified the record.",
+          "title": "Modified By Type",
+          "format": "string",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-only",
+          "enum": [
+            "",
+            "systemusers"
+          ],
+          "default": "",
+          "x-ms-crm-targetentitynames": [
+            "systemusers"
+          ],
+          "x-ms-crm-navigationpropertynames ": [
+            "modifiedby"
+          ]
+        },
+        "_ownerid_value": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "Owner Id",
+          "title": "Owner",
+          "format": "guid",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-write"
+        },
+        "_ownerid_type": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "Owner Id",
+          "title": "Owner Type",
+          "format": "string",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-write",
+          "enum": [
+            "",
+            "systemusers",
+            "teams"
+          ],
+          "default": "",
+          "x-ms-crm-targetentitynames": [],
+          "x-ms-crm-navigationpropertynames ": []
+        },
+        "_owningbusinessunit_value": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "Unique identifier for the business unit that owns the record",
+          "title": "Owning Business Unit",
+          "format": "guid",
+          "x-ms-visibility": "internal",
+          "x-ms-permission": "none"
+        },
+        "_owningbusinessunit_type": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "Unique identifier for the business unit that owns the record",
+          "title": "Owning Business Unit Type",
+          "format": "string",
+          "x-ms-visibility": "internal",
+          "x-ms-permission": "read-only",
+          "enum": [
+            "",
+            "businessunits"
+          ],
+          "default": "",
+          "x-ms-crm-targetentitynames": [
+            "businessunits"
+          ],
+          "x-ms-crm-navigationpropertynames ": [
+            "owningbusinessunit"
+          ]
+        },
+        "_wlog_reviewstatus_label": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "",
+          "title": "Review Status",
+          "format": "string",
+          "x-ms-visibility": "internal",
+          "x-ms-permission": "read-write",
+          "x-ms-dynamic-values": {
+            "operationId": "GetOptionSetMetadata",
+            "parameters": {
+              "dataset": {
+                "parameter": "dataset"
+              },
+              "table": {
+                "parameter": "table"
+              },
+              "item": "e031c62e-6d74-f111-ab0d-7ced8d92541b",
+              "type": "Picklist"
+            },
+            "value-path": "value",
+            "value-title": "label",
+            "value-collection": "value"
+          },
+          "enum": [
+            "",
+            "Draft",
+            "Pending Validation",
+            "Validated",
+            "Escalated",
+            "Rejected"
+          ],
+          "x-ms-crm-enumvalues": [
+            null,
+            1,
+            2,
+            3,
+            4,
+            5
+          ]
+        },
+        "_wlog_reviewer_value": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "",
+          "title": "Reviewer (Admin Manager)",
+          "format": "guid",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-write"
+        },
+        "_wlog_reviewer_type": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "",
+          "title": "Reviewer (Admin Manager) Type",
+          "format": "string",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-only",
+          "enum": [
+            "",
+            "hr_employees"
+          ],
+          "default": "",
+          "x-ms-crm-targetentitynames": [
+            "hr_employees"
+          ],
+          "x-ms-crm-navigationpropertynames ": [
+            "wlog_reviewer"
+          ]
+        },
+        "_wlog_revieweruser_value": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "",
+          "title": "Reviewer (User)",
+          "format": "guid",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-write"
+        },
+        "_wlog_revieweruser_type": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "",
+          "title": "Reviewer (User) Type",
+          "format": "string",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-only",
+          "enum": [
+            "",
+            "systemusers"
+          ],
+          "default": "",
+          "x-ms-crm-targetentitynames": [
+            "systemusers"
+          ],
+          "x-ms-crm-navigationpropertynames ": [
+            "wlog_revieweruser"
+          ]
+        },
+        "_statecode_label": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "Status of the Work Log Decision",
+          "title": "Status",
+          "format": "string",
+          "x-ms-visibility": "internal",
+          "x-ms-permission": "read-write",
+          "x-ms-dynamic-values": {
+            "operationId": "GetOptionSetMetadata",
+            "parameters": {
+              "dataset": {
+                "parameter": "dataset"
+              },
+              "table": {
+                "parameter": "table"
+              },
+              "item": "38543c89-39a9-41e3-a585-a5822b360805",
+              "type": "State"
+            },
+            "value-path": "value",
+            "value-title": "label",
+            "value-collection": "value"
+          },
+          "enum": [
+            "",
+            "Active",
+            "Inactive"
+          ],
+          "x-ms-crm-enumvalues": [
+            null,
+            0,
+            1
+          ]
+        },
+        "_statuscode_label": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "Reason for the status of the Work Log Decision",
+          "title": "Status Reason",
+          "format": "string",
+          "x-ms-visibility": "internal",
+          "x-ms-permission": "read-write",
+          "x-ms-dynamic-values": {
+            "operationId": "GetOptionSetMetadata",
+            "parameters": {
+              "dataset": {
+                "parameter": "dataset"
+              },
+              "table": {
+                "parameter": "table"
+              },
+              "item": "62640af8-f3e8-4d11-b66a-829eaf2b8955",
+              "type": "Status"
+            },
+            "value-path": "value",
+            "value-title": "label",
+            "value-collection": "value"
+          },
+          "enum": [
+            "",
+            "Active",
+            "Inactive"
+          ],
+          "x-ms-crm-enumvalues": [
+            null,
+            1,
+            2
+          ]
+        },
+        "_wlog_wlogworklogid_value": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "title": "Work Log",
+          "format": "guid",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-write"
+        },
+        "_wlog_worklog_value": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "",
+          "title": "Work Log",
+          "format": "guid",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-write"
+        },
+        "_wlog_wlogworklogid_type": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "title": "Work Log Type",
+          "format": "string",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-only",
+          "enum": [
+            "",
+            "wlog_worklogs"
+          ],
+          "default": "",
+          "x-ms-crm-targetentitynames": [
+            "wlog_worklogs"
+          ],
+          "x-ms-crm-navigationpropertynames ": [
+            "wlog_wlogworklogId"
+          ]
+        },
+        "_wlog_worklog_type": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "",
+          "title": "Work Log Type",
+          "format": "string",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-only",
+          "enum": [
+            "",
+            "wlog_worklogs"
+          ],
+          "default": "",
+          "x-ms-crm-targetentitynames": [
+            "wlog_worklogs"
+          ],
+          "x-ms-crm-navigationpropertynames ": [
+            "wlog_worklog"
+          ]
+        },
+        "{Attachments}": {
+          "title": "Attachments",
+          "description": "Never returns any data. Use Attachment endpoints to access item attachments.",
+          "x-ms-permission": "read-write",
+          "targetEntity": "attachments",
+          "format": "x-ms-containedMediaEntity",
+          "x-ms-visibility": "internal",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "format": "x-ms-mediaEntity",
+            "x-ms-sort": "none",
+            "properties": {
+              "@odata.type": {
+                "title": "@odata.type",
+                "x-ms-visibility": "internal",
+                "type": "string",
+                "x-ms-permission": "read-write",
+                "default": "#Object"
+              },
+              "Id": {
+                "title": "Id",
+                "type": "string",
+                "x-ms-keyType": "primary",
+                "x-ms-keyOrder": 1,
+                "x-ms-permission": "read-only"
+              },
+              "AbsoluteUri": {
+                "title": "AbsoluteUri",
+                "type": "string",
+                "format": "uri",
+                "x-ms-permission": "read-only"
+              },
+              "DisplayName": {
+                "title": "DisplayName",
+                "type": "string",
+                "x-ms-permission": "read-only"
+              }
+            }
+          },
+          "@odata.type": "#Collection(Object)"
+        }
+      },
+      "required": [],
+      "x-ms-displayFormat": {
+        "propertiesCompactDisplayOrder": [
+          "createdon",
+          "_ownerid_value",
+          "wlog_name",
+          "statuscode"
+        ],
+        "propertiesDisplayOrder": [],
+        "propertiesTabularDisplayOrder": [
+          "createdon",
+          "wlog_name"
+        ]
+      },
+      "x-ms-relationships": {}
+    },
+    "logicalname": "wlog_decision"
+  },
+  "referencedEntities": {},
+  "x-ms-connection-version": ""
+}

@@ -1,7 +1,7 @@
 # Leadership Practice — Working Context
 
 > Handoff notes for anyone (human or AI) picking this project up cold.
-> Written 30 Aug 2026, updated 02 Sep 2026 against branch `leadership-practice`.
+> Written 30 Aug 2026, updated 31 Aug 2026 against branch `leadership-practice`.
 >
 > This file records **decisions, hard-won schema facts and open questions** —
 > the things that are expensive to rediscover. It is not a substitute for the
@@ -21,7 +21,7 @@ Meeting Minutes (MOM) → Audit Grid scoring → Decisions → TMS Tasks.
 | Environment | `https://org319b4ea9.crm4.dynamics.com/` |
 | Solution | `LeadershipPractice` |
 | Branch | `leadership-practice` |
-| Dataverse tables | 39 registered in `power.config.json`, including Minutes, MOM Notes, Audit Grid instances/answers, Approval Cycles/Steps and Authority Matrix rows |
+| Dataverse tables | 40 registered in `power.config.json`, including Minutes, MOM Notes, Audit Grid instances/answers, Approval Cycles/Steps, Authority Matrix rows, and (this session) `wlog_decisions` — see §6 |
 | Two modules | `src/modules/leadership/LeadershipApp.jsx` (execution), `src/modules/governance/GovernanceApp.jsx` (setup) |
 
 ---
@@ -87,26 +87,106 @@ The BRD **contradicts itself** in three places, and the code picked a side:
 | **Meeting Minutes tab** (nav screen) — reads `lm_meetingminuteses` directly | ✅ **live** (this session — the write path itself, `DvMinutesBody`, was already live from an earlier session; only the top-level list screen was still seeded until now) |
 | **Reports & Plans tab** (nav screen) — reads `lm_reportoccurrences` directly | ✅ **live** (this session — same story: the detail page was already live, the list screen wasn't) |
 | Authority Matrix + Approval Cycles | ✅ live, read-only by design (`AuthorityMatrixPanel`, embedded in Governance Settings) |
-| **Audit Grid — backend functions** (`saveAuditGridAnswer`, `archiveAuditGridAnswer`, `approveAuditGridInstance`, `createAuditGridInstance`) | ⚠️ **written, not called** — the Meeting's own Grid tab is still read-only display; no scoring UI calls these yet |
-| Decisions, Tasks, Comments, Governance Settings (persisted values), Committee Scores (nav screen), My Workspace | ❌ **seeded demo data only** |
+| **Audit Grid scoring** — Meeting Occurrence's own Grid tab | ✅ **live** (this session) — `liveScoreGrid()` computes all 16 questions from the live occurrence/Minutes/Template; full Facilitator→Chair lifecycle (score, evidence, submit, approve+publish, return, open a correction version) writes through the backend functions that were already built |
+| **My Workspace (nav screen)** | ✅ **live** — reads its Work Queue, Upcoming panel and This Month stats directly off the full `dvMeetingOccs`/`dvReportOccs` arrays via `dvWorkItems()`. Verified this session; it was never actually seeded-only, an earlier version of this table said otherwise in error. Its Decisions filter tab still shows 0 because Decisions (below) only just went live. |
+| **Decisions register** | 🟡 **partially live** (this session) — `wlog_decisions` read + minimal create wired as its own list on the Decisions tab, alongside (not replacing) the existing seeded Decision workflow. Not yet linked to the Meeting Agenda Item or Report that raised it — deferred by explicit instruction, see §5/§6/§7. |
+| Tasks, Comments, Governance Settings (persisted values), Committee Scores (nav screen) | ❌ **seeded demo data only** |
 
-**The scoring engine `scoreGrid()` still reads seeded state** (`db.occs`, `db.moms`,
-`db.tasks`, `db.decisions`). Moving it onto live data is still the single biggest
-remaining piece of work, and it can't fully happen until Decisions and Tasks exist
-(AG-10…AG-14 read them).
+**`scoreGrid()` (seeded) and `liveScoreGrid()` (live) are two separate functions**,
+not one shared implementation — the live version reads a Dataverse occurrence/
+Minutes/Template shape that doesn't line up with the seeded `db`, so it re-derives
+the same 16 questions independently rather than adapting live data into the
+seeded function's expected shape. Two of its rows are deliberately simplified
+(AG-01 checks only TOR presence, not a review date; AG-06 counts only Discussion
+Notes, not Task/Decision outputs) and five always read Not Applicable — **AG-10
+through AG-14 still can't move onto live data until Decisions and Tasks exist.**
 
 ---
 
-## 5. Recent work (this session)
+## 5. Recent work
 
-Everything below is currently **uncommitted** in the working tree (last commit is
-still `b9b76e3 "meeting minutes"`).
+`dec7171 "Add audit scoring"` and `98f1012 "Add a rescheduale option..."`, on
+top of `b9b76e3 "meeting minutes"`, were committed in an earlier pass. The
+work below is this session's, committed separately (see the repo's own log
+for its hash — not backfilled here to avoid a stale reference).
+
+### This session: cadence-aware New Meeting date, and a live bug fix found along the way
+
+`naturalRecurrenceDate(frequency, dayOfMonth, monthInQuarter, fromDate)` (new,
+`LeadershipApp.jsx`, just above `NewMeetingModal`) computes the soonest real
+calendar date a Setup's own cadence lands on — e.g. a Monthly Setup on day 1
+next lands on the 1st of the soonest qualifying month. Wired into
+`NewMeetingModal`'s existing "Setup detail loaded" effect so `f.date` defaults
+to that computed date instead of a generic `today+5`. The existing
+`bookedDate`/`moved` logic in that same form (already built by a parallel
+session before this pass) picks the result up automatically — if the natural
+date lands on a weekend or holiday, the form shows the "will be booked on…"
+note and books the next working day on save. No new UI needed for that half.
+
+`MEETING_MONTH_IN_QUARTER` (new export, `dataverse.js`) is the read-side
+decode for `lm_monthofthequarter` — only the write-side key existed before.
+
+**Semesterly/Annually reading of `monthInQuarter` is an assumption, not a
+confirmed rule.** `lm_monthofthequarter` only has three values ("1st/2nd/3rd
+month"), which is exact for Quarterly (a real 3-month quarter). For
+Semesterly (6 months) and Annually (12 months) there is no equivalent field
+in the schema, so "1st/2nd/3rd month of a quarter" is generalized here to
+"1st/2nd/3rd slice of the period" (month 1/3/5 of a semester, month 1/5/9 of
+a year). Flag this if it ever needs to match a real HR calendar precisely.
+
+**Bug found and fixed along the way:** `DvRescheduleOccModal` called
+`isWeekend()`, which a parallel session's edit had deleted from the file
+while replacing most weekend-handling with the unified `isNonWorking()` +
+auto-roll-forward approach above. Reschedule was never updated to match — it
+deliberately still hard-blocks a weekend pick outright (a holiday there is
+only a soft warning), so it needed its own `isWeekend()`, not the auto-roll
+one. This would have thrown a `ReferenceError` the moment anyone opened
+Reschedule on a live occurrence. Restored.
+
+**Verified, no change needed:** My Workspace already read fully from
+`dvMeetingOccs`/`dvReportOccs` (see §4) — asked, checked, confirmed, nothing
+to fix.
+
+### This session: `wlog_decisions` registered and wired at a base level
+
+Per an explicit ask to add a Decisions table linked to the Decisions tab and
+to Reports/Templates. What actually happened, and why it stopped short of
+the full ask:
+
+- Registered `wlog_decisions` (see §6 for the exact command — it is **not**
+  the same invocation as every other table here) and inspected its real
+  columns before writing any app code.
+- **Found it has no lookup to any table in this app** — only to an unrelated
+  employee time-log table (`wlog_worklogs`, also inspected, confirmed
+  irrelevant, not kept registered). Reported this rather than guessing a
+  link. The user's call: link it later (from the Report section / Meeting
+  Agenda item), set up the base only for now.
+- Also decided (same round): keep the existing seeded Decision workflow
+  (Direct/Authority-Check types, Approval Cycle, Proposals, exec owner,
+  outputs) as-is, and add `wlog_decisions` as a separate live list alongside
+  it, not a replacement.
+- Built accordingly: `fetchWorkLogDecisions()` / `createWorkLogDecision()` in
+  `dataverse.js`, a `dvDecisions` array threaded through `refreshOccurrences()`
+  same as `dvMeetingOccs`/`dvMinutes`, and a "Live Decisions (wlog_decisions)"
+  card + `WorkLogDecisionModal` on `ScreenDecisions` (`LeadershipApp.jsx`).
+  Status/Review Status/Escalation Result are read via the connector's
+  `_xxx_label` sibling fields, not a hand-maintained numeric map — see §6 for
+  why. No status is set on create; Dataverse's own option-set default applies.
+
+**Near-miss during registration, worth knowing about:** `pac code
+delete-data-source`, used to back out an exploratory registration, does a
+full regeneration of `src/generated/` and silently renamed/deleted the
+model/service files for a large number of **already-registered, unrelated**
+tables — even though `power.config.json` itself came back clean. Caught via
+`git status` before anything was committed; restored with `git checkout --
+src/generated/ .power/schemas/appschemas/dataSourcesInfo.ts`. See §6 for the
+safe way to back out a registration instead.
 
 | File | What changed |
 |---|---|
-| `src/services/dataverse.js` | Added `updateMeetingOccurrenceStatus`, `updateMeetingOccurrenceAttendance`, `updateMeetingOccurrence` (edit), `cancelMeetingOccurrence`, `recordAgendaDistribution`, `createMeetingOccurrenceAgendaItem`, `archiveMeetingOccurrenceAgendaItem`, `updateMeetingOccurrenceAgendaSequence`. Widened `meetingTemplateParentPayload()` / `reportTemplateParentPayload()` and their matching `fetch*TemplateDetail()` selects for the new Stage 3/4 parent-row fields (see §6). Fixed a systemic bug: every `create()`/`update()` call used to assume success whenever nothing *threw*, silently discarding the SDK's own `result.success`/`result.error` — a shared `idOrThrow()` / `assertSuccess()` pair now surfaces Dataverse's real error message instead of a generic "no id was returned." (`fetchMeetingMinutes()` already existed, unused by any screen, until it was wired into `ScreenMinutes` this session — see the LeadershipApp.jsx row.) |
-| `src/modules/leadership/LeadershipApp.jsx` | `DvMeetingDetail`: Mark as Held, Edit (`DvEditOccModal`), Cancel (`DvCancelOccModal`), Reschedule (`DvRescheduleOccModal` — creates a new occurrence + cancels the old one, see below), Attendance recording, Agenda add/remove/reorder/record-distribution. `ScreenMinutes` and `ScreenReports` switched from seeded `db.moms`/`db.reports` to live `dvMinutes`/`dvReportOccs`, with the now-redundant seed-only detail routes removed (`ReportDetail`, `RptTable`, `MomDetail`, `MomEditBody` are dead code as of this change, same situation `MeetingDetail` was already in). `NewMeetingModal`/`NewReportModal`: group-wide (Stage 3/4) Chairman/Facilitator/Owner/Submitting Position now fall back to the Setup's own parent-row fields instead of coming back empty. Excel file-reading proof of concept (`readExcelComponents`, via `xlsx` sourced from the SheetJS CDN, not npm — see §8) wired into the Report file field, client-side only, no Dataverse write. |
-| `src/modules/governance/GovernanceApp.jsx` | `dataverseMeetingToSetup()` / `dataverseReportToSetup()`: a Stage 3/4 Setup's Chairman/Co-Chairman/Facilitator or Owner/Submitting Position/Team Channel/Speciality now hydrate from the parent row into a synthetic one-entry `units` list (keyed `GROUP_KEY`) when editing, instead of coming back blank. `meetingTemplateParentPayload()`/`reportTemplateParentPayload()` write them back out the same way on save. |
+| `src/services/dataverse.js` | Added `updateMeetingOccurrenceStatus`, `updateMeetingOccurrenceAttendance`, `updateMeetingOccurrence` (edit), `cancelMeetingOccurrence`, `recordAgendaDistribution`, `createMeetingOccurrenceAgendaItem`, `archiveMeetingOccurrenceAgendaItem`, `updateMeetingOccurrenceAgendaSequence`. Widened `meetingTemplateParentPayload()` / `reportTemplateParentPayload()` and their matching `fetch*TemplateDetail()` selects for the Stage 3/4 parent-row fields (see §6). Fixed a systemic bug: every `create()`/`update()` call used to assume success whenever nothing *threw*, silently discarding the SDK's own `result.success`/`result.error` — a shared `idOrThrow()` / `assertSuccess()` pair now surfaces Dataverse's real error message instead of a generic "no id was returned." (`fetchMeetingMinutes()` already existed, unused by any screen, until it was wired into `ScreenMinutes`.) The Audit Grid backend (`saveAuditGridAnswer`, `archiveAuditGridAnswer`, `approveAuditGridInstance`, `createAuditGridInstance`, `updateAuditGridState`) was already fully built before this pass — none of it needed changing, only calling. |
+| `src/modules/leadership/LeadershipApp.jsx` | `DvMeetingDetail`: Mark as Held, Edit (`DvEditOccModal`), Cancel (`DvCancelOccModal`), Reschedule (`DvRescheduleOccModal` — creates a new occurrence + cancels the old one, see below), Attendance recording, Agenda add/remove/reorder/record-distribution, and now full **Audit Grid scoring** (`DvGridBody`/`DvGridQuestion`/`DvGridCorrectionModal`, driven by a new `liveScoreGrid()`/`liveAttendance()` pair — see §4). `ScreenMinutes` and `ScreenReports` switched from seeded `db.moms`/`db.reports` to live `dvMinutes`/`dvReportOccs`, with the now-redundant seed-only detail routes removed (`ReportDetail`, `RptTable`, `MomDetail`, `MomEditBody` are dead code as of this change, same situation `MeetingDetail` was already in). `NewMeetingModal`/`NewReportModal`: group-wide (Stage 3/4) Chairman/Facilitator/Owner/Submitting Position now fall back to the Setup's own parent-row fields instead of coming back empty. Excel file-reading proof of concept (`readExcelComponents`, via `xlsx` sourced from the SheetJS CDN, not npm — see §8) wired into the Report file field, client-side only, no Dataverse write. |
+| `src/modules/governance/GovernanceApp.jsx` | `dataverseMeetingToSetup()` / `dataverseReportToSetup()`: a Stage 3/4 Setup's Chairman/Co-Chairman/Facilitator or Owner/Submitting Position/Team Channel/Speciality now hydrate from the parent row into a synthetic one-entry `units` list (keyed `GROUP_KEY`) when editing, instead of coming back blank. `meetingTemplateParentPayload()`/`reportTemplateParentPayload()` write them back out the same way on save. Verified (no change needed): Supportive Function Representation already saves and reads back correctly end to end, and the Setup Register's Usage tab already reads live from `lm_meetingoccurrences`/`lm_reportoccurrences`. |
 | `power.config.json`, `.power/schemas/...`, generated services/models | Refreshed for the new parent-row fields on `lm_meetingtemplates` and `lm_report_templates` (§6), and re-pulled after the tables in §4 were added. |
 
 ### Reschedule, specifically
@@ -117,6 +197,22 @@ replaced, and there's no `Rescheduled` value on `lm_meetingstatus`. The new
 occurrence carries the same Setup, scope, Chair, Facilitator, Agenda (relabelled
 source `'Rescheduled'`) and Attendees across; Agenda coverage and Attendance
 already recorded stay behind on the original, now-cancelled occurrence.
+
+### Audit Grid scoring, specifically
+
+`liveScoreGrid()` is a **separate function from the seeded `scoreGrid()`**, not a
+shared one adapted for live data — the live occurrence/Minutes/Template shape
+doesn't line up cleanly with the seeded `db`, so re-deriving the same 16
+questions independently was more reliable than forcing an adapter. Same
+thresholds and bands throughout. Two rows are simplified because the data to do
+better doesn't exist live yet (AG-01: TOR presence only, not a review date;
+AG-06: counts only Discussion Notes, not Task/Decision outputs) — both say so in
+their own "Computed from" trace text. AG-10 through AG-14 always read Not
+Applicable. A "Clear" action was added for AG-02 (archives the Answer row,
+`archiveAuditGridAnswer()`) since the backend already supported it and the UI
+had no way to unset a manual score once picked. A full test scenario with a
+worked-out expected score (91.4%, 7 of 15 coverage, from a specific fixture) is
+in the Reference list, §10.
 
 ---
 
@@ -146,6 +242,65 @@ Region child row.
 
 Guessing wrong gives `Failed to get entity definition`. **The CLI also fails
 transiently** — a name that fails once often works on retry.
+
+### `wlog_decisions` — registered differently from every `lm_` table, and not linked to anything here
+Added this session. Worth reading in full before touching it again:
+
+- **Logical name is `wlog_decisions`, plural** — the ask named `wlog_decision`.
+- **`-t <name>` alone is no longer enough.** Every `lm_` table above was
+  registered that way at some point, but as of this CLI version (`2.6.4`)
+  plain `pac code add-data-source -t <name>` fails with `A required argument
+  --apiId is missing.` The working invocation for this table was:
+  `pac code add-data-source -a shared_commondataservice -c
+  39b0e662674844b79a870b4e5a7485c9 -d default.cds -t wlog_decisions` — the
+  legacy "Common Data Service" connector and connection id, **not**
+  `shared_commondataserviceforapps` (a different, newer connector present in
+  the same environment that registers tables under `connectionReferences`
+  with no working `default.cds` dataset at all — tried first, backed out).
+  Run `pac connection list` to re-find these ids if they ever need
+  rediscovering; they are not environment variables or config anywhere.
+- **Registered as `"dataSourceType": "Connector"` in `dataSourcesInfo.ts`,
+  not `"Dataverse"`** like every other table. It lives in
+  `power.config.json` under `connectionReferences`, not
+  `databaseReferences.default.cds` where the other 39 sit. Functionally it
+  behaves the same from a call-site's point of view (`Wlog_decisionsService`
+  has the identical `create`/`update`/`get`/`getAll` shape), but it is a
+  genuinely different integration path.
+- **No lookup column to `lm_meetingoccurrences`, `lm_reportoccurrences`,
+  `lm_meetingtemplates` or `lm_report_templates`.** Its only relationship is
+  `_wlog_worklog_value` → `wlog_worklogs`, a separate, unrelated employee
+  time-log table (activity/hours/manager/department — nothing governance-
+  related). Confirmed by registering and inspecting `wlog_worklogs` too, then
+  removing that registration once it turned out irrelevant. **Decided
+  2026-08-31: the link to a Meeting Agenda Item / Report comes later** — see
+  §7's new open decision.
+- **Choice columns have no discoverable numeric codes.** `wlog_decisionstatus`,
+  `wlog_reviewstatus` and `wlog_escalationresult` are Picklists whose values
+  come from a live `GetOptionSetMetadata` connector operation, not from the
+  cached schema file — unlike every `MEETING_*`/`REPORT_*` status this file
+  hand-maps to a number. Read them via the `_wlog_decisionstatus_label` /
+  `_wlog_reviewstatus_label` / `_wlog_escalationresult_label` sibling fields
+  the connector returns instead (already how `fetchWorkLogDecisions()` does
+  it). `createWorkLogDecision()` sets no status on create for the same
+  reason — Dataverse's own option-set default applies.
+- Field caps, if writing to it again: `wlog_name` 100 chars, `wlog_decisiontaken`
+  4000, `wlog_expectedoutput` 1000, `wlog_managernote` 2000, `wlog_evidenceurl`
+  500 (from the cached `.power/schemas/commondataservice/worklogdecisions.Schema.json`).
+
+### ⚠️ `pac code delete-data-source` is not a safe undo
+Used once this session to back out an exploratory `wlog_worklogs`
+registration. It triggered a **full regeneration of `src/generated/`** that
+silently renamed and deleted the model/service files of a large number of
+already-registered, completely unrelated tables (`lm_meetingoccurrences`,
+`lm_meetingtemplates`, and roughly thirty others) — even though
+`power.config.json` itself came back clean. Caught via `git status` before
+it was committed; fixed with `git checkout -- src/generated/
+.power/schemas/appschemas/dataSourcesInfo.ts`, which is now the recommended
+way to back out an unwanted `add-data-source` call: **hand-edit
+`power.config.json` + `.power/schemas/appschemas/dataSourcesInfo.ts` +
+`src/generated/index.ts` to remove just the one entry, delete that table's
+own two generated files, and never call `delete-data-source`** unless the
+plan is to immediately diff the entire `src/generated/` tree afterward.
 
 ### Chair / Co-Chair / Facilitator are NOT on the Setup — except now, sometimes
 They live on the **per-scope child rows** for a Business-Unit- or Region-scoped
@@ -218,14 +373,19 @@ misleading "succeeded but no id was returned" instead of the real reason
 
 1. **Is Setup Type "Accreditation Committee" or "Committee"?**
    Decides which occurrences get an Audit Grid. **The code currently disagrees with
-   itself** — the seeded path scores every Committee, the Dataverse path scores only
-   accreditation ones. *Blocks the Audit Grid scoring UI, even though its backend
-   functions and tables already exist.*
+   itself** — the seeded path scores every Committee, the live path (now built and
+   in use) scores only accreditation ones. This is no longer a theoretical gap:
+   the live Grid tab is real and gated on `accred` today, so resolving this
+   decides whether real Committees are being under- or over-scored right now,
+   not just whether a future feature gets built correctly.
 2. **Where does the 0–6 authority level live?**
    The only candidate is `hr_level` (an HR grade). Visibility scope and role family
-   exist nowhere. *Blocks the entire Decisions module.* Authority Matrix rows and
-   Approval Cycle tables are themselves now live and readable — this decision is the
-   only thing stopping Decisions from being able to use them.
+   exist nowhere. *Blocks the full Decisions workflow* (Direct vs. Authority-Check
+   routing, Approval Cycle, Proposals) from ever moving off seeded data — Authority
+   Matrix rows and Approval Cycle tables are themselves now live and readable, this
+   decision is the only thing stopping the seeded Decision workflow from using them.
+   Does **not** block the base `wlog_decisions` read/create wired this session (§5) —
+   that table has no authority-check concept at all, it's a separate, flatter thing.
 3. **How do Custom Reports get reviewers?**
    The review chain hangs off `lm_reporttemplatereviewchains` → Template. A Custom
    Report has no Template, so **it can be created but never reviewed**. Needs either
@@ -242,6 +402,12 @@ misleading "succeeded but no id was returned" instead of the real reason
    storage should mean (SharePoint upload? a longer URL column? something else)
    is intentionally on hold while reporting behaviour is being rethought — don't
    build further on this until asked.
+7. **How does a live Decision link to the Meeting Agenda Item / Report that raised
+   it?** `wlog_decisions` (§6) has no lookup column for either today. Deferred by
+   explicit instruction (2026-08-31): the link is added later, base read/create
+   was wired without it. Don't build the Report/Meeting-side "Decisions raised
+   here" embedding (the other half of the original ask) until this lands — there
+   is nothing to join on yet.
 
 ---
 
@@ -277,21 +443,32 @@ misleading "succeeded but no id was returned" instead of the real reason
 
 Organized by what actually unblocks each item — not by how big it feels.
 
-### Ready to build now — table + backend already exist
-- [ ] **Audit Grid scoring UI.** `saveAuditGridAnswer`, `archiveAuditGridAnswer`,
-      `approveAuditGridInstance`, `createAuditGridInstance` are all written and
-      unused. The Meeting's own Grid tab only *displays* `fetchAuditGridInstancesByOccurrence()`
-      results today. Blocked in practice by Open Decision §7.1 (which occurrences
-      even get a Grid) — worth resolving that first so the UI isn't built against
-      the wrong rule.
-- [ ] **Move `scoreGrid()` off seeded state**, at least for the auto-scored
-      questions that don't depend on Tasks/Decisions (AG-01…AG-09, AG-15, AG-16).
-      AG-10…AG-14 can't move until Tasks/Decisions exist.
+### Done
+- [x] **Audit Grid scoring UI.** Built — `liveScoreGrid()` computes all 16
+      questions from live data, and the full Facilitator→Chair lifecycle writes
+      through the backend functions. **Still gated by Open Decision §7.1** —
+      the UI only appears for `accred` (Accreditation Committee) occurrences,
+      so resolving that decision may mean it should show for more (or fewer)
+      occurrences than it does today. AG-10…AG-14 stay Not Applicable until
+      Tasks/Decisions exist.
+
+Nothing is currently sitting in a "ready to build, just not built yet" state —
+the two items that were here (Edit/Cancel/Reschedule/Agenda, then Audit Grid
+scoring) have both been picked up. Everything left below is blocked on
+something, except the one item below that's now live at a base level.
+
+### Live, base only — not the full feature
+- [x] **Decisions, base plumbing.** `wlog_decisions` read + minimal create
+      wired this session as its own list on the Decisions tab (§4/§5). What's
+      still missing, in order: (1) a lookup column linking it to a Meeting
+      Agenda Item / Report — Open Decision §7.7, deferred on purpose; (2) once
+      that exists, embedding it into the Report/Meeting Follow-up tabs, which
+      is the other half of the original ask; (3) the seeded Decision workflow
+      (Direct/Authority-Check routing, Approval Cycle, Proposals) staying
+      seeded-only until Open Decision §7.2 resolves — `wlog_decisions` was a
+      deliberate choice not to build that onto this flatter table.
 
 ### Blocked — needs a new Dataverse table
-- [ ] **Decisions** — `lm_decisions`, `lm_decisionsteps`, `lm_decisionproposals`,
-      `lm_decisionevidence`, `lm_decisionobservers` (5 tables). Also blocked by
-      Open Decision §7.2.
 - [ ] **Tasks** — `lm_tasks` (1 table), plus its own screen (Tasks are currently
       only a sub-object of MOM/Decision follow-up). Worth deciding what "sync"
       means in production before building real sync logic — the seeded version
@@ -305,7 +482,8 @@ Organized by what actually unblocks each item — not by how big it feels.
 
 ### Blocked — needs a decision, not a table
 See §7 in full. In priority order by what they unblock: Setup Type (Audit Grid),
-authority-level location (Decisions), Custom Report reviewers, quorum definition.
+authority-level location (seeded Decision workflow), Custom Report reviewers,
+quorum definition, Decision↔Meeting/Report linking (§7.7, deferred on purpose).
 
 ### Paused — by explicit instruction, not by a blocker
 - [ ] Real file storage for Report working copies (SharePoint upload or
@@ -341,7 +519,7 @@ Three working documents were produced alongside an earlier version of this file:
   Department
   <https://claude.ai/code/artifact/6d7fefca-78cf-4172-a967-ce99bab2dbd1>
 
-Two more were produced this session:
+Three more were produced this session:
 
 - **Feature Readiness** — every feature sorted by ready-now vs. blocked, with the
   exact prerequisite for each blocked item (kept up to date across this session —
@@ -352,6 +530,11 @@ Two more were produced this session:
   Weekly/Monthly have no second-day field, Custom frequency has no rule field)
   that block full automation
   <https://claude.ai/code/artifact/f6d4a4e8-6138-4f7b-a183-6f50b47ceff8>
+- **Testing the Audit Grid** — a test scenario built around one specific fixture
+  (Accreditation Committee, 75% quorum, 2 agenda items, 4 required attendees),
+  with the expected score worked out in advance (91.4%, 7 of 15 coverage) so the
+  live scoring can be checked against a real prediction rather than eyeballed
+  <https://claude.ai/code/artifact/8c97f86f-6daf-4558-9509-b8142f9c3170>
 
 ### A note on verification
 

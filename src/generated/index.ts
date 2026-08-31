@@ -45,6 +45,7 @@ export * as Lm_reporttemplatereviewchainsModel from './models/Lm_reporttemplater
 export * as Strategy_kpisesModel from './models/Strategy_kpisesModel';
 export * as Strategy_processesModel from './models/Strategy_processesModel';
 export * as SystemusersModel from './models/SystemusersModel';
+export * as Wlog_decisionsModel from './models/Wlog_decisionsModel';
 
 // Services
 export * from './services/And_teamschannelsService';
@@ -87,3 +88,4 @@ export * from './services/Lm_reporttemplatereviewchainsService';
 export * from './services/Strategy_kpisesService';
 export * from './services/Strategy_processesService';
 export * from './services/SystemusersService';
+export * from './services/Wlog_decisionsService';

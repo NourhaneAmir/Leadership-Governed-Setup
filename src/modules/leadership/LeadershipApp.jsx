@@ -11,6 +11,7 @@ import { fetchMeetingOccurrences, fetchReportOccurrences, createMeetingOccurrenc
          fetchMeetingTemplatesList, fetchMeetingTemplateDetail,
          fetchReportTemplatesList, fetchReportTemplateDetail, fetchCurrentUser,
          fetchMeetingMinutes, fetchMeetingMinutesByOccurrence, fetchAuditGridInstancesByOccurrence,
+         fetchWorkLogDecisions, createWorkLogDecision,
          fetchAuthorityMatrix, createMeetingMinutes, saveMomNote, updateAgendaCovered,
          submitMeetingMinutes, updateMeetingMinutesStatus, returnMeetingMinutes,
          signMeetingMinutes, createAuditGridInstance, MOM_NOTE_MAX,
@@ -19,6 +20,7 @@ import { fetchMeetingOccurrences, fetchReportOccurrences, createMeetingOccurrenc
          fetchReportOccurrenceHistory, submitReportOccurrence, approveReportStep,
          requestMoreInfoOnReport,
          MEETING_SETUP_TYPE, MEETING_CATEGORY, MEETING_FREQUENCY, MEETING_DAY_OF_WEEK,
+         MEETING_MONTH_IN_QUARTER,
          ATTENDEE_TYPE, REPORT_TYPE, REPORT_CATEGORY, REPORT_FREQUENCY } from '../../services/dataverse.js';
 
 /* =========================================================================
@@ -318,10 +320,13 @@ const OD_NOTES = {
 const WEEKEND = [5,6];              // Fri, Sat — working week is Sun–Thu
 const HOLIDAYS = ['2026-07-05','2026-08-24'];
 const isNonWorking = d => WEEKEND.includes(new Date(d+'T00:00:00').getDay()) || HOLIDAYS.includes(d);
-/* Weekend and public holiday are treated identically: an occurrence landing on
-   either rolls forward to the next working day rather than being refused, so
-   isNonWorking() is the only test any booking path needs. A separate isWeekend()
-   existed while a weekend date was blocked outright; that rule is gone. */
+/* Weekend and public holiday are treated identically for auto-booking: an
+   occurrence landing on either rolls forward to the next working day rather
+   than being refused, so isNonWorking() is the only test most booking paths
+   need. Reschedule is the one deliberate, one-off exception -- it still hard
+   -blocks a weekend pick outright (a holiday there is only a soft warning),
+   so isWeekend() stays for that narrower check. */
+const isWeekend = d => WEEKEND.includes(new Date(d+'T00:00:00').getDay());
 const WEEKDAY_NAME = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const dayName = d => d ? WEEKDAY_NAME[new Date(d+'T00:00:00').getDay()] : '';
 /* An occurrence landing on a non-working day moves — that occurrence only, never the series. */
@@ -2400,6 +2405,7 @@ function App({onSwitch}){
   const [dvMeetingOccs,setDvMeetingOccs]=useState([]);
   const [dvReportOccs,setDvReportOccs]=useState([]);
   const [dvMinutes,setDvMinutes]=useState([]);
+  const [dvDecisions,setDvDecisions]=useState([]);
   const [dvTick,setDvTick]=useState(0);        // bumped when the name maps change
   const [dvLoading,setDvLoading]=useState(true);
   const [dvError,setDvError]=useState(null);
@@ -2421,6 +2427,11 @@ function App({onSwitch}){
       console.log(`[dataverse] fetchMeetingMinutes() returned ${list?list.length:0} row(s)`, list);
       setDvMinutes(list||[]);
     }catch(e){ console.warn('[dataverse] fetchMeetingMinutes() failed:', e); failed=failed||e; }
+    try{
+      const list=await fetchWorkLogDecisions();
+      console.log(`[dataverse] fetchWorkLogDecisions() returned ${list?list.length:0} row(s)`, list);
+      setDvDecisions(list||[]);
+    }catch(e){ console.warn('[dataverse] fetchWorkLogDecisions() failed:', e); failed=failed||e; }
     setDvError(failed?'Live occurrences could not be read from Dataverse. The seeded demo calendar is shown on its own.':null);
   };
 
@@ -2491,7 +2502,7 @@ function App({onSwitch}){
 
   const ctx = {db,setDb,mut,me,bu,setBu,businessUnits,navOpen,setNavOpen,currentUser,screen,go,openMeeting,openWork,sel,setSel,
                toast,toasts,reset,S,A,work,cal,counts,onSwitch,
-               dvMeetingOccs,dvReportOccs,dvMinutes,dvLoading,dvError,refreshOccurrences,
+               dvMeetingOccs,dvReportOccs,dvMinutes,dvDecisions,dvLoading,dvError,refreshOccurrences,
                dvOpen,setDvOpen,openDvRec};
   const Screen = {work:ScreenWorkspace, cal:ScreenCalendar, rpt:ScreenReports, mtg:ScreenMeetings,
                   mom:ScreenMinutes,
@@ -6302,6 +6313,38 @@ function DvAttendeePicker({value,onChange,opts,scopeChosen,scopeHint}){
   </Field>;
 }
 
+/* The soonest real calendar date this Setup's own cadence lands on, at or
+   after `fromDate` -- e.g. a Monthly Setup on day 1 next lands on the 1st of
+   the soonest month at or after fromDate. Returns null when the Setup
+   carries no day-of-month at all (Daily / Twice Weekly / Weekly / Twice
+   Monthly / Custom, or a Monthly+ Setup left blank), so the caller falls
+   back to its own generic default.
+   Quarterly/Semesterly/Annually all share the "day within a period, plus
+   which slice of the period" shape via lm_monthofthequarter's three values
+   ("1st/2nd/3rd month"). That reading is exact for Quarterly (a real
+   3-month quarter). For Semesterly (6 months) and Annually (12 months) the
+   schema defines no equivalent field, so "1st/2nd/3rd month of a quarter"
+   is generalized here to "1st/2nd/3rd slice of the period" -- a working
+   assumption, not a confirmed rule. */
+const PERIOD_MONTHS = { Monthly:1, Quarterly:3, Semesterly:6, Annually:12 };
+function naturalRecurrenceDate(frequency, dayOfMonth, monthInQuarter, fromDate){
+  const periodMonths = PERIOD_MONTHS[frequency];
+  if(!periodMonths || !dayOfMonth) return null;
+  const sliceIdx = { '1st month':0, '2nd month':1, '3rd month':2 }[monthInQuarter] ?? 0;
+  const offset = periodMonths===1 ? 0 : sliceIdx * (periodMonths/3);
+
+  const from = new Date(fromDate+'T00:00:00');
+  const anchorMonth = from.getMonth() - (from.getMonth()%periodMonths);
+  for(let cycle=0; cycle<4; cycle++){
+    const d = new Date(from.getFullYear(), anchorMonth+offset+cycle*periodMonths, 1);
+    const lastDay = new Date(d.getFullYear(), d.getMonth()+1, 0).getDate();
+    d.setDate(Math.min(dayOfMonth, lastDay));
+    const ds = ymd(d);
+    if(ds >= fromDate) return ds;
+  }
+  return null;
+}
+
 function NewMeetingModal({kind,onClose}){
   const {me,toast,refreshOccurrences}=use();
   const custom = kind==='custom';
@@ -6412,14 +6455,27 @@ function NewMeetingModal({kind,onClose}){
   },[custom, f.setup]);
 
   /* Once the Setup's detail is in: seed the Agenda from its controlled
-     Agenda Items, and auto-apply its placement when there is exactly one
-     (or none, for a Group / ExCom Setup) -- a Setup approved for more than
-     one Business Unit or Region waits on the picker below instead. */
+     Agenda Items, default the Date to the Setup's own cadence (Monthly on
+     day 1, say, lands on the 1st of the soonest qualifying month), and
+     auto-apply its placement when there is exactly one (or none, for a
+     Group / ExCom Setup) -- a Setup approved for more than one Business
+     Unit or Region waits on the picker below instead.
+     A cadence date landing on a weekend or holiday is not adjusted here --
+     the existing bookedDate/moved logic below already detects that and
+     surfaces the "will be booked on…" note, same as any manually-typed
+     date. */
   useEffect(()=>{
     if(custom || !tplDetail) return;
     const ag=(tplDetail.agenda||[]).slice().sort((a,b)=>(a.lm_step||0)-(b.lm_step||0))
       .map(a=>a.lm_agendaitemname||'').filter(Boolean);
-    setF(x=>({...x, agenda: ag.length?ag:['']}));
+    const p = tplDetail.parent||{};
+    const natural = naturalRecurrenceDate(
+      MEETING_FREQUENCY[p.lm_frequency]||null,
+      typeof p.lm_dayofthemonth==='number' ? p.lm_dayofthemonth : null,
+      MEETING_MONTH_IN_QUARTER[p.lm_monthofthequarter]||null,
+      TODAY,
+    );
+    setF(x=>({...x, agenda: ag.length?ag:[''], date: natural || x.date }));
     if(tplUnits.length<=1) applyUnit(tplUnits[0]||null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[tplDetail]);
@@ -7537,8 +7593,9 @@ function srcLabel(db,d){
 }
 
 function ScreenDecisions(){
-  const {db,me,sel,setSel,go,A}=use();
+  const {db,me,sel,setSel,go,A,dvDecisions}=use();
   const [intake,setIntake]=useState(false);
+  const [liveNew,setLiveNew]=useState(false);
   const [fSt,setFSt]=useState('All'), [fPa,setFPa]=useState('All');
   const [fSr,setFSr]=useState('All'), [fNa,setFNa]=useState('All'), [q,setQ]=useState('');
   const id=sel.dec;
@@ -7646,8 +7703,88 @@ function ScreenDecisions(){
         </tbody></table></div>}
     </div>
 
+    <div className="card flush" style={{marginTop:16}}>
+      <div className="card-hd" style={{display:'flex',alignItems:'flex-start',gap:12}}>
+        <div style={{flex:1}}><h2>Live Decisions (wlog_decisions)</h2>
+          <div className="csub">Read from the Work Log Decisions table — a pre-existing table, separate
+            from the Decision register above. Not yet linked to a specific Meeting Agenda Item or Report;
+            that comes once the table carries a lookup for it.</div></div>
+        <Btn k="sm" onClick={()=>setLiveNew(true)}>+ Log a Decision</Btn>
+      </div>
+      {dvDecisions.length===0 ? <div style={{padding:'8px 17px 17px'}}>
+          <Empty>No live Decisions logged yet.</Empty></div>
+      : <div className="t-wrap"><table className="data">
+          <thead><tr><th>Decision</th><th>Decision Taken</th><th>Expected Output</th>
+            <th>Status</th><th>Logged</th></tr></thead>
+          <tbody>{dvDecisions.map(d=>
+            <tr key={d.id}>
+              <td><div className="t-main">{d.name}</div>
+                {d.evidenceUrl && <div className="t-sub">{d.evidenceUrl}</div>}</td>
+              <td className="dim">{d.decisionTaken||'—'}</td>
+              <td className="dim">{d.expectedOutput||'—'}</td>
+              <td>{d.status ? <Tag c="grey">{d.status}</Tag> : '—'}</td>
+              <td className="dim">{fmtISODT(d.created)}</td>
+            </tr>)}
+          </tbody></table></div>}
+    </div>
+
     {intake && <DecisionIntakeModal onClose={()=>setIntake(false)}/>}
+    {liveNew && <WorkLogDecisionModal onClose={()=>setLiveNew(false)}/>}
   </>;
+}
+
+/* Logs a new row to wlog_decisions. Base plumbing only, per the call made
+   when this table was wired -- see the note above fetchWorkLogDecisions()
+   in dataverse.js. No status is set on create (the option set's own
+   Dataverse default applies) and there is no Meeting/Report link field yet. */
+function WorkLogDecisionModal({onClose}){
+  const {toast,refreshOccurrences}=use();
+  const [f,setF]=useState({name:'',decisionTaken:'',expectedOutput:'',managerNote:'',evidenceUrl:''});
+  const [saving,setSaving]=useState(false);
+  const set=(k,v)=>setF(x=>({...x,[k]:v}));
+  const ok = f.name.trim() && f.decisionTaken.trim();
+
+  const save=async()=>{
+    setSaving(true);
+    try{
+      const {id,errors}=await createWorkLogDecision({
+        name:f.name.trim(), decisionTaken:f.decisionTaken.trim(),
+        expectedOutput:f.expectedOutput.trim()||undefined,
+        managerNote:f.managerNote.trim()||undefined,
+        evidenceUrl:f.evidenceUrl.trim()||undefined,
+      });
+      if(!id){
+        console.warn('[dataverse] createWorkLogDecision() failed:', errors);
+        toast('Not saved','Logging this Decision failed. Check the console for details.','err');
+        return;
+      }
+      toast('Decision logged',
+        'Written to wlog_decisions. Not yet linked to a Meeting or Report — that comes once the table carries a lookup for it.','ok');
+      await refreshOccurrences();
+      onClose();
+    }catch(e){
+      console.warn('[dataverse] createWorkLogDecision() threw unexpectedly:', e);
+      toast('Not saved','Logging this Decision failed. Check the console for details.','err');
+    }finally{ setSaving(false); }
+  };
+
+  return <Modal title="Log a Decision" onClose={onClose}
+    sub="Written to wlog_decisions. Base fields only for now — no link to a Meeting or Report yet."
+    footer={<><Btn onClick={onClose} disabled={saving}>Cancel</Btn>
+      <Btn k="pri" disabled={!ok||saving} onClick={save}>{saving?'Saving…':'Log Decision'}</Btn></>}>
+    <Field label="Title" req err={!f.name.trim()?'Required.':null}>
+      <input type="text" value={f.name} onChange={e=>set('name',e.target.value)} maxLength={100}
+        placeholder="A short, identifying title"/></Field>
+    <Field label="Decision Taken" req err={!f.decisionTaken.trim()?'Required.':null}>
+      <textarea rows={3} value={f.decisionTaken} onChange={e=>set('decisionTaken',e.target.value)} maxLength={4000}/></Field>
+    <Field label="Expected Output">
+      <textarea rows={2} value={f.expectedOutput} onChange={e=>set('expectedOutput',e.target.value)} maxLength={1000}/></Field>
+    <Field label="Manager Note">
+      <textarea rows={2} value={f.managerNote} onChange={e=>set('managerNote',e.target.value)} maxLength={2000}/></Field>
+    <Field label="Based On / Evidence">
+      <input type="text" value={f.evidenceUrl} onChange={e=>set('evidenceUrl',e.target.value)} maxLength={500}
+        placeholder="A link or reference"/></Field>
+  </Modal>;
 }
 
 function DecisionIntakeModal({src,onClose}){
