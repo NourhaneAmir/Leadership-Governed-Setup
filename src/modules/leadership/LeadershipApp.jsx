@@ -14,6 +14,8 @@ import { fetchMeetingOccurrences, fetchReportOccurrences, createMeetingOccurrenc
          fetchAuthorityMatrix, createMeetingMinutes, saveMomNote, updateAgendaCovered,
          submitMeetingMinutes, updateMeetingMinutesStatus, returnMeetingMinutes,
          signMeetingMinutes, createAuditGridInstance, MOM_NOTE_MAX,
+         saveAuditGridAnswer, archiveAuditGridAnswer, updateAuditGridState, approveAuditGridInstance,
+         GRID_EVIDENCE_MAX, GRID_REASON_MAX,
          fetchReportOccurrenceHistory, submitReportOccurrence, approveReportStep,
          requestMoreInfoOnReport,
          MEETING_SETUP_TYPE, MEETING_CATEGORY, MEETING_FREQUENCY, MEETING_DAY_OF_WEEK,
@@ -1083,6 +1085,118 @@ function gridTotals(rows){
     applicable, total, blanks: blanks.length,
     na: rows.filter(r=>r.state==='na').length,
   };
+}
+
+/* Live equivalent of attendance() above, for a Dataverse occurrence's own
+   attendees[] shape (present is a string, delegate is a position id) rather
+   than the seeded occ.attend. Same three-mode semantics as S.delegatedAttend. */
+function liveAttendance(attendees, mode){
+  const rows = (attendees||[]).filter(a=>(a.type||'Required')==='Required');
+  let num=0, den=0;
+  rows.forEach(a=>{
+    if(a.delegatePositionId){
+      if(mode==='exclude') return;
+      den++; num += mode==='half' ? .5 : 1;
+    } else { den++; if(a.present==='Present') num++; }
+  });
+  return { pct: den ? (num/den)*100 : 0,
+    present: rows.filter(a=>a.present==='Present'||a.delegatePositionId).length, total: rows.length };
+}
+
+/* Live equivalent of scoreGrid() above: same 16-question catalogue, same
+   thresholds and bands, reading a live Meeting Occurrence/Minutes/Template
+   instead of the seeded db. Two deliberate simplifications, both because the
+   data they'd need doesn't exist live yet -- documented in each row's trace
+   text rather than hidden:
+     - AG-01 checks only whether a TOR/Policy link is held, not whether it's
+       past a review date -- there is no live "TOR review date" column.
+     - AG-06 counts only Discussion Notes toward "has an outcome" -- MOM
+       Outputs (Tasks/Decisions) aren't live, so that half of the question
+       can't be checked yet.
+   AG-10 through AG-14 always read 'na': every one of them needs Decisions,
+   Tasks or MOM Outputs, none of which have a live table. */
+function liveScoreGrid(occ, minutes, quorumPct, torLink, accred, S, grid, allOccs){
+  const R = [];
+  const manual = grid?.manual||{}, evid = grid?.evidence||{};
+  const push = (id,state,score,ev,na) => R.push({id, q:AG_QUESTIONS.find(x=>x.id===id), state, score, ev, na});
+
+  if(!accred) push('AG-01','na',null,null,'A TOR or Policy reference is not mandatory for this Committee classification.');
+  else if(!torLink) push('AG-01','auto',0,'No TOR or Policy reference is held on the approved Setup.');
+  else push('AG-01','auto',5,'A TOR or Policy reference is held on the approved Setup.');
+
+  if(!torLink) push('AG-02','na',null,null,'No TOR or Policy reference exists for this Committee.');
+  else if(manual['AG-02']!=null) push('AG-02','manual', manual['AG-02'], evid['AG-02']||null);
+  else push('AG-02','blank',null,null);
+
+  const hasItems = occ.agenda.length>0;
+  if(S.agendaLeadDays==null){
+    push('AG-03','auto', hasItems?5:0, hasItems?'At least one Agenda item exists.':'No Agenda item exists.');
+  }else{
+    const need = shiftWorkingDays(occ.date, -S.agendaLeadDays);
+    const onTime = occ.agendaSent && occ.agendaSent<=need;
+    push('AG-03','auto', ((hasItems?5:0)+(onTime?5:0))/2,
+      `Agenda ${hasItems?'present':'absent'}; distributed ${occ.agendaSent?(onTime?'on time':'late'):'never'} `+
+      `(needed by ${need}).`);
+  }
+
+  const unc = occ.agenda.filter(a=>a.covered!=='Yes');
+  const carried = unc.length>0 && unc.every(a=>
+    (allOccs||[]).some(o=>o.id!==occ.id && (o.agenda||[]).some(x=>x.carriedFromId===a.id)));
+  push('AG-04','auto', unc.length===0?5:carried?4:0,
+    unc.length===0 ? 'Every Agenda item is covered.'
+      : carried ? `${unc.length} uncovered item(s), all carried forward to a later occurrence.`
+      : `${unc.length} uncovered item(s); not all are carried forward.`);
+
+  if(S.momApprovalHours==null) push('AG-05','na',null,null,'The MOM approval period is not configured, so approval timeliness cannot be measured.');
+  else if(!minutes?.submittedAt) push('AG-05','na',null,null,'The MOM was never submitted, so the Chair’s approval clock never started. Measured by AG-16 instead.');
+  else if(!minutes?.approvedAt) push('AG-05','na',null,null,'The MOM has not been approved yet.');
+  else{
+    const h = hoursBetween(minutes.submittedAt, minutes.approvedAt);
+    push('AG-05','auto', h<=S.momApprovalHours?5 : h<=S.momApprovalHours*2?2:0,
+      `Approved ${h} hour${h===1?'':'s'} after submission (limit ${S.momApprovalHours}h).`);
+  }
+
+  const withNote = occ.agenda.filter(a=>(minutes?.notesByAgenda?.[a.id]||'').trim());
+  const p6 = occ.agenda.length ? withNote.length/occ.agenda.length*100 : 100;
+  push('AG-06','auto', band(p6),
+    `${withNote.length} of ${occ.agenda.length} Agenda item(s) carry a Discussion Note in the Minutes. `+
+    `Adapted: Task/Decision outputs aren't live yet, so only Discussion Notes count toward this question for now.`);
+
+  push('AG-07','retired',null,null);
+
+  if(quorumPct==null) push('AG-08','na',null,null,'No quorum threshold is configured for this Committee.');
+  else{
+    const a8 = liveAttendance(occ.attendees, S.delegatedAttend);
+    push('AG-08','auto', a8.pct>=quorumPct?5:0,
+      `${Math.round(a8.pct)}% Required attendance against a ${quorumPct}% quorum threshold.`);
+  }
+
+  const a9 = liveAttendance(occ.attendees, S.delegatedAttend);
+  push('AG-09','auto', band(a9.pct), `${a9.present} of ${a9.total} Required Attendees present → ${pct(a9.pct)}.`);
+
+  push('AG-10','na',null,null,'MOM Outputs (Tasks and Decisions) are not live yet.');
+  push('AG-11','na',null,null,'Decisions are not live yet.');
+  push('AG-12','na',null,null,'Decision Requests and the Authority Matrix routing check are not live yet.');
+  push('AG-13','na',null,null,'TMS Tasks are not live yet.');
+  push('AG-14','na',null,null,'TMS Tasks are not live yet.');
+
+  if(S.inviteLeadDays==null) push('AG-15','na',null,null,'No invitation lead time is configured.');
+  else{
+    const need = shiftWorkingDays(occ.date, -S.inviteLeadDays);
+    const score = !occ.inviteSent?0 : occ.inviteSent<=need?5:2;
+    push('AG-15','auto', score, occ.inviteSent?`Invitation sent ${occ.inviteSent}, needed by ${need}.`:'No invitation date recorded.');
+  }
+
+  if(S.momWriteupHours==null) push('AG-16','na',null,null,'No MOM write-up period is configured.');
+  else if(!occ.end) push('AG-16','na',null,null,'No end time is recorded on this occurrence, so the write-up clock cannot start.');
+  else if(!minutes?.submittedAt) push('AG-16','auto',0,'The MOM was never submitted.');
+  else{
+    const h = hoursBetween(occ.date+' '+occ.end, minutes.submittedAt);
+    push('AG-16','auto', h<=S.momWriteupHours?5 : h<=S.momWriteupHours*2?2:0,
+      `Submitted ${h} hour${h===1?'':'s'} after the Meeting ended (limit ${S.momWriteupHours}h).`);
+  }
+
+  return R.sort((a,b)=>a.id.localeCompare(b.id));
 }
 
 /* Outputs of one MOM, resolved to their target records */
@@ -4259,8 +4373,303 @@ function DvCancelOccModal({rec,onClose}){
   </Modal>;
 }
 
+/* Opens a fresh Audit Grid Instance for correction -- the approved one is
+   never edited in place, matching the seeded gridNewVersion()'s reasoning:
+   an approval is a fact about what was known at the time. */
+function DvGridCorrectionModal({onClose,onSave}){
+  const [reason,setReason]=useState('');
+  const tooLong = reason.trim().length>GRID_REASON_MAX;
+  return <Modal title="Open a correction version" onClose={onClose}
+    sub="Creates a new Grid Instance in Pending Facilitator Review. The approved Instance and its published score are left untouched."
+    footer={<><Btn onClick={onClose}>Cancel</Btn>
+      <Btn k="pri" disabled={!reason.trim()||tooLong} onClick={()=>onSave(reason.trim())}>Open correction version</Btn></>}>
+    <Field label="Reason" req hint={`Max ${GRID_REASON_MAX} characters.`}
+      err={tooLong?`${reason.trim().length} characters — ${GRID_REASON_MAX} max.`:null}>
+      <textarea value={reason} onChange={e=>setReason(e.target.value)}/></Field>
+  </Modal>;
+}
+
+/* One row of the Audit Grid, live version -- same expand/collapse and manual-
+   score-picker-vs-evidence-note shape as the seeded Question component, just
+   driven by a liveScoreGrid() row instead of scoreGrid()'s. */
+function DvGridQuestion({r,editable,savingId,onScore,onEvidence,onClear}){
+  const [open,setOpen]=useState(false);
+  const evVal = r.ev ?? '';
+  const [draft,setDraft]=useState(evVal);
+  useEffect(()=>{ setDraft(evVal); },[evVal]);
+  const busy = savingId===r.id;
+  const evTooLong = draft.trim().length>GRID_EVIDENCE_MAX;
+
+  const statusTag = r.state==='retired' ? <Tag c="grey">Retired</Tag>
+    : r.state==='na' ? <Tag c="grey">Not Applicable</Tag>
+    : r.state==='blank' ? <Tag c="amber">Awaiting a manual score</Tag>
+    : r.state==='manual' ? <Tag c="purple">Manually scored</Tag>
+    : <Tag c="teal">Automatic</Tag>;
+  const scoreDisp = r.state==='retired' ? '—'
+    : r.state==='na' ? 'N/A'
+    : r.state==='blank' ? <span style={{color:'var(--amber)'}}>—</span>
+    : <span style={{color:`var(--${scoreColour(r.score)})`}}>{r.score}/5</span>;
+
+  return <div style={{borderBottom:'1px solid var(--border)'}}>
+    <div style={{display:'flex',alignItems:'center',gap:10,padding:'10px 0',cursor:'pointer'}}
+      onClick={()=>setOpen(v=>!v)}>
+      <span style={{fontWeight:700,fontSize:12,width:48,flex:'none'}}>{r.id}</span>
+      <span style={{flex:1,fontSize:13,textDecoration:r.state==='retired'?'line-through':'none'}}>{r.q.q}</span>
+      {statusTag}
+      <span style={{width:40,textAlign:'right',fontSize:13,fontWeight:700}}>{scoreDisp}</span>
+    </div>
+    {open && <div style={{padding:'0 0 14px 58px'}}>
+      {r.state==='retired' && <Note k="lock" ic="—">{r.q.rule}</Note>}
+      {r.state==='na' && <Note k="info" ic="i">{r.na} System-set — no user can change this.</Note>}
+      {r.state!=='retired' && r.state!=='na' && <>
+        <div style={{fontSize:12,color:'var(--muted)',marginBottom:6}}>{r.q.rule}</div>
+        {r.ev && <div style={{fontSize:12,marginBottom:8}}><b>Computed from:</b> {r.ev}</div>}
+        {r.q.src==='Auto' && <>
+          <Note k="lock" ic="🔒">An auto-scored value cannot be changed by any user. An evidence note may
+            still be attached.</Note>
+          {editable
+            ? <Field label="Evidence note (optional)" hint={`Max ${GRID_EVIDENCE_MAX} characters.`}
+                err={evTooLong?`${draft.trim().length} characters — ${GRID_EVIDENCE_MAX} max.`:null}>
+                <textarea value={draft} onChange={e=>setDraft(e.target.value)} disabled={busy}
+                  onBlur={()=>{ if(draft!==evVal && !evTooLong) onEvidence(r.id,draft); }}/></Field>
+            : evVal ? <div style={{fontSize:12,marginTop:6}}><b>Facilitator note:</b> {evVal}</div> : null}
+        </>}
+        {r.q.src==='Manual' && <>
+          <Field label="Score">
+            {editable
+              ? <div className="btn-row">{[0,1,2,3,4,5].map(n=>
+                  <Btn key={n} k={'sm'+(r.score===n?' pri':'')} disabled={busy} onClick={()=>onScore(r.id,n)}>{n}</Btn>)}
+                  {r.state==='manual' &&
+                    <Btn k="sm" disabled={busy} onClick={()=>onClear(r.id)}>Clear</Btn>}</div>
+              : <span>{r.score!=null?`${r.score} of 5`:'Not scored'}</span>}
+          </Field>
+          <Field label="Evidence note" req hint={`Max ${GRID_EVIDENCE_MAX} characters.`}
+            err={editable && r.state==='manual' && !draft.trim()
+              ? 'An evidence note is required for a manual score.'
+              : evTooLong ? `${draft.trim().length} characters — ${GRID_EVIDENCE_MAX} max.` : null}>
+            {editable
+              ? <textarea value={draft} onChange={e=>setDraft(e.target.value)} disabled={busy}
+                  onBlur={()=>{ if(draft!==evVal && !evTooLong) onEvidence(r.id,draft); }}/>
+              : <span>{evVal||'—'}</span>}
+          </Field>
+        </>}
+      </>}
+    </div>}
+  </div>;
+}
+
+/* The interactive Audit Grid tab, live version -- reads via
+   fetchAuditGridInstancesByOccurrence() (already wired in DvMeetingDetail),
+   scores every question live via liveScoreGrid(), and writes through
+   saveAuditGridAnswer / updateAuditGridState / approveAuditGridInstance /
+   createAuditGridInstance (all already in dataverse.js, previously unused).
+   `grid` is the newest version (fetchAuditGridInstancesByOccurrence sorts
+   newest-first); `olderVersions` is whatever is left, shown read-only below --
+   normally empty, populated only once a correction version has been opened. */
+function DvGridBody({rec,grid,olderVersions,minutes,quorumPct,torLink,accred,S,posName,dvMeetingOccs,onReload}){
+  const {toast}=use();
+  const [savingId,setSavingId]=useState(null);
+  const [submitting,setSubmitting]=useState(false);
+  const [approving,setApproving]=useState(false);
+  const [returning,setReturning]=useState(false);
+  const [openingVersion,setOpeningVersion]=useState(false);
+
+  const rows = liveScoreGrid(rec, minutes, quorumPct, torLink, accred, S, grid, dvMeetingOccs);
+  const live = gridTotals(rows);
+  const frozen = !!grid.frozen;
+  const display = frozen
+    ? { score:grid.score, coverage: grid.total?Math.round((grid.coverage||0)/grid.total*1000)/10:0,
+        applicable:grid.coverage, total:grid.total }
+    : { score:live.score, coverage:live.coverage, applicable:live.applicable, total:live.total };
+
+  const editable = grid.state==='Pending Facilitator Review' || grid.state==='Returned for Revision';
+  const blanks = rows.filter(r=>r.state==='blank');
+  const ag2 = rows.find(r=>r.id==='AG-02');
+  const missingEv = !!ag2 && ag2.state==='manual' && !(ag2.ev||'').trim();
+  const canSubmit = blanks.length===0 && !missingEv;
+
+  const answerIdFor = qid => grid.answers.find(a=>a.questionId===qid)?.id;
+
+  const saveScore = async (qid, score) => {
+    setSavingId(qid);
+    try{
+      const {id,errors} = await saveAuditGridAnswer(grid.id, qid, {score, evidence:grid.evidence?.[qid]}, answerIdFor(qid));
+      if(!id){ console.warn('[dataverse] saveAuditGridAnswer() failed:', errors);
+        toast('Not saved','Saving the score failed. Check the console for details.','err'); return; }
+      await onReload();
+    }catch(e){ console.warn('[dataverse] saveAuditGridAnswer() threw unexpectedly:', e);
+      toast('Not saved','Saving the score failed. Check the console for details.','err');
+    }finally{ setSavingId(null); }
+  };
+
+  const saveEvidence = async (qid, text) => {
+    setSavingId(qid);
+    try{
+      const {id,errors} = await saveAuditGridAnswer(grid.id, qid, {score:grid.manual?.[qid], evidence:text}, answerIdFor(qid));
+      if(!id){ console.warn('[dataverse] saveAuditGridAnswer() failed:', errors);
+        toast('Not saved','Saving the evidence note failed. Check the console for details.','err'); return; }
+      await onReload();
+    }catch(e){ console.warn('[dataverse] saveAuditGridAnswer() threw unexpectedly:', e);
+      toast('Not saved','Saving the evidence note failed. Check the console for details.','err');
+    }finally{ setSavingId(null); }
+  };
+
+  /* Clears a manual score back to blank -- archives the Answer row rather
+     than deleting it, same statecode convention as MOM Notes. */
+  const clearScore = async (qid) => {
+    const answerId = answerIdFor(qid);
+    if(!answerId) return;
+    setSavingId(qid);
+    try{
+      const {id,errors} = await archiveAuditGridAnswer(answerId);
+      if(!id){ console.warn('[dataverse] archiveAuditGridAnswer() failed:', errors);
+        toast('Not saved','Clearing the score failed. Check the console for details.','err'); return; }
+      await onReload();
+    }catch(e){ console.warn('[dataverse] archiveAuditGridAnswer() threw unexpectedly:', e);
+      toast('Not saved','Clearing the score failed. Check the console for details.','err');
+    }finally{ setSavingId(null); }
+  };
+
+  const submit = async () => {
+    setSubmitting(true);
+    try{
+      const {id,errors} = await updateAuditGridState(grid.id, 'Submitted for Approval');
+      if(!id){ console.warn('[dataverse] updateAuditGridState() failed:', errors);
+        toast('Not saved','Submitting the Grid failed. Check the console for details.','err'); return; }
+      toast('Submitted for approval','The Grid now sits with the Meeting Chair.','ok');
+      await onReload();
+    }catch(e){ console.warn('[dataverse] updateAuditGridState() threw unexpectedly:', e);
+      toast('Not saved','Submitting the Grid failed. Check the console for details.','err');
+    }finally{ setSubmitting(false); }
+  };
+
+  const approvePublish = async () => {
+    setApproving(true);
+    try{
+      const {id,errors} = await approveAuditGridInstance(grid.id,
+        {score:live.score, coverage:live.applicable, total:live.total});
+      if(!id){ console.warn('[dataverse] approveAuditGridInstance() failed:', errors);
+        toast('Not saved','Approving the Grid failed. Check the console for details.','err'); return; }
+      toast('Score published',
+        `Overall Score ${live.score}% with Coverage ${live.applicable} of ${live.total}. The Instance is locked.`,'ok');
+      await onReload();
+    }catch(e){ console.warn('[dataverse] approveAuditGridInstance() threw unexpectedly:', e);
+      toast('Not saved','Approving the Grid failed. Check the console for details.','err');
+    }finally{ setApproving(false); }
+  };
+
+  const returnForRevision = async reason => {
+    setReturning(false);
+    try{
+      const {id,errors} = await updateAuditGridState(grid.id, 'Returned for Revision', reason);
+      if(!id){ console.warn('[dataverse] updateAuditGridState() failed:', errors);
+        toast('Not saved','Returning the Grid failed. Check the console for details.','err'); return; }
+      toast('Returned to the Facilitator','The reason is recorded.','warn');
+      await onReload();
+    }catch(e){ console.warn('[dataverse] updateAuditGridState() threw unexpectedly:', e);
+      toast('Not saved','Returning the Grid failed. Check the console for details.','err'); }
+  };
+
+  const openCorrectionVersion = async reason => {
+    setOpeningVersion(false);
+    try{
+      const {id,errors} = await createAuditGridInstance({
+        occurrenceId: rec.id, name: grid.name, templateVersion: grid.templateVersion,
+        total: grid.total, version: (grid.version||1)+1, correctionReason: reason,
+        facilitatorPositionId: grid.facilitatorPositionId, chairPositionId: grid.chairPositionId,
+      });
+      if(!id){ console.warn('[dataverse] createAuditGridInstance() (correction) failed:', errors);
+        toast('Not saved','Opening a correction version failed. Check the console for details.','err'); return; }
+      toast('New Grid version opened','Pending Facilitator Review. The approved Instance is unchanged.','ok');
+      await onReload();
+    }catch(e){ console.warn('[dataverse] createAuditGridInstance() (correction) threw unexpectedly:', e);
+      toast('Not saved','Opening a correction version failed. Check the console for details.','err'); }
+  };
+
+  return <>
+    <div className="card">
+      <div style={{display:'flex',alignItems:'center',gap:9,marginBottom:12,flexWrap:'wrap'}}>
+        <Tag c={grid.state==='Approved'?'green':grid.state==='Void'?'grey':'amber'}>{grid.state||'—'}</Tag>
+        {grid.templateVersion && <Tag>Template {grid.templateVersion}</Tag>}
+        <Tag>Version {grid.version}</Tag>
+        {grid.locked && <Tag c="grey">🔒 Locked</Tag>}
+      </div>
+
+      <ScoreHero score={display.score} coverage={display.coverage} applicable={display.applicable}
+        total={display.total} threshold={S.passThreshold} state={grid.state}/>
+
+      <div className="sep"/>
+      <KVBlock items={[
+        ['Facilitator', posName(grid.facilitatorPositionId)||'—'],
+        ['Meeting Chair', posName(grid.chairPositionId)||'—'],
+        ['Approved at', fmtISODT(grid.approvedAt)],
+      ]}/>
+
+      {grid.returnReason && <Note k="err"><b>Returned for revision.</b> {grid.returnReason}</Note>}
+      {grid.correctionReason && <Note k="warn"><b>Correction version.</b> {grid.correctionReason}</Note>}
+      {!frozen && live.na>0 && <Note k="info" ic="i">{live.na} question{live.na===1?'':'s'} Not Applicable —
+        set by the system from what this occurrence and its Setup hold, never by a user.</Note>}
+      {editable && blanks.length>0 && <Note k="warn">AG-02 still needs a manual score and an evidence note
+        before this Grid can be submitted.</Note>}
+    </div>
+
+    {AG_CATEGORIES.map(cat=>{
+      const catRows = rows.filter(r=>r.q.cat===cat);
+      const applicable = catRows.filter(r=>r.state!=='na' && r.state!=='retired');
+      const notRetired = catRows.filter(r=>r.state!=='retired');
+      return <div className="card" key={cat}>
+        <div className="card-hd" style={{display:'flex',alignItems:'center',gap:10}}>
+          <h2 style={{flex:1,fontSize:14}}>{cat}</h2>
+          <span className="dim" style={{fontSize:12}}>{applicable.length} of {notRetired.length} applicable</span>
+        </div>
+        {catRows.map(r=><DvGridQuestion key={r.id} r={r} editable={editable} savingId={savingId}
+          onScore={saveScore} onEvidence={saveEvidence} onClear={clearScore}/>)}
+      </div>;
+    })}
+
+    <div className="card">
+      <h2>Actions</h2>
+      {editable && <>
+        {!canSubmit && <Note k="warn">
+          {blanks.length>0 && `${blanks.length} question${blanks.length===1?'':'s'} still blank. `}
+          {missingEv && 'AG-02 needs an evidence note.'}</Note>}
+        <Btn k="pri" disabled={!canSubmit||submitting} onClick={submit}>
+          {submitting?'Submitting…':'Submit for Chair approval'}</Btn>
+      </>}
+      {grid.state==='Submitted for Approval' && <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+        <Btn k="grn" disabled={approving} onClick={approvePublish}>
+          {approving?'Approving…':'Approve and publish the score'}</Btn>
+        <Btn k="wrn" onClick={()=>setReturning(true)}>Return for revision</Btn>
+      </div>}
+      {grid.state==='Approved' && <>
+        <Note k="ok">Approved {fmtISODT(grid.approvedAt)}. The score is locked and will not be recomputed.</Note>
+        <Btn onClick={()=>setOpeningVersion(true)}>Open a correction version</Btn>
+      </>}
+      <Note k="warn" style={{marginTop:10}}>No independent line review exists for this score yet <OD id="OD-23"/>.</Note>
+    </div>
+
+    {returning && <ReturnModal title="Return the Grid to the Facilitator" onClose={()=>setReturning(false)}
+      onSave={returnForRevision}/>}
+    {openingVersion && <DvGridCorrectionModal onClose={()=>setOpeningVersion(false)} onSave={openCorrectionVersion}/>}
+
+    {olderVersions.length>0 && <div className="card">
+      <h2>Earlier versions</h2>
+      <div className="t-wrap"><table className="data">
+        <thead><tr><th>Version</th><th>State</th><th>Score</th><th>Coverage</th></tr></thead>
+        <tbody>{olderVersions.map(g=>
+          <tr key={g.id}>
+            <td>{g.version}</td>
+            <td><Tag c={g.state==='Approved'?'green':'grey'}>{g.state||'—'}</Tag></td>
+            <td>{g.score!=null?g.score+'%':'—'}</td>
+            <td>{g.coverage!=null && g.total?g.coverage+' of '+g.total:'—'}</td>
+          </tr>)}
+        </tbody></table></div>
+    </div>}
+  </>;
+}
+
 function DvMeetingDetail({rec,back}){
-  const {sel,setSel,toast,refreshOccurrences,openMeeting,S}=use();
+  const {sel,setSel,toast,refreshOccurrences,openMeeting,S,dvMeetingOccs}=use();
   const tab = sel.mtgTab || 'detail';
   const setTab = t=>setSel(v=>({...v,mtgTab:t}));
   const [markingHeld,setMarkingHeld]=useState(false);
@@ -4790,54 +5199,11 @@ function DvMeetingDetail({rec,back}){
       {!govLoading && grids.length===0 &&
         <div className="card"><Empty ic="▦">No Audit Grid Instance exists for this occurrence.</Empty>
           <div style={{fontSize:12,color:'var(--muted)',textAlign:'center',padding:'0 17px 14px'}}>
-            An Instance is created on closure of a Committee occurrence's Minutes. Scoring one from here
-            is not wired yet — this tab reads lm_auditgridinstances and lm_auditgridanswers only.</div></div>}
-      {!govLoading && grids.map(g=>{
-        const covPct = g.coverage!=null && g.total ? Math.round(g.coverage/g.total*1000)/10 : null;
-        return <div className="card" key={g.id}>
-          <div style={{display:'flex',alignItems:'center',gap:9,marginBottom:12,flexWrap:'wrap'}}>
-            <Tag c={g.state==='Approved'?'green':g.state==='Void'?'grey':'amber'}>{g.state||'—'}</Tag>
-            {g.templateVersion && <Tag>Template {g.templateVersion}</Tag>}
-            <Tag>Version {g.version}</Tag>
-            {g.locked && <Tag c="grey">🔒 Locked</Tag>}
-          </div>
-
-          <ScoreHero score={g.score} coverage={covPct??0} applicable={g.coverage??0}
-            total={g.total??0} threshold={S.passThreshold} state={g.state}/>
-
-          <div className="sep"/>
-          <KVBlock items={[
-            ['Facilitator', posName(g.facilitatorPositionId)||'—'],
-            ['Meeting Chair', posName(g.chairPositionId)||'—'],
-            ['Approved at', fmtISODT(g.approvedAt)],
-          ]}/>
-          {g.returnReason &&
-            <Note k="err"><b>Returned for revision.</b> {g.returnReason}</Note>}
-          {g.correctionReason &&
-            <Note k="warn"><b>Correction version.</b> {g.correctionReason}</Note>}
-
-          {g.answers.length>0 && <>
-            <div className="sep"/>
-            <h2 style={{marginBottom:4}}>Stored answers</h2>
-            <div className="csub">Only manually scored questions are stored. An auto-scored value is
-              derived from the occurrence every time the Grid is rendered, so it can never disagree
-              with the rule that produced it.</div>
-            <div className="t-wrap"><table className="data">
-              <thead><tr><th>Question</th><th>Manual score</th><th>Evidence</th></tr></thead>
-              <tbody>{g.answers.slice()
-                .sort((a,b)=>(a.questionId||'').localeCompare(b.questionId||''))
-                .map(a=><tr key={a.id}>
-                  <td className="t-main">{a.questionId||'—'}</td>
-                  <td><Tag c={scoreColour(a.score)}>{a.score??'—'}</Tag></td>
-                  <td className="dim" style={{fontSize:12}}>{a.evidence||'—'}</td>
-                </tr>)}
-              </tbody></table></div>
-          </>}
-
-          {g.state!=='Approved' &&
-            <Note k="info">Nothing is published until the Meeting Chair approves. The Overall Score is
-              written to lm_score once, on approval, and never recomputed.</Note>}
-        </div>;})}
+            An Instance is created on closure of a Committee occurrence's Minutes.</div></div>}
+      {!govLoading && grids.length>0 &&
+        <DvGridBody rec={rec} grid={grids[0]} olderVersions={grids.slice(1)} minutes={minutes}
+          quorumPct={tpl?.quorumPct} torLink={tpl?.torLink} accred={accred} S={S} posName={posName}
+          dvMeetingOccs={dvMeetingOccs} onReload={reloadGovernance}/>}
     </>}
   </>;
 }
