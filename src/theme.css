@@ -470,6 +470,14 @@ fieldset:disabled{opacity:.62}
 .toast span{color:var(--muted);line-height:1.45}
 
 /* ---------- misc ---------- */
+.rc-tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin-bottom:15px;flex-wrap:wrap}
+.rc-tabs button{background:transparent;border:none;border-bottom:2px solid transparent;padding:8px 13px;
+  font-size:12.5px;font-weight:550;color:var(--muted);margin-bottom:-1px}
+.rc-tabs button:hover{color:var(--ink)}
+.rc-tabs button.on{color:var(--teal-d);border-bottom-color:var(--teal);font-weight:650}
+.rc-tabs button .c{background:var(--grey-bg);border-radius:20px;font-size:10px;padding:1px 6px;margin-left:5px;
+  font-weight:700;color:var(--muted)}
+.rc-tabs button.on .c{background:var(--teal);color:#fff}
 .tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin-bottom:15px;flex-wrap:wrap}
 .tabs button{background:transparent;border:none;border-bottom:2px solid transparent;padding:8px 13px;
   font-size:12.5px;font-weight:550;color:var(--muted);margin-bottom:-1px}
@@ -720,4 +728,129 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
   .lp-topbar .tb-scope,.lp-topbar .lp-user-name{display:none}
   .lp-topbar .tb-brand{padding-right:0;border-right:none}
 }
+
+/* =========================================================================
+   REPORT COMPOSITION — sections, citations, hierarchy
+   A Report is authored here rather than attached as a file, so these styles
+   cover the section editor, the live citation cards, the embedded Power BI
+   preview and the company-wide report tree.
+   ========================================================================= */
+
+/* ---- a section in the composer ---- */
+.sec{border:1px solid var(--border);border-radius:9px;background:var(--panel);margin-bottom:10px}
+.sec.drag{border-color:var(--teal);box-shadow:0 0 0 2px var(--teal-l)}
+.sec-h{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--border);
+  background:var(--surface);border-radius:8px 8px 0 0;flex-wrap:wrap}
+.sec-h input.sec-t{border:none;background:transparent;font-weight:640;font-size:13px;flex:1;
+  min-width:150px;color:var(--ink);font-family:var(--sans);padding:2px 0}
+.sec-h input.sec-t:focus{outline:none;border-bottom:1px solid var(--border-d)}
+.sec-b{padding:11px}
+.sec-b textarea{width:100%;min-height:74px;border:1px solid var(--border);border-radius:7px;
+  padding:9px 10px;font-size:13px;line-height:1.62;resize:vertical;background:var(--panel);color:var(--ink)}
+.sec-b textarea:focus{outline:none;border-color:var(--border-d);box-shadow:0 0 0 3px var(--teal-ll)}
+.sec-f{border-top:1px dashed var(--border);margin-top:9px;padding-top:9px;
+  display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.sec-n{width:20px;height:20px;border-radius:5px;background:var(--grey-bg);color:var(--muted);
+  display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:700;flex:none}
+
+/* diagnostic angle selector + chips */
+.dg-seg{display:flex;border:1px solid var(--border);border-radius:6px;overflow:hidden;flex:none}
+.dg-seg button{background:var(--panel);border:none;padding:3px 8px;font-size:10.5px;font-weight:600;
+  color:var(--muted);border-right:1px solid var(--border)}
+.dg-seg button:last-child{border-right:none}
+.dg-seg button.on{color:#fff}
+.dg-seg button.on.d1{background:#5B7C8D}.dg-seg button.on.d2{background:#8E5B2A}
+.dg-seg button.on.d3{background:#6B5A9E}.dg-seg button.on.d4{background:#4A7C59}
+.dg-seg button.on.none{background:var(--grey)}
+.dg{display:inline-flex;align-items:center;gap:4px;border-radius:20px;padding:1px 8px;
+  font-size:10.5px;font-weight:650;letter-spacing:.01em}
+.dg.d1{background:rgba(91,124,141,.13);color:#42606E}
+.dg.d2{background:rgba(142,91,42,.12);color:#7A4C22}
+.dg.d3{background:rgba(107,90,158,.12);color:#5A4B86}
+.dg.d4{background:rgba(74,124,89,.13);color:#3D6849}
+.dg.none{background:var(--grey-bg);color:var(--muted)}
+
+/* ---- a live citation ---- */
+.cite{position:relative;border:1px solid var(--border);border-left:3px solid var(--border-d);
+  border-radius:7px;background:var(--surface);padding:9px 11px;margin-top:8px}
+.cite.k-kpi{border-left-color:#B8930A}.cite.k-str{border-left-color:#7A5AA8}
+.cite.k-pm{border-left-color:#3C5A99}.cite.k-iss{border-left-color:#9C5A2E}
+.cite.k-rpt{border-left-color:var(--teal)}.cite.k-par{border-left-color:var(--green)}
+.cite.k-task{border-left-color:var(--grey)}
+.cite-hd{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.cite-t{font-size:12.5px;font-weight:640;color:var(--ink)}
+.cite-m{font-size:11.5px;color:var(--muted);margin-top:3px}
+.cite-x{position:absolute;top:5px;right:6px;border:none;background:none;color:var(--faint);
+  font-size:14px;line-height:1;padding:2px 5px;border-radius:4px}
+.cite-x:hover{background:var(--red-bg);color:var(--red)}
+.cite-q{font-size:12.5px;line-height:1.68;font-style:italic;color:var(--ink-2);
+  border-left:2px solid var(--border-d);padding-left:10px;margin-top:5px}
+.cref{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--border-d);border-radius:20px;
+  padding:1px 8px;font-size:10.5px;font-weight:640;background:var(--panel);color:var(--ink-2)}
+.cref.kpi{border-color:#E0CE96;background:#FDF8E8;color:#7A6208}
+.cref.str{border-color:#D5C7E6;background:#F5F0FA;color:#5A4B86}
+.cref.pm{border-color:#C6D0E4;background:#EEF2F9;color:#33507F}
+.cref.iss{border-color:#E3CBB6;background:#FBF2EA;color:#83421F}
+.ach{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:680;
+  border-radius:20px;padding:1px 9px}
+.ach.hit{background:var(--green-bg);color:var(--green)}
+.ach.near{background:var(--amber-bg);color:var(--amber)}
+.ach.miss{background:var(--red-bg);color:var(--red)}
+.ach i{width:5px;height:5px;border-radius:50%;background:currentColor;display:block}
+
+/* ---- citation picker ---- */
+.cpick{border:1px solid var(--border-d);border-radius:8px;background:var(--teal-ll);padding:11px;margin-top:9px}
+.cpick-k{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px}
+.cpick-l{max-height:250px;overflow:auto;border:1px solid var(--border);border-radius:7px;background:var(--panel)}
+.cpick-i{display:flex;align-items:center;gap:9px;padding:7px 10px;border-bottom:1px solid var(--border);width:100%;
+  text-align:left;background:none;border-left:none;border-right:none;border-top:none}
+.cpick-i:last-child{border-bottom:none}
+.cpick-i:hover{background:var(--teal-ll)}
+.cpick-i.taken{opacity:.45}
+.cpick-i .m{font-size:11px;color:var(--muted);margin-top:2px}
+
+/* ---- embedded Power BI preview ---- */
+.pbi{border:1px solid #1b2a3a;border-radius:7px;overflow:hidden;margin-top:9px}
+.pbi-h{background:#141f2e;color:#e8ecf1;padding:7px 11px;display:flex;justify-content:space-between;
+  align-items:center;gap:10px}
+.pbi-h .m{display:flex;align-items:center;gap:7px;min-width:0}
+.pbi-h .p{width:17px;height:17px;background:#f2c811;border-radius:3px;color:#141f2e;font-size:10px;
+  font-weight:800;display:flex;align-items:center;justify-content:center;flex:none}
+.pbi-h .n{font-size:11.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pbi-h .e{font-size:9px;color:#a7b1bf;border:1px solid #3a4657;border-radius:3px;padding:1px 6px;flex:none}
+.pbi-h a{font-size:10.5px;color:#f2c811;white-space:nowrap;flex:none}
+.pbi-b{background:#f3f2f1;padding:12px;display:flex;gap:11px;flex-wrap:wrap}
+.pbi-tile{background:#fff;border:1px solid #e1dfdd;border-radius:4px;padding:11px;flex:1;min-width:172px}
+.pbi-tile .t{font-size:11px;font-weight:600;color:#252423}
+.pbi-tile .s{font-size:9.5px;color:#605e5c;margin-bottom:7px}
+.pbi-tile .v{font-family:var(--mono);font-size:18px;font-weight:700;color:#252423}
+.pbi-tabs{background:#faf9f8;border-top:1px solid #e1dfdd;padding:5px 11px;display:flex;gap:5px}
+.pbi-tabs span{font-size:10px;padding:3px 9px;color:#605e5c}
+.pbi-tabs span.on{background:#fff;color:#252423;font-weight:600;border:1px solid #e1dfdd;
+  border-bottom:none;border-radius:4px 4px 0 0}
+.spk{display:flex;align-items:flex-end;gap:3px;height:34px;margin-top:7px}
+.spk i{flex:1;background:#c8c6c4;border-radius:1px}
+.spk i.last{background:#f2c811}
+
+/* ---- report hierarchy tree ---- */
+.tree{padding:4px 0}
+.tnode{margin-left:20px;border-left:1px solid var(--border);padding-left:14px;position:relative}
+.tree>.tnode{margin-left:0;border-left:none;padding-left:0}
+.tnode::before{content:'';position:absolute;left:0;top:17px;width:12px;height:1px;background:var(--border)}
+.tree>.tnode::before{display:none}
+.tbox{display:flex;align-items:center;gap:9px;border:1px solid var(--border);border-radius:7px;
+  background:var(--panel);padding:8px 11px;margin:5px 0;width:100%;text-align:left}
+.tbox:hover{border-color:var(--border-d);background:var(--surface)}
+.tbox.on{border-color:var(--teal);box-shadow:0 0 0 2px var(--teal-l)}
+.tbox.dim{opacity:.4}
+.tbox .n{display:block;font-size:12.5px;font-weight:620;color:var(--ink)}
+.tbox .m{display:block;font-size:11px;color:var(--muted);margin-top:2px}
+.tw{display:inline-flex;width:16px;height:16px;align-items:center;justify-content:center;
+  border-radius:4px;background:var(--grey-bg);color:var(--muted);font-size:9px;font-weight:700;flex:none}
+
+/* ---- paragraph pool ---- */
+.pool-i{border:1px solid var(--border);border-radius:8px;padding:11px;margin-bottom:9px;background:var(--panel)}
+.pool-i .u{font-size:11px;color:var(--muted);margin-top:7px;padding-top:7px;border-top:1px dashed var(--border)}
+.reuse{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:640;
+  color:var(--green);background:var(--green-bg);border-radius:20px;padding:1px 8px}
 

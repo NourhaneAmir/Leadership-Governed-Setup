@@ -158,26 +158,301 @@ const RPT_CATEGORIES = ['Executive','Core','Custom'];
 const RPT_SETUPS = [
   {id:'rs1', name:'Monthly Quality Report', cat:'Core',
    objective:'Report quality indicator performance and improvement actions for the reporting period.',
-   template:'QLT-TMPL-004.docx', site:'Quality', folder:'2026 / Monthly Reports',
+   template:'QLT-TMPL-004.docx', tpl:'TPL-QLT', site:'Quality', folder:'2026 / Monthly Reports',
    creator:'u1', reviewers:['u5','u2'], freq:'Monthly', dueDay:10,
    kpis:['KPI-QLT-011','KPI-QLT-014'], processes:['PRC-QLT-02']},
   {id:'rs2', name:'Nursing Manpower Plan', cat:'Core',
    objective:'Present nursing establishment, vacancy and coverage against the approved manpower plan.',
-   template:null, site:'Nursing', folder:'2026 / Plans',
+   template:null, tpl:'TPL-NUR', site:'Nursing', folder:'2026 / Plans',
    creator:'u10', reviewers:['u5','u7'], freq:'Monthly', dueDay:12,
    kpis:['KPI-NUR-003'], processes:['PRC-NUR-01']},
   {id:'rs4', name:'Medical Equipment Maintenance Report', cat:'Core',
    objective:'Report preventive maintenance completion and open equipment faults for the period.',
-   template:'BME-TMPL-002.xlsx', site:'Facilities', folder:'2026 / Monthly Reports',
+   template:'BME-TMPL-002.xlsx', tpl:'TPL-BME', site:'Facilities', folder:'2026 / Monthly Reports',
    creator:'u6', reviewers:['u11','u7'], freq:'Monthly', dueDay:14,
    kpis:['KPI-BME-002'], processes:['PRC-BME-01']},
   {id:'rs3', name:'Executive Performance Pack', cat:'Executive',
    objective:'Consolidate business unit performance for the executive review cycle.',
-   template:'EXE-TMPL-001.pptx', site:'Executive', folder:'2026 / Monthly Reports',
+   template:'EXE-TMPL-001.pptx', tpl:'TPL-EXE', site:'Executive', folder:'2026 / Monthly Reports',
    creator:'u1', reviewers:['u7'], freq:'Monthly', dueDay:8,
    kpis:['KPI-FIN-001','KPI-OPS-004'], processes:[]},
 ];
 const RS = id => RPT_SETUPS.find(r=>r.id===id);
+
+/* =========================================================================
+   REPORT COMPOSITION — the sources a Report section can cite
+   A Report is not a file. It is an ordered set of sections, and any section
+   may cite a live record. The citation carries that period's real figures,
+   so nothing in a Report is a number somebody typed in and forgot to update.
+   Every citation resolves through the process registry below, which is the
+   same spine the Setups, KPIs and Strategy chain already hang off.
+   ========================================================================= */
+
+/* ---- the four diagnostic angles a section can be typed against --------- */
+const DIAG = {
+  d1:{n:'Descriptive',  q:'What happened',     need:'a certified figure'},
+  d2:{n:'Diagnostic',   q:'Why it happened',   need:'a cause with evidence'},
+  d3:{n:'Predictive',   q:'What happens next', need:'an assumption and a horizon'},
+  d4:{n:'Prescriptive', q:'What to do',        need:'an owner and a date'},
+};
+const DiagChip = ({d}) => d
+  ? <span className={'dg '+d} title={DIAG[d].q+' — needs '+DIAG[d].need}>{DIAG[d].n}</span>
+  : <span className="dg none">Untyped</span>;
+
+/* ---- process registry -------------------------------------------------- */
+const PROC_REG = [
+  {id:'PRC-QLT-02', n:'Corrective action management',  own:'Quality'},
+  {id:'PRC-QLT-01', n:'Quality indicator management',  own:'Quality'},
+  {id:'PRC-NUR-01', n:'Nursing establishment planning', own:'Nursing'},
+  {id:'PRC-BME-01', n:'Preventive maintenance',        own:'Facilities'},
+  {id:'PRC-OPS-01', n:'Patient flow management',       own:'Operations'},
+  {id:'PRC-IPC-01', n:'Infection surveillance',        own:'Infection Prevention'},
+  {id:'PRC-FIN-01', n:'Budget preparation',            own:'Finance'},
+];
+const PR = id => PROC_REG.find(p=>p.id===id);
+
+/* ---- Power BI catalogue: a KPI links to the report it actually lives in - */
+const BI_REPORTS = [
+  {id:'BI-01', n:'Quality — Indicator Surveillance',
+   link:'https://app.powerbi.com/reportEmbed?reportId=demo-qlt-surveillance'},
+  {id:'BI-02', n:'Finance — Contribution and Margin',
+   link:'https://app.powerbi.com/reportEmbed?reportId=demo-fin-margin'},
+  {id:'BI-03', n:'Operations — Theatre and Asset Utilisation',
+   link:'https://app.powerbi.com/reportEmbed?reportId=demo-ops-utilisation'},
+  {id:'BI-04', n:'Workforce — Establishment and Vacancy',
+   link:'https://app.powerbi.com/reportEmbed?reportId=demo-hr-establishment'},
+];
+const BIR = id => BI_REPORTS.find(b=>b.id===id);
+
+/* ---- KPI catalogue: target and actual by Business Unit and period ------
+   dir:'down' marks a KPI where a lower actual is the better result, so
+   achievement is not read the wrong way round on vacancy or infection rate. */
+const KPI_CAT = [
+  {id:'KPI-QLT-011', n:'Sepsis bundle compliance', unit:'%', dir:'up',
+   proc:'PRC-QLT-02', bi:'BI-01',
+   ach:{'AHJ:2026-06':{target:90,actual:81},'AHJ:2026-07':{target:90,actual:78},
+        'AHJ:2026-08':{target:90,actual:84},'AHM:2026-07':{target:88,actual:85}},
+   breakdowns:[
+     {id:'BD-Q11-ed',  dim:'Unit', n:'Emergency Department', ach:{'AHJ:2026-07':{target:90,actual:64}}},
+     {id:'BD-Q11-icu', dim:'Unit', n:'Intensive Care',       ach:{'AHJ:2026-07':{target:90,actual:91}}},
+     {id:'BD-Q11-war', dim:'Unit', n:'Inpatient Wards',      ach:{'AHJ:2026-07':{target:90,actual:83}}},
+     {id:'BD-Q11-ns',  dim:'Shift',n:'Night shift',          ach:{'AHJ:2026-07':{target:90,actual:69}}}]},
+
+  {id:'KPI-QLT-014', n:'Corrective action closure within due date', unit:'%', dir:'up',
+   proc:'PRC-QLT-02', bi:'BI-01',
+   ach:{'AHJ:2026-06':{target:85,actual:72},'AHJ:2026-07':{target:85,actual:69},
+        'AHJ:2026-08':{target:85,actual:74}},
+   breakdowns:[
+     {id:'BD-Q14-cli', dim:'Source', n:'Clinical audit',     ach:{'AHJ:2026-07':{target:85,actual:77}}},
+     {id:'BD-Q14-inc', dim:'Source', n:'Incident review',    ach:{'AHJ:2026-07':{target:85,actual:58}}}]},
+
+  {id:'KPI-NUR-003', n:'Nursing vacancy rate', unit:'%', dir:'down',
+   proc:'PRC-NUR-01', bi:'BI-04',
+   ach:{'AHJ:2026-07':{target:8,actual:13.4},'AHJ:2026-06':{target:8,actual:12.1},
+        'AHJ:2026-08':{target:8,actual:13.9}},
+   breakdowns:[
+     {id:'BD-N03-icu', dim:'Unit', n:'Intensive Care',       ach:{'AHJ:2026-07':{target:8,actual:19.2}}},
+     {id:'BD-N03-opd', dim:'Unit', n:'Outpatient Clinics',   ach:{'AHJ:2026-07':{target:8,actual:6.4}}},
+     {id:'BD-N03-thr', dim:'Unit', n:'Theatres',             ach:{'AHJ:2026-07':{target:8,actual:15.8}}}]},
+
+  {id:'KPI-BME-002', n:'Preventive maintenance completion', unit:'%', dir:'up',
+   proc:'PRC-BME-01', bi:'BI-03',
+   ach:{'AHJ:2026-06':{target:95,actual:88},'AHJ:2026-07':{target:95,actual:91},
+        'AHJ:2026-08':{target:95,actual:93}},
+   breakdowns:[
+     {id:'BD-B02-life', dim:'Asset class', n:'Life support',   ach:{'AHJ:2026-07':{target:95,actual:99}}},
+     {id:'BD-B02-img',  dim:'Asset class', n:'Imaging',        ach:{'AHJ:2026-07':{target:95,actual:76}}},
+     {id:'BD-B02-lab',  dim:'Asset class', n:'Laboratory',     ach:{'AHJ:2026-07':{target:95,actual:94}}}]},
+
+  {id:'KPI-OPS-004', n:'Theatre utilisation', unit:'%', dir:'up',
+   proc:'PRC-OPS-01', bi:'BI-03',
+   ach:{'AHJ:2026-06':{target:85,actual:79},'AHJ:2026-07':{target:85,actual:82},
+        'AHJ:2026-08':{target:85,actual:80}},
+   breakdowns:[
+     {id:'BD-O04-am',  dim:'Session', n:'Morning lists',  ach:{'AHJ:2026-07':{target:85,actual:93}}},
+     {id:'BD-O04-pm',  dim:'Session', n:'Evening lists',  ach:{'AHJ:2026-07':{target:85,actual:61}}},
+     {id:'BD-O04-ort', dim:'Specialty', n:'Orthopaedics', ach:{'AHJ:2026-07':{target:85,actual:88}}},
+     {id:'BD-O04-ent', dim:'Specialty', n:'ENT',          ach:{'AHJ:2026-07':{target:85,actual:74}}}]},
+
+  {id:'KPI-FIN-001', n:'Operating margin', unit:'%', dir:'up',
+   proc:'PRC-FIN-01', bi:'BI-02',
+   ach:{'AHJ:2026-06':{target:14,actual:11.8},'AHJ:2026-07':{target:14,actual:12.6},
+        'AHJ:2026-08':{target:14,actual:12.2},'AHM:2026-07':{target:11,actual:9.4}},
+   breakdowns:[
+     {id:'BD-F01-ip', dim:'Stream', n:'Inpatient',  ach:{'AHJ:2026-07':{target:14,actual:15.1}}},
+     {id:'BD-F01-op', dim:'Stream', n:'Outpatient', ach:{'AHJ:2026-07':{target:14,actual:9.2}}}]},
+
+  {id:'KPI-IPC-004', n:'Healthcare associated infection rate', unit:' per 1,000 pt-days', dir:'down',
+   proc:'PRC-IPC-01', bi:'BI-01',
+   ach:{'AHJ:2026-07':{target:2.1,actual:2.8},'AHJ:2026-06':{target:2.1,actual:2.4}},
+   breakdowns:[]},
+];
+const KPIC = id => KPI_CAT.find(k=>k.id===id);
+/* a citation may point at a whole KPI or at one breakdown of it */
+const findKpi = id => {
+  const k = KPIC(id); if(k) return {k, bd:null};
+  for(const kk of KPI_CAT){ const bd=(kk.breakdowns||[]).find(b=>b.id===id); if(bd) return {k:kk, bd}; }
+  return null;
+};
+const bdDims = k => [...new Set((k.breakdowns||[]).map(b=>b.dim))];
+/* Achievement for a Business Unit and period. A Report scoped to ALL reads
+   the mean of the units that hold a figure, rather than showing nothing. */
+function achFor(obj,bu,period){
+  const a = obj.ach||{};
+  if(a[bu+':'+period]) return a[bu+':'+period];
+  if(bu==='ALL'){
+    const hits = Object.keys(a).filter(k=>k.endsWith(':'+period)).map(k=>a[k]);
+    if(!hits.length) return null;
+    const avg = arr => Math.round(arr.reduce((s,x)=>s+x,0)/arr.length*10)/10;
+    return {target:avg(hits.map(h=>h.target)), actual:avg(hits.map(h=>h.actual)), blended:hits.length};
+  }
+  return null;
+}
+const achPct = (rec,dir) => !rec||!rec.target ? null
+  : Math.round((dir==='down' ? rec.target/rec.actual : rec.actual/rec.target)*1000)/10;
+const achCls = p => p==null?'':p>=98?'hit':p>=85?'near':'miss';
+
+/* ---- Strategy chain: Objective → Tactic → POC → Project ---------------- */
+const STRAT = [
+  {id:'OBJ-01', k:'Objective', n:'Improve patient safety and clinical outcomes', own:'u7', st:'Published'},
+  {id:'OBJ-05', k:'Objective', n:'Strengthen workforce capability',              own:'u7', st:'Published'},
+  {id:'OBJ-06', k:'Objective', n:'Improve operating margin',                     own:'u7', st:'Published'},
+
+  {id:'TAC-11', k:'Tactic', n:'Sepsis screening at every admission point', par:'OBJ-01',
+   kpi:'KPI-QLT-011', proc:'PRC-QLT-02', own:'u5', st:'78% → 90%', pct:62},
+  {id:'TAC-12', k:'Tactic', n:'Close corrective actions within the agreed window', par:'OBJ-01',
+   kpi:'KPI-QLT-014', proc:'PRC-QLT-02', own:'u5', st:'69% → 85%', pct:41},
+  {id:'TAC-21', k:'Tactic', n:'Reduce nursing vacancy through pipeline hiring', par:'OBJ-05',
+   kpi:'KPI-NUR-003', proc:'PRC-NUR-01', own:'u10', st:'13.4% → 8%', pct:28},
+  {id:'TAC-31', k:'Tactic', n:'Recover evening theatre lists', par:'OBJ-06',
+   kpi:'KPI-OPS-004', proc:'PRC-OPS-01', own:'u1', st:'82% → 85%', pct:55},
+
+  {id:'POC-04', k:'POC', n:'Electronic sepsis alert in the ED triage form', par:'TAC-11',
+   proc:'PRC-QLT-02', own:'u2', st:'Pre-implementation', pct:35},
+  {id:'POC-09', k:'POC', n:'Pooled evening theatre lists across specialties', par:'TAC-31',
+   proc:'PRC-OPS-01', own:'u1', st:'Design', pct:15},
+  {id:'POC-12', k:'POC', n:'Imaging maintenance contract moved to the OEM', par:'TAC-31',
+   proc:'PRC-BME-01', own:'u6', st:'Under evaluation', pct:20},
+
+  {id:'PRJ-07', k:'Project', n:'Sepsis alert rollout — Phase 1 ED', par:'POC-04',
+   proc:'PRC-QLT-02', own:'u2', st:'Pilot', pct:45,
+   budget:340000, start:'2026-05-01', end:'2026-11-30', scope:'AHJ Emergency Department'},
+  {id:'PRJ-14', k:'Project', n:'Nursing pipeline recruitment programme', par:'TAC-21',
+   proc:'PRC-NUR-01', own:'u10', st:'In delivery', pct:30,
+   budget:1250000, start:'2026-03-01', end:'2027-02-28', scope:'AHJ · ADC nursing establishment'},
+];
+const ST = id => STRAT.find(s=>s.id===id);
+const stratKids  = pid => STRAT.filter(s=>s.par===pid);
+const tacticsFor = kpiId => STRAT.filter(s=>s.k==='Tactic' && s.kpi===kpiId);
+
+/* ---- Planning & Monitoring entries ------------------------------------- */
+const PM_ENTRIES = [
+  {id:'TVP-11', k:'Target',   n:'Sepsis screens completed',   tg:4200, ac:3276, u:' screens',
+   proc:'PRC-QLT-02', tac:'TAC-11', own:'u5'},
+  {id:'TVP-14', k:'Target',   n:'Theatre cases delivered',    tg:1860, ac:1712, u:' cases',
+   proc:'PRC-OPS-01', tac:'TAC-31', own:'u1'},
+  {id:'SEP-21', k:'Supply',   n:'Two additional evening lists per week', vol:96,
+   win:'01 Sep – 31 Dec', st:'Committed',    proc:'PRC-OPS-01', tac:'TAC-31', own:'u1'},
+  {id:'SEP-24', k:'Supply',   n:'Agency nursing cover for ICU', vol:14,
+   win:'01 Aug – 31 Oct', st:'Under-covers', proc:'PRC-NUR-01', tac:'TAC-21', own:'u10'},
+  {id:'DEP-08', k:'Demand',   n:'Orthopaedic referral campaign', vol:340,
+   win:'01 Sep – 31 Dec', st:'Committed',    proc:'PRC-OPS-01', tac:'TAC-31', own:'u1'},
+  {id:'CNF-03', k:'Conflict', n:'Evening theatre capacity over-subscribed by three lists',
+   gap:'3 lists per week', st:'Open',        proc:'PRC-OPS-01', tac:'TAC-31', own:'u1'},
+];
+const PME = id => PM_ENTRIES.find(p=>p.id===id);
+
+/* ---- Issues raised in other systems, citable as evidence --------------- */
+const ISSUES = [
+  {id:'ISS-2201', n:'Anaesthesia machine 3 out of service', sys:'Biomedical Maintenance System',
+   st:'Open', sev:'High', own:'Biomedical Engineering', when:'2026-07-22', proc:'PRC-BME-01'},
+  {id:'ISS-1847', n:'Theatre scheduling module sync failures', sys:'IT Service Desk',
+   st:'In progress', sev:'Medium', own:'IT Applications', when:'2026-07-20', proc:'PRC-OPS-01'},
+  {id:'ISS-3390', n:'Sepsis alert not firing on transferred admissions', sys:'IT Service Desk',
+   st:'Open', sev:'High', own:'IT Applications', when:'2026-07-18', proc:'PRC-QLT-02'},
+  {id:'ISS-4102', n:'CT scanner PM overdue past contractual window', sys:'Biomedical Maintenance System',
+   st:'Open', sev:'Medium', own:'Biomedical Engineering', when:'2026-07-11', proc:'PRC-BME-01'},
+];
+const ISS = id => ISSUES.find(i=>i.id===id);
+
+/* ---- Section templates ------------------------------------------------
+   This is what a Report Setup now points at instead of a .docx or .xlsx.
+   A template is a named list of sections, each already pre-linked to the
+   KPIs it always needs, so a new Report opens with that period's real
+   achievement already in place. Nothing it produces is locked — every
+   section can still be rewritten, reordered or removed.
+
+   This is only the seed. Templates live in the store and are built and
+   edited in the Section templates tab, so a new Report type does not need
+   anybody to change code. */
+const SECTION_TPL_SEED = [
+  {id:'TPL-QLT', n:'Monthly Quality Report', cat:'Core',
+   desc:'Indicator performance, the cause behind any miss, and the corrective actions carrying forward.',
+   sections:[
+     {h:'Indicator performance for the period', diag:'d1',
+      cites:['KPI:KPI-QLT-011','KPI:KPI-QLT-014']},
+     {h:'Where the shortfall is concentrated', diag:'d1',
+      cites:['KPI:BD-Q11-ed','KPI:BD-Q11-ns']},
+     {h:'Why it happened', diag:'d2', cites:[]},
+     {h:'Corrective actions and their status', diag:'d4', cites:['STR:TAC-11']},
+   ]},
+  {id:'TPL-NUR', n:'Nursing Manpower Plan', cat:'Core',
+   desc:'Establishment against plan, where the gap sits, and the supply committed against it.',
+   sections:[
+     {h:'Vacancy against the approved establishment', diag:'d1', cites:['KPI:KPI-NUR-003']},
+     {h:'Where the gap is concentrated', diag:'d1', cites:['KPI:BD-N03-icu','KPI:BD-N03-thr']},
+     {h:'Coverage committed for the period', diag:'d4', cites:['PM:SEP-24']},
+     {h:'Outlook to the end of the quarter', diag:'d3', cites:['STR:PRJ-14']},
+   ]},
+  {id:'TPL-BME', n:'Medical Equipment Maintenance Report', cat:'Core',
+   desc:'Preventive maintenance completion, open faults, and the asset classes behind any miss.',
+   sections:[
+     {h:'Preventive maintenance completion', diag:'d1', cites:['KPI:KPI-BME-002']},
+     {h:'Completion by asset class', diag:'d1', cites:['KPI:BD-B02-img']},
+     {h:'Open equipment faults', diag:'d2', cites:['ISS:ISS-2201','ISS:ISS-4102']},
+     {h:'What is being done', diag:'d4', cites:['STR:POC-12']},
+   ]},
+  {id:'TPL-EXE', n:'Executive Performance Pack', cat:'Executive',
+   desc:'Consolidated business unit performance, drawing each service line review in as a child report.',
+   sections:[
+     {h:'Financial and operational headline', diag:'d1',
+      cites:['KPI:KPI-FIN-001','KPI:KPI-OPS-004']},
+     {h:'What the service lines reported', diag:'d2', cites:[]},
+     {h:'Outlook for the next period', diag:'d3', cites:[]},
+     {h:'Decisions sought from the Executive', diag:'d4', cites:[]},
+   ]},
+  {id:'TPL-TOT', n:'Team of Teams alignment record', cat:'Custom',
+   desc:'One shared constraint, what the team settled, and what is referred upward.',
+   sections:[
+     {h:'The constraint', diag:'d2', cites:['PM:CNF-03']},
+     {h:'What the team decided, or could not settle', diag:'d4', cites:[]},
+   ]},
+  {id:'TPL-ADH', n:'Ad hoc review', cat:'Custom',
+   desc:'A blank two-section frame for a one-off review. Add whatever the question needs.',
+   sections:[
+     {h:'What we found', diag:'d1', cites:[]},
+     {h:'What we recommend', diag:'d4', cites:[]},
+   ]},
+];
+/* templates are read from the live store, never from the seed above */
+const tplOf = (db,id) => (db.templates||[]).find(t=>t.id===id);
+
+/* ---- Citation identity -------------------------------------------------
+   Every citation is stored as KIND:ID so it resolves to exactly one record
+   and never has to be guessed at from the shape of the id. */
+const CITE_KINDS = [
+  {k:'KPI',  label:'KPI',                 cls:'k-kpi'},
+  {k:'BD',   label:'KPI breakdown',       cls:'k-kpi', ref:'KPI'},
+  {k:'STR',  label:'Tactic / POC / Project', cls:'k-str'},
+  {k:'PM',   label:'Planning & Monitoring', cls:'k-pm'},
+  {k:'TASK', label:'Task',                cls:'k-task'},
+  {k:'ISS',  label:'Issue (other system)', cls:'k-iss'},
+  {k:'PAR',  label:'Paragraph',           cls:'k-par'},
+  {k:'RPT',  label:'Child Report',        cls:'k-rpt'},
+];
+const citeKind = ref => String(ref||'').split(':')[0];
+const citeId   = ref => String(ref||'').slice(String(ref||'').indexOf(':')+1);
+const citeCls  = ref => (CITE_KINDS.find(c=>c.k===citeKind(ref))||{}).cls || '';
 
 /* ---- Taxonomy: Topic option sets (v0.6) -------------------------------- */
 const TOPIC_NATURES = ['Issue','Opportunity','Escalation'];
@@ -361,24 +636,15 @@ return {
 /* ---------------- Report Submissions ---------------------------------- */
 reports:[
   {id:'sub1', setup:'rs1', custom:null, period:'2026-06', bu:'AHJ', dept:'Quality',
-   status:'Approved', creator:'u1', step:2, file:'Monthly_Quality_Report_2026-06.docx',
-   url:'/Quality/2026/Monthly Reports/Monthly_Quality_Report_2026-06.docx', ver:3, locked:true,
+   status:'Approved', creator:'u1', step:2, blocks:['par-q6a','par-q6b'], ver:3, locked:true,
    history:[
      {at:'2026-07-04 09:12', who:'u1', act:'Submitted for review'},
      {at:'2026-07-05 14:40', who:'u5', act:'Approved review step 1', note:'Indicator narrative is complete.'},
      {at:'2026-07-06 10:05', who:'u2', act:'Approved review step 2 — final', note:'Approved.'},
    ]},
   {id:'sub2', setup:'rs1', custom:null, period:'2026-07', bu:'AHJ', dept:'Quality',
-   status:'In Review', creator:'u1', step:0, file:'Monthly_Quality_Report_2026-07.docx',
-   url:'/Quality/2026/Monthly Reports/Monthly_Quality_Report_2026-07.docx', ver:2, locked:false,
-   metrics:[{label:'Incidents',value:'12'},{label:'Near Misses',value:'5'},
-            {label:'Mortality',value:'1.2%'},{label:'Satisfaction',value:'87'}],
-   execSummary:'Overall quality metrics for July 2026 show improvement in patient satisfaction scores '+
-     '(+3pts) while maintaining stable incident rates. Key focus areas include medication error '+
-     'reduction in ICU and hand hygiene compliance improvement in surgical wards.',
-   improvementActions:['Implement barcode medication verification in ICU by Aug 15',
-     'Launch hand hygiene campaign in surgical wards',
-     'Review near-miss reporting workflow with nursing leads'],
+   status:'In Review', creator:'u1', step:0,
+   blocks:['par-q7a','par-q7b','par-q7c','par-q7d'], ver:2, locked:false,
    history:[
      {at:'2026-07-08 11:20', who:'u1', act:'Submitted for review'},
      {at:'2026-07-09 16:02', who:'u5', act:'Requested more information',
@@ -386,29 +652,27 @@ reports:[
      {at:'2026-07-12 08:47', who:'u1', act:'Resubmitted after revision'},
    ]},
   {id:'sub3', setup:'rs2', custom:null, period:'2026-07', bu:'AHJ', dept:'Nursing',
-   status:'Draft', creator:'u10', step:0, file:null, url:null, ver:0, locked:false,
+   status:'Draft', creator:'u10', step:0, blocks:[], ver:0, locked:false,
    history:[{at:'2026-07-12 07:30', who:null, act:'Report Submission created from the approved Setup'}]},
   {id:'sub4', setup:'rs3', custom:null, period:'2026-07', bu:'AHJ', dept:'Executive',
-   status:'Approved', creator:'u1', step:1, file:'Executive_Performance_Pack_2026-07.pptx',
-   url:'/Executive/2026/Monthly Reports/Executive_Performance_Pack_2026-07.pptx', ver:1, locked:true,
+   status:'Approved', creator:'u1', step:1,
+   blocks:['par-e7a','par-e7b','par-e7c'], ver:1, locked:true,
    history:[
      {at:'2026-07-06 13:15', who:'u1', act:'Submitted for review'},
      {at:'2026-07-07 09:00', who:'u7', act:'Approved review step 1 — final'},
    ]},
   {id:'sub7', setup:'rs4', custom:null, period:'2026-07', bu:'AHJ', dept:'Facilities',
-   status:'Draft', creator:'u6', step:0, file:null, url:null, ver:0, locked:false,
+   status:'Draft', creator:'u6', step:0, blocks:[], ver:0, locked:false,
    history:[{at:'2026-07-14 07:15', who:null, act:'Report Submission created from the approved Setup'}]},
   {id:'sub8', setup:'rs4', custom:null, period:'2026-06', bu:'AHJ', dept:'Facilities',
-   status:'In Review', creator:'u6', step:0, file:'Medical_Equipment_Maintenance_2026-06.xlsx',
-   url:'/Facilities/2026/Monthly Reports/Medical_Equipment_Maintenance_2026-06.xlsx', ver:1, locked:false,
+   status:'In Review', creator:'u6', step:0, blocks:['par-b6a','par-b6b'], ver:1, locked:false,
    history:[{at:'2026-07-02 08:30', who:'u6', act:'Submitted for review'}]},
   {id:'sub6', setup:'rs3', custom:null, period:'2026-08', bu:'AHJ', dept:'Executive',
-   status:'Draft', creator:'u1', step:0, file:null, url:null, ver:0, locked:false,
+   status:'Draft', creator:'u1', step:0, blocks:[], ver:0, locked:false,
    history:[{at:'2026-07-27 06:00', who:null,
              act:'Report Submission created from the approved Setup ahead of the due date'}]},
   {id:'sub5', setup:null, period:'2026-07', bu:'AHJ', dept:'Ophthalmology',
-   status:'In Review', creator:'u1', step:0, file:'Laser_Utilisation_Review_Q2.xlsx',
-   url:'/Ophthalmology/2026/Ad Hoc/Laser_Utilisation_Review_Q2.xlsx', ver:1, locked:false,
+   status:'In Review', creator:'u1', step:0, blocks:['par-o7a'], ver:1, locked:false,
    custom:{name:'Ophthalmology Laser Utilisation Review', cat:'Custom',
      objective:'Assess laser suite utilisation ahead of the capital replacement decision.',
      site:'Ophthalmology', folder:'2026 / Ad Hoc', reviewers:['u5','u7'],
@@ -419,6 +683,84 @@ reports:[
      {at:'2026-07-20 10:42', who:'u1', act:'Submitted for review'},
    ]},
 ],
+
+/* ---------------- Report sections — the paragraph pool ------------------
+   A Report's content is not a file. Each entry here is one section, cited
+   into a Report by id from that Report's `blocks` array — the same
+   paragraph can be cited into more than one Report at once. */
+paragraphs:[
+  {id:'par-q6a', author:'u1', at:'2026-07-03 16:20', diag:'d1', proc:'PRC-QLT-02',
+   h:'Indicator performance for the period',
+   text:'Sepsis bundle compliance closed June at 81% against a 90% target. Corrective action '+
+     'closure within the due date held at 72%, nine points short of the 85% standard.',
+   cites:['KPI:KPI-QLT-011','KPI:KPI-QLT-014']},
+  {id:'par-q6b', author:'u1', at:'2026-07-03 16:34', diag:'d4', proc:'PRC-QLT-02',
+   h:'Corrective actions carried into July',
+   text:'The screening tactic remains the primary route to the target. Two actions from the '+
+     'May incident review carry forward unclosed.',
+   cites:['STR:TAC-11']},
+
+  {id:'par-q7a', author:'u1', at:'2026-07-08 10:40', diag:'d1', proc:'PRC-QLT-02',
+   h:'Indicator performance for the period',
+   text:'Sepsis bundle compliance fell to 78% in July against a 90% target, a third consecutive '+
+     'month below standard. Corrective action closure also slipped, to 69%.',
+   cites:['KPI:KPI-QLT-011','KPI:KPI-QLT-014']},
+  {id:'par-q7b', author:'u1', at:'2026-07-08 11:02', diag:'d1', proc:'PRC-QLT-02',
+   h:'Where the shortfall is concentrated',
+   text:'The group figure hides the shape of the problem. The Emergency Department sits at 64% '+
+     'and the night shift at 69%, while Intensive Care is at 91%. This is a screening '+
+     'coverage gap at two entry points, not a hospital-wide practice gap.',
+   cites:['KPI:BD-Q11-ed','KPI:BD-Q11-ns','KPI:BD-Q11-icu']},
+  {id:'par-q7c', author:'u1', at:'2026-07-08 11:25', diag:'d2', proc:'PRC-QLT-02',
+   h:'Why it happened',
+   text:'The electronic alert does not fire on patients admitted by transfer, which is the '+
+     'route most night-shift ED admissions take. The defect has been open with IT since 18 July.',
+   cites:['ISS:ISS-3390']},
+  {id:'par-q7d', author:'u1', at:'2026-07-12 08:50', diag:'d4', proc:'PRC-QLT-02',
+   h:'Corrective actions and their status',
+   text:'Phase 1 of the sepsis alert rollout covers the ED and is at 45%. It does not resolve '+
+     'the transfer-admission defect, which needs to be scoped separately before Phase 2.',
+   cites:['STR:PRJ-07','STR:TAC-11']},
+
+  {id:'par-b6a', author:'u6', at:'2026-07-02 08:10', diag:'d1', proc:'PRC-BME-01',
+   h:'Preventive maintenance completion',
+   text:'Completion closed June at 88% against the 95% standard. Imaging is the whole of the '+
+     'variance at 76%; life support and laboratory both met standard.',
+   cites:['KPI:KPI-BME-002','KPI:BD-B02-img']},
+  {id:'par-b6b', author:'u6', at:'2026-07-02 08:26', diag:'d2', proc:'PRC-BME-01',
+   h:'Open equipment faults',
+   text:'Two faults account for the imaging shortfall: an anaesthesia machine out of service '+
+     'since 22 July and a CT scanner now past its contractual maintenance window.',
+   cites:['ISS:ISS-2201','ISS:ISS-4102']},
+
+  {id:'par-e7a', author:'u1', at:'2026-07-06 12:40', diag:'d1', proc:'PRC-FIN-01',
+   h:'Financial and operational headline',
+   text:'Operating margin reached 12.6% against a 14% plan. Theatre utilisation improved to 82% '+
+     'but remains three points below target.',
+   cites:['KPI:KPI-FIN-001','KPI:KPI-OPS-004']},
+  {id:'par-e7b', author:'u1', at:'2026-07-06 12:58', diag:'d2', proc:'PRC-OPS-01',
+   h:'What the service lines reported',
+   text:'Quality reports a screening coverage gap at two entry points. Facilities reports the '+
+     'maintenance variance sitting entirely in imaging. Both are read directly from the '+
+     'service line reports rather than restated here.',
+   cites:['RPT:sub2','RPT:sub8']},
+  {id:'par-e7c', author:'u1', at:'2026-07-06 13:05', diag:'d3', proc:'PRC-OPS-01',
+   h:'Outlook for the next period',
+   text:'Evening list utilisation is the single largest recoverable gap at 61%. The pooling '+
+     'option is still in design and will not contribute this quarter.',
+   cites:['KPI:BD-O04-pm','STR:POC-09','PM:CNF-03']},
+
+  {id:'par-o7a', author:'u1', at:'2026-07-14 09:15', diag:'d1', proc:'PRC-OPS-01',
+   h:'Laser suite utilisation',
+   text:'The laser suite ran at 61% of available evening capacity across the quarter, in line '+
+     'with the wider evening list pattern rather than specific to ophthalmology.',
+   cites:['KPI:BD-O04-pm']},
+],
+
+/* ---------------- Section templates -------------------------------------
+   Deep-cloned so editing a template in the Section templates tab never
+   mutates the SECTION_TPL_SEED const. */
+templates: JSON.parse(JSON.stringify(SECTION_TPL_SEED)),
 
 /* ---------------- Meeting Occurrences ---------------------------------- */
 occs:[
@@ -1909,6 +2251,10 @@ const dvTpl   = id => (id && DV_TPL_NAME[id])  || null;
 const dvTplDetail = id => (id && DV_TPL_DETAIL[id]) || null;
 const dvRptTpl = id => (id && DV_RPT_TPL_NAME[id]) || null;
 const dvRptTplDetail = id => (id && DV_RPT_TPL_DETAIL[id]) || null;
+const dvRptCfg = r => {
+  const tpl = r.templateId ? dvRptTplDetail(r.templateId) : null;
+  return tpl ? { cat: tpl.category || 'Custom', reviewers: tpl.reviewers || [] } : { cat: 'Custom', reviewers: [] };
+};
 
 /* One Dataverse Meeting Occurrence as a Calendar entry, in the same shape
    calendarItems() produces for seeded records so both render identically. */
@@ -2008,7 +2354,7 @@ function dvWorkItems(meetingOccs, reportOccs){
 /* =========================================================================
    APP
    ========================================================================= */
-const KEY='andalusia_lp_v06';
+const KEY='andalusia_lp_v07';
 
 function App({onSwitch}){
   const [db,setDb]     = useState(()=>{ try{ const s=localStorage.getItem(KEY);
@@ -2063,6 +2409,133 @@ function App({onSwitch}){
     r.history.push({at:nowStamp(),who:me,act:'Submitted for review'});
     logIt(n,id,'Report Submission submitted');
     toast('Submitted for review',`Routed to ${P((r.setup?RS(r.setup):r.custom).reviewers[0]).name} as review step 1.`,'ok');
+  }),
+  /* ---------------- section templates ----------------------------------
+     Templates are data, not code. Adding a Report type is configuration
+     done here; nothing about it requires a change to the system. */
+  addTemplate:(then)=>{ const id=uid('tpl');
+    mut(n=>{ n.templates=[...(n.templates||[]),
+      {id,n:'New template',cat:'Custom',desc:'',sections:[]}]; });
+    toast('Template created','Name it, then add the sections a Report of this type always needs.','ok');
+    if(then) then(id); },
+  editTemplate:(id,patch)=>mut(n=>{
+    const t=n.templates.find(x=>x.id===id); if(t) Object.assign(t,patch); }),
+  deleteTemplate:(id)=>mut(n=>{
+    n.templates=n.templates.filter(x=>x.id!==id);
+    toast('Template deleted','Reports already built from it keep their sections.','ok'); }),
+  addTplSection:(id)=>mut(n=>{
+    const t=n.templates.find(x=>x.id===id);
+    t.sections=[...t.sections,{h:'',diag:'',cites:[]}]; }),
+  editTplSection:(id,i,patch)=>mut(n=>{
+    const t=n.templates.find(x=>x.id===id); Object.assign(t.sections[i],patch); }),
+  moveTplSection:(id,i,dir)=>mut(n=>{
+    const t=n.templates.find(x=>x.id===id), s=[...t.sections], j=i+dir;
+    if(j<0||j>=s.length) return; [s[i],s[j]]=[s[j],s[i]]; t.sections=s; }),
+  removeTplSection:(id,i)=>mut(n=>{
+    const t=n.templates.find(x=>x.id===id); t.sections=t.sections.filter((_,j)=>j!==i); }),
+  addTplItem:(id,i,ref)=>mut(n=>{
+    const s=n.templates.find(x=>x.id===id).sections[i];
+    if(!s.cites.includes(ref)) s.cites=[...s.cites,ref]; }),
+  removeTplItem:(id,i,ci)=>mut(n=>{
+    const s=n.templates.find(x=>x.id===id).sections[i];
+    s.cites=s.cites.filter((_,j)=>j!==ci); }),
+  /* ---------------- report composition ---------------------------------
+     A Report is its sections, and a section is a paragraph in the shared
+     pool. These actions move paragraph ids on and off a Report; the text
+     itself exists in exactly one place, which is what makes a paragraph
+     cited into two Reports the same paragraph rather than a copy. */
+  applyTemplate:(id,tplId)=>mut(n=>{
+    const r=n.reports.find(x=>x.id===id), t=tplOf(n,tplId); if(!t) return;
+    const proc=(rptCfg(r).processes||[])[0]||'';
+    t.sections.forEach(s=>{
+      const pid=uid('par');
+      n.paragraphs.push({id:pid,h:s.h,text:'',diag:s.diag||'',proc,
+        cites:[...s.cites],author:me,at:nowStamp()});
+      r.blocks=[...(r.blocks||[]),pid];
+    });
+    r.history.push({at:nowStamp(),who:me,
+      act:'Sections inserted from the “'+t.n+'” template — '+t.sections.length+' sections'});
+    logIt(n,id,'Sections inserted from template');
+    toast('Template inserted',
+      t.sections.length+' sections added, already carrying this period’s figures. Every one stays editable.','ok');
+  }),
+  addSection:(id)=>mut(n=>{
+    const r=n.reports.find(x=>x.id===id), pid=uid('par');
+    n.paragraphs.push({id:pid,h:'',text:'',diag:'',proc:(rptCfg(r).processes||[])[0]||'',
+      cites:[],author:me,at:nowStamp()});
+    r.blocks=[...(r.blocks||[]),pid];
+  }),
+  reuseSection:(id,pid)=>mut(n=>{
+    const r=n.reports.find(x=>x.id===id);
+    if((r.blocks||[]).includes(pid)) return;
+    r.blocks=[...(r.blocks||[]),pid];
+    const used=n.reports.filter(x=>(x.blocks||[]).includes(pid)).length;
+    r.history.push({at:nowStamp(),who:me,act:'Existing paragraph inserted as a section — now shared across '+used+' Reports'});
+    toast('Paragraph reused','It is the same paragraph, not a copy. Editing it here changes it in all '+used+' Reports it appears in.','ok');
+  }),
+  removeSection:(id,pid)=>mut(n=>{
+    const r=n.reports.find(x=>x.id===id);
+    r.blocks=(r.blocks||[]).filter(b=>b!==pid);
+    /* the paragraph itself stays in the pool — it may be cited elsewhere */
+    const still=n.reports.some(x=>(x.blocks||[]).includes(pid));
+    toast('Section removed', still
+      ? 'Removed from this Report. The paragraph stays in the pool — it is still used elsewhere.'
+      : 'Removed from this Report. The paragraph stays in the pool and can be cited again.','ok');
+  }),
+  moveSection:(id,pid,dir)=>mut(n=>{
+    const r=n.reports.find(x=>x.id===id), b=[...(r.blocks||[])];
+    const i=b.indexOf(pid), j=i+dir;
+    if(i<0||j<0||j>=b.length) return;
+    [b[i],b[j]]=[b[j],b[i]]; r.blocks=b;
+  }),
+  editPara:(pid,patch)=>mut(n=>{
+    const p=n.paragraphs.find(x=>x.id===pid); if(!p) return;
+    Object.assign(p,patch);
+  }),
+  citePara:(pid,ref)=>mut(n=>{
+    const p=n.paragraphs.find(x=>x.id===pid); if(!p) return;
+    if(!p.cites.includes(ref)) p.cites=[...p.cites,ref];
+  }),
+  uncitePara:(pid,ref)=>mut(n=>{
+    const p=n.paragraphs.find(x=>x.id===pid); if(!p) return;
+    p.cites=p.cites.filter(c=>c!==ref);
+  }),
+  /* Multi-step Create Report wizard — either from an approved Setup (f.setupId) or Custom
+     (f.setupId==='custom'). f.tpl names the section template the Report starts from; its
+     sections are created in the shared pool here. f.submit decides whether this lands as a
+     Draft or goes straight to In Review. */
+  createReportFromWizard:(f)=>mut(n=>{
+    const id=uid('sub');
+    const isCustom = f.setupId==='custom';
+    const setup = isCustom?null:RPT_SETUPS.find(s=>s.id===f.setupId);
+    const t = f.tpl?tplOf(n,f.tpl):null;
+    const proc = isCustom?'':((setup.processes||[])[0]||'');
+    const blocks = [];
+    if(t) t.sections.forEach(s=>{
+      const pid=uid('par');
+      n.paragraphs.push({id:pid,h:s.h,text:'',diag:s.diag||'',proc,
+        cites:[...s.cites],author:me,at:nowStamp()});
+      blocks.push(pid);
+    });
+    n.reports.push({id, setup:isCustom?null:f.setupId, period:f.period, bu:f.bu||'ALL', dept:f.dept,
+      status:f.submit?'In Review':'Draft', creator:me, step:0,
+      blocks, ver: blocks.length?1:0, locked:false,
+      custom: isCustom ? {name:f.title, cat:'Custom', objective:f.summary||f.title, site:f.site,
+        folder:f.folder, reviewers:f.reviewers, kpis:[], processes:[], tpl:f.tpl||null,
+        noSetupFlag:true, taxonomyState:'Queued'} : null,
+      summary:f.summary||null, actions:f.actions||null,
+      history:[
+        {at:nowStamp(),who:me,act:isCustom?'Custom Report created — no approved Setup exists'
+                                          :'Report created from approved Setup'},
+        ...(isCustom?[{at:nowStamp(),who:null,act:'Metadata queued for Taxonomy with a No-Setup flag'}]:[]),
+        ...(t?[{at:nowStamp(),who:me,
+            act:t.sections.length+' sections created from the “'+t.n+'” template'}]:[]),
+        ...(f.submit?[{at:nowStamp(),who:me,act:'Submitted for review'}]:[]),
+      ]});
+    logIt(n,id,f.submit?'Report submitted for review':'Report saved as Draft');
+    toast(f.submit?'Report submitted for review':'Draft saved',
+      f.submit?`Routed to ${P((isCustom?f.reviewers:setup.reviewers)[0]).name} as review step 1.`
+              :'Find it any time under Due to Submit in My Reports.','ok');
   }),
   uploadReport:(id,name)=>mut(n=>{
     const r=n.reports.find(x=>x.id===id); const st=r.setup?RS(r.setup):r.custom;
@@ -2571,7 +3044,6 @@ function Bucket({dot,title,sub,rows,dateLabel,empty}){
 
 function ScreenWorkspace(){
   const {work,cal,go,openMeeting,openDvRec,dvMeetingOccs,dvReportOccs} = use();
-  const [newReport,setNewReport]=useState(false);
   const [tab,setTab]     = useState('All');
   const [quick,setQuick] = useState('all');
   const overdue = work.all.filter(w=>w.date && w.date<TODAY);
@@ -2637,11 +3109,9 @@ function ScreenWorkspace(){
     <div className="ph ph-row">
       <div style={{flex:1}}><h1>My Workspace</h1>
         <div className="sub">Your pending tasks, upcoming meetings, and action items across all modules.</div></div>
-      <Btn onClick={()=>setNewReport(true)}>+ New Report</Btn>
+      <Btn onClick={()=>go('rpt')}>+ New Report</Btn>
       <Btn k="pri" onClick={()=>go('mtg')}>+ New Meeting</Btn>
     </div>
-
-    {newReport && <NewReportModal onClose={()=>setNewReport(false)}/>}
 
     <div className="tabs">
       {TABS.map(t=>{
@@ -2792,8 +3262,9 @@ function RptTable({rows,showDue,emptyText}){
           <div className="t-sub">{r.dept}{r.creator!==me?' · '+P(r.creator).name:''}
             {!r.setup && <> · <span className="src">No approved Setup</span></>}</div></td>
         <td className="dim">{fmtP(r.period)}</td>
-        <td>{r.file?<span className="mono" style={{fontSize:11.5}}>{r.file}</span>
-                   :<Tag c="red">Not generated</Tag>}</td>
+        <td>{secCount(r)
+              ? <span className="t-main">{secCount(r)} section{secCount(r)===1?'':'s'}</span>
+              : <Tag c="red">Nothing written</Tag>}</td>
         <td className="dim">{showDue
           ? <>{due?fmtD(due):'—'}{late&&<div><Tag c="red">Overdue</Tag></div>}</>
           : r.status==='Approved' ? 'All '+revs.length+' review steps approved'
@@ -2806,21 +3277,27 @@ function RptTable({rows,showDue,emptyText}){
 
 /* short, cosmetic reference code derived from real fields — not a fabricated business ID */
 const rptCode = r => 'RPT-'+r.period.slice(0,4)+'-'+r.id.slice(-4).toUpperCase();
+const secCount  = r => (r.blocks||[]).length;
+const citeCount = (db,r) => (r.blocks||[])
+  .reduce((n,b)=>{ const p=db.paragraphs.find(x=>x.id===b); return n+(p?(p.cites||[]).length:0); },0);
 const rptSubmittedAt = r => { const h=r.history.find(x=>x.act==='Submitted for review'); return h?h.at.split(' ')[0]:null; };
 
 function ScreenReports(){
-  const {sel,setSel,go,cal,dvReportOccs} = use();
+  const {db,me,sel,setSel,go,S,cal} = use();
   const [creating,setCreating]=useState(false);
   const [tab,setTab]=useState('due');
+  const [view,setView]=useState('register');
   const id = sel.rpt;
-  const dvRec = dvReportOccs.find(r=>r.id===id);
-  if(dvRec) return <DvReportDetail rec={dvRec} back={()=>setSel(v=>({...v,rpt:null}))}/>;
+  const list = db.reports.filter(r=>canSeeReport(r,me));
+  const rec  = list.find(r=>r.id===id);
+  if(rec) return <ReportDetail rec={rec} back={()=>setSel(v=>({...v,rpt:null}))}/>;
+  if(creating) return <ReportWizard onClose={()=>setCreating(false)}/>;
 
-  const list = dvReportOccs;
-  const due      = list.filter(r=>r.status==='Draft');
+  const due      = list.filter(r=>r.status==='Draft'     && r.period<=PERIOD);
+  const upcoming = list.filter(r=>r.status==='Draft'     && r.period> PERIOD);
   const inReview = list.filter(r=>r.status==='In Review');
   const done     = list.filter(r=>r.status==='Approved');
-  const needsAttn= list.filter(r=>r.status==='Rejected' || r.status==='Returned');
+  const overdue  = due.filter(r=>{const d=rptDue(r); return d && d<TODAY;});
 
   const TABS = [
     {id:'due',    label:'Due to Submit', rows:due},
@@ -2829,18 +3306,33 @@ function ScreenReports(){
     {id:'all',    label:'All Reports',   rows:list},
   ];
   const rows = (TABS.find(t=>t.id===tab)||TABS[0]).rows;
-  const statusColour = s => s==='Approved'?'green':s==='Rejected'?'red'
-    :s==='Returned'?'amber':s==='In Review'?'teal':'grey';
+
+  const VIEWS = [
+    {id:'register',  label:'Register',            c:list.length},
+    {id:'templates', label:'Section templates',   c:(db.templates||[]).length},
+    {id:'pool',      label:'Paragraph pool',      c:db.paragraphs.length},
+    {id:'hier',      label:'Reporting hierarchy', c:null},
+  ];
 
   return <>
     <div className="ph ph-row">
       <div style={{flex:1}}><h1>Reports & Plans</h1>
-        <div className="sub">Every Report Occurrence in Dataverse — lm_reportoccurrences.</div></div>
-      <Btn k="pri" onClick={()=>setCreating(true)}>+ New Report</Btn>
+        <div className="sub">Every Report is written here as sections that cite live records —
+          there is no working copy to generate, attach or keep in step.</div></div>
+      {view==='register' && <Btn k="pri" onClick={()=>setCreating(true)}>+ New Report</Btn>}
     </div>
 
-    {creating && <NewReportModal onClose={()=>setCreating(false)}/>}
+    <div className="rc-tabs">
+      {VIEWS.map(v=>
+        <button key={v.id} className={view===v.id?'on':''} onClick={()=>setView(v.id)}>
+          {v.label}{v.c!=null && <span className="c">{v.c}</span>}</button>)}
+    </div>
 
+    {view==='templates' && <TemplatesTab/>}
+    {view==='pool'      && <PoolTab/>}
+    {view==='hier'      && <HierarchyTab/>}
+
+    {view==='register' && <>
     <div className="tabs">
       {TABS.map(t=>
         <button key={t.id} className={tab===t.id?'on':''} onClick={()=>setTab(t.id)}>
@@ -2848,8 +3340,8 @@ function ScreenReports(){
     </div>
 
     <div className="stats">
-      <Stat label="Due to Submit" v={due.length} d="not yet submitted" c={due.length?'amber':'muted'}/>
-      <Stat label="Needs Attention" v={needsAttn.length} d="rejected or returned" c={needsAttn.length?'red':'muted'}/>
+      <Stat label="Due to Submit" v={due.length} d="this period or earlier" c={due.length?'amber':'muted'}/>
+      <Stat label="Overdue" v={overdue.length} d="past the due date" c={overdue.length?'red':'muted'}/>
       <Stat label="In Review" v={inReview.length} d="with a Reviewer" c={inReview.length?'teal':'muted'}/>
       <Stat label="Approved" v={done.length} d="locked" c="green"/>
     </div>
@@ -2860,29 +3352,40 @@ function ScreenReports(){
     <div className="card flush">
       <div className="card-hd" style={{display:'flex',alignItems:'center',gap:12}}>
         <div className="wa-icon gold">📄</div>
-        <h2 style={{flex:1}}>Reports</h2>
+        <h2 style={{flex:1}}>My Reports</h2>
         <Btn k="sm" onClick={()=>setTab('all')}>▾ Filter</Btn>
       </div>
       {rows.length===0 ? <div style={{padding:'8px 17px 17px'}}>
           <Empty ic="✓">Nothing here right now.</Empty></div>
       : <div className="t-wrap"><table className="data">
-          <thead><tr><th>Report</th><th>Period</th><th>Working Copy</th><th>Status</th>
-            <th>Last updated</th><th>Review step</th></tr></thead>
-          <tbody>{rows.map(r=>
-            <tr key={r.id} className="click" onClick={()=>go('rpt',r.id)}>
-              <td><div className="t-main">{r.name}</div>
-                <div className="t-sub">{dvRptTpl(r.templateId)||(r.noSetupFlag?'Ad Hoc — no Setup':'Ad Hoc')}
-                  {' · '}{rptCode(r)} · {dvPos(r.creatorPositionId)||'—'}</div>
-                {r.noSetupFlag && <div style={{marginTop:3}}><Tag c="amber">No approved Setup</Tag></div>}</td>
-              <td className="dim">{r.period?fmtP(r.period):'—'}</td>
-              <td>{r.fileUrl?<span className="mono" style={{fontSize:11.5}}>{r.fileUrl}</span>
-                            :<span className="dim">Not attached</span>}</td>
-              <td><Tag c={statusColour(r.status)}>{r.status||'—'}</Tag></td>
-              <td className="dim">{r.updated?fmtDS(r.updated.slice(0,10)):'—'}</td>
-              <td className="dim">{r.reviewStep!=null?'Step '+(r.reviewStep+1):'—'}</td>
-            </tr>)}
+          <thead><tr><th>Report</th><th>Period</th><th>Content</th><th>Status</th>
+            <th>Submitted</th><th>Reviewer</th></tr></thead>
+          <tbody>{rows.map(r=>{
+            const c=rptCfg(r), revs=c.reviewers, due2=rptDue(r);
+            const late = due2 && due2<TODAY && r.status==='Draft';
+            const statusLabel = late?'Overdue':r.status;
+            const statusC = late?'red':rptTagC(r.status);
+            const sub = rptSubmittedAt(r);
+            return <tr key={r.id} className="click" onClick={()=>go('rpt',r.id)}>
+              <td><div className="t-main">{rptName(r)}</div>
+                <div className="t-sub">{c.cat||'Custom'} · {P(r.creator).name} · {rptCode(r)}</div>
+                {!r.setup && <div style={{marginTop:3}}><Tag c="amber">No approved Setup</Tag></div>}</td>
+              <td className="dim">{fmtP(r.period)}</td>
+              <td>{secCount(r)
+                    ? <><span className="t-main">{secCount(r)} section{secCount(r)===1?'':'s'}</span>
+                        <div className="t-sub">{citeCount(db,r)} live citation{citeCount(db,r)===1?'':'s'}</div></>
+                    : <span className="dim">Nothing written yet</span>}</td>
+              <td><Tag c={statusC}>{statusLabel}</Tag></td>
+              <td className="dim">{sub?fmtDS(sub):'—'}</td>
+              <td className="dim">
+                {r.status==='Approved' ? 'All '+revs.length+' approved'
+                : r.status==='In Review' ? <>Step {r.step+1} of {revs.length} · {P(revs[r.step]).name}</>
+                : late ? <span style={{color:'var(--red)'}}>Escalated to {P(revs[0]).name}</span>
+                : 'Not submitted'}</td>
+            </tr>;})}
           </tbody></table></div>}
     </div>
+    </>}
   </>;
 }
 
@@ -2896,7 +3399,7 @@ function ReportDetail({rec,back}){
   const [note,setNote]=useState('');
   const linked = db.occs.filter(o=>o.inputs.includes(rec.id) && canSeeOcc(o,me));
   const comments = db.comments.filter(x=>x.rec===rec.id);
-  const missing = !rec.file;
+  const missing = (rec.blocks||[]).length===0;
   const submittedAt = rptSubmittedAt(rec);
 
   /* the date a given review step (0-indexed) started — submission for step 0,
@@ -2927,8 +3430,9 @@ function ReportDetail({rec,back}){
       {stepDeadline(rec.step) && <> You have until {fmtDS(stepDeadline(rec.step))}.</>}
     </Note>}
 
-    {rec.locked && <Note k="lock"><b>This Report Submission is Approved and locked.</b> The file URL,
-      version and complete approval history are retained. A correction is made through a new version.</Note>}
+    {rec.locked && <Note k="lock"><b>This Report Submission is Approved and locked.</b> Its sections,
+      citations, version and complete approval history are retained. A correction is made through a
+      new version.</Note>}
 
     <div className="grid2" style={{gridTemplateColumns:'1fr 340px',alignItems:'start'}}>
       <div>
@@ -2942,62 +3446,20 @@ function ReportDetail({rec,back}){
           ]}/>
         </div>
 
-        {rec.metrics && rec.metrics.length>0 && <div className="card">
-          <h2>{rec.metricsLabel||'Quality Metrics'}</h2>
-          <div className="stats" style={{marginBottom:0}}>
-            {rec.metrics.map((m,i)=><Stat key={i} label={m.label} v={m.value}/>)}
-          </div>
-        </div>}
+        <ReportComposer rec={rec}/>
 
-        {rec.execSummary && <div className="card">
-          <h2>Executive Summary</h2>
-          <p style={{fontSize:12.5,lineHeight:1.55,margin:0}}>{rec.execSummary}</p>
-        </div>}
-
-        {rec.improvementActions && rec.improvementActions.length>0 && <div className="card">
-          <h2>Improvement Actions</h2>
-          {rec.improvementActions.map((a,i)=>
-            <div key={i} style={{display:'flex',alignItems:'flex-start',gap:10,padding:'7px 0',
-              borderBottom:i<rec.improvementActions.length-1?'1px solid var(--border)':'none'}}>
-              <span style={{color:'var(--teal-d)',fontWeight:700,fontSize:12,width:16,flexShrink:0}}>{i+1}.</span>
-              <span style={{fontSize:12.5}}>{a}</span>
-            </div>)}
-        </div>}
-
-        <div className="card">
-          <h2>Attachments</h2>
-          {rec.files && rec.files.length>0
-            ? rec.files.map((file,i)=><div className="att-row" key={i}>
-                <div className="att-ic">📄</div>
-                <div style={{flex:1,minWidth:0}}>
-                  <div className="t-main" style={{fontSize:12.5}}>{file.name}</div>
-                  {i===0 && rec.url && <div className="t-sub mono" style={{fontSize:10.5}}>{rec.url}</div>}
-                </div>
-                {file.size!=null && <span className="dim" style={{fontSize:11}}>{fmtFileSize(file.size)}</span>}
-                <Btn k="sm">Download</Btn>
-              </div>)
-          : rec.file
-            ? <div className="att-row">
-                <div className="att-ic">📄</div>
-                <div style={{flex:1,minWidth:0}}>
-                  <div className="t-main" style={{fontSize:12.5}}>{rec.file}</div>
-                  {rec.url && <div className="t-sub mono" style={{fontSize:10.5}}>{rec.url}</div>}
-                </div>
-                <Btn k="sm">Download</Btn>
-              </div>
-            : <Empty ic="📄">No file attached yet — submission is blocked until one is.</Empty>}
-
-          {isCreator && rec.status==='Draft' &&
+        {isCreator && rec.status==='Draft' &&
+          <div className="card">
+            <h2>Submit</h2>
+            <div className="csub">Submitting sends the Report to the first Reviewer. The figures
+              it cites stay live — they are read from source each time it is opened, so nothing
+              here goes out of date between now and approval.</div>
             <div className="btn-row" style={{marginTop:4}}>
-              <Btn onClick={()=>A.uploadReport(rec.id,
-                rptName(rec).replace(/[^A-Za-z0-9]+/g,'_')+'_'+rec.period+(c.template?
-                  c.template.slice(c.template.lastIndexOf('.')) : '.xlsx'))}>
-                {c.template?'Generate the working copy from the Template':'Upload a file'}</Btn>
               <Btn k="pri" disabled={missing} onClick={()=>A.submitReport(rec.id)}>Submit for review</Btn>
               {missing && <span style={{fontSize:11.5,color:'var(--red)'}}>
-                A required attachment is missing, so submission is blocked.</span>}
-            </div>}
-        </div>
+                Nothing has been written yet, so submission is blocked.</span>}
+            </div>
+          </div>}
 
         <FollowUp src={{k:'rpt',id:rec.id}}
           intro="Tasks and Decisions raised from this Report. Each is recorded separately from the review step."
@@ -3065,7 +3527,12 @@ function ReportDetail({rec,back}){
           <h2>Report Details</h2>
           <div className="wa-mo-r"><label>ID</label><span className="v mono">{rptCode(rec)}</span></div>
           <div className="wa-mo-r"><label>Template</label>
-            <span className="v" style={{fontFamily:'inherit'}}>{c.template||'—'}</span></div>
+            <span className="v" style={{fontFamily:'inherit'}}>
+              {c.tpl && tplOf(db,c.tpl) ? tplOf(db,c.tpl).n : 'None — built free'}</span></div>
+          <div className="wa-mo-r"><label>Sections</label>
+            <span className="v">{secCount(rec)}</span></div>
+          <div className="wa-mo-r"><label>Live citations</label>
+            <span className="v">{citeCount(db,rec)}</span></div>
           <div className="wa-mo-r"><label>Submitted</label>
             <span className="v" style={{fontFamily:'inherit'}}>
               {submittedAt?fmtD(submittedAt.split(' ')[0]):'—'}</span></div>
@@ -3088,6 +3555,1096 @@ function ReportDetail({rec,back}){
       onSave={f=>{A.addTask(f,{k:'rpt',id:rec.id}); setModal(null);}}/>}
     {modal==='dec' && <DecisionIntakeModal src={{k:'rpt',id:rec.id}}
       onClose={()=>setModal(null)}/>}
+  </>;
+}
+
+/* =========================================================================
+   REPORT COMPOSITION — components
+   The authoring surface that replaces the working-copy file. A section is a
+   paragraph from the shared pool; citing one into a Report does not copy it,
+   so editing it anywhere updates it everywhere it appears.
+   ========================================================================= */
+
+/* the embedded Power BI preview behind a KPI — opened in place, not a link
+   away. Styled as a foreign embed so it never reads as native chrome. */
+function BIEmbed({k,rec}){
+  const [open,setOpen] = useState(false);
+  const b = BIR(k.bi); if(!b) return null;
+  const pct = achPct(rec,k.dir);
+  const bars = [58,64,60,71,66,75,70, rec?Math.max(18,Math.min(96,pct||60)):60];
+  return <div style={{marginTop:8,paddingTop:8,borderTop:'1px dashed var(--border)'}}>
+    <Btn k="sm" onClick={()=>setOpen(o=>!o)}>
+      {open?'Close dashboard':'Open “'+b.n+'” inside this Report'}</Btn>
+    {open && <div className="pbi">
+      <div className="pbi-h">
+        <div className="m"><span className="p">P</span>
+          <span className="n">{b.n}</span><span className="e">EMBEDDED</span></div>
+        <a href={b.link} target="_blank" rel="noopener">Open in Power BI ↗</a>
+      </div>
+      <div className="pbi-b">
+        <div className="pbi-tile">
+          <div className="t">{k.n}</div>
+          <div className="s">{rec?'Target '+rec.target+k.unit:'No target set'}</div>
+          <div className="v">{rec?rec.actual+k.unit:'—'}</div>
+          <div className="spk">{bars.map((h,i)=>
+            <i key={i} className={i===bars.length-1?'last':''} style={{height:h+'%'}}/>)}</div>
+        </div>
+        <div className="pbi-tile">
+          <div className="t">Achievement against target</div>
+          <div className="s">Same period</div>
+          <div className="v">{pct!=null?pct+'%':'—'}</div>
+          <div className="spk">{[70,64,58,66,52,60,55,Math.max(15,Math.min(96,pct||55))].map((h,i)=>
+            <i key={i} className={i===7?'last':''} style={{height:h+'%'}}/>)}</div>
+        </div>
+      </div>
+      <div className="pbi-tabs"><span className="on">Overview</span><span>Trend</span><span>Detail</span></div>
+    </div>}
+  </div>;
+}
+
+/* one citation, rendered with the figures it actually carries for this
+   Report's Business Unit and period — never a pasted number. */
+function CiteCard({cite,scope,onRemove}){
+  const {db,go} = use();
+  const kind = citeKind(cite), id = citeId(cite);
+  const body = (()=>{
+    if(kind==='KPI'){
+      const f = findKpi(id);
+      if(!f) return <div className="cite-m">{id} — no KPI found for this reference.</div>;
+      const rec = achFor(f.bd||f.k, scope.bu, scope.period);
+      const pct = achPct(rec,f.k.dir);
+      return <>
+        <div className="cite-hd">
+          <span className="cref kpi">KPI</span>
+          <span className="cite-t">{f.k.n}{f.bd?' — '+f.bd.dim+': '+f.bd.n:''}</span>
+          {f.k.dir==='down' && <span className="dg none" title="A lower actual is the better result">Lower is better</span>}
+        </div>
+        {rec
+          ? <div className="cite-hd" style={{marginTop:5}}>
+              <span className="mono" style={{fontSize:11.5}}>
+                Target <b>{rec.target}{f.k.unit}</b> · Actual <b>{rec.actual}{f.k.unit}</b></span>
+              <span className={'ach '+achCls(pct)}><i/>{pct!=null?pct+'% achievement':'—'}</span>
+              {rec.blended && <span className="dg none">Mean of {rec.blended} units</span>}
+            </div>
+          : <div className="cite-m">No achievement recorded for {scope.bu} · {fmtP(scope.period)}.</div>}
+        {f.k.bi && <BIEmbed k={f.k} rec={rec}/>}
+      </>;
+    }
+    if(kind==='STR'){
+      const s = ST(id);
+      if(!s) return <div className="cite-m">{id} — no Strategy record found.</div>;
+      const par = s.par?ST(s.par):null;
+      return <>
+        <div className="cite-hd">
+          <span className="cref str">{s.k}</span>
+          <span className="cite-t">{s.n}</span>
+          {par && <span className="dg none">under {par.n}</span>}
+        </div>
+        <div className="cite-m">{s.st}{s.own?' · owner '+P(s.own).name:''}
+          {s.pct!=null?' · '+s.pct+'% complete':''}
+          {s.k==='Project'&&s.budget?' · budget '+s.budget.toLocaleString():''}
+          {s.k==='Project'&&s.start?' · '+fmtDS(s.start)+' → '+fmtDS(s.end):''}</div>
+        {s.pct!=null && <div style={{marginTop:6,maxWidth:220}}><Bar v={s.pct}/></div>}
+      </>;
+    }
+    if(kind==='PM'){
+      const e = PME(id);
+      if(!e) return <div className="cite-m">{id} — no Planning & Monitoring entry found.</div>;
+      return <>
+        <div className="cite-hd"><span className="cref pm">{e.k}</span>
+          <span className="cite-t">{e.n}</span></div>
+        <div className="cite-m">
+          {e.k==='Target' ? <>Target <b>{e.tg}{e.u}</b> · actual <b>{e.ac!=null?e.ac+e.u:'—'}</b></>
+          : e.k==='Conflict' ? <>Gap <b>{e.gap}</b> · {e.st}</>
+          : <>Volume <b>{e.vol}</b> · window {e.win} · {e.st}</>}
+          {e.own?' · owner '+P(e.own).name:''}</div>
+      </>;
+    }
+    if(kind==='TASK'){
+      const t = db.tasks.find(x=>x.id===id);
+      if(!t) return <div className="cite-m">{id} — no Task found.</div>;
+      return <>
+        <div className="cite-hd"><span className="cref">Task</span>
+          <span className="cite-t">{t.title}</span>
+          <Tag c={t.status==='Closed'?'green':t.due&&t.due<TODAY?'red':'amber'}>{t.status}</Tag></div>
+        <div className="cite-m">{t.owner?P(t.owner).name:'Unassigned'} · due {fmtD(t.due)}</div>
+      </>;
+    }
+    if(kind==='ISS'){
+      const i = ISS(id);
+      if(!i) return <div className="cite-m">{id} — no Issue found.</div>;
+      return <>
+        <div className="cite-hd"><span className="cref iss">{i.sys}</span>
+          <span className="cite-t">{i.n}</span>
+          <Tag c={i.sev==='High'?'red':'amber'}>{i.sev}</Tag></div>
+        <div className="cite-m">{i.id} · {i.st} · owner {i.own} · opened {fmtD(i.when)}</div>
+      </>;
+    }
+    if(kind==='PAR'){
+      const p = db.paragraphs.find(x=>x.id===id);
+      if(!p) return <div className="cite-m">{id} — no paragraph found.</div>;
+      const used = db.reports.filter(r=>(r.blocks||[]).includes(p.id));
+      return <>
+        <div className="cite-hd"><span className="cref">Paragraph</span>
+          <span className="cite-t">{p.h||'Untitled section'}</span>
+          <DiagChip d={p.diag}/></div>
+        <div className="cite-q">{p.text||'Not written yet.'}</div>
+        <div className="cite-m">{P(p.author).name}
+          {used.length>0 && ' · appears in '+used.length+' Report'+(used.length===1?'':'s')}</div>
+      </>;
+    }
+    if(kind==='RPT'){
+      const r = db.reports.find(x=>x.id===id);
+      if(!r) return <div className="cite-m">{id} — no Report found.</div>;
+      const paras = (r.blocks||[]).map(b=>db.paragraphs.find(p=>p.id===b)).filter(Boolean);
+      return <>
+        <div className="cite-hd"><span className="cref">Child Report</span>
+          <span className="cite-t">{rptName(r)}</span>
+          <Tag c={rptTagC(r.status)}>{r.status}</Tag></div>
+        <div className="cite-m">{fmtP(r.period)} · {r.dept} · {P(r.creator).name} · {paras.length} section{paras.length===1?'':'s'}</div>
+        {paras.slice(0,3).map(p=><div className="cite-m" key={p.id}>• {p.h||'Untitled section'}</div>)}
+        {paras.length>3 && <div className="cite-m">+ {paras.length-3} more</div>}
+        <div style={{marginTop:7}}><Btn k="sm" onClick={()=>go('rpt',r.id)}>Open this Report</Btn></div>
+      </>;
+    }
+    return <div className="cite-m">{cite} — unrecognised reference.</div>;
+  })();
+  return <div className={'cite '+citeCls(cite)}>
+    {onRemove && <button className="cite-x" title="Remove this citation" onClick={onRemove}>×</button>}
+    {body}
+  </div>;
+}
+
+/* pick something real to cite. The list is filtered to the Report's own
+   Setup by default — its KPIs and processes — with everything else one
+   click away, so the common case is short without being a cage. */
+function CitePicker({rec,para,onClose}){
+  const {db,A} = use();
+  const cfg = rptCfg(rec);
+  const [kind,setKind] = useState('KPI');
+  const [scoped,setScoped] = useState(true);
+  const [q,setQ] = useState('');
+  const setupKpis = cfg.kpis||[], setupProcs = cfg.processes||[];
+  const has = ref => (para.cites||[]).includes(ref);
+
+  const rows = (()=>{
+    const m = s => !q.trim() || (s||'').toLowerCase().includes(q.trim().toLowerCase());
+    if(kind==='KPI'){
+      let ks = KPI_CAT.filter(k=>!scoped || setupKpis.includes(k.id) || setupProcs.includes(k.proc));
+      if(!ks.length) ks = KPI_CAT;
+      return ks.filter(k=>m(k.n)).map(k=>({ref:'KPI:'+k.id, t:k.n,
+        s:'Whole KPI · '+(PR(k.proc)?PR(k.proc).n:k.proc)
+          +((k.breakdowns||[]).length?' · '+k.breakdowns.length+' breakdowns':'')}));
+    }
+    if(kind==='STR') return STRAT
+      .filter(s=>!scoped || !setupProcs.length || setupProcs.includes(s.proc) || s.k==='Objective')
+      .filter(s=>m(s.n))
+      .map(s=>({ref:'STR:'+s.id, t:s.n, s:s.k+' · '+s.st}));
+    if(kind==='PM') return PM_ENTRIES
+      .filter(e=>!scoped || !setupProcs.length || setupProcs.includes(e.proc))
+      .filter(e=>m(e.n)).map(e=>({ref:'PM:'+e.id, t:e.n, s:e.k+' entry · '+(e.st||'')}));
+    if(kind==='TASK') return db.tasks.filter(t=>m(t.title))
+      .map(t=>({ref:'TASK:'+t.id, t:t.title, s:t.status+' · due '+fmtD(t.due)}));
+    if(kind==='ISS') return ISSUES
+      .filter(i=>!scoped || !setupProcs.length || setupProcs.includes(i.proc))
+      .filter(i=>m(i.n)).map(i=>({ref:'ISS:'+i.id, t:i.n, s:i.sys+' · '+i.sev+' · '+i.st}));
+    if(kind==='PAR') return db.paragraphs.filter(p=>p.id!==para.id && (m(p.h)||m(p.text)))
+      .map(p=>({ref:'PAR:'+p.id, t:p.h||'Untitled section',
+        s:P(p.author).name+' · used in '+db.reports.filter(r=>(r.blocks||[]).includes(p.id)).length+' Report(s)'}));
+    if(kind==='RPT') return db.reports.filter(r=>r.id!==rec.id && (r.blocks||[]).length && m(rptName(r)))
+      .map(r=>({ref:'RPT:'+r.id, t:rptName(r), s:fmtP(r.period)+' · '+r.dept+' · '+r.status}));
+    return [];
+  })();
+
+  return <div className="cpick">
+    <div className="cpick-k">
+      {CITE_KINDS.map(c=>
+        <Btn key={c.k} k={'sm'+(kind===c.k?' pri':'')} onClick={()=>setKind(c.k)}>{c.label}</Btn>)}
+    </div>
+    {kind==='BD' && <>
+      <KpiCascade mode="bd" taken={para.cites||[]} onPick={ref=>A.citePara(para.id,ref)}/>
+      <div style={{marginTop:9}}><Btn k="sm" onClick={onClose}>Done</Btn></div>
+    </>}
+    {kind!=='BD' && <>
+    <div style={{display:'flex',gap:8,alignItems:'center',marginBottom:9,flexWrap:'wrap'}}>
+      <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Filter…"
+        style={{flex:1,minWidth:140,border:'1px solid var(--border)',borderRadius:6,padding:'5px 9px',fontSize:12.5}}/>
+      {['KPI','STR','PM','ISS'].includes(kind) &&
+        <label style={{fontSize:11.5,color:'var(--muted)',display:'flex',alignItems:'center',gap:5}}>
+          <input type="checkbox" checked={scoped} onChange={e=>setScoped(e.target.checked)}/>
+          Only this Setup’s scope</label>}
+      <Btn k="sm" onClick={onClose}>Done</Btn>
+    </div>
+    <div className="cpick-l">
+      {rows.length===0
+        ? <div style={{padding:'14px',fontSize:12.5,color:'var(--muted)'}}>Nothing matches.</div>
+        : rows.slice(0,60).map(r=>
+          <button key={r.ref} className={'cpick-i'+(has(r.ref)?' taken':'')}
+            disabled={has(r.ref)} onClick={()=>A.citePara(para.id,r.ref)}>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:12.5,fontWeight:560}}>{r.t}</div>
+              <div className="m">{r.s}</div></div>
+            {has(r.ref) ? <Tag c="green">Cited</Tag> : <span className="dim" style={{fontSize:16}}>+</span>}
+          </button>)}
+    </div>
+    </>}
+  </div>;
+}
+
+/* one section of a Report. It is a pool paragraph, so the shared badge is
+   not decoration — editing here changes it in every Report that cites it. */
+function SectionRow({rec,para,i,total,locked}){
+  const {db,A} = use();
+  const [picking,setPicking] = useState(false);
+  /* held locally while typing and written to the pool on blur — the store is
+     cloned on every write, so committing per keystroke would make it crawl */
+  const [d,setD] = useState({h:para.h,text:para.text});
+  useEffect(()=>{ setD({h:para.h,text:para.text}); },[para.id]);
+  const commit = () => { if(d.h!==para.h || d.text!==para.text) A.editPara(para.id,d); };
+  const shared = db.reports.filter(r=>(r.blocks||[]).includes(para.id));
+  return <div className="sec">
+    <div className="sec-h">
+      <span className="sec-n">{i+1}</span>
+      <input className="sec-t" value={d.h} disabled={locked} placeholder="Section heading"
+        onChange={e=>setD(x=>({...x,h:e.target.value}))} onBlur={commit}/>
+      <div className="dg-seg">
+        {['none','d1','d2','d3','d4'].map(d=>
+          <button key={d} disabled={locked}
+            className={((para.diag||'none')===d?'on ':'')+d}
+            title={d==='none'?'No diagnostic angle set':DIAG[d].q+' — needs '+DIAG[d].need}
+            onClick={()=>A.editPara(para.id,{diag:d==='none'?'':d})}>
+            {d==='none'?'Untyped':DIAG[d].n}</button>)}
+      </div>
+      {shared.length>1 && <span className="reuse" title={'Also appears in: '+
+        shared.filter(r=>r.id!==rec.id).map(r=>rptName(r)).join(', ')}>
+        ↻ shared with {shared.length-1} other</span>}
+      {!locked && <span style={{display:'flex',gap:4,marginLeft:'auto'}}>
+        {i>0 && <Btn k="sm" title="Move up" onClick={()=>A.moveSection(rec.id,para.id,-1)}>↑</Btn>}
+        {i<total-1 && <Btn k="sm" title="Move down" onClick={()=>A.moveSection(rec.id,para.id,1)}>↓</Btn>}
+        <Btn k="sm" title="Remove this section from this Report"
+          onClick={()=>A.removeSection(rec.id,para.id)}>✕</Btn>
+      </span>}
+    </div>
+    <div className="sec-b">
+      <textarea value={d.text} disabled={locked}
+        placeholder="Write the section — the finding, the conclusion, whatever this row is for. Cite what it rests on below."
+        onChange={e=>setD(x=>({...x,text:e.target.value}))} onBlur={commit}/>
+      {(para.cites||[]).map(c=>
+        <CiteCard key={c} cite={c} scope={{bu:rec.bu,period:rec.period}}
+          onRemove={locked?null:()=>A.uncitePara(para.id,c)}/>)}
+      {(para.cites||[]).length===0 &&
+        <div className="dg none" style={{marginTop:8,display:'inline-block'}}>
+          No source cited — free text only</div>}
+      {!locked && <div className="sec-f">
+        <Btn k="sm" onClick={()=>setPicking(p=>!p)}>
+          {picking?'Close the picker':'+ Cite a KPI, tactic, entry, task, issue or Report'}</Btn>
+        {para.proc && <span className="dim" style={{fontSize:11.5}}>
+          Resolves through {PR(para.proc)?PR(para.proc).n:para.proc}</span>}
+      </div>}
+      {picking && !locked && <CitePicker rec={rec} para={para} onClose={()=>setPicking(false)}/>}
+    </div>
+  </div>;
+}
+
+/* the authoring surface. This is what replaced generating or uploading a
+   working copy: pick a template, or start blank and add sections. */
+function ReportComposer({rec}){
+  const {db,A,me} = use();
+  const cfg = rptCfg(rec);
+  const paras = (rec.blocks||[]).map(b=>db.paragraphs.find(p=>p.id===b)).filter(Boolean);
+  const locked = rec.locked || rec.status==='Approved';
+  /* the same rule the working-copy step used: content is authored in Draft
+     only. Once submitted it is what the Reviewer is reviewing, and a change
+     goes through Request Additional Info, which returns it to Draft. */
+  const editable = !locked && rec.status==='Draft' && acting(rec.creator);
+  const [tplPick,setTplPick] = useState(cfg.tpl||'');
+  const [reuse,setReuse] = useState(false);
+  const cited = paras.reduce((n,p)=>n+(p.cites||[]).length,0);
+  const untyped = paras.filter(p=>!p.diag).length;
+  const empty = paras.filter(p=>!p.text.trim()).length;
+
+  return <div className="card flush">
+    <div className="card-hd" style={{display:'flex',alignItems:'center',gap:12}}>
+      <div className="wa-icon gold">✎</div>
+      <div style={{flex:1}}>
+        <h2 style={{marginBottom:0}}>Report Content</h2>
+        <div className="csub" style={{marginBottom:0}}>
+          {paras.length} section{paras.length===1?'':'s'} · {cited} live citation{cited===1?'':'s'}
+          {' '}· figures resolve for {rec.bu} · {fmtP(rec.period)}</div>
+      </div>
+      {locked && <Tag c="grey">🔒 Locked</Tag>}
+    </div>
+
+    <div style={{padding:'0 17px 17px'}}>
+      {paras.length===0 && editable && <>
+        <Note k="info">This Report has no sections yet. Choose a template to start with the sections
+          this Report type always needs — already carrying this period’s real figures — or add
+          sections one at a time. Either way, nothing is locked afterwards.</Note>
+        <div style={{display:'flex',gap:8,alignItems:'flex-end',flexWrap:'wrap',marginTop:12}}>
+          <Field label="Section template">
+            <select value={tplPick} onChange={e=>setTplPick(e.target.value)} style={{minWidth:250}}>
+              <option value="">Blank — no template</option>
+              {(db.templates||[]).map(t=><option key={t.id} value={t.id}>{t.n}</option>)}
+            </select>
+          </Field>
+          <Btn k="pri" disabled={!tplPick} onClick={()=>A.applyTemplate(rec.id,tplPick)}>
+            Insert these sections</Btn>
+          <Btn onClick={()=>A.addSection(rec.id)}>Start blank — add one section</Btn>
+        </div>
+        {tplPick && tplOf(db,tplPick) && <div style={{marginTop:12}}>
+          <div className="csub">{tplOf(db,tplPick).desc}</div>
+          <table className="data"><thead><tr><th>Section</th><th>Angle</th><th>Pre-linked</th></tr></thead>
+            <tbody>{tplOf(db,tplPick).sections.map((s,i)=>
+              <tr key={i}><td><div className="t-main">{s.h}</div></td>
+                <td><DiagChip d={s.diag}/></td>
+                <td className="dim">{s.cites.length?s.cites.length+' citation'+(s.cites.length===1?'':'s'):'—'}</td>
+              </tr>)}</tbody></table>
+        </div>}
+      </>}
+
+      {paras.length===0 && !editable &&
+        <Empty ic="✎">No sections have been written yet.</Empty>}
+
+      {paras.length>0 && !editable && !locked && rec.status==='In Review' &&
+        <Note k="info">This Report is with a Reviewer, so its sections are read-only. A Reviewer
+          who needs it changed uses Request Additional Info, which returns it to Draft.</Note>}
+
+      {paras.map((p,i)=>
+        <SectionRow key={p.id} rec={rec} para={p} i={i} total={paras.length} locked={!editable}/>)}
+
+      {paras.length>0 && editable && <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:4}}>
+        <Btn onClick={()=>A.addSection(rec.id)}>+ Add a section</Btn>
+        <Btn onClick={()=>setReuse(r=>!r)}>{reuse?'Close the pool':'↻ Reuse a paragraph'}</Btn>
+        <select value="" onChange={e=>{ if(e.target.value) A.applyTemplate(rec.id,e.target.value); }}
+          style={{maxWidth:250}}>
+          <option value="">Append a template’s sections…</option>
+          {(db.templates||[]).map(t=><option key={t.id} value={t.id}>{t.n}</option>)}
+        </select>
+      </div>}
+
+      {reuse && editable && <div className="cpick">
+        <div className="csub">Insert a paragraph that already exists somewhere else. It is not
+          copied — the same paragraph appears in both Reports, and editing it in either one
+          changes it in both.</div>
+        <div className="cpick-l">
+          {db.paragraphs.filter(p=>!(rec.blocks||[]).includes(p.id)).length===0
+            ? <div style={{padding:14,fontSize:12.5,color:'var(--muted)'}}>
+                Every paragraph in the pool is already in this Report.</div>
+            : db.paragraphs.filter(p=>!(rec.blocks||[]).includes(p.id)).map(p=>{
+                const used = db.reports.filter(r=>(r.blocks||[]).includes(p.id));
+                return <button key={p.id} className="cpick-i"
+                  onClick={()=>{A.reuseSection(rec.id,p.id); setReuse(false);}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:12.5,fontWeight:560}}>{p.h||'Untitled section'}</div>
+                    <div className="m">{P(p.author).name}
+                      {used.length?' · currently in '+used.map(r=>rptName(r)).join(', '):' · in no Report'}</div>
+                  </div>
+                  <DiagChip d={p.diag}/>
+                </button>;})}
+        </div>
+      </div>}
+
+      {paras.length>0 && (untyped>0||empty>0) && <div style={{marginTop:12}}>
+        <Note k="warn">{empty>0 && <>{empty} section{empty===1?'':'s'} still {empty===1?'has':'have'} no text written. </>}
+          {untyped>0 && <>{untyped} section{untyped===1?'':'s'} {untyped===1?'has':'have'} no diagnostic angle set,
+            so the Report does not yet say whether it is describing, explaining, forecasting or prescribing.</>}</Note>
+      </div>}
+    </div>
+  </div>;
+}
+
+/* =========================================================================
+   KPI SELECTOR — shared by the template editor and the Report citation
+   picker. A flat list of every KPI and every breakdown together is
+   unusable once the catalogue is real, so a breakdown is chosen the way
+   it is actually structured: KPI first, then the dimension, then the
+   member within it.
+   ========================================================================= */
+function KpiCascade({onPick,taken,mode}){
+  const [kpiId,setKpiId] = useState('');
+  const [dim,setDim] = useState('');
+  const k = kpiId?KPIC(kpiId):null;
+  if(mode==='kpi') return <div className="cpick-l">
+    {KPI_CAT.map(x=>{
+      const t = taken.includes('KPI:'+x.id);
+      return <button key={x.id} className={'cpick-i'+(t?' taken':'')} disabled={t}
+        onClick={()=>onPick('KPI:'+x.id)}>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:12.5,fontWeight:560}}>{x.n}</div>
+          <div className="m">{PR(x.proc)?PR(x.proc).n:'No process'} · unit {x.unit.trim()}
+            {(x.breakdowns||[]).length?' · '+x.breakdowns.length+' breakdowns':''}</div>
+        </div>
+        {t?<Tag c="green">Added</Tag>:<span className="dim" style={{fontSize:16}}>+</span>}
+      </button>;})}
+  </div>;
+
+  const withBd = KPI_CAT.filter(x=>(x.breakdowns||[]).length);
+  return <>
+    <Field label="Which KPI">
+      <select value={kpiId} onChange={e=>{setKpiId(e.target.value);setDim('');}}>
+        <option value="">Choose a KPI…</option>
+        {withBd.map(x=><option key={x.id} value={x.id}>{x.n}</option>)}
+      </select>
+    </Field>
+    {k && <Field label="Broken down by">
+      <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
+        {bdDims(k).map(d=>
+          <Btn key={d} k={'sm'+(dim===d?' pri':'')} onClick={()=>setDim(d)}>{d}</Btn>)}
+      </div>
+    </Field>}
+    {k && dim && <div className="cpick-l">
+      {k.breakdowns.filter(b=>b.dim===dim).map(b=>{
+        const t = taken.includes('KPI:'+b.id);
+        return <button key={b.id} className={'cpick-i'+(t?' taken':'')} disabled={t}
+          onClick={()=>onPick('KPI:'+b.id)}>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:12.5,fontWeight:560}}>{b.n}</div>
+            <div className="m">{k.n} · by {b.dim}</div>
+          </div>
+          {t?<Tag c="green">Added</Tag>:<span className="dim" style={{fontSize:16}}>+</span>}
+        </button>;})}
+    </div>}
+    {!k && <div className="dim" style={{fontSize:12.5,padding:'4px 2px'}}>
+      Only KPIs that carry breakdowns are listed.</div>}
+  </>;
+}
+
+/* label any pre-linked reference for display in the template editor */
+function citeLabel(db,ref){
+  const kind=citeKind(ref), id=citeId(ref);
+  if(kind==='KPI'){ const f=findKpi(id);
+    return f ? (f.bd ? f.k.n+' — '+f.bd.dim+': '+f.bd.n : f.k.n) : id; }
+  if(kind==='STR') return ST(id)?ST(id).n:id;
+  if(kind==='PM')  return PME(id)?PME(id).n:id;
+  if(kind==='ISS') return ISS(id)?ISS(id).n:id;
+  if(kind==='RPT'){ const r=db.reports.find(x=>x.id===id); return r?rptName(r):id; }
+  return id;
+}
+
+/* =========================================================================
+   SECTION TEMPLATES — built here, not in code
+   A template is a named list of sections, each carrying the KPIs,
+   breakdowns or child Reports that always belong to it. Using it seeds
+   those sections with that period's real achievement already in place.
+   ========================================================================= */
+function TemplateSectionEditor({tpl,sec,i,total}){
+  const {db,A} = use();
+  const [pick,setPick] = useState(null);   /* 'kpi' | 'bd' | 'rpt' */
+  const [h,setH] = useState(sec.h);
+  useEffect(()=>{setH(sec.h);},[tpl.id,i]);
+  return <div className="sec">
+    <div className="sec-h">
+      <span className="sec-n">{i+1}</span>
+      <input className="sec-t" value={h} placeholder="Section heading"
+        onChange={e=>setH(e.target.value)}
+        onBlur={()=>{ if(h!==sec.h) A.editTplSection(tpl.id,i,{h}); }}/>
+      <div className="dg-seg">
+        {['none','d1','d2','d3','d4'].map(d=>
+          <button key={d} className={((sec.diag||'none')===d?'on ':'')+d}
+            title={d==='none'?'No diagnostic angle set':DIAG[d].q+' — needs '+DIAG[d].need}
+            onClick={()=>A.editTplSection(tpl.id,i,{diag:d==='none'?'':d})}>
+            {d==='none'?'Untyped':DIAG[d].n}</button>)}
+      </div>
+      <span style={{display:'flex',gap:4,marginLeft:'auto'}}>
+        {i>0 && <Btn k="sm" title="Move up" onClick={()=>A.moveTplSection(tpl.id,i,-1)}>↑</Btn>}
+        {i<total-1 && <Btn k="sm" title="Move down" onClick={()=>A.moveTplSection(tpl.id,i,1)}>↓</Btn>}
+        <Btn k="sm" title="Remove this section" onClick={()=>A.removeTplSection(tpl.id,i)}>✕</Btn>
+      </span>
+    </div>
+    <div className="sec-b">
+      {sec.cites.length===0
+        ? <div className="dim" style={{fontSize:12.5}}>
+            Nothing pre-linked — this section starts blank and is written free when the
+            template is used.</div>
+        : <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+            {sec.cites.map((c,ci)=>{
+              const kind=citeKind(c), f=kind==='KPI'?findKpi(citeId(c)):null;
+              return <span key={c} className={'cref '+(kind==='KPI'?'kpi':kind==='RPT'?'str':'')}>
+                {f&&f.bd?'Breakdown':kind==='KPI'?'KPI':kind==='RPT'?'Child Report':kind}
+                {': '}{citeLabel(db,c)}
+                <button onClick={()=>A.removeTplItem(tpl.id,i,ci)}
+                  style={{border:'none',background:'none',cursor:'pointer',marginLeft:4,color:'inherit'}}>×</button>
+              </span>;})}
+          </div>}
+      <div className="sec-f">
+        <Btn k="sm" onClick={()=>setPick(p=>p?null:'kpi')}>
+          {pick?'Close':'+ Pre-link a KPI, breakdown or child Report'}</Btn>
+      </div>
+      {pick && <div className="cpick">
+        <div className="cpick-k">
+          {[['kpi','KPI'],['bd','KPI breakdown'],['rpt','Child Report']].map(([k,l])=>
+            <Btn key={k} k={'sm'+(pick===k?' pri':'')} onClick={()=>setPick(k)}>{l}</Btn>)}
+        </div>
+        {(pick==='kpi'||pick==='bd') &&
+          <KpiCascade mode={pick} taken={sec.cites}
+            onPick={ref=>A.addTplItem(tpl.id,i,ref)}/>}
+        {pick==='rpt' && <div className="cpick-l">
+          {db.reports.filter(r=>(r.blocks||[]).length).map(r=>{
+            const t=sec.cites.includes('RPT:'+r.id);
+            return <button key={r.id} className={'cpick-i'+(t?' taken':'')} disabled={t}
+              onClick={()=>A.addTplItem(tpl.id,i,'RPT:'+r.id)}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:12.5,fontWeight:560}}>{rptName(r)}</div>
+                <div className="m">{fmtP(r.period)} · {r.dept} · {r.status}</div></div>
+              {t?<Tag c="green">Added</Tag>:<span className="dim" style={{fontSize:16}}>+</span>}
+            </button>;})}
+        </div>}
+      </div>}
+    </div>
+  </div>;
+}
+
+function TemplatesTab(){
+  const {db,A} = use();
+  const tpls = db.templates||[];
+  const [open,setOpen] = useState(tpls[0]?tpls[0].id:null);
+  const t = tplOf(db,open);
+  const [f,setF] = useState({n:'',desc:''});
+  useEffect(()=>{ if(t) setF({n:t.n,desc:t.desc}); },[open]);
+
+  const setups = t?RPT_SETUPS.filter(s=>s.tpl===t.id):[];
+  const live   = t?db.reports.filter(r=>r.setup && RS(r.setup) && RS(r.setup).tpl===t.id):[];
+
+  return <>
+    <Note k="info">A template is a named list of sections with its KPIs already linked, so a new
+      Report opens with that period’s real achievement in place. Templates are built here — adding
+      a Report type does not need anybody to change the system. A template seeds a Report; it does
+      not constrain one, and every section stays editable afterwards.</Note>
+
+    <div className="grid2" style={{gridTemplateColumns:'310px 1fr',alignItems:'start',marginTop:14}}>
+      <div className="card flush">
+        <div className="card-hd" style={{display:'flex',alignItems:'center',gap:8}}>
+          <h2 style={{flex:1,marginBottom:0}}>Templates</h2>
+          <Btn k="sm pri" onClick={()=>A.addTemplate(id=>setOpen(id))}>+ New</Btn>
+        </div>
+        {tpls.length===0
+          ? <div style={{padding:'8px 17px 17px'}}><Empty>No templates yet.</Empty></div>
+          : <table className="data"><tbody>{tpls.map(x=>{
+              const used = RPT_SETUPS.filter(s=>s.tpl===x.id);
+              return <tr key={x.id} className="click" onClick={()=>setOpen(x.id)}
+                style={open===x.id?{background:'var(--teal-ll)'}:null}>
+                <td><div className="t-main">{x.n}</div>
+                  <div className="t-sub">{x.sections.length} section{x.sections.length===1?'':'s'} · {x.cat}
+                    {used.length>0 && ' · used by '+used.length+' Setup'+(used.length===1?'':'s')}</div></td>
+              </tr>;})}</tbody></table>}
+      </div>
+
+      <div>{!t ? <div className="card"><Empty>Select or create a template.</Empty></div> : <>
+        <div className="card">
+          <div style={{display:'flex',gap:10,alignItems:'flex-start'}}>
+            <h2 style={{flex:1,marginBottom:0}}>Template details</h2>
+            <span className="dim mono" style={{fontSize:11}}>{t.id}</span>
+          </div>
+          <div className="f-row" style={{marginTop:10}}>
+            <Field label="Name" req>
+              <input type="text" value={f.n} onChange={e=>setF(x=>({...x,n:e.target.value}))}
+                onBlur={()=>{ if(f.n!==t.n) A.editTemplate(t.id,{n:f.n}); }}/></Field>
+            <Field label="Category">
+              <select value={t.cat} onChange={e=>A.editTemplate(t.id,{cat:e.target.value})}>
+                {RPT_CATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}
+              </select></Field>
+          </div>
+          <Field label="Description" hint="Shown wherever this template is offered.">
+            <input type="text" value={f.desc} onChange={e=>setF(x=>({...x,desc:e.target.value}))}
+              onBlur={()=>{ if(f.desc!==t.desc) A.editTemplate(t.id,{desc:f.desc}); }}/></Field>
+          <KVBlock items={[
+            ['Used by Setups', setups.length?setups.map(s=>s.name).join(', '):'None yet'],
+            ['Reports created from it', live.length],
+            ['Sections', t.sections.length],
+            ['Pre-linked sources', t.sections.reduce((n,s)=>n+s.cites.length,0)],
+          ]}/>
+          {setups.length>0 && <Note k="warn">This template is attached to {setups.length} approved
+            Setup{setups.length===1?'':'s'}. Changing its sections changes what the next Report of
+            that type starts with — Reports already created keep the sections they were built with.</Note>}
+          <div className="btn-row" style={{marginTop:4}}>
+            <Btn k="wrn" onClick={()=>{
+              if(setups.length){ alert('This template is attached to an approved Setup and cannot be deleted while that Setup uses it.'); return; }
+              if(window.confirm('Delete the “'+t.n+'” template? Reports already built from it are unaffected.')){
+                A.deleteTemplate(t.id); setOpen(null); }
+            }}>Delete template</Btn>
+          </div>
+        </div>
+
+        <div className="card flush">
+          <div className="card-hd" style={{display:'flex',alignItems:'center',gap:8}}>
+            <div style={{flex:1}}>
+              <h2 style={{marginBottom:0}}>Sections</h2>
+              <div className="csub" style={{marginBottom:0}}>In the order a Report built from this
+                template will open with. Anything pre-linked here arrives carrying live figures.</div>
+            </div>
+          </div>
+          <div style={{padding:'0 17px 17px'}}>
+            {t.sections.length===0
+              ? <Empty ic="✎">No sections yet. Add the first one below.</Empty>
+              : t.sections.map((s,i)=>
+                  <TemplateSectionEditor key={t.id+':'+i} tpl={t} sec={s} i={i} total={t.sections.length}/>)}
+            <Btn onClick={()=>A.addTplSection(t.id)}>+ Add a section</Btn>
+          </div>
+        </div>
+      </>}</div>
+    </div>
+  </>;
+}
+/* =========================================================================
+   PARAGRAPH POOL — every section written anywhere is one object
+   ========================================================================= */
+function PoolTab(){
+  const {db,go,A} = use();
+  const [q,setQ] = useState('');
+  const [only,setOnly] = useState('all');
+  const rows = db.paragraphs
+    .map(p=>({p, used:db.reports.filter(r=>(r.blocks||[]).includes(p.id))}))
+    .filter(x=> only==='all' ? true : only==='shared' ? x.used.length>1 : x.used.length===0)
+    .filter(x=> !q.trim() || (x.p.h+' '+x.p.text).toLowerCase().includes(q.trim().toLowerCase()));
+  const shared = db.paragraphs.filter(p=>db.reports.filter(r=>(r.blocks||[]).includes(p.id)).length>1);
+
+  return <>
+    <Note k="info">A section is written once and cited wherever it is relevant. These are objects,
+      not copies — editing one here changes it in every Report it appears in, which is why the
+      reuse count matters before you edit.</Note>
+    <div className="stats" style={{marginTop:14}}>
+      <Stat label="Paragraphs" v={db.paragraphs.length} d="written across every Report"/>
+      <Stat label="Reused" v={shared.length} d="appear in more than one Report"
+        c={shared.length?'teal':'muted'}/>
+      <Stat label="Orphaned" v={db.paragraphs.filter(p=>!db.reports.some(r=>(r.blocks||[]).includes(p.id))).length}
+        d="in no Report right now" c="muted"/>
+    </div>
+    <div className="card flush">
+      <div className="card-hd" style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+        <h2 style={{flex:1}}>Paragraph pool</h2>
+        <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search text…"
+          style={{border:'1px solid var(--border)',borderRadius:6,padding:'5px 9px',fontSize:12.5,minWidth:180}}/>
+        <select value={only} onChange={e=>setOnly(e.target.value)}>
+          <option value="all">All paragraphs</option>
+          <option value="shared">Reused only</option>
+          <option value="orphan">Orphaned only</option>
+        </select>
+      </div>
+      <div style={{padding:'0 17px 17px'}}>
+        {rows.length===0 ? <Empty>Nothing matches.</Empty> : rows.map(({p,used})=>
+          <div className="pool-i" key={p.id}>
+            <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+              <b style={{fontSize:13}}>{p.h||'Untitled section'}</b>
+              <DiagChip d={p.diag}/>
+              {used.length>1 && <span className="reuse">↻ in {used.length} Reports</span>}
+              {used.length===0 && <Tag c="grey">Not in any Report</Tag>}
+              <span className="dim mono" style={{fontSize:11,marginLeft:'auto'}}>{p.id}</span>
+            </div>
+            <div style={{fontSize:12.5,lineHeight:1.66,marginTop:6,color:'var(--ink-2)'}}>
+              {p.text || <span className="dim">Not written yet.</span>}</div>
+            {(p.cites||[]).length>0 && <div style={{display:'flex',gap:5,flexWrap:'wrap',marginTop:7}}>
+              {p.cites.map(c=><span key={c} className="cref">{citeKind(c)} · {citeId(c)}</span>)}</div>}
+            <div className="u">Written by {P(p.author).name}
+              {used.length>0 && <> · appears in {used.map((r,i)=>
+                <React.Fragment key={r.id}>{i>0&&', '}
+                  <a onClick={()=>go('rpt',r.id)}>{rptName(r)} — {fmtP(r.period)}</a>
+                </React.Fragment>)}</>}</div>
+          </div>)}
+      </div>
+    </div>
+  </>;
+}
+
+/* =========================================================================
+   REPORTING HIERARCHY — every Report and every child Report it references
+   This falls out of composition for free: a Report is a parent of another
+   whenever one of its sections cites that Report, or a section of it.
+   ========================================================================= */
+function reportChildIds(db,rid){
+  const r = db.reports.find(x=>x.id===rid); if(!r) return [];
+  const out = [];
+  (r.blocks||[]).forEach(bid=>{
+    const p = db.paragraphs.find(x=>x.id===bid); if(!p) return;
+    (p.cites||[]).forEach(c=>{
+      const kind=citeKind(c), id=citeId(c);
+      if(kind==='RPT' && id!==rid && !out.includes(id)) out.push(id);
+      if(kind==='PAR'){
+        const owner = db.reports.find(x=>x.id!==rid && (x.blocks||[]).includes(id));
+        if(owner && !out.includes(owner.id)) out.push(owner.id);
+      }
+    });
+  });
+  return out;
+}
+const reportParentIds = (db,rid) => db.reports
+  .filter(r=>reportChildIds(db,r.id).includes(rid)).map(r=>r.id);
+
+function HierarchyTab(){
+  const {db,go} = use();
+  const [f,setF] = useState({name:'',type:'',dept:''});
+  const [focus,setFocus] = useState(null);
+  const list = db.reports;
+  const cats  = [...new Set(list.map(r=>rptCfg(r).cat||'Custom'))];
+  const depts = [...new Set(list.map(r=>r.dept))];
+
+  const matches = r => (!f.name || rptName(r).toLowerCase().includes(f.name.toLowerCase()))
+    && (!f.type || (rptCfg(r).cat||'Custom')===f.type)
+    && (!f.dept || r.dept===f.dept);
+
+  /* a branch stays visible if it, or anything under it, matches the filters */
+  const branchMatches = (rid,seen={}) => {
+    if(seen[rid]) return false; seen[rid]=1;
+    if(matches(db.reports.find(r=>r.id===rid)||{})) return true;
+    return reportChildIds(db,rid).some(c=>branchMatches(c,seen));
+  };
+  const roots = list.filter(r=>reportParentIds(db,r.id).length===0);
+
+  const Node = ({rid,seen}) => {
+    const r = db.reports.find(x=>x.id===rid); if(!r||seen[rid]) return null;
+    const kids = reportChildIds(db,rid);
+    const paras = (r.blocks||[]).map(b=>db.paragraphs.find(p=>p.id===b)).filter(Boolean);
+    const dim = !branchMatches(rid,{});
+    return <div className="tnode">
+      <button className={'tbox'+(focus===rid?' on':'')+(dim?' dim':'')}
+        onClick={()=>setFocus(focus===rid?null:rid)}>
+        <span className="tw">{kids.length||'—'}</span>
+        <span style={{flex:1,minWidth:0}}>
+          <span className="n">{rptName(r)}</span>
+          <span className="m">{fmtP(r.period)} · {r.dept} · {rptCfg(r).cat||'Custom'} ·
+            {' '}{paras.length} section{paras.length===1?'':'s'}
+            {kids.length>0 && ' · '+kids.length+' child Report'+(kids.length===1?'':'s')}</span>
+        </span>
+        <Tag c={rptTagC(r.status)}>{r.status}</Tag>
+      </button>
+      {kids.map(k=><Node key={k} rid={k} seen={{...seen,[rid]:1}}/>)}
+    </div>;
+  };
+
+  const fr = focus ? db.reports.find(r=>r.id===focus) : null;
+  const frParas = fr ? (fr.blocks||[]).map(b=>db.paragraphs.find(p=>p.id===b)).filter(Boolean) : [];
+  const frBI = fr ? [...new Set(frParas.flatMap(p=>(p.cites||[])
+    .filter(c=>citeKind(c)==='KPI')
+    .map(c=>{const x=findKpi(citeId(c)); return x?x.k.bi:null;}).filter(Boolean)))] : [];
+
+  return <>
+    <Note k="info">Every Report and every child Report it references, as one tree. This is not a
+      folder structure someone maintains — it is read straight off the citations, so it cannot
+      drift from what the Reports actually contain.</Note>
+    <div className="card" style={{marginTop:14}}>
+      <div style={{display:'flex',gap:10,flexWrap:'wrap',alignItems:'flex-end'}}>
+        <Field label="Name"><input type="text" value={f.name} onChange={e=>setF({...f,name:e.target.value})}
+          placeholder="Filter by Report name" style={{minWidth:200}}/></Field>
+        <Field label="Type"><select value={f.type} onChange={e=>setF({...f,type:e.target.value})}>
+          <option value="">All types</option>{cats.map(c=><option key={c} value={c}>{c}</option>)}
+        </select></Field>
+        <Field label="Department"><select value={f.dept} onChange={e=>setF({...f,dept:e.target.value})}>
+          <option value="">All departments</option>{depts.map(d=><option key={d} value={d}>{d}</option>)}
+        </select></Field>
+        {(f.name||f.type||f.dept) && <Btn onClick={()=>setF({name:'',type:'',dept:''})}>Clear</Btn>}
+      </div>
+    </div>
+
+    <div className="grid2" style={{gridTemplateColumns:'1fr 340px',alignItems:'start'}}>
+      <div className="card flush">
+        <div className="card-hd"><h2>Report tree</h2>
+          <div className="csub">{roots.length} top-level Report{roots.length===1?'':'s'} ·
+            {' '}{list.length} in total. Click any Report to focus it.</div></div>
+        <div style={{padding:'4px 17px 17px'}}>
+          <div className="tree">{roots.map(r=><Node key={r.id} rid={r.id} seen={{}}/>)}</div>
+        </div>
+      </div>
+
+      <div>
+        {!fr ? <div className="card"><Empty ic="⌷">Select a Report in the tree to see what is
+          inside it — its sections, its sources and the dashboards behind it.</Empty></div>
+        : <>
+          <div className="card">
+            <div style={{display:'flex',alignItems:'flex-start',gap:8}}>
+              <h2 style={{flex:1,marginBottom:0}}>{rptName(fr)}</h2>
+              <Tag c={rptTagC(fr.status)}>{fr.status}</Tag>
+            </div>
+            <div className="csub" style={{marginTop:6}}>{fmtP(fr.period)} · {fr.dept} · {fr.bu}</div>
+            <KVBlock items={[
+              ['Type', rptCfg(fr).cat||'Custom'],
+              ['Owner', P(fr.creator).name],
+              ['Parents', reportParentIds(db,fr.id).length
+                ? reportParentIds(db,fr.id).map(p=>rptName(db.reports.find(r=>r.id===p))).join(', ')
+                : 'None — this is a top-level Report'],
+              ['Child Reports', reportChildIds(db,fr.id).length||'None'],
+            ]}/>
+            <div className="btn-row" style={{marginTop:4}}>
+              <Btn k="pri" onClick={()=>go('rpt',fr.id)}>Open this Report</Btn></div>
+          </div>
+          <div className="card flush">
+            <div className="card-hd"><h2>What is inside it</h2></div>
+            {frParas.length===0 ? <div style={{padding:'8px 17px 17px'}}>
+                <Empty>No sections written yet.</Empty></div>
+            : <table className="data"><tbody>{frParas.map((p,i)=>
+                <tr key={p.id}><td>
+                  <div className="t-main">{i+1}. {p.h||'Untitled section'}</div>
+                  <div className="t-sub">{(p.cites||[]).length} citation
+                    {(p.cites||[]).length===1?'':'s'}</div></td>
+                  <td style={{textAlign:'right'}}><DiagChip d={p.diag}/></td>
+                </tr>)}</tbody></table>}
+          </div>
+          {frBI.length>0 && <div className="card">
+            <h2>Dashboards behind it</h2>
+            <div className="csub">Reached through the KPIs its sections cite.</div>
+            {frBI.map(b=><div className="att-row" key={b}>
+              <div className="att-ic">▦</div>
+              <div style={{flex:1,minWidth:0}}>
+                <div className="t-main" style={{fontSize:12.5}}>{BIR(b).n}</div>
+                <div className="t-sub mono" style={{fontSize:10.5}}>{b}</div></div>
+              <a href={BIR(b).link} target="_blank" rel="noopener">Open ↗</a>
+            </div>)}
+          </div>}
+        </>}
+      </div>
+    </div>
+  </>;
+}
+
+/* =========================================================================
+   CREATE REPORT — multi-step wizard (Template → Details → Sections → Submit)
+   ========================================================================= */
+const shiftPeriod = (p,n) => { const [y,m]=p.split('-').map(Number);
+  const d=new Date(y,m-1+n,1); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); };
+const WIZ_STEPS = [
+  {id:'template', n:1, label:'Template',    hint:'Select template'},
+  {id:'details',  n:2, label:'Details',     hint:'Fill fields'},
+  {id:'sections', n:3, label:'Sections',    hint:'Choose the structure'},
+  {id:'submit',   n:4, label:'Submit',      hint:'Review & submit'},
+];
+const WIZ_DEPTS = ['Hospital-Wide','Quality','Nursing','Pharmacy','Facilities','Emergency','Executive'];
+const TPL_STYLE = {
+  rs1:{ic:'📊', bg:'var(--teal-l)',  fg:'var(--teal-d)'},
+  rs2:{ic:'👥', bg:'var(--blue-bg)', fg:'var(--blue)'},
+  rs3:{ic:'📈', bg:'var(--green-bg)',fg:'var(--green)'},
+  rs4:{ic:'🛠', bg:'var(--amber-bg)',fg:'var(--amber)'},
+};
+
+function WizSteps({step,onJump}){
+  const idx = WIZ_STEPS.findIndex(s=>s.id===step);
+  return <div className="wiz-steps">
+    {WIZ_STEPS.map((s,i)=><React.Fragment key={s.id}>
+      {i>0 && <div className="wiz-line"/>}
+      <div className="wiz-step" style={{cursor:'pointer'}} onClick={()=>onJump(s.id)}>
+        <div className={'wiz-num '+(i<idx?'done':i===idx?'now':'')}>{i<idx?'✓':s.n}</div>
+        <div className="t"><b>{s.label}</b><span>{s.hint}</span></div>
+      </div>
+    </React.Fragment>)}
+  </div>;
+}
+
+function ReportWizard({onClose}){
+  const {A,S,db} = use();
+  const [step,setStep]=useState('template');
+  const [setupId,setSetupId]=useState(null);
+  const [f,setF]=useState({title:'',period:PERIOD,dept:'Hospital-Wide',bu:'ALL',
+    summary:'',actions:'',reviewers:['u5'],site:'Quality',folder:'2026 / Ad Hoc',tpl:''});
+  const set=(k,v)=>setF(x=>({...x,[k]:v}));
+
+  const isCustom = setupId==='custom';
+  const setup = (setupId && !isCustom) ? RPT_SETUPS.find(s=>s.id===setupId) : null;
+  const chain = isCustom ? f.reviewers : (setup?setup.reviewers:[]);
+  const setupLabel = isCustom ? 'Custom — no approved Setup' : setup ? setup.name : 'No template selected yet';
+
+  const chooseTpl = id => { setSetupId(id);
+    const s = id!=='custom' ? RPT_SETUPS.find(x=>x.id===id) : null;
+    setF(x=>({...x, title: s ? s.name+' — '+fmtP(x.period) : x.title,
+                    tpl: s ? (s.tpl||'') : x.tpl })); };
+
+  const required = [!!f.dept.trim(), !!f.period, !!f.summary.trim(),
+    isCustom?!!f.title.trim():true, isCustom?f.reviewers.length>0:true];
+  const filledCount = required.filter(Boolean).length, totalCount = required.length;
+  const detailsOk = filledCount===totalCount;
+
+  const next = () => {
+    if(step==='template') setStep('details');
+    else if(step==='details') setStep('sections');
+    else if(step==='sections') setStep('submit');
+  };
+  const cancel = () => {
+    if(step!=='template' && !window.confirm('Discard this new Report? Nothing entered will be saved.')) return;
+    onClose();
+  };
+  const saveDraft = () => { if(!setupId) return; A.createReportFromWizard({...f,setupId,submit:false}); onClose(); };
+  const submit    = () => { if(!setupId) return; A.createReportFromWizard({...f,setupId,submit:true});  onClose(); };
+
+  return <>
+    <div className="crumb"><a onClick={cancel}>Reports</a> › <b>New Report</b></div>
+    <div className="ph ph-row">
+      <div style={{flex:1}}><h1>Create Report</h1>
+        <div className="sub">Select a template, fill in the details, and submit for review.</div></div>
+      <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+        <Btn onClick={cancel}>Cancel</Btn>
+        {step!=='submit' && <Btn disabled={!setupId} onClick={saveDraft}>Save Draft</Btn>}
+        {step!=='submit' && <Btn k="pri" onClick={next}>Next Step</Btn>}
+      </div>
+    </div>
+
+    <WizSteps step={step} onJump={setStep}/>
+
+    {step==='template' && <div>
+      <h2 style={{marginBottom:2}}>Choose a Report Template</h2>
+      <div className="csub">Templates are published through Governance Setup. Only active, approved
+        templates appear here.</div>
+      <Note k="info">Showing {RPT_SETUPS.length} templates from Setup Register. Templates inherit
+        fields, review chain, and cadence from their Setup definition.</Note>
+      <div className="wiz-tpl">
+        {RPT_SETUPS.map(s=>{ const st=TPL_STYLE[s.id]||{ic:'📄',bg:'var(--grey-bg)',fg:'var(--muted)'};
+          return <div key={s.id} className={'wiz-tpl-c'+(setupId===s.id?' on':'')} onClick={()=>chooseTpl(s.id)}>
+            <div className="wiz-tpl-ic" style={{background:st.bg,color:st.fg}}>{st.ic}</div>
+            <h3>{s.name}</h3>
+            <p>{s.objective}</p>
+            <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
+              <Tag c="grey">{s.cat}</Tag><Tag c="grey">{s.freq}</Tag>
+            </div>
+          </div>;})}
+        <div className={'wiz-tpl-c dashed'+(isCustom?' on':'')} onClick={()=>chooseTpl('custom')}>
+          <div className="wiz-tpl-ic" style={{background:'var(--ink)',color:'#fff'}}>🖥</div>
+          <h3>Custom Report</h3>
+          <p>Build a custom report from scratch with flexible fields and layout.</p>
+          <Tag c="amber">Custom</Tag>
+        </div>
+      </div>
+    </div>}
+
+    {step==='details' && <div className="grid2" style={{gridTemplateColumns:'1fr 300px',alignItems:'start'}}>
+      <div>
+        <Note k="info">Template: <b>{setupLabel}</b> — fill all required (*) fields.</Note>
+        <div className="card">
+          <h2>Report Information</h2>
+          <div className="f-row">
+            <Field label="Report Title" req>
+              <input type="text" value={f.title} disabled={!isCustom}
+                onChange={e=>set('title',e.target.value)} placeholder="e.g. Laser Utilisation Review"/></Field>
+            <Field label="Reporting Period" req>
+              <select value={f.period} onChange={e=>set('period',e.target.value)}>
+                {[-2,-1,0,1,2,3].map(n=>{const p=shiftPeriod(PERIOD,n);
+                  return <option key={p} value={p}>{fmtP(p)}</option>;})}
+              </select></Field>
+          </div>
+          <div className="f-row">
+            <Field label="Setup / Committee" req hint={!isCustom?'Auto-filled from template':null}>
+              <input type="text" value={setupLabel} disabled/></Field>
+            <Field label="Department" req>
+              <select value={f.dept} onChange={e=>set('dept',e.target.value)}>
+                {WIZ_DEPTS.map(d=><option key={d}>{d}</option>)}</select></Field>
+          </div>
+        </div>
+
+        <div className="card">
+          <h2>Summary & Actions</h2>
+          <Field label="Executive Summary" req>
+            <textarea value={f.summary} onChange={e=>set('summary',e.target.value)}
+              placeholder="Overall summary for this reporting period."/></Field>
+          <Field label="Improvement Actions" hint="One per line — optional">
+            <textarea value={f.actions} onChange={e=>set('actions',e.target.value)}
+              placeholder={'1. ...\n2. ...'}/></Field>
+          {isCustom && <Field label="Sequential Reviewers" req hint="Reviewed in the order selected.">
+            <Pills multi val={f.reviewers} onChange={v=>set('reviewers',v)}
+              opts={['u5','u2','u7','u10'].map(id=>({v:id,label:P(id).name}))}/></Field>}
+        </div>
+      </div>
+
+      <div>
+        <div className="card">
+          <h2>Report Details</h2>
+          <div className="wa-mo-r"><label>Template</label>
+            <span className="v" style={{fontFamily:'inherit'}}>{isCustom?'Custom':setupLabel}</span></div>
+          <div className="wa-mo-r"><label>Setup</label>
+            <span className="v" style={{fontFamily:'inherit'}}>{isCustom?'—':setupLabel}</span></div>
+          <div className="wa-mo-r"><label>Created</label>
+            <span className="v" style={{fontFamily:'inherit'}}>{fmtD(TODAY)}</span></div>
+          <div className="wa-mo-r"><label>Status</label><Tag c="grey">Draft</Tag></div>
+        </div>
+
+        <div className="card">
+          <h2>Review Chain</h2>
+          <div className="csub">Sequential review — each must approve before next.</div>
+          {chain.length===0 ? <Empty>Choose at least one Reviewer.</Empty> : chain.map((rv,i)=>
+            <div className="rev-row" key={i}>
+              <div className={'rev-num '+(i===0?'now':'pending')}>{i+1}</div>
+              <div style={{flex:1,minWidth:0}}>
+                <div className="t-main" style={{fontSize:12.5}}>{P(rv).name}</div>
+                <div className="t-sub">{P(rv).position}</div>
+              </div>
+            </div>)}
+          {S.reviewTimeoutDays!=null && <div className="csub" style={{marginTop:8,marginBottom:0}}>
+            {S.reviewTimeoutDays}-day timeout per reviewer. Auto-escalates.</div>}
+        </div>
+
+        <div className="card">
+          <h2>Completion</h2>
+          <Bar v={Math.round(filledCount/totalCount*100)} c={detailsOk?'green':'teal'}/>
+          <div className="csub" style={{marginTop:6,marginBottom:0}}>
+            {filledCount} of {totalCount} required fields filled</div>
+        </div>
+      </div>
+    </div>}
+
+    {step==='sections' && <div style={{maxWidth:620}}>
+      <h2 style={{marginBottom:2}}>Choose the sections</h2>
+      <div className="csub">A Report is written as sections that cite live records. Pick the
+        structure it starts with — every section stays editable, removable and reorderable once
+        the Report is open.</div>
+
+      <div className="card">
+        <Field label="Section template" hint="Its KPIs are pre-linked, so the Report opens with this period's real achievement already in place.">
+          <select value={f.tpl} onChange={e=>set('tpl',e.target.value)}>
+            <option value="">Blank — start with no sections</option>
+            {(db.templates||[]).map(t=><option key={t.id} value={t.id}>{t.n}</option>)}
+          </select>
+        </Field>
+        {f.tpl && tplOf(db,f.tpl) && <div className="csub" style={{marginTop:2}}>{tplOf(db,f.tpl).desc}</div>}
+      </div>
+
+      {f.tpl && tplOf(db,f.tpl)
+        ? <div className="card flush">
+            <div className="card-hd"><h2>Sections it will create</h2></div>
+            <table className="data">
+              <thead><tr><th style={{width:34}}>#</th><th>Section</th><th>Angle</th><th>Pre-linked</th></tr></thead>
+              <tbody>{tplOf(db,f.tpl).sections.map((s,i)=>
+                <tr key={i}><td className="dim mono">{i+1}</td>
+                  <td><div className="t-main">{s.h}</div></td>
+                  <td><DiagChip d={s.diag}/></td>
+                  <td className="dim">{s.cites.length
+                    ? s.cites.length+' citation'+(s.cites.length===1?'':'s') : '—'}</td>
+                </tr>)}</tbody></table>
+          </div>
+        : <Note k="info">Starting blank is fine — you add sections one at a time inside the Report,
+            and can insert a template's sections at any point afterwards.</Note>}
+    </div>}
+
+    {step==='submit' && <div style={{maxWidth:530}}>
+      <h2 style={{marginBottom:2}}>Review & Submit</h2>
+      <div className="csub">Review before submitting. Once submitted, it enters the sequential review chain.</div>
+      <Note k="warn">Once submitted, you cannot edit.
+        {S.reviewTimeoutDays!=null && ` Each reviewer has a ${S.reviewTimeoutDays}-day window.`}</Note>
+
+      <div className="card">
+        <h2>Report Summary</h2>
+        <div className="rs-grid">
+          <div className="rs-cell"><label>Title</label><div>{f.title||'—'}</div></div>
+          <div className="rs-cell"><label>Period</label><div>{fmtP(f.period)}</div></div>
+          <div className="rs-cell full"><label>Executive Summary</label><div style={{fontWeight:500}}>{f.summary||'—'}</div></div>
+          <div className="rs-cell full"><label>Sections</label>
+            <div>{f.tpl && tplOf(db,f.tpl)
+              ? tplOf(db,f.tpl).n+' — '+tplOf(db,f.tpl).sections.length+' sections'
+              : 'Blank — sections added inside the Report'}</div></div>
+        </div>
+      </div>
+
+      <div className="card">
+        <h2>Review Chain</h2>
+        {chain.map((rv,i)=>
+          <div className="rev-row" key={i}>
+            <div className={'rev-num '+(i===0?'now':'pending')}>{i+1}</div>
+            <div style={{flex:1,minWidth:0}}>
+              <div className="t-main" style={{fontSize:12.5}}>{P(rv).name}</div>
+              <div className="t-sub">{P(rv).position}
+                {S.reviewTimeoutDays!=null && ' · '+S.reviewTimeoutDays+'-day window'}</div>
+            </div>
+            <Tag c={i===0?'amber':'grey'}>{i===0?'First':'Waiting'}</Tag>
+          </div>)}
+      </div>
+
+      <div className="btn-row" style={{marginTop:2}}>
+        <Btn style={{flex:1}} onClick={()=>setStep('sections')}>Back to Edit</Btn>
+        <Btn k="grn" style={{flex:1}} onClick={submit}>➤ Submit for Review</Btn>
+      </div>
+    </div>}
   </>;
 }
 
