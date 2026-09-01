@@ -1,7 +1,7 @@
 # Leadership Practice — Working Context
 
 > Handoff notes for anyone (human or AI) picking this project up cold.
-> Written 30 Aug 2026, updated 31 Aug 2026 against branch `leadership-practice`.
+> Written 30 Aug 2026, updated 01 Sep 2026 against branch `leadership-practice`.
 >
 > This file records **decisions, hard-won schema facts and open questions** —
 > the things that are expensive to rediscover. It is not a substitute for the
@@ -63,6 +63,7 @@ comes up.
 | `leadership-practice-prototype-spec.md` | **The specification** | Leads on every conflict |
 | `Andalusia_Pulse_Leadership_Practice_BRD_V1.0.pdf` (30 Jul 2026) | Approved business baseline | Fills gaps only |
 | `README.md` | Conversion notes | How the HTML prototype became this Vite project |
+| `prototype.html` (repo root, added 01 Sep 2026) | The actual static HTML prototype | Not built or served by Vite — a reference file only, for checking visual/copy fidelity against the original |
 
 The BRD **contradicts itself** in three places, and the code picked a side:
 
@@ -88,9 +89,10 @@ The BRD **contradicts itself** in three places, and the code picked a side:
 | **Reports & Plans tab** (nav screen) — reads `lm_reportoccurrences` directly | ✅ **live** (this session — same story: the detail page was already live, the list screen wasn't) |
 | Authority Matrix + Approval Cycles | ✅ live, read-only by design (`AuthorityMatrixPanel`, embedded in Governance Settings) |
 | **Audit Grid scoring** — Meeting Occurrence's own Grid tab | ✅ **live** (this session) — `liveScoreGrid()` computes all 16 questions from the live occurrence/Minutes/Template; full Facilitator→Chair lifecycle (score, evidence, submit, approve+publish, return, open a correction version) writes through the backend functions that were already built |
-| **My Workspace (nav screen)** | ✅ **live** — reads its Work Queue, Upcoming panel and This Month stats directly off the full `dvMeetingOccs`/`dvReportOccs` arrays via `dvWorkItems()`. Verified this session; it was never actually seeded-only, an earlier version of this table said otherwise in error. Its Decisions filter tab still shows 0 because Decisions (below) only just went live. |
+| **My Workspace (nav screen)** | ✅ **live** — reads its Work Queue, Upcoming panel and This Month stats directly off the full `dvMeetingOccs`/`dvReportOccs` arrays via `dvWorkItems()`. Two silent-data-loss bugs fixed here 01 Sep — see §5: an overdue Meeting with partial attendance recording used to vanish from Work Queue, and a blank/unrecognized status code used to vanish a row from every screen at once. Its Decisions filter tab still shows 0 because Decisions (below) only just went live. |
 | **Decisions register** | 🟡 **partially live** (this session) — `wlog_decisions` read + minimal create wired as its own list on the Decisions tab, alongside (not replacing) the existing seeded Decision workflow. Not yet linked to the Meeting Agenda Item or Report that raised it — deferred by explicit instruction, see §5/§6/§7. |
-| Tasks, Comments, Governance Settings (persisted values), Committee Scores (nav screen) | ❌ **seeded demo data only** |
+| **Committee Scores (nav screen)** | ✅ **live** (01 Sep) — `ScreenGrid` now reads `fetchAuditGridInstances()` joined against `dvMeetingOccs`, instead of seeded `db.grids`. See §5 for the join details and the Approved-only Coverage/Score rule. |
+| Tasks, Comments, Governance Settings (persisted values) | ❌ **seeded demo data only** |
 
 **`scoreGrid()` (seeded) and `liveScoreGrid()` (live) are two separate functions**,
 not one shared implementation — the live version reads a Dataverse occurrence/
@@ -106,9 +108,11 @@ through AG-14 still can't move onto live data until Decisions and Tasks exist.**
 ## 5. Recent work
 
 `dec7171 "Add audit scoring"` and `98f1012 "Add a rescheduale option..."`, on
-top of `b9b76e3 "meeting minutes"`, were committed in an earlier pass. The
-work below is this session's, committed separately (see the repo's own log
-for its hash — not backfilled here to avoid a stale reference).
+top of `b9b76e3 "meeting minutes"`, were committed in an earlier pass.
+`6fdde05 "Add cadence-aware Meeting dates and base wlog_decisions wiring"`
+covers the section right below. `fe84b2b "Add the new prototype"` covers the
+one after it, bundled together with `prototype.html` — the original static
+HTML prototype, now checked into the repo root (see §3).
 
 ### This session: cadence-aware New Meeting date, and a live bug fix found along the way
 
@@ -213,6 +217,64 @@ Applicable. A "Clear" action was added for AG-02 (archives the Answer row,
 had no way to unset a manual score once picked. A full test scenario with a
 worked-out expected score (91.4%, 7 of 15 coverage, from a specific fixture) is
 in the Reference list, §10.
+
+### This session (01 Sep): two silent-data-loss bugs fixed, Committee Scores gone live
+
+**Bug 1 — Work Queue silently dropped overdue Meetings with partial
+attendance.** `dvWorkItems()`'s "Mark the Meeting as Held, or cancel it"
+prompt only fired when *every* Attendee was still unrecorded
+(`unrecorded===o.attendees.length`). The moment even one Attendee had a
+presence set while the Meeting itself was never marked Held, the condition
+went false and the Meeting vanished from Work Queue entirely — no prompt,
+no visibility. Fixed by decoupling it from attendance state: any Meeting
+still `Scheduled` past its date now fires the prompt regardless of how much
+attendance recording has happened.
+
+**Bug 2 — a much bigger one, found while chasing the first: `status: null`
+silently vanishes a row from every screen that reads it.** Proven directly
+from a live screenshot: the Meetings tab showed 44 rows in the table but its
+Not-yet-held/Held-record-open/Held-and-closed/Cancelled tabs summed to only
+3. `MEETING_OCC_STATUS[o.lm_meetingstatus] || null` defaulted to `null` for
+any row whose `lm_meetingstatus` was blank or unrecognized — and **every**
+screen that reads Meeting/Report status (Work Queue, the Meetings tab, the
+Calendar) branches on an exact `'Scheduled'`/`'Held'`/`'Cancelled'` string
+match with no `null` case, so those rows disappeared everywhere at once,
+not just from one screen. Fixed in all four status-decoding spots in
+`dataverse.js` (`fetchMeetingOccurrences()`, `fetchReportOccurrences()`,
+and their `*ByTemplate()` counterparts): default to `'Scheduled'` /
+`'Draft'` instead of `null` — the state every occurrence/report starts in
+when this app itself creates one. **Open question for whoever owns that
+data:** 41 of 44 live Meeting Occurrences had no recognized status, which
+strongly suggests they came from somewhere other than this app's own New
+Meeting form (which always writes `Scheduled` explicitly) — most likely a
+bulk-created batch (e.g. the Meeting Occurrence Generator flow, §10, if
+it's live and isn't setting `lm_meetingstatus` on the rows it creates).
+This fix is a safety net in the app, not a substitute for fixing that at
+the source.
+
+**Committee Scores tab (`ScreenGrid`) rewired to Dataverse.** Was 100%
+seeded (`db.grids`/`db.occs`/`MTG_SETUPS`) despite the Audit Grid itself
+being fully live per-occurrence (§4) — a real gap, not a stale doc note.
+Now reads `fetchAuditGridInstances()` (already existed in `dataverse.js`,
+never called by any screen until now) joined against `dvMeetingOccs`.
+Simplification worth knowing: a live Grid Instance is only ever created for
+an Accreditation Committee occurrence (`createAuditGridInstance()` is only
+reachable from the `accred`-gated path in `DvMeetingDetail`/`DvGridBody`),
+so unlike the seeded version there's no separate Committee-vs-Business-
+Meeting filter to apply — every row already is one. Coverage/Score only
+render once a Grid is `Approved`, matching when Dataverse actually
+populates `lm_coverage`/`lm_score`; everything else shows "Pending Review"
+rather than a stale or fabricated number. The question-catalogue card at
+the bottom is untouched — it's the static, Taxonomy-owned list, not
+per-org data.
+
+**Also surfaced, not yet acted on:** re-reading the Authority Matrix /
+Approval Cycle backend while answering a question about the Decisions tab
+found it's considerably more ready than §7.2 implied — `lm_authoritymatrixrows`
+(Type/Max Value/Required Level/Cycle), `lm_approvalcycles` +
+`lm_approvalcyclesteps` (ordered routing), the 5-value `DECISION_TYPE` enum,
+and `authorityCheckLive()` itself are all already built and live. See the
+revised §7.2 below — the real remaining gap is narrower than it reads today.
 
 ---
 
@@ -353,6 +415,22 @@ misleading "succeeded but no id was returned" instead of the real reason
 (a length cap, a required field, a permission error). Always route through
 `idOrThrow()` (create) or `assertSuccess()` (update) in `dataverse.js`.
 
+### A status decode must never default to null — default to the row's real starting state
+Found 01 Sep via a live screenshot, not a hunch (see §5 for the full story):
+`MEETING_OCC_STATUS[o.lm_meetingstatus] || null` and the equivalent for
+`REPORT_OCC_STATUS` silently dropped **41 of 44** live Meeting Occurrences
+from Work Queue, the Meetings tab and the Calendar simultaneously, because
+every one of those screens branches on an exact `'Scheduled'`/`'Held'`/
+`'Cancelled'` string match with no `null` case. Fixed by defaulting to
+`'Scheduled'` (Meetings) / `'Draft'` (Reports) instead of `null` — the state
+every row starts in when this app's own create path writes it. **The lesson
+generalizes**: any status/state decode read by more than one screen should
+default to the record's real starting value, never to `null`, unless every
+consumer explicitly has a null case. A blank Dataverse choice column is a
+normal, expected condition (a row created outside this app's own create
+functions, e.g. a flow or a bulk import, may never set it) — treating it as
+"unknown, so hide the row everywhere" is almost never the right read.
+
 ### Other gaps found by reading the schema
 - **No TOR review date** on `lm_meetingtemplates` — only the link. AG-01 can return
   5 or 0, never 3 ("present but past its review date").
@@ -381,11 +459,23 @@ misleading "succeeded but no id was returned" instead of the real reason
 2. **Where does the 0–6 authority level live?**
    The only candidate is `hr_level` (an HR grade). Visibility scope and role family
    exist nowhere. *Blocks the full Decisions workflow* (Direct vs. Authority-Check
-   routing, Approval Cycle, Proposals) from ever moving off seeded data — Authority
-   Matrix rows and Approval Cycle tables are themselves now live and readable, this
-   decision is the only thing stopping the seeded Decision workflow from using them.
-   Does **not** block the base `wlog_decisions` read/create wired this session (§5) —
+   routing, Approval Cycle, Proposals) from ever moving off seeded data. Does
+   **not** block the base `wlog_decisions` read/create wired this session (§5) —
    that table has no authority-check concept at all, it's a separate, flatter thing.
+   **Revised 01 Sep — this blocks less than it looks like it does.** Re-read the
+   backend while answering a question about this exact gap: `lm_authoritymatrixrows`
+   (Type/Max Value/Required Level/Cycle), `lm_approvalcycles` + `lm_approvalcyclesteps`
+   (ordered routing), the 5-value `DECISION_TYPE` enum, and `authorityCheckLive()`
+   itself are **all already built, live and ready to call** — none of that needs
+   building. What's actually still missing, precisely:
+   (a) this authority-level question itself, unchanged;
+   (b) a live table to hold an actual Decision record (Type/Value/Creator/Path) —
+   nothing in Dataverse stores this today, `wlog_decisions` doesn't either (see §6,
+   it has no Type/Value/Path columns at all, it's a different shape for a different
+   purpose);
+   (c) Proposals, Outputs (also needs the still-missing Tasks table), Observers,
+   and the classification fields (Topic Nature/Categories, Impact, Confidentiality)
+   the seeded UI filters by — none of these have a live equivalent anywhere.
 3. **How do Custom Reports get reviewers?**
    The review chain hangs off `lm_reporttemplatereviewchains` → Template. A Custom
    Report has no Template, so **it can be created but never reviewed**. Needs either
@@ -407,7 +497,12 @@ misleading "succeeded but no id was returned" instead of the real reason
    explicit instruction (2026-08-31): the link is added later, base read/create
    was wired without it. Don't build the Report/Meeting-side "Decisions raised
    here" embedding (the other half of the original ask) until this lands — there
-   is nothing to join on yet.
+   is nothing to join on yet. **Candidate shape, discussed but not yet built**:
+   two separate nullable lookups on `wlog_decisions` — one to
+   `lm_meetingoccurrenceagendas` (Meeting Agenda Item), one to
+   `lm_reportoccurrences` (Report) — never both on the same row, matching how
+   this schema already handles "either/or" scope elsewhere (Business Unit vs.
+   Region on occurrences) rather than one polymorphic field.
 
 ---
 
@@ -451,6 +546,14 @@ Organized by what actually unblocks each item — not by how big it feels.
       so resolving that decision may mean it should show for more (or fewer)
       occurrences than it does today. AG-10…AG-14 stay Not Applicable until
       Tasks/Decisions exist.
+- [x] **Committee Scores tab gone live** (01 Sep) — `ScreenGrid` reads
+      `fetchAuditGridInstances()` joined against `dvMeetingOccs` instead of
+      seeded `db.grids`. See §5.
+- [x] **Two silent-data-loss bugs in Work Queue/Meetings/Calendar, fixed**
+      (01 Sep) — an overdue Meeting with partial attendance recording used to
+      vanish from Work Queue, and any row with a blank/unrecognized
+      `lm_meetingstatus`/`lm_status` used to vanish from every screen at
+      once (41 of 44 live Meeting Occurrences were affected). See §5/§6.
 
 Nothing is currently sitting in a "ready to build, just not built yet" state —
 the two items that were here (Edit/Cancel/Reschedule/Agenda, then Audit Grid
