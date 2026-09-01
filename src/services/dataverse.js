@@ -1526,7 +1526,14 @@ export async function fetchMeetingOccurrences(){
       end: o.lm_endtime || null,
       timezone: o.lm_timezone || null,
       mode: MEETING_OCC_MODE[o.lm_mode] || null,
-      status: MEETING_OCC_STATUS[o.lm_meetingstatus] || null,
+      /* A row with lm_meetingstatus blank or an unrecognized code defaults to
+         'Scheduled', not null -- every occurrence this app creates starts
+         Scheduled (see createMeetingOccurrence()), and every screen that
+         reads this field (Work Queue, the Meetings list, Calendar) branches
+         on an exact 'Scheduled'/'Held'/'Cancelled' match with no null case,
+         so a null status silently vanished the row everywhere instead of
+         surfacing it as needing attention. */
+      status: MEETING_OCC_STATUS[o.lm_meetingstatus] || 'Scheduled',
       location: o.lm_meetinglocation || null,
       link: o.lm_meetinglink || null,
       adhocType: o.lm_adhoctype || null,
@@ -1573,7 +1580,12 @@ export async function fetchReportOccurrences(){
     id: r.lm_reportoccurrenceid,
     name: r.lm_name || '(untitled report)',
     period: isoDay(r.lm_period),
-    status: REPORT_OCC_STATUS[r.lm_status] || null,
+    /* Same reasoning as the Meeting Occurrence status default above: every
+       Report Occurrence this app creates starts Draft, and every screen
+       that reads this field branches on an exact status match with no null
+       case, so default a blank/unrecognized code to 'Draft' rather than
+       letting the row disappear everywhere. */
+    status: REPORT_OCC_STATUS[r.lm_status] || 'Draft',
     version: r.lm_version ?? null,
     reviewStep: r.lm_reviewstep ?? null,
     fileUrl: r.lm_fileurl || null,
@@ -1604,7 +1616,7 @@ export async function fetchMeetingOccurrencesByTemplate(templateId){
     id: o.lm_meetingoccurrenceid,
     name: o.lm_name || '(untitled meeting)',
     date: isoDay(o.lm_date),
-    status: MEETING_OCC_STATUS[o.lm_meetingstatus] || null,
+    status: MEETING_OCC_STATUS[o.lm_meetingstatus] || 'Scheduled',
     businessUnitId: o._lm_businessunit_value || null,
     regionId: o._lm_region_value || null,
     created: o.createdon || null,
@@ -1623,7 +1635,7 @@ export async function fetchReportOccurrencesByTemplate(templateId){
     id: r.lm_reportoccurrenceid,
     name: r.lm_name || '(untitled report)',
     period: isoDay(r.lm_period),
-    status: REPORT_OCC_STATUS[r.lm_status] || null,
+    status: REPORT_OCC_STATUS[r.lm_status] || 'Draft',
     businessUnitId: r._lm_businessunit_value || null,
     regionId: r._lm_region_value || null,
     created: r.createdon || null,

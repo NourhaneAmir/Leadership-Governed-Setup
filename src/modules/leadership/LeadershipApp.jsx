@@ -11,6 +11,7 @@ import { fetchMeetingOccurrences, fetchReportOccurrences, createMeetingOccurrenc
          fetchMeetingTemplatesList, fetchMeetingTemplateDetail,
          fetchReportTemplatesList, fetchReportTemplateDetail, fetchCurrentUser,
          fetchMeetingMinutes, fetchMeetingMinutesByOccurrence, fetchAuditGridInstancesByOccurrence,
+         fetchAuditGridInstances,
          fetchWorkLogDecisions, createWorkLogDecision,
          fetchAuthorityMatrix, createMeetingMinutes, saveMomNote, updateAgendaCovered,
          submitMeetingMinutes, updateMeetingMinutesStatus, returnMeetingMinutes,
@@ -1961,10 +1962,15 @@ function dvWorkItems(meetingOccs, reportOccs){
            'Add at least one Agenda Item — the Meeting cannot proceed without one',o.date,true);
       else if(!o.agendaSent)
         mk(due,'Meeting',o,o.name,sub,'Distribute the Agenda ahead of the Meeting',o.date,false);
-      const unrecorded=o.attendees.filter(a=>!a.present||a.present==='Not Yet Recorded').length;
       if(!o.attendees.length)
         mk(due,'Meeting',o,o.name,sub,'No Attendees on this Meeting yet',o.date,true);
-      else if(unrecorded===o.attendees.length && o.date && o.date<TODAY)
+      /* Independent of attendee recording -- a Meeting stuck in Scheduled
+         past its date needs this regardless of whether none, some, or all
+         of its Attendees already have a presence recorded. Was previously
+         gated on EVERY Attendee being unrecorded, which meant a Meeting
+         with even one Attendee already marked silently vanished from the
+         Work Queue despite still needing to be closed out. */
+      if(o.date && o.date<TODAY)
         mk(finish,'Meeting',o,o.name,sub+' · past its date, still Scheduled',
            'Mark the Meeting as Held, or cancel it',o.date,true);
     }
@@ -2405,6 +2411,7 @@ function App({onSwitch}){
   const [dvMeetingOccs,setDvMeetingOccs]=useState([]);
   const [dvReportOccs,setDvReportOccs]=useState([]);
   const [dvMinutes,setDvMinutes]=useState([]);
+  const [dvGridInstances,setDvGridInstances]=useState([]);
   const [dvDecisions,setDvDecisions]=useState([]);
   const [dvTick,setDvTick]=useState(0);        // bumped when the name maps change
   const [dvLoading,setDvLoading]=useState(true);
@@ -2427,6 +2434,11 @@ function App({onSwitch}){
       console.log(`[dataverse] fetchMeetingMinutes() returned ${list?list.length:0} row(s)`, list);
       setDvMinutes(list||[]);
     }catch(e){ console.warn('[dataverse] fetchMeetingMinutes() failed:', e); failed=failed||e; }
+    try{
+      const list=await fetchAuditGridInstances();
+      console.log(`[dataverse] fetchAuditGridInstances() returned ${list?list.length:0} row(s)`, list);
+      setDvGridInstances(list||[]);
+    }catch(e){ console.warn('[dataverse] fetchAuditGridInstances() failed:', e); failed=failed||e; }
     try{
       const list=await fetchWorkLogDecisions();
       console.log(`[dataverse] fetchWorkLogDecisions() returned ${list?list.length:0} row(s)`, list);
@@ -2502,7 +2514,7 @@ function App({onSwitch}){
 
   const ctx = {db,setDb,mut,me,bu,setBu,businessUnits,navOpen,setNavOpen,currentUser,screen,go,openMeeting,openWork,sel,setSel,
                toast,toasts,reset,S,A,work,cal,counts,onSwitch,
-               dvMeetingOccs,dvReportOccs,dvMinutes,dvDecisions,dvLoading,dvError,refreshOccurrences,
+               dvMeetingOccs,dvReportOccs,dvMinutes,dvGridInstances,dvDecisions,dvLoading,dvError,refreshOccurrences,
                dvOpen,setDvOpen,openDvRec};
   const Screen = {work:ScreenWorkspace, cal:ScreenCalendar, rpt:ScreenReports, mtg:ScreenMeetings,
                   mom:ScreenMinutes,
@@ -7266,18 +7278,24 @@ function ExportModal({mom,occ,outs,onClose}){
 const GRID_STATES=['Auto-Scored','Pending Facilitator Review','Submitted for Approval','Approved'];
 
 function ScreenGrid(){
-  const {db,me,openMeeting,S}=use();
-  const list=db.grids.filter(g=>{const o=db.occs.find(x=>x.id===g.occ); return o&&canSeeOcc(o,me);});
-  const committees=MTG_SETUPS.filter(s=>s.type==='Committee');
+  const {dvMeetingOccs,dvGridInstances,openMeeting}=use();
+  const occById = useMemo(()=>{
+    const m=new Map(); dvMeetingOccs.forEach(o=>m.set(o.id,o)); return m;
+  },[dvMeetingOccs]);
+  /* Every live Grid Instance was created for an Accreditation Committee
+     occurrence in the first place -- createAuditGridInstance() is only ever
+     called from an accred-gated path (DvMeetingDetail/DvGridBody) -- so
+     unlike the seeded version there's no separate Committee-vs-Business-
+     Meeting filter to apply here: every row already is one. */
+  const list = dvGridInstances.filter(g=>occById.has(g.occurrenceId));
   const approved=list.filter(g=>g.state==='Approved');
   const avg=approved.length?Math.round(approved.reduce((s,g)=>s+g.score,0)/approved.length*10)/10:null;
 
   return <>
     <div className="ph"><h1>Committee Scores</h1>
-      <div className="sub">Governance scores across every Committee occurrence you can see. Each occurrence
+      <div className="sub">Governance scores across every Committee occurrence in Dataverse. Each occurrence
         keeps its own score, so the same Committee may score differently in different periods. A Business
-        Meeting — including a Cross-functional Meeting classified as Team of Teams — is never scored. To
-        work on a Grid, open its Meeting and use the Audit Grid tab.</div></div>
+        Meeting is never scored. To work on a Grid, open its Meeting and use the Audit Grid tab.</div></div>
 
     <div className="stats">
       <Stat label="Approved scores" v={approved.length} d="published" c="green"/>
@@ -7293,26 +7311,30 @@ function ScreenGrid(){
 
     <div className="card flush">
       <div className="card-hd"><h2>Audit Grid Instances</h2>
-        <div className="csub">One Instance per Committee occurrence, created on closure of its Minutes.</div></div>
-      {list.length===0?<Empty>No Instances in your view.</Empty>:
+        <div className="csub">One Instance per Committee occurrence, created on closure of its Minutes.
+          Read from <code>lm_auditgridinstances</code>.</div></div>
+      {list.length===0?<Empty>No Instances yet.</Empty>:
       <div className="t-wrap"><table className="data">
         <thead><tr><th>Committee</th><th>Occurrence</th><th>Template</th><th>State</th>
           <th>Coverage</th><th>Overall Score</th></tr></thead>
         <tbody>{list.slice().sort((a,b)=>{
-            const oa=db.occs.find(x=>x.id===a.occ), ob=db.occs.find(x=>x.id===b.occ);
-            return ob.date.localeCompare(oa.date);}).map(g=>{
-          const o=db.occs.find(x=>x.id===g.occ);
-          const live = !g.frozen ? gridTotals(scoreGrid(g,db,S)) : null;
-          const cov = g.frozen ? Math.round(g.coverage/g.total*1000)/10 : live.coverage;
+            const oa=occById.get(a.occurrenceId), ob=occById.get(b.occurrenceId);
+            return (ob?.date||'').localeCompare(oa?.date||'');}).map(g=>{
+          const o=occById.get(g.occurrenceId);
+          const cov = (g.state==='Approved' && g.total) ? Math.round(g.coverage/g.total*1000)/10 : null;
           return <tr key={g.id} className="click" onClick={()=>openMeeting(o.id,'grid')}>
-            <td><div className="t-main">{occName(o)}</div><div className="t-sub">{occCls(o)}</div></td>
+            <td><div className="t-main">{o.name}</div>
+              <div className="t-sub">{dvTpl(o.templateId)||'Ad Hoc'}</div></td>
             <td className="dim">{fmtD(o.date)}</td>
-            <td className="dim">{g.tv}{g.version>1&&<div className="t-sub">version {g.version}</div>}</td>
+            <td className="dim">{g.templateVersion||'—'}
+              {g.version>1&&<div className="t-sub">version {g.version}</div>}</td>
             <td><Tag c={g.state==='Approved'?'green':g.state==='Void'?'grey':'amber'}>{g.state}</Tag></td>
-            <td><div style={{display:'flex',alignItems:'center',gap:8}}>
-                <span style={{fontVariantNumeric:'tabular-nums',minWidth:38}}>{cov}%</span>
-                <Bar v={cov} c={pctColour(cov)}/></div>
-              <div className="t-sub">{g.frozen?g.coverage:live.applicable} of {g.total} questions</div></td>
+            <td>{cov!=null
+              ? <><div style={{display:'flex',alignItems:'center',gap:8}}>
+                    <span style={{fontVariantNumeric:'tabular-nums',minWidth:38}}>{cov}%</span>
+                    <Bar v={cov} c={pctColour(cov)}/></div>
+                  <div className="t-sub">{g.coverage} of {g.total} questions</div></>
+              : <span className="dim">{g.total?`— of ${g.total} questions`:'—'}</span>}</td>
             <td>{g.state==='Approved'
                   ? <b style={{fontSize:15,color:`var(--${pctColour(g.score)})`}}>{g.score}%</b>
                   : <span className="dim">Pending Review</span>}</td>
@@ -7324,26 +7346,35 @@ function ScreenGrid(){
       <h2>Score history by Committee</h2>
       <div className="csub">Approved Grids only. An approved Grid is never recomputed, so a later change to
         a setting or to the Template cannot rewrite history.</div>
-      {committees.map(c=>{
-        const gs=list.filter(g=>{const o=db.occs.find(x=>x.id===g.occ); return o.setup===c.id;})
-          .sort((a,b)=>{const oa=db.occs.find(x=>x.id===a.occ),ob=db.occs.find(x=>x.id===b.occ);
-            return oa.date.localeCompare(ob.date);});
-        if(!gs.length) return null;
-        return <div key={c.id} style={{marginBottom:20}}>
-          <div style={{display:'flex',alignItems:'baseline',gap:9,marginBottom:2}}>
-            <b style={{fontSize:13}}>{c.name}</b>
-            <Tag c={c.cls==='Accreditation-required Committee'?'amber':'grey'}>{c.cls}</Tag></div>
-          <div className="spark">{gs.map(g=>{
-            const o=db.occs.find(x=>x.id===g.occ);
-            const pub=g.state==='Approved';
-            return <div className="spark-b" key={g.id} title={occName(o)+' · '+fmtD(o.date)}>
-              <span className="vl" style={{color:pub?`var(--${pctColour(g.score)})`:'var(--faint)'}}>
-                {pub?g.score+'%':'—'}</span>
-              <div className={'bx '+(pub?pctColour(g.score):'pend')}
-                   style={{height:Math.max(6,(pub?g.score:12)*0.62)+'px'}}/>
-              <span className="lb">{fmtDS(o.date)}</span></div>;})}
-          </div>
-        </div>;})}
+      {(()=>{
+        const byTpl = new Map();
+        list.forEach(g=>{
+          const o=occById.get(g.occurrenceId); if(!o) return;
+          const key=o.templateId||'(ad hoc)';
+          if(!byTpl.has(key)) byTpl.set(key,[]);
+          byTpl.get(key).push(g);
+        });
+        const groups=[...byTpl.entries()].sort((a,b)=>(dvTpl(a[0])||'').localeCompare(dvTpl(b[0])||''));
+        if(!groups.length) return <Empty>No Grids yet.</Empty>;
+        return groups.map(([tplId,gs])=>{
+          const sorted=gs.slice().sort((a,b)=>
+            (occById.get(a.occurrenceId)?.date||'').localeCompare(occById.get(b.occurrenceId)?.date||''));
+          return <div key={tplId} style={{marginBottom:20}}>
+            <div style={{display:'flex',alignItems:'baseline',gap:9,marginBottom:2}}>
+              <b style={{fontSize:13}}>{dvTpl(tplId)||'Ad Hoc Committee occurrences'}</b>
+              <Tag c="amber">Accreditation Committee</Tag></div>
+            <div className="spark">{sorted.map(g=>{
+              const o=occById.get(g.occurrenceId);
+              const pub=g.state==='Approved';
+              return <div className="spark-b" key={g.id} title={o.name+' · '+fmtD(o.date)}>
+                <span className="vl" style={{color:pub?`var(--${pctColour(g.score)})`:'var(--faint)'}}>
+                  {pub?g.score+'%':'—'}</span>
+                <div className={'bx '+(pub?pctColour(g.score):'pend')}
+                     style={{height:Math.max(6,(pub?g.score:12)*0.62)+'px'}}/>
+                <span className="lb">{fmtDS(o.date)}</span></div>;})}
+            </div>
+          </div>;});
+      })()}
     </div>
 
     <div className="card">
