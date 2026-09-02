@@ -1,7 +1,8 @@
 # Leadership Practice — Working Context
 
 > Handoff notes for anyone (human or AI) picking this project up cold.
-> Written 30 Aug 2026, updated 01 Sep 2026 against branch `leadership-practice`.
+> Written 30 Aug 2026, updated 01 Sep 2026, updated 02 Sep 2026 (twice)
+> against branch `leadership-practice`.
 >
 > This file records **decisions, hard-won schema facts and open questions** —
 > the things that are expensive to rediscover. It is not a substitute for the
@@ -21,7 +22,7 @@ Meeting Minutes (MOM) → Audit Grid scoring → Decisions → TMS Tasks.
 | Environment | `https://org319b4ea9.crm4.dynamics.com/` |
 | Solution | `LeadershipPractice` |
 | Branch | `leadership-practice` |
-| Dataverse tables | 40 registered in `power.config.json`, including Minutes, MOM Notes, Audit Grid instances/answers, Approval Cycles/Steps, Authority Matrix rows, and (this session) `wlog_decisions` — see §6 |
+| Dataverse tables | 42 registered in `power.config.json`, including Minutes, MOM Notes, Audit Grid instances/answers, Approval Cycles/Steps, Authority Matrix rows, `wlog_decisions`, and (02 Sep) `pm_kpiachievments`/`stf_kpiachievmentbreakdowns` — see §6 |
 | Two modules | `src/modules/leadership/LeadershipApp.jsx` (execution), `src/modules/governance/GovernanceApp.jsx` (setup) |
 
 ---
@@ -64,6 +65,8 @@ comes up.
 | `Andalusia_Pulse_Leadership_Practice_BRD_V1.0.pdf` (30 Jul 2026) | Approved business baseline | Fills gaps only |
 | `README.md` | Conversion notes | How the HTML prototype became this Vite project |
 | `prototype.html` (repo root, added 01 Sep 2026) | The actual static HTML prototype | Not built or served by Vite — a reference file only, for checking visual/copy fidelity against the original |
+| `Leadership Practice Extension.html` | A **second**, richer prototype — shared in chat 02 Sep, **not saved to the repo** | Defines the full "Report/Plan Composition" feature: Sections with a Diagnostic Angle, KPI/Breakdown/Process/child-report citations, the Build-a-Report screen, Reports-received review actions, Sharing, Reporting Hierarchy. Source for the plan below — re-request it from the user if it's needed again, it only exists in that chat turn. |
+| `C:\Users\Nourhan.AbdElSalam\.claude\plans\gleaming-greeting-zephyr.md` | Approved implementation plan (02 Sep), not part of the repo | Dataverse schema + phased implementation steps for the Report/Plan Composition feature above. Read this before doing any further work on Reports & Plans — see §5/§7.8/§9. |
 
 The BRD **contradicts itself** in three places, and the code picked a side:
 
@@ -84,9 +87,9 @@ The BRD **contradicts itself** in three places, and the code picked a side:
 | Governance Setup module (Meeting + Report Template register) | ✅ live |
 | **Group-wide (Stage 3/4) Chairman/Co-Chairman/Facilitator (Meeting) and Owner/Submitting Position/Team Channel/Speciality (Report)** | ✅ **live** (this session) |
 | Meeting Occurrences — create, edit, **cancel**, **reschedule**, mark Held, **Agenda add/remove/reorder/record-distribution**, attendance | ✅ live (Attendance/Held/Edit from an earlier session; Cancel/Reschedule/Agenda edit **this session**) |
-| Report Occurrences — create (Template **and** Custom), file URL, review chain (submit / approve / RMI) + history | ✅ live |
-| **Meeting Minutes tab** (nav screen) — reads `lm_meetingminuteses` directly | ✅ **live** (this session — the write path itself, `DvMinutesBody`, was already live from an earlier session; only the top-level list screen was still seeded until now) |
-| **Reports & Plans tab** (nav screen) — reads `lm_reportoccurrences` directly | ✅ **live** (this session — same story: the detail page was already live, the list screen wasn't) |
+| Report Occurrences — create (Template **and** Custom), file URL, review chain (submit / approve / RMI) + history | ⚠️ **built, but disconnected from the nav as of 02 Sep** — `NewReportModal`/`DvReportDetail`/`dvReportOccs` still exist and still work end to end against `lm_reportoccurrences`, but nothing currently opens them (see the row below and §5's 02 Sep entry) |
+| **Meeting Minutes tab** (nav screen) — reads `lm_meetingminuteses` directly | ✅ **live** (01 Sep — the write path itself, `DvMinutesBody`, was already live from an earlier session; only the top-level list screen was still seeded until now) |
+| **Reports & Plans tab** (nav screen) | 🔴 **reverted from live to seeded, on purpose, 02 Sep** — was reading `lm_reportoccurrences` directly as of 01 Sep; rebuilt this session as the citation-based composer from `prototype.html` (sections that cite live KPIs/tactics/PM entries/issues/tasks/other reports), which has no Dataverse equivalent yet, so it now runs on seeded `db.reports`/`db.paragraphs`/`db.templates` instead. This was an explicit product-owner instruction, not a regression found by accident — see §5. |
 | Authority Matrix + Approval Cycles | ✅ live, read-only by design (`AuthorityMatrixPanel`, embedded in Governance Settings) |
 | **Audit Grid scoring** — Meeting Occurrence's own Grid tab | ✅ **live** (this session) — `liveScoreGrid()` computes all 16 questions from the live occurrence/Minutes/Template; full Facilitator→Chair lifecycle (score, evidence, submit, approve+publish, return, open a correction version) writes through the backend functions that were already built |
 | **My Workspace (nav screen)** | ✅ **live** — reads its Work Queue, Upcoming panel and This Month stats directly off the full `dvMeetingOccs`/`dvReportOccs` arrays via `dvWorkItems()`. Two silent-data-loss bugs fixed here 01 Sep — see §5: an overdue Meeting with partial attendance recording used to vanish from Work Queue, and a blank/unrecognized status code used to vanish a row from every screen at once. Its Decisions filter tab still shows 0 because Decisions (below) only just went live. |
@@ -252,6 +255,94 @@ it's live and isn't setting `lm_meetingstatus` on the rows it creates).
 This fix is a safety net in the app, not a substitute for fixing that at
 the source.
 
+### This session (02 Sep): Reports & Plans rebuilt as a citation-based composer — **reverted from live Dataverse back to seeded, on purpose**
+
+**This directly reverses the previous entry in this file** ("Reports & Plans
+tab ... same story: the detail page was already live"). Read this before
+touching `ScreenReports`/`ReportDetail` again.
+
+**Why:** the product owner wants the tab to match `prototype.html`'s fuller
+design — a Report authored as sections that each cite a live record (a KPI
+with target/actual and an embedded Power BI preview, a Strategy tactic/POC/
+project, a Planning & Monitoring entry, an issue from another system, a
+task, another paragraph, or a whole child Report) instead of an uploaded
+working-copy file — plus three more views (Section templates, Paragraph
+pool, Reporting hierarchy). Explicit instruction: build this on **seeded
+mock data first**, wire it to Dataverse later, because no tables exist yet
+for sections/citations/templates. Full turn-by-turn requirements-gathering
+for this is in the chat transcript, not repeated here.
+
+**What actually changed in `LeadershipApp.jsx`:**
+- `ScreenReports` and `ReportDetail` — previously listed as **dead code** in
+  §9's "Smaller, self-contained gaps" (superseded by the live
+  `dvReportOccs`-based screen) — are **revived and rewritten** to the
+  citation-composer model, ported near line-for-line from `prototype.html`'s
+  `LeadershipApp` IIFE (`ScreenReports`/`ReportDetail` around its line
+  4529–4802). `RptTable` similarly revived/updated (still not called from
+  anywhere, same as it wasn't in the prototype — kept for parity/reuse).
+- New components, all in the same file, inserted right after
+  `ReportDetail`: `BIEmbed`, `CiteCard`, `CitePicker`, `SectionRow`,
+  `ReportComposer`, `KpiCascade`, `citeLabel`, `TemplateSectionEditor`,
+  `TemplatesTab`, `PoolTab`, `reportChildIds`/`reportParentIds`,
+  `HierarchyTab`, `ReportWizard` (+ its `WizSteps`/`shiftPeriod`/
+  `WIZ_STEPS`/`WIZ_DEPTS`/`TPL_STYLE` helpers).
+- New mock catalogues (all seeded consts, not Dataverse-backed):
+  `DIAG`/`DiagChip`, `PROC_REG`, `BI_REPORTS`, `KPI_CAT` (+ `achFor`/
+  `achPct`/`achCls`/`findKpi`/`bdDims`), `STRAT`, `PM_ENTRIES`, `ISSUES`,
+  `SECTION_TPL_SEED`, `CITE_KINDS` (+ `citeKind`/`citeId`/`citeCls`) — all
+  inserted right after the existing `RPT_SETUPS`. Each `RPT_SETUPS` entry
+  gained a `tpl:` field pointing at its matching `SECTION_TPL_SEED` id
+  (`rs1→TPL-QLT`, `rs2→TPL-NUR`, `rs4→TPL-BME`, `rs3→TPL-EXE`) — separate
+  from the pre-existing `template:` field (a cosmetic working-copy filename,
+  unrelated, left alone).
+- `seed()` gained `paragraphs:[...]` (12 seeded sections, content ported
+  verbatim from `prototype.html`) and `templates:
+  JSON.parse(JSON.stringify(SECTION_TPL_SEED))`. The 8 existing seeded
+  `db.reports` rows (`sub1`…`sub8`) had `file`/`url`/`ver`-as-upload-count
+  replaced with `blocks:[...]` (an ordered array of paragraph ids) — same
+  ids/people/statuses/periods as before, so every other place that reads
+  `db.reports` (canSeeReport, reportDue, the meeting-input linker) needed no
+  changes.
+- New `A.*` action functions for the composer (`addTemplate`,
+  `editTemplate`, `deleteTemplate`, `addTplSection`/`editTplSection`/
+  `moveTplSection`/`removeTplSection`, `addTplItem`/`removeTplItem`,
+  `applyTemplate`, `addSection`/`reuseSection`/`removeSection`/
+  `moveSection`, `editPara`/`citePara`/`uncitePara`,
+  `createReportFromWizard`) — all additive, existing `submitReport`/
+  `reviewApprove`/`reviewRMI` untouched since they never referenced `file`.
+- `ScreenWorkspace`'s "+ New Report" button used to open the live
+  `NewReportModal` directly; now navigates to the Reports & Plans tab
+  instead (`go('rpt')`), since a report created via `NewReportModal` would
+  land in `dvReportOccs` and never show up on the now-seeded Register.
+
+**What did NOT change:** `NewReportModal`, `DvReportDetail`, `dvReportOccs`
+and every Dataverse call behind them are all still in the file, untested-
+but-presumably-still-correct, simply **no longer reachable from any nav
+path**. They are the natural starting point once real tables exist for the
+section/citation content model — see the new Open Decision §7.8.
+
+**Pre-existing bug fixed along the way, unrelated to the port itself:**
+`ScreenReports` was already mid-edit and broken before this session started
+(`git status` showed it uncommitted) — a JSX tag mismatch (4 `<>` vs 3
+`</>`) that meant **the file didn't compile at all**. The rewrite above
+replaced the whole function, incidentally fixing this.
+
+**Second bug, found only after deploying to the live Power Apps player:**
+the app hydrates its whole `db` from `localStorage` on load
+(`localStorage.getItem(KEY)`, `KEY='andalusia_lp_v06'` at the time) and only
+calls `seed()` if nothing is cached. A browser that had ever loaded the
+*old* schema (no `paragraphs`/`templates`, `blocks` missing) kept that old
+save, so on reload the app skipped `seed()`, loaded the stale shape, and
+something reading `db.paragraphs.length` hit `undefined` — an **uncaught
+render error with no error boundary, which blanks the entire app**, not
+just the Reports tab (confirmed via a live screenshot: sidebar and top bar
+gone too). Fixed by bumping `KEY` to `'andalusia_lp_v07'` — same pattern
+already used for prior schema changes, forces a fresh `seed()` for anyone
+with an old save cached. **Generalizes the same lesson already in §6** about
+never letting a stale/unexpected shape silently propagate instead of
+resetting to a known-good state — this time via a `localStorage` cache
+rather than a Dataverse null default.
+
 **Committee Scores tab (`ScreenGrid`) rewired to Dataverse.** Was 100%
 seeded (`db.grids`/`db.occs`/`MTG_SETUPS`) despite the Audit Grid itself
 being fully live per-occurrence (§4) — a real gap, not a stale doc note.
@@ -275,6 +366,72 @@ found it's considerably more ready than §7.2 implied — `lm_authoritymatrixrow
 `lm_approvalcyclesteps` (ordered routing), the 5-value `DECISION_TYPE` enum,
 and `authorityCheckLive()` itself are all already built and live. See the
 revised §7.2 below — the real remaining gap is narrower than it reads today.
+
+### This session (02 Sep, continued): Report/Plan Composition — full plan approved, no application code yet
+
+**Directly answers Open Decision §7.8** (below) — the "content model" gap
+the seeded composer entry above left open. A second, richer prototype
+(`Leadership Practice Extension.html`, chat-only, see §3) was walked
+through in detail, and a full implementation plan was produced and
+approved: `C:\Users\Nourhan.AbdElSalam\.claude\plans\gleaming-greeting-zephyr.md`.
+**Read that file before doing anything else on Reports & Plans** — this
+entry is a summary, not a substitute.
+
+**Scope, as decided with the user:**
+- Sections carry a Diagnostic Angle (Untyped/Descriptive/Diagnostic/
+  Predictive/Prescriptive) and, at the Template level, links to multiple
+  KPIs, KPI Breakdowns, Processes, or a child Report Template.
+- At execution (Build a Report), the same Sections cite ten possible kinds:
+  KPI, Breakdown, Process, POC, Project, Strategy, BI Report, Paragraph
+  (another report's section), Issue, Task, or a whole child Report.
+  **Only KPI and Breakdown resolve live figures** — everything else
+  (POC/Project/Strategy/BI Report/Issue/Task) is a **text-only label**, by
+  explicit instruction, since none of those have a live table in this app.
+- **Task and Escalation tables: deferred.** Both would otherwise back two
+  of the "Reports received" review actions (assign-a-task, escalate); for
+  now both save as the same text-only citation treatment as POC/Project/
+  etc. `PROJECT-CONTEXT.md` §9 already separately tracks a Tasks table as
+  blocked for the unrelated MOM/Decision follow-up feature — this decision
+  doesn't resolve that one, it just avoids building a second, different
+  Tasks table for this feature in the meantime.
+- **Sequencing: nothing gets built until every table in the plan's Part 1
+  exists.** Explicit instruction — including the one step (wiring the
+  orphaned `DvReportDetail` into navigation) that has no schema dependency
+  at all.
+
+**Two tables in the plan turned out to already exist** — registered and
+inspected rather than assumed:
+- `pm_kpiachievments` (real logical name, plural) — the periodic KPI
+  actuals row: `_pm_kpi_value`, `_pm_businessunit_value`, `stf_department`/
+  `stf_function` (as **text**, not lookups), `pm_month`/`pm_year`,
+  `pm_target`/`pm_actual`, plus a `pm_breakdown` text column of unclear
+  purpose (see §6).
+- `stf_kpiachievmentbreakdowns` — richer than the plan first assumed: a
+  real `stf_breakdowntype` choice column (not free text), **seven**
+  separate optional member lookups (specialty/physician/account/
+  sub-account/department/employee/platform — one active per row per the
+  usual convention), a `stf_name` text column that may be a ready-made
+  display label, and a `_stf_total_value` lookup back to the parent
+  `pm_kpiachievments` row (there is no direct KPI lookup on this table).
+  Full column notes in §6 and in the plan file's Part 1 §B.
+
+**Open technical unknowns, not product decisions** (full detail in the
+plan file's "Open items"): which table `_pm_kpi_value` actually points at;
+whether `stf_name` alone is enough to display a breakdown without resolving
+which of the seven member lookups applies; how `pm_breakdown` (text, on
+the achievement row itself) relates to the separate breakdown table; and
+whether Dataverse's record-sharing (`GrantAccess`) is reachable from this
+SDK at all, needed for the plan's Sharing step.
+
+**This directly overlaps with the seeded composer built earlier the same
+day** (previous entry above) — that work is effectively a working UI
+reference implementation of much of what this plan's Part 2 calls for
+(`ReportComposer`, `SectionRow`, `CitePicker`, `TemplateSectionEditor`,
+`HierarchyTab`, etc., all already written against seeded data in
+`LeadershipApp.jsx`). Once the plan's tables exist, porting those
+components to read/write the real tables is likely far less work than
+building the UI from scratch — check that code before writing new
+components for any of the plan's Part 2 steps.
 
 ---
 
@@ -431,6 +588,49 @@ normal, expected condition (a row created outside this app's own create
 functions, e.g. a flow or a bulk import, may never set it) — treating it as
 "unknown, so hide the row everywhere" is almost never the right read.
 
+### The app hydrates from `localStorage` — bump `KEY` on any seed shape change
+`const KEY='andalusia_lp_v07'` near the top of `App()` in `LeadershipApp.jsx`.
+On load, if `localStorage[KEY]` exists it is used as-is, **`seed()` is never
+called**. A browser holding a save from before a schema change (e.g. a
+report missing the `blocks` array added 02 Sep) will hit an uncaught error
+on whatever field is now missing, and — with no error boundary anywhere in
+the tree — that blanks the **entire app**, not just the affected screen.
+Full story in §5's 02 Sep entry. Bump the version suffix any time a seeded
+data shape changes; there is no migration path, only cache-busting.
+
+### `pm_kpiachievments` / `stf_kpiachievmentbreakdowns` — pre-existing, shared, multi-prefix tables
+Registered 02 Sep for the Report/Plan Composition plan (§5). Both are
+**org-wide tables used by other modules too** — columns mix `pm_`, `stf_`,
+`pms_`, `comp_` prefixes on the same rows, a strong signal they're shared
+infrastructure, not something owned by this app. Only the columns relevant
+to this app are noted here; many more exist and don't matter here.
+
+`pm_kpiachievments` (note: real logical name has no "e" — "achievments",
+and is plural): `_pm_kpi_value` (lookup, target table **not yet
+confirmed** — over 40 tables in this org have "KPI" in the name, see the
+plan file's Open items), `_pm_businessunit_value`, `stf_department`/
+`stf_function` (**plain text**, not lookups — convenient, since the Build
+screen's Department→Function filter can match against them directly),
+`pm_month` (+ `_pm_month_label`), `pm_year`, `pm_target`, `pm_actual`,
+`pm_breakdown` (text — relationship to the breakdown table below is
+unconfirmed), `_pm_parent_value` (self lookup, purpose unconfirmed).
+
+`stf_kpiachievmentbreakdowns`: no direct KPI lookup — joins back via
+`_stf_total_value` → the parent `pm_kpiachievments` row. `stf_breakdowntype`
+(+ `_stf_breakdowntype_label`) is a real choice column for the dimension
+(e.g. "Specialty"), not free text. The breakdown's *member* is one of
+**seven** separate optional lookups — `_stf_specialty_value`,
+`_stf_physician_value`, `_stf_account_value`, `_stf_subaccount_value`,
+`_stf_department_value`, `_stf_employee_value`, `_stf_platform_value` —
+same one-active-per-row convention as `wlog_decisions`'s citation columns,
+which one is populated depends on `stf_breakdowntype`. `stf_name` (text)
+may already be a ready-made display label, which would make resolving
+those seven lookups unnecessary for this app — not yet confirmed against
+live data. Figures: `stf_value` (actual), `comp_breakdowntarget` (target).
+`stf_breakdownlevel`/`stf_breakdownpath`/`_stf_parent_value` suggest a
+nested/hierarchical breakdown structure beyond a flat dimension·member
+shape — also unconfirmed.
+
 ### Other gaps found by reading the schema
 - **No TOR review date** on `lm_meetingtemplates` — only the link. AG-01 can return
   5 or 0, never 3 ("present but past its review date").
@@ -503,6 +703,16 @@ functions, e.g. a flow or a bulk import, may never set it) — treating it as
    `lm_reportoccurrences` (Report) — never both on the same row, matching how
    this schema already handles "either/or" scope elsewhere (Business Unit vs.
    Region on occurrences) rather than one polymorphic field.
+8. **How does the new Reports & Plans citation composer (02 Sep, §5) reconcile
+   with the already-live `lm_reportoccurrences` occurrence flow
+   (`NewReportModal`/`DvReportDetail`/`dvReportOccs`)?** — **Answered, later
+   the same day.** `lm_reportoccurrences` gains new child tables (Sections,
+   Citations) plus a Template-side Section/citation-item model, per the
+   approved plan at
+   `C:\Users\Nourhan.AbdElSalam\.claude\plans\gleaming-greeting-zephyr.md`
+   (see §5's second 02 Sep entry). Not yet built — every table in the
+   plan's Part 1 needs to exist first, per explicit instruction. The
+   seeded composer stays as-is and as the UI reference until then.
 
 ---
 
@@ -554,6 +764,13 @@ Organized by what actually unblocks each item — not by how big it feels.
       vanish from Work Queue, and any row with a blank/unrecognized
       `lm_meetingstatus`/`lm_status` used to vanish from every screen at
       once (41 of 44 live Meeting Occurrences were affected). See §5/§6.
+- [x] **Reports & Plans citation-based composer, on seeded data** (02 Sep) —
+      Register/Section templates/Paragraph pool/Reporting hierarchy, ported
+      from `prototype.html`. **Deliberately reverted the tab from the live
+      `dvReportOccs` flow back to seeded**, since that flow has no
+      section/citation concept and no table exists for one yet. See §5's
+      02 Sep entry and Open Decision §7.8 before building this onto real
+      tables.
 
 Nothing is currently sitting in a "ready to build, just not built yet" state —
 the two items that were here (Edit/Cancel/Reschedule/Agenda, then Audit Grid
@@ -582,6 +799,15 @@ something, except the one item below that's now live at a base level.
       The real blocker isn't the table, it's getting sign-off on each of the 8
       OD-xx values (§2) — the screen exists specifically to simulate a value
       without pretending it's approved.
+- [ ] **Reports & Plans content model** — **Open Decision §7.8 is now
+      answered**: the full schema (Template Sections + citation items,
+      Occurrence Sections + citations, Sharing) is specified in the
+      approved plan at
+      `C:\Users\Nourhan.AbdElSalam\.claude\plans\gleaming-greeting-zephyr.md`.
+      What's still blocking: the plan's Part 1 tables need to be built —
+      two (`pm_kpiachievments`, `stf_kpiachievmentbreakdowns`) already
+      existed and are now registered (§5/§6), the rest do not exist yet.
+      No application code until they do, per explicit instruction.
 
 ### Blocked — needs a decision, not a table
 See §7 in full. In priority order by what they unblock: Setup Type (Audit Grid),
@@ -601,9 +827,14 @@ quorum definition, Decision↔Meeting/Report linking (§7.7, deferred on purpose
       field — same underlying pause as §7.6.
 - [ ] Four narrow 100-character columns still need widening (§6) — a five-minute
       fix that unblocks usable Audit Grid evidence/reasons once that UI exists.
-- [ ] Dead code from superseded seed-only components can be deleted once nobody
-      needs it as a reference: `MeetingDetail`, `ReportDetail`, `RptTable`,
-      `MomDetail`, `MomEditBody`.
+- [ ] Dead code, current as of 02 Sep (this list flips direction easily —
+      check §5 before deleting anything on it): `MeetingDetail`, `MomDetail`,
+      `MomEditBody` are still superseded seed-only components, safe to treat
+      as reference-only. **`ReportDetail`/`RptTable` are NOT dead anymore** —
+      they were revived 02 Sep as the citation composer. `NewReportModal`
+      and `DvReportDetail` are the ones now unreferenced from any nav path
+      (still fully working against live Dataverse, just orphaned) — see §5's
+      02 Sep entry and Open Decision §7.8 before deleting either.
 
 ---
 

@@ -5,6 +5,20 @@
  */
 
 export const dataSourcesInfo = {
+  "stf_kpiachievmentbreakdowns": {
+    "tableId": "stf_kpiachievmentbreakdowns",
+    "version": "",
+    "primaryKey": "stf_kpiachievmentbreakdownid",
+    "dataSourceType": "Connector",
+    "apis": {}
+  },
+  "pm_kpiachievments": {
+    "tableId": "pm_kpiachievments",
+    "version": "",
+    "primaryKey": "pm_kpiachievmentid",
+    "dataSourceType": "Connector",
+    "apis": {}
+  },
   "wlog_decisions": {
     "tableId": "wlog_decisions",
     "version": "",

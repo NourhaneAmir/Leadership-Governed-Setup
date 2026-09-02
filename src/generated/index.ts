@@ -42,6 +42,8 @@ export * as Lm_reporttemplateregionsModel from './models/Lm_reporttemplateregion
 export * as Lm_reporttemplaterelatedkpisesModel from './models/Lm_reporttemplaterelatedkpisesModel';
 export * as Lm_reporttemplaterelatedprocessesesModel from './models/Lm_reporttemplaterelatedprocessesesModel';
 export * as Lm_reporttemplatereviewchainsModel from './models/Lm_reporttemplatereviewchainsModel';
+export * as Pm_kpiachievmentsModel from './models/Pm_kpiachievmentsModel';
+export * as Stf_kpiachievmentbreakdownsModel from './models/Stf_kpiachievmentbreakdownsModel';
 export * as Strategy_kpisesModel from './models/Strategy_kpisesModel';
 export * as Strategy_processesModel from './models/Strategy_processesModel';
 export * as SystemusersModel from './models/SystemusersModel';
@@ -85,6 +87,8 @@ export * from './services/Lm_reporttemplateregionsService';
 export * from './services/Lm_reporttemplaterelatedkpisesService';
 export * from './services/Lm_reporttemplaterelatedprocessesesService';
 export * from './services/Lm_reporttemplatereviewchainsService';
+export * from './services/Pm_kpiachievmentsService';
+export * from './services/Stf_kpiachievmentbreakdownsService';
 export * from './services/Strategy_kpisesService';
 export * from './services/Strategy_processesService';
 export * from './services/SystemusersService';

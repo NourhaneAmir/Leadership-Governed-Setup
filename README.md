@@ -124,6 +124,49 @@ Positions, Teams, Channels, Departments, Functions, Processes, KPIs, and
 Setups are still on mock data — same pattern as above once you're ready
 for those; just give me the table/column names.
 
+## Reports & Plans — citation-based composer (seeded, not yet wired to Dataverse)
+
+The **Reports & Plans** tab in `src/modules/leadership/LeadershipApp.jsx` was
+rebuilt to match `prototype.html`'s fuller design: a Report is authored as an
+ordered list of sections ("paragraphs"), and each section can cite a live
+record — a KPI (with its target/actual and an embedded Power BI preview), a
+Strategy tactic/POC/project, a Planning & Monitoring entry, an issue from
+another system, a task, another paragraph, or a whole child Report. Citing
+something doesn't copy it — it always resolves live. On top of the Register
+(the report list + detail/review flow), the tab has three more views:
+
+- **Section templates** — reusable, named lists of sections, each pre-linked
+  to the KPIs/tactics/child-reports it always needs.
+- **Paragraph pool** — every section ever written, searchable, showing reuse.
+- **Reporting hierarchy** — a Report → child-Report tree, derived for free
+  from citations rather than hand-maintained.
+
+This is all running on **seeded mock data for now** — `db.reports` (with a
+`blocks` array of paragraph ids instead of an uploaded file), `db.paragraphs`
+and `db.templates`, plus mock catalogues (`KPI_CAT`, `STRAT`, `PM_ENTRIES`,
+`ISSUES`, `PROC_REG`, `BI_REPORTS`, `SECTION_TPL_SEED`) — because the
+Dataverse tables for sections/citations don't exist yet. The separate,
+already-working Dataverse-backed report *occurrence* flow (`NewReportModal`,
+`DvReportDetail`, `dvReportOccs` — creates occurrences from Report Templates
+with real business-unit/region scoping and review chains, but has no concept
+of sections/citations) is left in the file, untouched, but is no longer
+wired into the `rpt` nav tab. Reconcile the two once the Dataverse tables for
+the content model exist — the composer components (`ReportComposer`,
+`SectionRow`, `CiteCard`, `CitePicker`, `TemplatesTab`, `PoolTab`,
+`HierarchyTab`) and the mock catalogues they cite from all sit together in
+`LeadershipApp.jsx`, right after `ReportDetail`; `prototype.html` (the
+`LeadershipApp` IIFE, from the `RPT_SETUPS` block through `ReportWizard`) is
+the reference this was ported from line-for-line.
+
+**If you change this seed data again**, bump the `localStorage` key
+(`const KEY='andalusia_lp_v07'` near the top of `App()` in
+`LeadershipApp.jsx`) — the app hydrates from `localStorage` on load, so an
+old cached save with a different data shape will crash the whole app on
+load (this is exactly what happened once already: a browser with a
+pre-`blocks` cached save hit `undefined.length` on `db.paragraphs` and blanked
+the page). Bumping the key forces a fresh `seed()` for anyone with an old
+save cached.
+
 ## Not yet done (next steps, not part of this conversion)
 
 
@@ -131,6 +174,12 @@ for those; just give me the table/column names.
   the original prototype -- swapping that for real Dataverse calls via
   `pac code add-data-source` is a separate step, since it touches your
   `lp_` table schema.
+- The Reports & Plans section/citation model (`db.paragraphs`, `db.templates`
+  and the mock KPI/Strategy/PM/Issue catalogues described above) is not yet
+  wired to Dataverse -- once tables exist for it, this replaces the seeded
+  mock data the same way Regions/Business Units did, and should also
+  reconcile with the existing `NewReportModal`/`DvReportDetail`/
+  `dvReportOccs` occurrence flow that's currently unused on this tab.
 - No TypeScript types added -- this is plain `.jsx`, matching the original
   file's loosely-typed style, to avoid a large speculative type-authoring
   pass. Can be added incrementally later if you want stricter typing.

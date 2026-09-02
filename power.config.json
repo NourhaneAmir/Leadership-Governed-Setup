@@ -31,13 +31,21 @@
       "id": "/providers/Microsoft.PowerApps/apis/shared_commondataservice",
       "displayName": "Microsoft Dataverse",
       "dataSources": [
-        "worklogdecisions"
+        "worklogdecisions",
+        "kpiachievements",
+        "kpiachievementbreakdowns"
       ],
       "dataSets": {
         "default.cds": {
           "dataSources": {
             "worklogdecisions": {
               "tableName": "wlog_decisions"
+            },
+            "kpiachievements": {
+              "tableName": "pm_kpiachievments"
+            },
+            "kpiachievementbreakdowns": {
+              "tableName": "stf_kpiachievmentbreakdowns"
             }
           }
         }
