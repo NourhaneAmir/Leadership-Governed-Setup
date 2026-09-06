@@ -172,7 +172,7 @@
           "x-ms-dataverse-attribute": "lm_destinationsharepointlink",
           "x-ms-dataverse-type": "StringType",
           "x-ms-schema-name": "lm_DestinationSharePointLink",
-          "maxLength": 100
+          "maxLength": 1000
         },
         "lm_frequency": {
           "type": "string",
@@ -319,6 +319,49 @@
           "x-ms-dataverse-attribute": "lm_monthofthequartername",
           "x-ms-dataverse-type": "VirtualType",
           "x-ms-schema-name": "lm_monthofthequarterName",
+          "x-ms-read-only": true
+        },
+        "lm_monthofthesemester": {
+          "type": "string",
+          "title": "Month of the Semester",
+          "x-ms-dataverse-attribute": "lm_monthofthesemester",
+          "x-ms-dataverse-type": "PicklistType",
+          "x-ms-schema-name": "lm_MonthoftheSemester",
+          "enum": [
+            "1st Month",
+            "2nd Month",
+            "3rd Month",
+            "4th Month",
+            "5th Month",
+            "6th Month"
+          ],
+          "x-ms-enum-values": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ],
+          "Color": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "ebdcb197-4aa9-f111-aaac-00224882d001",
+          "x-ms-isGlobal": true,
+          "x-ms-optionsetdisplayname": "Month of the Semester",
+          "x-ms-optionSetType": "Picklist"
+        },
+        "lm_monthofthesemestername": {
+          "type": "string",
+          "title": "lm_monthofthesemestername",
+          "x-ms-dataverse-attribute": "lm_monthofthesemestername",
+          "x-ms-dataverse-type": "VirtualType",
+          "x-ms-schema-name": "lm_monthofthesemesterName",
           "x-ms-read-only": true
         },
         "lm_newcolumn": {
@@ -486,6 +529,90 @@
           "x-ms-dataverse-attribute": "lm_reporttypename",
           "x-ms-dataverse-type": "VirtualType",
           "x-ms-schema-name": "lm_reporttypeName",
+          "x-ms-read-only": true
+        },
+        "lm_seconddayofthemonth": {
+          "type": "string",
+          "title": "Second Day of the Month",
+          "x-ms-dataverse-attribute": "lm_seconddayofthemonth",
+          "x-ms-dataverse-type": "IntegerType",
+          "x-ms-schema-name": "lm_SecondDayoftheMonth"
+        },
+        "lm_seconddayoftheweek": {
+          "type": "string",
+          "title": "Second Day of the Week ",
+          "x-ms-dataverse-attribute": "lm_seconddayoftheweek",
+          "x-ms-dataverse-type": "PicklistType",
+          "x-ms-schema-name": "lm_SecondDayoftheWeek",
+          "enum": [
+            "Sunday",
+            "Monday",
+            "Tuesday ",
+            "Wednesday ",
+            "Thursday "
+          ],
+          "x-ms-enum-values": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "Color": [
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "7a5521ab-49a9-f111-aaac-00224882d001",
+          "x-ms-isGlobal": true,
+          "x-ms-optionsetdisplayname": "WeekDays",
+          "x-ms-optionSetType": "Picklist"
+        },
+        "lm_seconddayoftheweekname": {
+          "type": "string",
+          "title": "lm_seconddayoftheweekname",
+          "x-ms-dataverse-attribute": "lm_seconddayoftheweekname",
+          "x-ms-dataverse-type": "VirtualType",
+          "x-ms-schema-name": "lm_seconddayoftheweekName",
+          "x-ms-read-only": true
+        },
+        "lm_stage": {
+          "type": "string",
+          "title": "Stage",
+          "x-ms-dataverse-attribute": "lm_stage",
+          "x-ms-dataverse-type": "PicklistType",
+          "x-ms-schema-name": "lm_Stage",
+          "enum": [
+            "Stage 1 BU Operational",
+            "Stage 2 Regional Functional",
+            "Stage 3 Group Functional",
+            "Stage 4 Top Management, COO & CEO"
+          ],
+          "x-ms-enum-values": [
+            1,
+            2,
+            3,
+            4
+          ],
+          "Color": [
+            null,
+            null,
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "53b4fb19-619d-f111-b8de-00224882d001",
+          "x-ms-isGlobal": true,
+          "x-ms-optionsetdisplayname": "Meeting Stage",
+          "x-ms-optionSetType": "Picklist"
+        },
+        "lm_stagename": {
+          "type": "string",
+          "title": "lm_stagename",
+          "x-ms-dataverse-attribute": "lm_stagename",
+          "x-ms-dataverse-type": "VirtualType",
+          "x-ms-schema-name": "lm_stageName",
           "x-ms-read-only": true
         },
         "lm_submittingposition": {

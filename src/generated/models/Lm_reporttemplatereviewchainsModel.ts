@@ -15,6 +15,7 @@ export type Lm_reporttemplatereviewchainsstatuscode = keyof typeof Lm_reporttemp
 
 export interface Lm_reporttemplatereviewchainsBase {
   importsequencenumber?: number;
+  "lm_MeetingTemplate@odata.bind"?: string;
   "lm_MeetingTemplatePerBusinessUnit@odata.bind"?: string;
   "lm_MeetingTemplatePerRegion@odata.bind"?: string;
   lm_newcolumn?: string;
@@ -23,6 +24,8 @@ export interface Lm_reporttemplatereviewchainsBase {
   "lm_ReviewerPosition@odata.bind"?: string;
   lm_step?: number;
   overriddencreatedon?: string;
+  ownerid: string;
+  owneridtype: string;
   statecode: Lm_reporttemplatereviewchainsstatecode;
   statuscode?: Lm_reporttemplatereviewchainsstatuscode;
   timezoneruleversionnumber?: number;
@@ -35,6 +38,7 @@ export interface Lm_reporttemplatereviewchains extends Lm_reporttemplatereviewch
   createdon?: string;
   createdonbehalfbyname?: string;
   createdonbehalfbyyominame: string;
+  lm_meetingtemplatename?: string;
   lm_meetingtemplateperbusinessunitname?: string;
   lm_meetingtemplateperregionname?: string;
   lm_reporttemplatename?: string;
@@ -44,9 +48,7 @@ export interface Lm_reporttemplatereviewchains extends Lm_reporttemplatereviewch
   modifiedon?: string;
   modifiedonbehalfbyname?: string;
   modifiedonbehalfbyyominame: string;
-  ownerid: string;
   owneridname: string;
-  owneridtype: string;
   owneridyominame: string;
   owningbusinessunitname: string;
   statecodename?: string;
@@ -56,6 +58,8 @@ export interface Lm_reporttemplatereviewchains extends Lm_reporttemplatereviewch
   _createdby_value?: string;
   createdonbehalfby?: object;
   _createdonbehalfby_value?: string;
+  lm_meetingtemplate?: object;
+  _lm_meetingtemplate_value?: string;
   lm_meetingtemplateperbusinessunit?: object;
   _lm_meetingtemplateperbusinessunit_value?: string;
   lm_meetingtemplateperregion?: object;

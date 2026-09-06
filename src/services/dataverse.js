@@ -504,6 +504,57 @@ import { Lm_report_templatesService } from '../generated/services/Lm_report_temp
 import { Lm_reporttemplatebusinessunitsesService } from '../generated/services/Lm_reporttemplatebusinessunitsesService';
 import { Lm_reporttemplateregionsService } from '../generated/services/Lm_reporttemplateregionsService';
 import { Lm_reporttemplatecontentchecklistsService } from '../generated/services/Lm_reporttemplatecontentchecklistsService';
+import { Lm_reporttemplatesectionitemsesService } from '../generated/services/Lm_reporttemplatesectionitemsesService';
+
+/* Report Template Section (Expected Content Checklist item) option sets.
+   Mapped by CODE, not by label -- 'Physician ' carries a trailing space in the
+   deployed option set, the same defect ATTENDEE_TYPE documents. */
+export const SECTION_ANGLE = {
+  1:'Untyped', 2:'Descriptive', 3:'Diagnostic', 4:'Predictive', 5:'Prescriptive',
+};
+export const SECTION_ANGLE_KEY = {
+  'Untyped':1, 'Descriptive':2, 'Diagnostic':3, 'Predictive':4, 'Prescriptive':5,
+};
+export const SECTION_ITEM_TYPE = { 1:'KPI', 2:'Breakdown', 3:'Process', 4:'Child Template' };
+export const SECTION_ITEM_TYPE_KEY = { 'KPI':1, 'Breakdown':2, 'Process':3, 'Child Template':4 };
+export const SECTION_BREAKDOWN_DIM = {
+  1:'Account', 2:'Payment Type', 3:'Physician', 4:'Department',
+  5:'Platform', 6:'Employee', 7:'Speciality',
+};
+export const SECTION_BREAKDOWN_DIM_KEY = {
+  'Account':1, 'Payment Type':2, 'Physician':3, 'Department':4,
+  'Platform':5, 'Employee':6, 'Speciality':7,
+};
+
+/* Writes the citation items belonging to one Section (checklist row).
+   Each item is its own row, which is what makes a Section able to carry any
+   number of KPIs, Breakdowns, Processes and child Templates at once. A
+   Breakdown stores the KPI plus a dimension -- there is no column for a
+   specific member, so the members resolve when the Report is actually built. */
+async function createSectionItems(checklistId, items, errors){
+  const bind = `/lm_reporttemplatecontentchecklists(${checklistId})`;
+  for(const it of (items||[])){
+    if(!it?.type) continue;
+    try{
+      const row = {
+        lm_sectionitemname: (it.label || it.type).slice(0,100),
+        lm_itemtype: SECTION_ITEM_TYPE_KEY[it.type] ?? null,
+        'lm_SectionChecklistItem@odata.bind': bind,
+      };
+      if(it.type==='KPI' && it.kpiId)
+        row['lm_KPI@odata.bind'] = `/strategy_kpises(${it.kpiId})`;
+      if(it.type==='Breakdown'){
+        if(it.kpiId) row['lm_KPI@odata.bind'] = `/strategy_kpises(${it.kpiId})`;
+        row.lm_breakdowndimension = SECTION_BREAKDOWN_DIM_KEY[it.dimension] ?? null;
+      }
+      if(it.type==='Process' && it.processId)
+        row['lm_Process@odata.bind'] = `/strategy_processes(${it.processId})`;
+      if(it.type==='Child Template' && it.childTemplateId)
+        row['lm_ChildReportTemplate@odata.bind'] = `/lm_report_templates(${it.childTemplateId})`;
+      await Lm_reporttemplatesectionitemsesService.create(row);
+    }catch(e){ errors.push({ table:'lm_reporttemplatesectionitemses', error:e }); }
+  }
+}
 import { Lm_reporttemplatedepartmentfunctionsService } from '../generated/services/Lm_reporttemplatedepartmentfunctionsService';
 import { Lm_reporttemplaterelatedkpisesService } from '../generated/services/Lm_reporttemplaterelatedkpisesService';
 import { Lm_reporttemplaterelatedprocessesesService } from '../generated/services/Lm_reporttemplaterelatedprocessesesService';
@@ -520,6 +571,17 @@ const FREQUENCY_KEY = {
 };
 const DAY_OF_WEEK_KEY = { 'Sunday':1, 'Monday':2, 'Tuesday':3, 'Wednesday':4, 'Thursday':5 };
 const MONTH_IN_QUARTER_KEY = { '1st month':1, '2nd month':2, '3rd month':3 };
+/* lm_monthofthesemester runs 1..6 -- a semester is six months, so it needs its
+   own map rather than reusing the quarter's 1..3. The second day of the week
+   reuses DAY_OF_WEEK_KEY above: lm_seconddayoftheweek carries the same 1..5
+   Sunday-to-Thursday codes as the first. */
+const MONTH_IN_SEMESTER_KEY = { '1st month':1, '2nd month':2, '3rd month':3,
+                                '4th month':4, '5th month':5, '6th month':6 };
+/* lm_month is a plain 1..12 calendar month, used by an Annual cadence to say
+   WHICH month the report is due in. Distinct from the quarter (1..3) and
+   semester (1..6) fields, which say which month *within* their period. */
+const MONTH_KEY = { 'January':1,'February':2,'March':3,'April':4,'May':5,'June':6,
+                    'July':7,'August':8,'September':9,'October':10,'November':11,'December':12 };
 const CONFIDENTIALITY_KEY = { 'Public':1, 'Internal':2, 'Confidential':3, 'High Confidential':4, 'Restricted':5 };
 const REPORT_TYPE_KEY = { 'Plan':1, 'Report':2, 'Conclusion':3 };
 // Dataverse's lm_reportcategory choice list was expanded to match the
@@ -559,8 +621,21 @@ function reportTemplateParentPayload(payload){
     lm_dayoftheweek: payload.dayOfWeek ? DAY_OF_WEEK_KEY[payload.dayOfWeek] : null,
     lm_dayofthemonth: typeof payload.dayOfMonth === 'number' ? payload.dayOfMonth : null,
     lm_monthofthequarter: payload.monthInQuarter ? MONTH_IN_QUARTER_KEY[payload.monthInQuarter] : null,
+    /* Twice Weekly and Twice Monthly carry a second day; Semesterly picks a
+       month within its six. Each is only meaningful for its own frequency, and
+       the form clears the others when Frequency changes, so a null here means
+       "not applicable to this cadence" rather than "not filled in". */
+    lm_seconddayoftheweek: payload.secondDayOfWeek ? DAY_OF_WEEK_KEY[payload.secondDayOfWeek] : null,
+    lm_seconddayofthemonth: typeof payload.secondDayOfMonth === 'number' ? payload.secondDayOfMonth : null,
+    lm_monthofthesemester: payload.monthInSemester ? MONTH_IN_SEMESTER_KEY[payload.monthInSemester] : null,
+    lm_month: payload.month ? MONTH_KEY[payload.month] : null,
     lm_confidentiality: payload.confidentiality ? CONFIDENTIALITY_KEY[payload.confidentiality] : null,
     lm_destinationsharepointlink: payload.destinationLink || null,
+    /* Stage is now a real column. It used to be inferred on read from whether
+       the Template had Business Unit or Region child rows, which could not tell
+       Stage 3 from Stage 4 -- both are group-wide -- so a Stage 4 Template came
+       back as Stage 3 and was silently renamed on the next save. */
+    lm_stage: REPORT_STAGE_KEY[payload.stage] ?? null,
     lm_reportstatus: payload.status ? TEMPLATE_STATUS_KEY[payload.status] : null,
     lm_version: typeof payload.version === 'number' ? payload.version : null,
   };
@@ -635,10 +710,15 @@ async function createReportTemplateChildren(templateId, payload, errors){
         const rowId = created?.data?.lm_reporttemplateregionid;
         if(rowId){ unitBind = `/lm_reporttemplateregions(${rowId})`; unitLookupField = 'lm_MeetingTemplatePerRegion@odata.bind'; }
       }catch(e){ errors.push({ table:'lm_reporttemplateregions', error:e }); }
-    }else{
-      console.warn(`[dataverse] Report Template unit "${unit?.name||unit?.key}" at "${payload.stageLevel}" level has no per-unit child table yet -- its Review Chain, if any, was not saved.`);
-      continue;
     }
+    /* A group-wide (Stage 3/4) Setup has no per-unit child table -- there is no
+       Business Unit or Region row for its Review Chain steps to hang off. That
+       used to `continue` here, which silently discarded the whole chain.
+       It does NOT have to: lm_reporttemplatereviewchains carries a direct
+       lm_ReportTemplate lookup as well as the two per-unit ones, and the loop
+       below already binds the template on every row and adds the per-unit
+       lookup only when there is one. So the chain is written against the
+       template itself, with the per-unit link left null. */
 
     for(const step of (unit.reviewChain||[])){
       try{
@@ -657,11 +737,16 @@ async function createReportTemplateChildren(templateId, payload, errors){
   for(const item of (payload.checklist||[])){
     if(!item.text) continue;
     try{
-      await Lm_reporttemplatecontentchecklistsService.create({
+      /* The checklist row must exist before its Section items can bind to it,
+         so this create is awaited for its id rather than fired blind. */
+      const created = await Lm_reporttemplatecontentchecklistsService.create({
         lm_checklistitemname: item.text,
         lm_checklistitemstep: (payload.checklist.indexOf(item)+1),
+        lm_diagnosticangle: SECTION_ANGLE_KEY[item.angle || 'Untyped'] ?? SECTION_ANGLE_KEY.Untyped,
         'lm_ReportTemplate@odata.bind': bind,
       });
+      const checklistId = idOrThrow(created, 'lm_reporttemplatecontentchecklistid');
+      await createSectionItems(checklistId, item.items, errors);
     }catch(e){ errors.push({ table:'lm_reporttemplatecontentchecklists', error:e }); }
   }
 
@@ -720,13 +805,33 @@ async function fetchReportTemplateChildIds(dvId){
       select: ['lm_reporttemplatereviewchainid'],
     }).then(r=>r?.data??[]).catch(()=>[]))),
   ]);
+  /* Section items hang off the checklist rows, not off the Template, so they
+     can only be found once the checklist ids are known -- same two-hop shape
+     as the Review Chains above. */
+  const checklist = checklistRes?.data ?? [];
+  const sectionItemLists = await Promise.all(checklist.map(c =>
+    Lm_reporttemplatesectionitemsesService.getAll({
+      filter: `_lm_sectionchecklistitem_value eq ${c.lm_reporttemplatecontentchecklistid}`,
+      select: ['lm_reporttemplatesectionitemsid'],
+    }).then(r=>r?.data??[]).catch(()=>[])));
+
+  /* A group-wide Setup's Review Chain hangs off the template alone, with both
+     per-unit lookups null, so the per-BU/per-Region queries above never see it.
+     Without this the update path would leave those rows behind as orphans every
+     time a group-wide template was edited. */
+  const groupChainRes = await Lm_reporttemplatereviewchainsService.getAll({
+    filter: `${filter} and _lm_meetingtemplateperbusinessunit_value eq null and _lm_meetingtemplateperregion_value eq null`,
+    select: ['lm_reporttemplatereviewchainid'],
+  }).catch(()=>null);
+
   return {
-    checklist: checklistRes?.data ?? [],
+    checklist,
+    sectionItems: sectionItemLists.flat(),
     lines: linesRes?.data ?? [],
     kpis: kpisRes?.data ?? [],
     processes: procsRes?.data ?? [],
     businessUnits, regions,
-    reviewChains: [...buChains.flat(), ...regionChains.flat()],
+    reviewChains: [...buChains.flat(), ...regionChains.flat(), ...(groupChainRes?.data ?? [])],
   };
 }
 
@@ -819,6 +924,8 @@ export async function updateReportTemplateToDataverse(dvId, payload){
     await deleteRows(Lm_reporttemplatereviewchainsService, existing.reviewChains, 'lm_reporttemplatereviewchainid', 'lm_reporttemplatereviewchains', errors);
     await deleteRows(Lm_reporttemplatebusinessunitsesService, existing.businessUnits, 'lm_reporttemplatebusinessunitsid', 'lm_reporttemplatebusinessunitses', errors);
     await deleteRows(Lm_reporttemplateregionsService, existing.regions, 'lm_reporttemplateregionid', 'lm_reporttemplateregions', errors);
+    // A Section item hangs off a checklist row, so it must go before that row does.
+    await deleteRows(Lm_reporttemplatesectionitemsesService, existing.sectionItems, 'lm_reporttemplatesectionitemsid', 'lm_reporttemplatesectionitemses', errors);
     await deleteRows(Lm_reporttemplatecontentchecklistsService, existing.checklist, 'lm_reporttemplatecontentchecklistid', 'lm_reporttemplatecontentchecklists', errors);
     await deleteRows(Lm_reporttemplatedepartmentfunctionsService, existing.lines, 'lm_reporttemplatedepartmentfunctionid', 'lm_reporttemplatedepartmentfunctions', errors);
     await deleteRows(Lm_reporttemplaterelatedkpisesService, existing.kpis, 'lm_reporttemplaterelatedkpisid', 'lm_reporttemplaterelatedkpises', errors);
@@ -1304,8 +1411,9 @@ export async function fetchMeetingTemplatesList(){
 export async function fetchReportTemplateDetail(id){
   const parentRes = await Lm_report_templatesService.get(id, {
     select: ['lm_report_templateid','lm_newcolumn','lm_objective','lm_reporttype','lm_reportcategory',
-      'lm_frequency','lm_dayoftheweek','lm_dayofthemonth','lm_monthofthequarter','lm_confidentiality',
-      'lm_destinationsharepointlink','lm_reportstatus','lm_version','modifiedon','createdon',
+      'lm_frequency','lm_dayoftheweek','lm_dayofthemonth','lm_monthofthequarter',
+      'lm_seconddayoftheweek','lm_seconddayofthemonth','lm_monthofthesemester','lm_month','lm_confidentiality',
+      'lm_destinationsharepointlink','lm_reportstatus','lm_version','lm_stage','modifiedon','createdon',
       // Group-wide (Stage 3/4) Owner/Submitting Position, Team Channel and
       // Speciality -- see reportTemplateParentPayload()'s comment for why
       // these live here instead of on a per-unit child row.
@@ -1316,7 +1424,7 @@ export async function fetchReportTemplateDetail(id){
 
   const filter = `_lm_reporttemplate_value eq ${id}`;
   const [checklistRes, linesRes, kpisRes, procsRes, busRes, regionsRes] = await Promise.all([
-    Lm_reporttemplatecontentchecklistsService.getAll({ filter, select:['lm_checklistitemname','lm_checklistitemstep'] }),
+    Lm_reporttemplatecontentchecklistsService.getAll({ filter, select:['lm_reporttemplatecontentchecklistid','lm_checklistitemname','lm_checklistitemstep','lm_diagnosticangle'] }),
     Lm_reporttemplatedepartmentfunctionsService.getAll({ filter, select:['_lm_department_value','_lm_function_value'] }),
     Lm_reporttemplaterelatedkpisesService.getAll({ filter, select:['_lm_relatedkpi_value'] }),
     Lm_reporttemplaterelatedprocessesesService.getAll({ filter, select:['_lm_relatedprocess_value'] }),
@@ -1342,14 +1450,51 @@ export async function fetchReportTemplateDetail(id){
     )),
   ]);
 
+  /* A Stage 3/4 Setup's Review Chain binds to the template only, so it is
+     invisible to the per-BU / per-Region queries above and needs its own read. */
+  const groupChainDetailRes = await Lm_reporttemplatereviewchainsService.getAll({
+    filter: `${filter} and _lm_meetingtemplateperbusinessunit_value eq null and _lm_meetingtemplateperregion_value eq null`,
+    select: ['lm_reporttemplatereviewchainid','lm_step','_lm_reviewerposition_value','lm_newcolumn'],
+  }).catch(e=>{ console.warn('[dataverse] group-wide review chain fetch failed:', e); return null; });
+
+  /* Each checklist row carries its own Section items -- one row per cited KPI,
+     Breakdown, Process or child Template. Fetched per checklist row because
+     the items point at the checklist row, not at the Template. */
+  const checklistRows = checklistRes?.data ?? [];
+  const itemLists = await Promise.all(checklistRows.map(c =>
+    Lm_reporttemplatesectionitemsesService.getAll({
+      filter: `_lm_sectionchecklistitem_value eq ${c.lm_reporttemplatecontentchecklistid}`,
+      select: ['lm_reporttemplatesectionitemsid','lm_sectionitemname','lm_itemtype',
+               'lm_breakdowndimension','_lm_kpi_value','_lm_process_value',
+               '_lm_childreporttemplate_value'],
+    }).then(r=>r?.data??[]).catch(e=>{
+      console.warn('[dataverse] section items fetch failed:', e); return []; })));
+
   return {
     parent,
-    checklist: checklistRes?.data ?? [],
+    checklist: checklistRows.map((c,i) => ({
+      ...c,
+      items: itemLists[i].map(it => ({
+        id: it.lm_reporttemplatesectionitemsid,
+        type: SECTION_ITEM_TYPE[it.lm_itemtype] || null,
+        label: it.lm_sectionitemname || '',
+        kpiId: it._lm_kpi_value || null,
+        processId: it._lm_process_value || null,
+        childTemplateId: it._lm_childreporttemplate_value || null,
+        dimension: SECTION_BREAKDOWN_DIM[it.lm_breakdowndimension] || null,
+      })),
+    })),
     lines: linesRes?.data ?? [],
     kpiIds: (kpisRes?.data ?? []).map(r => r._lm_relatedkpi_value).filter(Boolean),
     processIds: (procsRes?.data ?? []).map(r => r._lm_relatedprocess_value).filter(Boolean),
     businessUnits: businessUnits.map((bu,i) => ({ ...bu, reviewChain: buChains[i] })),
     regions: regions.map((rg,i) => ({ ...rg, reviewChain: regionChains[i] })),
+    /* The group-wide Review Chain, if any -- steps bound to the template with
+       neither per-unit lookup set. Read separately because the two queries
+       above are keyed on a Business Unit or Region row that does not exist for
+       a Stage 3/4 Setup. */
+    groupReviewChain: (groupChainDetailRes?.data ?? [])
+      .slice().sort((a,b)=>(a.lm_step||0)-(b.lm_step||0)),
   };
 }
 
@@ -1470,6 +1615,18 @@ export const MEETING_OCC_STAGE_KEY = {
   'Stage 3 Group Functional':3, 'Stage 4 Top Management, COO & CEO':4,
 };
 export const REPORT_OCC_STATUS_KEY = { 'Draft':1, 'In Review':2, 'Approved':3, 'Rejected':4, 'Returned':5 };
+
+/* lm_stage on lm_report_templates -- codes run 1..4 in the same order as the
+   app's own STAGES list, so a Stage 4 Template now round-trips instead of
+   being inferred back as Stage 3. */
+export const REPORT_STAGE = {
+  1:'Stage 1 BU Operational', 2:'Stage 2 Regional Functional',
+  3:'Stage 3 Group Functional', 4:'Stage 4 Top Management, COO & CEO',
+};
+export const REPORT_STAGE_KEY = {
+  'Stage 1 BU Operational':1, 'Stage 2 Regional Functional':2,
+  'Stage 3 Group Functional':3, 'Stage 4 Top Management, COO & CEO':4,
+};
 
 /** A Dataverse DateTime comes back as a full ISO string; the app works in
  *  plain 'YYYY-MM-DD' dates throughout, so trim rather than re-parse (which

@@ -96,8 +96,7 @@
         },
         "reporttemplatecontentchecklists": {
           "entitySetName": "lm_reporttemplatecontentchecklists",
-          "logicalName": "lm_reporttemplatecontentchecklist",
-          "isHidden": false
+          "logicalName": "lm_reporttemplatecontentchecklist"
         },
         "reporttemplatedepartment_functions": {
           "entitySetName": "lm_reporttemplatedepartmentfunctions",
@@ -116,13 +115,11 @@
         },
         "reporttemplatereviewchains": {
           "entitySetName": "lm_reporttemplatereviewchains",
-          "logicalName": "lm_reporttemplatereviewchain",
-          "isHidden": false
+          "logicalName": "lm_reporttemplatereviewchain"
         },
         "report_templates": {
           "entitySetName": "lm_report_templates",
-          "logicalName": "lm_report_template",
-          "isHidden": false
+          "logicalName": "lm_report_template"
         },
         "organizationstructures": {
           "entitySetName": "cr603_organizationstructures",
@@ -191,8 +188,7 @@
         },
         "reportoccurrences": {
           "entitySetName": "lm_reportoccurrences",
-          "logicalName": "lm_reportoccurrence",
-          "isHidden": false
+          "logicalName": "lm_reportoccurrence"
         },
         "reportoccurrencehistories": {
           "entitySetName": "lm_reportoccurrencehistories",
@@ -241,6 +237,22 @@
         "authoritymatrixrows": {
           "entitySetName": "lm_authoritymatrixrows",
           "logicalName": "lm_authoritymatrixrow"
+        },
+        "reportoccurrencesections": {
+          "entitySetName": "lm_reportoccurrencesectionses",
+          "logicalName": "lm_reportoccurrencesections"
+        },
+        "reporttemplatesectionitems": {
+          "entitySetName": "lm_reporttemplatesectionitemses",
+          "logicalName": "lm_reporttemplatesectionitems"
+        },
+        "reportsectioncitations": {
+          "entitySetName": "lm_reportsectioncitationses",
+          "logicalName": "lm_reportsectioncitations"
+        },
+        "reportoccurrenceshares": {
+          "entitySetName": "lm_reportoccurrenceshares",
+          "logicalName": "lm_reportoccurrenceshare"
         }
       },
       "environmentVariableName": ""

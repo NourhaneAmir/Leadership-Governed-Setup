@@ -32,9 +32,23 @@ const FREQUENCIES=['Daily','Twice Weekly','Weekly','Twice Monthly','Monthly',
                    'Quarterly','Semesterly','Annually','Custom'];
 const DOW_FREQ=['Daily','Twice Weekly','Weekly'];
 const DOM_FREQ=['Twice Monthly','Monthly','Quarterly','Semesterly','Annually'];
-const MIQ_FREQ=['Quarterly','Semesterly','Annually'];
+/* Month-within-quarter is a quarter's three months, so it applies to Quarterly
+   only. Semesterly picks from six months and has its own column and list;
+   Annually needs a month of the year, which has no column yet -- see below. */
+const MIQ_FREQ=['Quarterly'];
+const MOS_FREQ=['Semesterly'];
+/* An Annual cadence needs the calendar month itself, not a month within a
+   shorter period -- lm_month is a plain 1..12. */
+const MOY_FREQ=['Annually'];
+const MONTHS_OF_YEAR=['January','February','March','April','May','June',
+                      'July','August','September','October','November','December'];
+/* The cadences that repeat twice in their period, and so carry a second day. */
+const DOW2_FREQ=['Twice Weekly'];
+const DOM2_FREQ=['Twice Monthly'];
 const DAYS_OF_WEEK=['Sunday','Monday','Tuesday','Wednesday','Thursday'];
 const MONTHS_IN_QUARTER=['1st month','2nd month','3rd month'];
+const MONTHS_IN_SEMESTER=['1st month','2nd month','3rd month',
+                          '4th month','5th month','6th month'];
 const MODES=['Physical','Virtual','Hybrid'];
 /* Clock time and duration are not Setup data — they are fixed on each occurrence. */
 const CONFIDENTIALITY=['Public','Internal','Confidential','High Confidential','Restricted'];
@@ -229,6 +243,21 @@ const channelsIn = teamId => CHANNELS.filter(c=>c.team===teamId);
 /* A Channel's document location as one path -- SharePoint Site Path, Document
    Library and Folder joined, skipping whichever parts are empty. This is what
    auto-fills a Report Template's Source link when a Channel is chosen. */
+/* The Report destination, derived rather than typed.
+   Channels are per-unit and the destination is one template-level column, so
+   the first Channel that resolves to a path wins -- the same rule the per-unit
+   Channel picker already used to auto-fill it. Deriving it in one place means
+   the stored value can never drift from the Channel it came from, which is what
+   happened while it was a free-text field that auto-fill only sometimes
+   overwrote. Group-wide Setups keep their Channel on the single group unit, so
+   the same walk covers them. */
+function destinationOf(s){
+  for(const u of (s.units||[])){
+    const path = u && u.channel ? channelPath(u.channel) : '';
+    if(path) return path;
+  }
+  return '';
+}
 function channelPath(channelId){
   const c=byId(CHANNELS,channelId);
   if(!c) return '';
@@ -538,6 +567,7 @@ const BLANK_REPORT={
   qualifier:'',
   stage:null, regions:[], businessUnits:[], lines:[], units:[],
   delivery:'Source link', site:null, library:null, folder:null, sourceLink:'', sourceLinkAuto:false,
+  secondDayOfWeek:null, secondDayOfMonth:null, monthInSemester:null, month:null,
   checklist:[], processes:[], kpis:[],
   frequency:null, dayOfWeek:null, dayOfMonth:null, monthInQuarter:null,
   confidentiality:null, status:'Draft', version:0, updated:TODAY};
@@ -779,6 +809,16 @@ function scopeRules(s, stepNo){
 
 /* The name is produced by the Setup, so it can only fail in two ways: there is not enough
    scope yet to produce one, or two Setups have produced the same one. */
+/* The saved Report Template, if any, that already carries this name -- matched
+   against the live Dataverse register rather than this session's Setups, and
+   never against the row being edited itself. */
+function savedTemplateNamed(s, nm){
+  if(!nm || s.kind!=='Report Template') return null;
+  const mine=s._dataverseId||null;
+  return (DV_REPORTS.current||[]).find(t=>
+    t.id!==mine && (t.name||'').trim().toLowerCase()===nm.trim().toLowerCase()) || null;
+}
+
 function nameRules(s, stepNo){
   const r=[]; const all=(ALL_SETUPS.current||[]);
   const nm=derivedName(s);
@@ -789,10 +829,27 @@ function nameRules(s, stepNo){
     r.push({field:'f-qualifier', step:stepNo,
       msg:`Another Setup already resolves to “${nm}”. Change something in its scope, or add a short `+
           `qualifier to tell the two apart.`});
+  /* A clash with an already-SAVED Template is a different situation from a
+     clash with another Setup open in this session. The saved one is usually the
+     same governed report for a different Business Unit or Region -- so the
+     answer is normally to add a unit to that Template, not to invent a
+     qualifier and create a second one. This used to check only db.setups, so a
+     clash with anything already in Dataverse went unnoticed entirely. */
+  else if(savedTemplateNamed(s, nm))
+    r.push({field:'f-qualifier', step:stepNo,
+      msg:`A saved Report Template is already called “${nm}”. If this is the same report for another `+
+          `Business Unit or Region, open that Template and add your unit to it instead of creating a `+
+          `second one. If it really is a different report, add a short qualifier.`});
   return r;
 }
 /* the register is the only place that knows every Setup; the rules read it from here */
 const ALL_SETUPS={current:[]};
+/* The live Dataverse Report Template list. A child report/plan citation has to
+   store a real lm_report_templateid, and only this list carries one -- a local
+   Setup's `id` is a session id, and its Dataverse id (when it has one at all)
+   lives on `_dataverseId`. Same reasoning as the Meeting side's Linked Report
+   Templates picker, which already sources from here. */
+const DV_REPORTS={current:[]};
 
 /* Per-unit rules — everything that differs from one Business Unit or Region to the next.
    Each message names its unit, and clicking it opens that unit's section. */
@@ -838,6 +895,30 @@ function cadenceRules(s, stepNo){
   if(MIQ_FREQ.includes(s.frequency) && !s.monthInQuarter)
     r.push({field:'f-monthInQuarter', step:stepNo,
       msg:`Month within quarter is required when Frequency is ${s.frequency}.`});
+  if(MOS_FREQ.includes(s.frequency) && !s.monthInSemester)
+    r.push({field:'f-monthInSemester', step:stepNo,
+      msg:'Month within semester is required when Frequency is Semesterly.'});
+  if(MOY_FREQ.includes(s.frequency) && !s.month)
+    r.push({field:'f-month', step:stepNo,
+      msg:'Month is required when Frequency is Annually.'});
+  /* The twice-per-period cadences need a second day, and it has to be a
+     different one -- two occurrences on the same day is one occurrence. */
+  if(DOW2_FREQ.includes(s.frequency)){
+    if(!s.secondDayOfWeek)
+      r.push({field:'f-secondDayOfWeek', step:stepNo,
+        msg:'A second day of week is required when Frequency is Twice Weekly.'});
+    else if(s.secondDayOfWeek===s.dayOfWeek)
+      r.push({field:'f-secondDayOfWeek', step:stepNo,
+        msg:'The two days of the week must be different.'});
+  }
+  if(DOM2_FREQ.includes(s.frequency)){
+    if(!s.secondDayOfMonth)
+      r.push({field:'f-secondDayOfMonth', step:stepNo,
+        msg:'A second day of month is required when Frequency is Twice Monthly.'});
+    else if(s.secondDayOfMonth===s.dayOfMonth)
+      r.push({field:'f-secondDayOfMonth', step:stepNo,
+        msg:'The two days of the month must be different.'});
+  }
   return r;
 }
 
@@ -886,14 +967,27 @@ function validateReport(s, all){
   if(!s.stage) r.push({field:'f-stage', step:2, msg:'Stage is required.'});
   r.push(...scopeRules(s,2));
   /* 3 — destination and content */
-  if(!s.delivery) r.push({field:'f-delivery', step:3, msg:'Report Delivery is required.'});
-  if(s.delivery==='File destination'){
-    if(!s.site)    r.push({field:'f-site',    step:3, msg:'Site is required for a file destination.'});
-    if(!s.library) r.push({field:'f-library', step:3, msg:'Library is required for a file destination.'});
-    if(!s.folder)  r.push({field:'f-folder',  step:3, msg:'Folder is required for a file destination.'});
+  /* The destination is no longer typed or picked -- it resolves from the Team
+     Channel chosen per unit. So the rule is that one has to resolve, not that
+     a Site/Library/Folder or a link was filled in. */
+  if(!destinationOf(s))
+    r.push({field:'f-sourceLink', step:3,
+      msg:'No destination resolves yet. Choose a Team and Channel for a unit in Setup per unit — '+
+          'the Channel’s SharePoint path becomes the destination.'});
+  /* A Template defines what a submission must contain, so it needs at least one
+     Section -- and a Section with no heading defines nothing. Both are checked:
+     an untitled Section used to pass validation and then be dropped silently at
+     save time, which looked like the Template had saved correctly. */
+  {
+    const sections = s.checklist||[];
+    const titled = sections.filter(c=>(c.text||'').trim());
+    if(titled.length===0)
+      r.push({field:'f-checklist', step:3,
+        msg:'At least one section with a heading is required.'});
+    else if(titled.length < sections.length)
+      r.push({field:'f-checklist', step:3,
+        msg:`${sections.length-titled.length} section${sections.length-titled.length>1?'s have':' has'} no heading. Give each one a heading, or remove it.`});
   }
-  if(s.delivery==='Source link' && !(s.sourceLink||'').trim())
-    r.push({field:'f-sourceLink', step:3, msg:'A source link is required.'});
   /* 4 — who submits and who reviews, unit by unit */
   r.push(...unitRules(s,4));
   /* 5 — cadence and review */
@@ -1155,6 +1249,246 @@ function ValidationPanel({issues,onGo}){
 }
 
 /* ---- repeatable row editor ---------------------------------------------- */
+/* The five Diagnostic Angles a Section can carry, and the four kinds of thing
+   it can cite. Both mirror the deployed option sets on
+   lm_reporttemplatecontentchecklists / lm_reporttemplatesectionitems. */
+const SECTION_ANGLES = ['Untyped','Descriptive','Diagnostic','Predictive','Prescriptive'];
+const SECTION_ITEM_KINDS = [
+  {v:'KPI',            label:'KPI'},
+  {v:'Breakdown',      label:'KPI breakdown'},
+  {v:'Process',        label:'Process'},
+  {v:'Child Template', label:'Child report/plan'},
+];
+/* Fixed list from lm_breakdowndimension. Offered in full for any KPI rather
+   than filtered to the dimensions that KPI actually holds data for -- the
+   KPI-to-breakdown relationship is not confirmed in this environment yet, so
+   filtering would mean guessing at a join. */
+const SECTION_BREAKDOWN_DIMS = ['Account','Payment Type','Physician','Department',
+                                'Platform','Employee','Speciality'];
+
+/* One colour per citation kind, so a Section's mix reads at a glance rather
+   than as a wall of identical chips. Inline rather than in theme.css because
+   these classes are used nowhere else and the stylesheet is shared with the
+   execution module. Tokens are the app's own semantic colours. */
+const SEC_ITEM_CLASS = {
+  'KPI':'k-kpi', 'Breakdown':'k-bd', 'Process':'k-proc', 'Child Template':'k-child',
+};
+const SEC_ITEM_LABEL = {
+  'KPI':'KPI', 'Breakdown':'Breakdown', 'Process':'Process', 'Child Template':'Child report/plan',
+};
+
+/* Scope filters shared by all three pickers.
+   KPIs and Processes carry a Department only, so their Business Unit is
+   derived through deptInBu() and a Function filter cannot apply to them --
+   nothing links a KPI or a Process to a Function. Report Templates do carry
+   Department › Function lines, so all three filters apply there. */
+function ScopeFilter({bu,dept,fn,setBu,setDept,setFn,showDepartment=true,showFunction}){
+  const deptOpts = DEPARTMENTS.filter(d=>deptInBu(d.id,bu));
+  const fnOpts   = FUNCTIONS.filter(f=>!dept||f.dept===dept);
+  const any = bu||dept||fn;
+  return <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',marginBottom:8}}>
+    <select value={bu||''} style={{flex:'1 1 130px',minWidth:110}}
+      onChange={e=>{const v=e.target.value||null; setBu(v); setDept(null); setFn&&setFn(null);}}>
+      <option value="">All business units</option>
+      {BUSINESS_UNITS.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
+    </select>
+    {showDepartment &&
+      <select value={dept||''} style={{flex:'1 1 130px',minWidth:110}}
+        onChange={e=>{const v=e.target.value||null; setDept(v); setFn&&setFn(null);}}>
+        <option value="">All departments</option>
+        {deptOpts.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
+      </select>}
+    {showFunction &&
+      <select value={fn||''} style={{flex:'1 1 130px',minWidth:110}}
+        onChange={e=>setFn(e.target.value||null)}>
+        <option value="">All functions</option>
+        {fnOpts.map(f=><option key={f.id} value={f.id}>{f.name}</option>)}
+      </select>}
+    {any && <button type="button" className="sec-dim"
+      onClick={()=>{setBu(null);setDept(null);setFn&&setFn(null);}}>Clear</button>}
+  </div>;
+}
+
+/* One Section of the Expected Content Checklist: a heading, a Diagnostic Angle,
+   and any number of cited KPIs / breakdowns / Processes / child templates.
+   Each citation becomes its own lm_reporttemplatesectionitems row on save,
+   which is what makes the multi-select work without a junction concept here. */
+function SectionRowEditor({sec,index,templateId,onPatch,onRemove}){
+  const [picking,setPicking]=useState(null);      // null | 'KPI' | 'Breakdown' | ...
+  const [bdKpi,setBdKpi]=useState('');
+  const [buF,setBuF]=useState(null);
+  const [deptF,setDeptF]=useState(null);
+  const [fnF,setFnF]=useState(null);
+  const items = sec.items||[];
+
+  /* A KPI or Process is in scope when its own Department matches the filter,
+     or -- when only a Business Unit is chosen -- when that Department belongs
+     to it. deptInBu() already handles a Department sitting under more than one
+     Business Unit. */
+  const inScopeByDept = deptId => {
+    if(deptF) return deptId===deptF;
+    if(buF)   return !!deptId && deptInBu(deptId,buF);
+    return true;
+  };
+  const kpiOpts     = KPIS.filter(n=>inScopeByDept(KPI_DEPT_BY_NAME[n]));
+  const processOpts = PROCESSES.filter(n=>inScopeByDept(PROCESS_DEPT_BY_NAME[n]));
+
+  /* A child report/plan cites a REAL lm_report_templateid, so the options come
+     from the live Dataverse list, not from local Setups -- a local Setup's `id`
+     is a session id and would be rejected as a lookup. Same source the Meeting
+     side's Linked Report Templates picker already uses.
+     The template being edited is excluded so it cannot cite itself. */
+  const childOpts = (DV_REPORTS.current||[])
+    .filter(t=>t.id && t.id!==templateId)
+    /* Only Business Unit is filterable here: the register list carries
+       businessUnitIds and regionIds, but no departments -- so a Department
+       filter would silently match everything, which is worse than not
+       offering it. A group-wide Template (no units at all) always shows. */
+    .filter(t=>{
+      if(!buF) return true;
+      const buIds=t.businessUnitIds||[];
+      return buIds.length===0 || buIds.includes(buF);
+    })
+    .map(t=>({id:t.id, name:t.name||'(unnamed template)'}));
+
+  const addItem = it => { onPatch({items:[...items, {id:uid('si'), ...it}]}); setPicking(null); setBdKpi(''); };
+  const label = it => it.type==='Breakdown'
+    ? `${it.kpi||'KPI'} · by ${it.dimension||'—'}`
+    : it.type==='Process' ? it.process
+    : it.type==='Child Template' ? it.childTemplate
+    : it.kpi;
+
+  return <div className="sec-card">
+    <div className="sec-head">
+      <input type="text" value={sec.text} placeholder="Section heading"
+        onChange={e=>onPatch({text:e.target.value})}/>
+      <Seg opts={SECTION_ANGLES.map(a=>({v:a,label:a==='Untyped'?'untyped':a}))}
+        val={sec.angle||'Untyped'} onChange={v=>onPatch({angle:v})}/>
+      <button type="button" className="icon-btn" title="Remove this section"
+        onClick={onRemove}>✕</button>
+    </div>
+
+    {items.length>0
+      ? <div className="sec-chips">
+          {items.map((it,ii)=>
+            <span key={it.id||ii} className={'sec-chip '+(SEC_ITEM_CLASS[it.type]||'k-kpi')}>
+              <b>{SEC_ITEM_LABEL[it.type]}</b>
+              <span className="v">{label(it)}</span>
+              <button type="button" className="x" title="Remove"
+                onClick={()=>onPatch({items:items.filter((_,j)=>j!==ii)})}>×</button>
+            </span>)}
+        </div>
+      : <div className="holder" style={{marginTop:6}}>
+          No components yet — this section starts blank when the template is used.</div>}
+
+    <button type="button" className="sec-add"
+      onClick={()=>setPicking(picking?null:'KPI')}>
+      {picking?'✕ Close':'+ Add KPI, breakdown, Process or child report/plan'}</button>
+
+    {picking && <div className="sec-pick">
+      <div className="sec-kinds" role="group" aria-label="What to cite">
+        {SECTION_ITEM_KINDS.map(k=>
+          <button type="button" key={k.v} aria-pressed={picking===k.v}
+            className={'sec-kind '+SEC_ITEM_CLASS[k.v]+(picking===k.v?' on':'')}
+            onClick={()=>{setPicking(k.v); setBdKpi('');}}>
+            <span className="dot"/>{k.label}</button>)}
+      </div>
+
+      <ScopeFilter bu={buF} dept={deptF} fn={fnF}
+        setBu={setBuF} setDept={setDeptF} setFn={setFnF}
+        showDepartment={picking!=='Child Template'}
+        showFunction={false}/>
+      {picking!=='Child Template' && (buF||deptF) &&
+        <div className="holder" style={{marginBottom:8}}>
+          Filtered by the Department each {picking==='Process'?'Process':'KPI'} belongs to.
+          Function does not apply — nothing links a {picking==='Process'?'Process':'KPI'} to one.</div>}
+      {picking==='Child Template' && buF &&
+        <div className="holder" style={{marginBottom:8}}>
+          Filtered by Business Unit. Group-wide Templates always show.</div>}
+
+      {picking==='KPI' &&
+        <PickList opts={kpiOpts} onPick={v=>addItem({type:'KPI', kpi:v})}
+          empty="No KPI matches this scope."/>}
+
+      {picking==='Process' &&
+        <PickList opts={processOpts} onPick={v=>addItem({type:'Process', process:v})}
+          empty="No Process matches this scope."/>}
+
+      {picking==='Child Template' &&
+        <PickList opts={childOpts.map(t=>t.name)}
+          onPick={v=>{ const t=childOpts.find(x=>x.name===v);
+            addItem({type:'Child Template', childTemplate:v, childTemplateId:t?.id}); }}
+          empty={(DV_REPORTS.current||[]).length
+            ? 'No other Report Template matches this scope.'
+            : 'No Report Template has been saved to Dataverse yet — only a saved Template can be cited.'}/>}
+
+      {picking==='Breakdown' && <>
+        <select value={bdKpi} onChange={e=>setBdKpi(e.target.value)}
+          style={{width:'100%',marginBottom:8}}>
+          <option value="">Choose a KPI…</option>
+          {kpiOpts.map(k=><option key={k} value={k}>{k}</option>)}
+        </select>
+        {bdKpi
+          ? <>
+              <div className="holder" style={{marginBottom:6}}>Break it down by…</div>
+              <div className="sec-dims">
+                {SECTION_BREAKDOWN_DIMS.map(d=>
+                  <button type="button" key={d} className="sec-dim"
+                    onClick={()=>addItem({type:'Breakdown', kpi:bdKpi, dimension:d})}>{d}</button>)}
+              </div>
+            </>
+          : <div className="holder">Pick the KPI first, then the dimension to break it down by.</div>}
+      </>}
+    </div>}
+  </div>;
+}
+
+/* A short scrollable list of one-click options — the same shape the picker uses
+   for KPIs, Processes and child templates. */
+function PickList({opts,onPick,empty}){
+  const [q,setQ]=useState('');
+  const shown=(opts||[]).filter(o=>o.toLowerCase().includes(q.toLowerCase()));
+  if(!opts || opts.length===0)
+    return <div className="holder">{empty||'Nothing to choose from.'}</div>;
+  return <>
+    <input type="text" value={q} placeholder="Filter…" style={{width:'100%',marginBottom:6}}
+      onChange={e=>setQ(e.target.value)}/>
+    <div className="sec-optlist">
+      {shown.length===0
+        ? <div className="holder">Nothing matches “{q}”.</div>
+        : shown.map(o=>
+            <button type="button" key={o} className="sec-opt"
+              onClick={()=>onPick(o)}>{o}</button>)}
+    </div>
+  </>;
+}
+
+/* The whole Expected Content Checklist — an ordered list of Sections. */
+function SectionEditor({sections,templateId,onChange}){
+  const patch=(i,p)=>onChange(sections.map((x,j)=>j===i?{...x,...p}:x));
+  const move=(i,d)=>{const n=[...sections],j=i+d; if(j<0||j>=n.length) return;
+    [n[i],n[j]]=[n[j],n[i]]; onChange(n);};
+  return <div>
+    {sections.length===0 && <div className="holder">No sections listed yet.</div>}
+    {sections.map((sec,i)=>
+      <div key={sec.id||i}>
+        <div className="sec-idx">
+          <span className="n">Section {i+1}</span>
+          <button type="button" className="icon-btn" title="Move up"
+            disabled={i===0} onClick={()=>move(i,-1)}>↑</button>
+          <button type="button" className="icon-btn" title="Move down"
+            disabled={i===sections.length-1} onClick={()=>move(i,1)}>↓</button>
+        </div>
+        <SectionRowEditor sec={sec} index={i} templateId={templateId}
+          onPatch={p=>patch(i,p)}
+          onRemove={()=>onChange(sections.filter((_,j)=>j!==i))}/>
+      </div>)}
+    <button type="button" className="sec-add"
+      onClick={()=>onChange([...sections,{id:uid('ck'),text:'',angle:'Untyped',items:[]}])}>
+      + Add section</button>
+  </div>;
+}
+
 function RowEditor({id,rows,onChange,render,onAdd,addLabel,empty,reorder}){
   const move=(i,d)=>{const n=[...rows], j=i+d; if(j<0||j>=n.length) return;
     const t=n[i]; n[i]=n[j]; n[j]=t; onChange(n);};
@@ -1184,12 +1518,21 @@ function DerivedName({s,set}){
   const nm=derivedName(s);
   const clash=!!nm && db.setups.some(x=>x.id!==s.id &&
     derivedName(x).toLowerCase()===nm.toLowerCase());
-  if(!clash && !s.qualifier) return null;
+  const saved=savedTemplateNamed(s,nm);
+  if(!clash && !saved && !s.qualifier) return null;
   return <Field id="f-qualifier" label="Qualifier"
-    hint={clash
+    hint={clash||saved
       ? null
       : 'Clear it and the name goes back to what the Setup produces on its own.'}>
-    {clash
+    {saved
+      ? <Note k="warn" ic="⚠">
+          <b>A saved Report Template is already called “{nm}”.</b> If this is the same report for a
+          different Business Unit or Region, don’t create a second one — open{' '}
+          <b>{saved.name}</b> from the Setup Register and add your unit to it, with its own Owner,
+          Submitting Position and Review Chain. Create a separate Template only if this really is a
+          different report, and give it a qualifier below to tell them apart.
+        </Note>
+      : clash
       ? <Note k="warn" ic="⚠">Another Setup already resolves to <b>{nm}</b>. Either change its scope —
           a different Department or Function makes it distinct — or add a short qualifier here.</Note>
       : null}
@@ -1322,19 +1665,48 @@ function CadenceFields({s,set}){
   return <>
     <Field id="f-frequency" label="Frequency" req govern>
       <Sel id="f-frequency" val={s.frequency} opts={FREQUENCIES}
-        onChange={v=>set({frequency:v,dayOfWeek:null,dayOfMonth:null,monthInQuarter:null})}/></Field>
+        onChange={v=>set({frequency:v, dayOfWeek:null, dayOfMonth:null, monthInQuarter:null,
+                          secondDayOfWeek:null, secondDayOfMonth:null, monthInSemester:null,
+                          month:null})}/></Field>
     <div className="f-row3">
-      <Field id="f-dayOfWeek" label="Day of week" req when={DOW_FREQ.includes(s.frequency)} govern>
+      {/* Twice Weekly repeats on two days, so the first is labelled as such
+          only when there is a second to distinguish it from. */}
+      <Field id="f-dayOfWeek"
+        label={DOW2_FREQ.includes(s.frequency)?'First day of week':'Day of week'}
+        req when={DOW_FREQ.includes(s.frequency)} govern>
         <Sel id="f-dayOfWeek" val={s.dayOfWeek} opts={DAYS_OF_WEEK}
           onChange={v=>set({dayOfWeek:v})}/></Field>
-      <Field id="f-dayOfMonth" label="Day of month" req when={DOM_FREQ.includes(s.frequency)}
-        hint="1 to 30.">
+      <Field id="f-secondDayOfWeek" label="Second day of week" req
+        when={DOW2_FREQ.includes(s.frequency)} govern
+        hint="Must differ from the first day.">
+        <Sel id="f-secondDayOfWeek" val={s.secondDayOfWeek}
+          opts={DAYS_OF_WEEK.filter(d=>d!==s.dayOfWeek)}
+          onChange={v=>set({secondDayOfWeek:v})}/></Field>
+
+      <Field id="f-dayOfMonth"
+        label={DOM2_FREQ.includes(s.frequency)?'First day of month':'Day of month'}
+        req when={DOM_FREQ.includes(s.frequency)} hint="1 to 30.">
         <input id="f-dayOfMonth" type="number" min="1" max="30" value={s.dayOfMonth??''}
           onChange={e=>set({dayOfMonth:e.target.value===''?null:+e.target.value})}/></Field>
+      <Field id="f-secondDayOfMonth" label="Second day of month" req
+        when={DOM2_FREQ.includes(s.frequency)} hint="1 to 30, and different from the first.">
+        <input id="f-secondDayOfMonth" type="number" min="1" max="30" value={s.secondDayOfMonth??''}
+          onChange={e=>set({secondDayOfMonth:e.target.value===''?null:+e.target.value})}/></Field>
+
       <Field id="f-monthInQuarter" label="Month within quarter" req
         when={MIQ_FREQ.includes(s.frequency)} govern>
         <Sel id="f-monthInQuarter" val={s.monthInQuarter} opts={MONTHS_IN_QUARTER}
           onChange={v=>set({monthInQuarter:v})}/></Field>
+      <Field id="f-monthInSemester" label="Month within semester" req
+        when={MOS_FREQ.includes(s.frequency)} govern
+        hint="A semester is six months.">
+        <Sel id="f-monthInSemester" val={s.monthInSemester} opts={MONTHS_IN_SEMESTER}
+          onChange={v=>set({monthInSemester:v})}/></Field>
+      <Field id="f-month" label="Month" req
+        when={MOY_FREQ.includes(s.frequency)} govern
+        hint="The calendar month the report is due in each year.">
+        <Sel id="f-month" val={s.month} opts={MONTHS_OF_YEAR}
+          onChange={v=>set({month:v})}/></Field>
     </div>
   </>;
 }
@@ -1441,19 +1813,11 @@ function UnitSetup({s,set,issues,shared,intro}){
                 <Sel id={'u-chan-'+k} val={u.channel} disabled={!uTeam}
                   placeholder={uTeam?'Select…':'Choose a Team first'}
                   opts={channelsIn(uTeam).map(c=>({v:c.id,label:c.name}))}
-                  onChange={v=>{
-                    setUnit(k,{channel:v});
-                    /* A Report's Source link is one template-level field while
-                       Channels are per-unit, so the first Channel that resolves
-                       to a path fills it in. Only ever overwrites a link this
-                       same auto-fill wrote (or an empty one) -- anything typed
-                       by hand is left alone, see f-sourceLink below. */
-                    if(report && v){
-                      const path=channelPath(v);
-                      if(path && (!(s.sourceLink||'').trim() || s.sourceLinkAuto))
-                        set({sourceLink:path, sourceLinkAuto:true});
-                    }
-                  }}/>
+                  /* No copy into a Source link field any more -- the destination
+                     is derived from the chosen Channel by destinationOf() at the
+                     moment it is displayed and again when it is saved, so there
+                     is no second copy of it to keep in sync. */
+                  onChange={v=>setUnit(k,{channel:v})}/>
                 {report && u.channel && channelPath(u.channel)
                   ? <div className="holder">SharePoint path: {channelPath(u.channel)}</div>
                   : null}
@@ -1881,50 +2245,35 @@ function ReportWizard({rec,onClose}){
       </div>;
 
       if(step===3){
-        const file=s.delivery==='File destination';
-        const libs=LIBRARIES.filter(l=>l.site===s.site);
-        const folders=FOLDERS.filter(f=>f.library===s.library);
         return <div className="card">
           <h2>Destination and content</h2>
-          <Field id="f-delivery" label="Report Delivery" req>
-            <Seg id="f-delivery" opts={[
-                {v:'File destination', label:'File destination', locked:true,
-                 lockedHint:'Coming soon — SharePoint destinations are not wired to live data yet. Use Source link for now.'},
-                {v:'Source link', label:'Source link'}]} val={s.delivery}
-              onChange={v=>set({delivery:v,
-                ...(v==='Source link'?{site:null,library:null,folder:null}:{sourceLink:''})})}/></Field>
-          {file ? <div className="f-row3">
-              <Field id="f-site" label="Site" req govern>
-                <Sel id="f-site" val={s.site} opts={SITES.map(x=>({v:x.id,label:x.name}))}
-                  onChange={v=>set({site:v,library:null,folder:null})}/></Field>
-              <Field id="f-library" label="Library" req govern>
-                <Sel id="f-library" val={s.library} disabled={!s.site}
-                  placeholder={s.site?'Select…':'Choose a Site first'}
-                  opts={libs.map(x=>({v:x.id,label:x.name}))}
-                  onChange={v=>set({library:v,folder:null})}/></Field>
-              <Field id="f-folder" label="Folder" req govern>
-                <Sel id="f-folder" val={s.folder} disabled={!s.site||!s.library}
-                  placeholder={!s.site||!s.library?'Choose a Site and Library first':'Select…'}
-                  opts={folders.map(x=>({v:x.id,label:x.name}))}
-                  onChange={v=>set({folder:v})}/></Field>
-            </div>
-            : <Field id="f-sourceLink" label="Source link" req
-                hint={s.sourceLinkAuto
-                  ? 'Filled in from the SharePoint path of the Channel chosen in Setup per unit. Typing here replaces it and it stops updating.'
-                  : 'Choosing a Channel in Setup per unit fills this in from that Channel’s SharePoint path.'}>
-                <input id="f-sourceLink" type="text" value={s.sourceLink||''}
-                  onChange={e=>set({sourceLink:e.target.value, sourceLinkAuto:false})}
-                  placeholder="https://bi.andalusia.local/reports/…"/>
-                {s.sourceLinkAuto
-                  ? <div className="holder">auto-filled from the Channel’s SharePoint path</div>
-                  : null}</Field>}
-          <Field id="f-checklist" label="Expected Content Checklist"
-            hint="The components a submission must contain each period.">
-            <RowEditor id="f-checklist" rows={s.checklist||[]} onChange={v=>set({checklist:v})} reorder
-              addLabel="Add component" empty="No components listed yet."
-              onAdd={()=>set({checklist:[...(s.checklist||[]),{id:uid('ck'),text:''}]})}
-              render={(r,i)=><input type="text" value={r.text} placeholder="Component"
-                onChange={e=>set({checklist:s.checklist.map((x,j)=>j===i?{...x,text:e.target.value}:x)})}/>}/>
+          
+          {(()=>{ const dest=destinationOf(s);
+            return <Field id="f-sourceLink" label="Destination" govern
+              hint="Taken from the Team Channel chosen for each unit in Setup per unit — the first
+                    Channel with a SharePoint path is used. There is nothing to type here.">
+              {dest
+                ? <div className="holder mono" style={{overflowWrap:'anywhere'}}>{dest}</div>
+                : <div className="err" role="alert">
+                    No destination yet — choose a Team and Channel for a unit in
+                    <b> Setup per unit</b>, and the Channel’s SharePoint path becomes the destination.
+                  </div>}
+            </Field>; })()}
+          <Field id="f-checklist" label="Expected Content Checklist" req
+            hint="The sections a submission must contain each period. Each section can name a
+                  diagnostic angle and carry any number of KPIs, KPI breakdowns, Processes or a
+                  child report/plan — all seeded in automatically when the template is used.">
+            <SectionEditor sections={s.checklist||[]} templateId={s._dataverseId}
+              onChange={v=>set({checklist:v})}/>
+            {(()=>{ const secs=s.checklist||[];
+              const blank=secs.filter(c=>!(c.text||'').trim()).length;
+              if(secs.length===0)
+                return <div className="err" role="alert">At least one section is required.</div>;
+              if(blank)
+                return <div className="err" role="alert">
+                  {blank} section{blank>1?'s have':' has'} no heading. A section without a heading
+                  cannot be saved — give it one, or remove it.</div>;
+              return null; })()}
           </Field>
           <div className="f-row">
             <Field id="f-processes" label="Related Processes" govern
@@ -1963,9 +2312,7 @@ function ReportWizard({rec,onClose}){
 }
 
 function ReportSummary({s}){
-  const dest=s.delivery==='File destination'
-    ? [nameOf(SITES,s.site),nameOf(LIBRARIES,s.library),nameOf(FOLDERS,s.folder)].filter(Boolean).join(' / ')
-    : s.sourceLink;
+  const dest=destinationOf(s);
   const cad=[s.frequency,s.dayOfWeek,s.dayOfMonth?('day '+s.dayOfMonth):null,s.monthInQuarter]
     .filter(Boolean).join(' · ');
   const keys=scopeKeys(s);
@@ -1980,8 +2327,9 @@ function ReportSummary({s}){
           ['Submitted from',keys.length?scopeNames(s).join(', '):'—'],
           ['Departments and Functions',
             linesOf(s).length?linesOf(s).map(lineLabel).join(' · '):'None — Stage 4 sits above them']]}/>
-        <SumBlock title="Destination" items={[['Delivery',s.delivery],['Destination',dest],
-          ['Checklist',(s.checklist||[]).length+' components']]}/>
+        <SumBlock title="Destination" items={[
+          ['Destination',dest||'— no Channel chosen yet'],
+          ['Sections',(s.checklist||[]).length+' section(s)']]}/>
         <SumBlock title="Submission" items={[
           ['Sections',keys.length+' — one per '+(LEVEL_WORD[stageLevel(s)]||'unit')]]}/>
         <SumBlock title="Cadence" items={[['Cadence',cad],['Confidentiality',s.confidentiality]]}/>
@@ -2014,8 +2362,15 @@ function buildReportTemplatePayload(f){
     dayOfWeek: f.dayOfWeek,
     dayOfMonth: f.dayOfMonth,
     monthInQuarter: f.monthInQuarter,
+    secondDayOfWeek: f.secondDayOfWeek || undefined,
+    secondDayOfMonth: typeof f.secondDayOfMonth==='number' ? f.secondDayOfMonth : undefined,
+    monthInSemester: f.monthInSemester || undefined,
+    month: f.month || undefined,
     confidentiality: f.confidentiality,
-    destinationLink: f.delivery==='Source link' ? (f.sourceLink||undefined) : undefined,
+    /* Derived from the chosen Team Channel, never typed -- so the stored value
+       cannot drift from the Channel it came from. lm_destinationsharepointlink
+       is 1000 chars now, so a real path fits. */
+    destinationLink: destinationOf(f) || undefined,
     // Business Unit is per-unit only. Speciality/Team-Channel/Owner/Submitter
     // are per-unit too EXCEPT for a group-wide (Stage 3/4) Setup, which has
     // no per-unit child table at all -- for that case
@@ -2026,6 +2381,10 @@ function buildReportTemplatePayload(f){
     // back to a specific Business-Unit or Region row, not just the parent
     // template -- a group-wide Setup's Review Chain still has nowhere to go.
     stageLevel: lv,
+    /* The real Stage, now that lm_stage exists. stageLevel above stays too --
+       it is the coarser bu/region/group split the child-row writer needs, and
+       it cannot tell Stage 3 from Stage 4. */
+    stage: f.stage || null,
     units: keys.map(k=>{
       const u=unitOf(f,k)||{};
       return {
@@ -2044,7 +2403,30 @@ function buildReportTemplatePayload(f){
         })),
       };
     }),
-    checklist: (f.checklist||[]).filter(c=>c.text).map(c=>({text:c.text})),
+    /* A Section carries its Diagnostic Angle and its citations. The UI works in
+       display names throughout (same as Related KPIs/Processes above), so the
+       ids are resolved here at the boundary. An item whose name no longer
+       resolves is dropped rather than written as a dangling lookup. */
+    checklist: (f.checklist||[]).filter(c=>c.text).map(c=>({
+      text: c.text,
+      angle: c.angle || 'Untyped',
+      items: (c.items||[]).map(it=>{
+        if(it.type==='KPI')       return { type:'KPI', label:`KPI: ${it.kpi}`,
+                                           kpiId: KPI_ID_BY_NAME[it.kpi] };
+        if(it.type==='Process')   return { type:'Process', label:`Process: ${it.process}`,
+                                           processId: PROCESS_ID_BY_NAME[it.process] };
+        if(it.type==='Breakdown') return { type:'Breakdown',
+                                           label:`Breakdown: ${it.kpi} by ${it.dimension}`,
+                                           kpiId: KPI_ID_BY_NAME[it.kpi], dimension: it.dimension };
+        /* The id was captured at pick time from the live Dataverse list, so it
+           is used directly. Resolving it by name here would silently drop the
+           citation whenever a Template was renamed between picking and saving. */
+        if(it.type==='Child Template')
+          return { type:'Child Template', label:`Child: ${it.childTemplate}`,
+                   childTemplateId: it.childTemplateId };
+        return null;
+      }).filter(it=>it && (it.kpiId || it.processId || it.childTemplateId)),
+    })),
     lines: linesOf(f).map(l=>({
       departmentId: DEPARTMENTS.find(d=>d.name===l.department)?.id,
       functionId: l.function ? FUNCTIONS.find(fn=>fn.name===l.function)?.id : undefined,
@@ -2320,6 +2702,8 @@ const DV_FREQUENCY=['Daily','Twice Weekly','Weekly','Twice Monthly','Monthly','Q
 const DV_DAY_OF_WEEK=['Sunday','Monday','Tuesday','Wednesday','Thursday'];
 const DV_MONTH_IN_QUARTER=['1st month','2nd month','3rd month'];
 const DV_CONFIDENTIALITY=['Public','Internal','Confidential','High Confidential','Restricted'];
+// lm_diagnosticangle on a checklist row — codes run 1..5 in this order.
+const DV_SECTION_ANGLE=['Untyped','Descriptive','Diagnostic','Predictive','Prescriptive'];
 const byCode1=(arr,code)=> (code>=1 && code<=arr.length) ? arr[code-1] : null;
 
 // Meeting-side choice codes aren't sequential from 1, so these mirror the
@@ -2368,7 +2752,12 @@ function dataverseReportToSetup(detail){
     section:p._lm_reportspecialty_value||null,
     channel:p._lm_teamchannel_value||null, team:teamOfChannel(p._lm_teamchannel_value),
     submitter:p._lm_submittingposition_value||null, owner:p._lm_ownerposition_value||null,
-    reviewChain:[],
+    /* A group-wide Setup's chain binds to the template itself rather than to a
+       per-unit row, so it arrives on its own key and is hydrated here. Before
+       this it was hard-coded empty, which meant a saved chain never came back
+       into the form and the next save wrote it out again as duplicates. */
+    reviewChain:(detail.groupReviewChain||[])
+      .map(r=>r._lm_reviewerposition_value||null),
   }] : [];
 
   return {...BLANK_REPORT,
@@ -2382,10 +2771,35 @@ function dataverseReportToSetup(detail){
     dayOfWeek:byCode1(DV_DAY_OF_WEEK,p.lm_dayoftheweek),
     dayOfMonth:p.lm_dayofthemonth ?? null,
     monthInQuarter:byCode1(DV_MONTH_IN_QUARTER,p.lm_monthofthequarter),
+    secondDayOfWeek:byCode1(DAYS_OF_WEEK,p.lm_seconddayoftheweek),
+    secondDayOfMonth:p.lm_seconddayofthemonth ?? null,
+    monthInSemester:byCode1(MONTHS_IN_SEMESTER,p.lm_monthofthesemester),
+    month:byCode1(MONTHS_OF_YEAR,p.lm_month),
     confidentiality:byCode1(DV_CONFIDENTIALITY,p.lm_confidentiality),
     delivery:'Source link', sourceLink:p.lm_destinationsharepointlink||'',
+    /* Sections hydrate back into the same display-name shape the editor writes,
+       so an edit round-trips without the form ever seeing a GUID. */
     checklist:(detail.checklist||[]).slice().sort((a,b)=>(a.lm_checklistitemstep||0)-(b.lm_checklistitemstep||0))
-      .map(c=>({id:uid('ck'), text:c.lm_checklistitemname||''})),
+      .map(c=>({
+        id:uid('ck'),
+        text:c.lm_checklistitemname||'',
+        angle:byCode1(DV_SECTION_ANGLE,c.lm_diagnosticangle)||'Untyped',
+        items:(c.items||[]).map(it=>({
+          id:uid('si'),
+          type:it.type,
+          kpi:it.kpiId ? (idToName(KPI_ID_BY_NAME,it.kpiId)||'') : undefined,
+          process:it.processId ? (idToName(PROCESS_ID_BY_NAME,it.processId)||'') : undefined,
+          childTemplateId:it.childTemplateId||undefined,
+          /* Resolve the id back to a name off the live list; fall back to the
+             label stored on the row, so a citation still reads correctly even
+             if that Template has since been expired out of the list. */
+          childTemplate:it.childTemplateId
+            ? ((DV_REPORTS.current||[]).find(t=>t.id===it.childTemplateId)?.name
+               || (it.label||'').replace(/^Child:\s*/,'') || '(template not found)')
+            : undefined,
+          dimension:it.dimension||undefined,
+        })).filter(it=>it.type),
+      })),
     lines:(detail.lines||[]).map(l=>({
       id:uid('ln'),
       department:nameOf(DEPARTMENTS,l._lm_department_value)||'',
@@ -2393,7 +2807,12 @@ function dataverseReportToSetup(detail){
     })),
     kpis:(detail.kpiIds||[]).map(id=>idToName(KPI_ID_BY_NAME,id)).filter(Boolean),
     processes:(detail.processIds||[]).map(id=>idToName(PROCESS_ID_BY_NAME,id)).filter(Boolean),
-    stage:isRegionLevel?STAGES[1]:isGroupLevel?STAGES[2]:STAGES[0],
+    /* Read the real Stage off lm_stage. The old inference is kept only as a
+       fallback for rows saved before that column existed -- it cannot tell
+       Stage 3 from Stage 4, so anything written since will use the stored
+       value instead and a Stage 4 Template stays Stage 4 through an edit. */
+    stage: byCode1(STAGES, p.lm_stage)
+        || (isRegionLevel?STAGES[1]:isGroupLevel?STAGES[2]:STAGES[0]),
     regions:isRegionLevel ? regionUnits.map(u=>u.key)
       : Array.from(new Set(buUnits.map(u=>{const b=byId(BUSINESS_UNITS,u.key);return b?b.region:null;}).filter(Boolean))),
     businessUnits:isRegionLevel ? [] : buUnits.map(u=>u.key),
@@ -2530,7 +2949,18 @@ function ScreenRegister(){
     (fStatus==='All'||f.status===fStatus) &&
     (!q||(f.name||'').toLowerCase().includes(q.toLowerCase()));
 
-  const rows=realSetups.filter(s=>matches(filterFace(s)));
+  /* Newest first, on the same value the "Updated" column shows -- sorting on a
+     field the reader cannot see reads as a random order. A row with no date
+     sorts last rather than jumping to the top, which is what an empty string
+     would otherwise do in a descending compare.
+
+     The two groups are sorted separately because they render as different row
+     shapes and are deliberately kept apart (Setups opened into this session
+     first, then the rest of the register). Their dates are formatted
+     differently too -- local Setups carry 'YYYY-MM-DD', Dataverse rows a full
+     ISO timestamp -- so comparing across the two would not be safe anyway. */
+  const byNewest=(a,b)=>String(b.updated||'').localeCompare(String(a.updated||''));
+  const rows=realSetups.filter(s=>matches(filterFace(s))).slice().sort(byNewest);
 
   /* Dataverse-sourced rows the register hasn't loaded into this session's
      `db` yet -- shown as a lightweight "shadow" row until opened (at which
@@ -2570,7 +3000,7 @@ function ScreenRegister(){
     ...dvReports.filter(r=>!openedDvIds.has(r.id)).map(r=>dvFace(r,'Report Template')),
     ...dvMeetings.filter(r=>!openedDvIds.has(r.id)).map(r=>dvFace(r,'Committee / Meeting')),
   ];
-  const dvRows=dvAll.filter(matches);
+  const dvRows=dvAll.filter(matches).slice().sort(byNewest);
 
   // The stat cards read from the tables, not just this session's loaded-in
   // Setups: every real Setup plus every Dataverse row not yet opened into this
@@ -3107,6 +3537,7 @@ function App({onSwitch}){
      the others. */
   const [refDataTick,setRefDataTick]=useState(0);
   const [dvReports,setDvReports]=useState([]);
+  DV_REPORTS.current=dvReports;
   const [dvMeetings,setDvMeetings]=useState([]);
   const [dvOpening,setDvOpening]=useState(null); // id currently being fetched+opened/duplicated, for a loading state
   /* Re-reads both register listings from Dataverse. Run on mount, and again

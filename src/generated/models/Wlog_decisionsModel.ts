@@ -9,6 +9,9 @@ export interface Wlog_decisionsBase {
   wlog_name?: string;
   wlog_decisionstatus?: number;
   wlog_decisiontaken?: string;
+  pms_employeebusinessunit?: string;
+  pms_employeedepartment?: string;
+  pms_employeesector?: string;
   wlog_escalatedon?: string;
   wlog_escalationreason?: string;
   wlog_escalationreply?: string;
@@ -27,6 +30,8 @@ export interface Wlog_decisionsBase {
   utcconversiontimezonecode?: number;
   versionnumber?: number;
   wlog_decisionid?: string;
+  _lm_citedreportsection_value?: string;
+  _lm_citedreportsection_type?: _lm_citedreportsection_type_lm_citedreportsection_type;
   _createdby_value?: string;
   _createdonbehalfby_value?: string;
   _createdonbehalfby_type?: _createdonbehalfby_type_createdonbehalfby_type;

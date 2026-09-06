@@ -1,14 +1,14 @@
 {
-  "name": "lm_reporttemplatereviewchain",
-  "title": "Report Template Review Chains",
+  "name": "lm_reporttemplatesectionitems",
+  "title": "Report Template Section Items",
   "schema": {
     "type": "array",
     "items": {
       "type": "object",
       "x-ms-dataverse-entity": true,
-      "x-ms-dataverse-entityset": "lm_reporttemplatereviewchains",
-      "x-ms-dataverse-primary-id": "lm_reporttemplatereviewchainid",
-      "x-ms-dataverse-primary-name": "lm_newcolumn",
+      "x-ms-dataverse-entityset": "lm_reporttemplatesectionitemses",
+      "x-ms-dataverse-primary-id": "lm_reporttemplatesectionitemsid",
+      "x-ms-dataverse-primary-name": "lm_sectionitemname",
       "properties": {
         "createdby": {
           "type": "string",
@@ -79,111 +79,172 @@
           "x-ms-dataverse-type": "IntegerType",
           "x-ms-schema-name": "ImportSequenceNumber"
         },
-        "lm_meetingtemplate": {
+        "lm_breakdowndimension": {
           "type": "string",
-          "title": "Meeting Template ",
-          "x-ms-dataverse-attribute": "lm_meetingtemplate",
-          "x-ms-dataverse-type": "LookupType",
-          "x-ms-schema-name": "lm_MeetingTemplate"
+          "title": "Breakdown Dimension",
+          "x-ms-dataverse-attribute": "lm_breakdowndimension",
+          "x-ms-dataverse-type": "PicklistType",
+          "x-ms-schema-name": "lm_BreakdownDimension",
+          "enum": [
+            "Account",
+            "Payment Type",
+            "Physician ",
+            "Department",
+            "Platform",
+            "Employee",
+            "Speciality"
+          ],
+          "x-ms-enum-values": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "Color": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "13e4286a-a4a7-f111-b8de-00224882d001",
+          "x-ms-isGlobal": true,
+          "x-ms-optionsetdisplayname": "Breakdown Dimension",
+          "x-ms-optionSetType": "Picklist"
         },
-        "lm_meetingtemplatename": {
+        "lm_breakdowndimensionname": {
           "type": "string",
-          "title": "lm_meetingtemplatename",
-          "x-ms-dataverse-attribute": "lm_meetingtemplatename",
+          "title": "lm_breakdowndimensionname",
+          "x-ms-dataverse-attribute": "lm_breakdowndimensionname",
+          "x-ms-dataverse-type": "VirtualType",
+          "x-ms-schema-name": "lm_breakdowndimensionName",
+          "x-ms-read-only": true
+        },
+        "lm_childreporttemplate": {
+          "type": "string",
+          "title": "Child Report Template",
+          "x-ms-dataverse-attribute": "lm_childreporttemplate",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "lm_ChildReportTemplate"
+        },
+        "lm_childreporttemplatename": {
+          "type": "string",
+          "title": "lm_childreporttemplatename",
+          "x-ms-dataverse-attribute": "lm_childreporttemplatename",
           "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "lm_MeetingTemplateName",
+          "x-ms-schema-name": "lm_ChildReportTemplateName",
           "x-ms-read-only": true,
           "maxLength": 850
         },
-        "lm_meetingtemplateperbusinessunit": {
+        "lm_itemtype": {
           "type": "string",
-          "title": "Meeting Template Per Business Unit",
-          "x-ms-dataverse-attribute": "lm_meetingtemplateperbusinessunit",
-          "x-ms-dataverse-type": "LookupType",
-          "x-ms-schema-name": "lm_MeetingTemplatePerBusinessUnit"
+          "title": "Item Type",
+          "x-ms-dataverse-attribute": "lm_itemtype",
+          "x-ms-dataverse-type": "PicklistType",
+          "x-ms-schema-name": "lm_ItemType",
+          "enum": [
+            "KPI",
+            "Breakdown",
+            "Process",
+            "Child Template"
+          ],
+          "x-ms-enum-values": [
+            1,
+            2,
+            3,
+            4
+          ],
+          "Color": [
+            null,
+            null,
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "d88ecf83-a3a7-f111-b8de-00224882d001",
+          "x-ms-isGlobal": true,
+          "x-ms-optionsetdisplayname": "Report section Item Type ",
+          "x-ms-optionSetType": "Picklist"
         },
-        "lm_meetingtemplateperbusinessunitname": {
+        "lm_itemtypename": {
           "type": "string",
-          "title": "lm_meetingtemplateperbusinessunitname",
-          "x-ms-dataverse-attribute": "lm_meetingtemplateperbusinessunitname",
+          "title": "lm_itemtypename",
+          "x-ms-dataverse-attribute": "lm_itemtypename",
+          "x-ms-dataverse-type": "VirtualType",
+          "x-ms-schema-name": "lm_itemtypeName",
+          "x-ms-read-only": true
+        },
+        "lm_kpi": {
+          "type": "string",
+          "title": "KPI",
+          "x-ms-dataverse-attribute": "lm_kpi",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "lm_KPI"
+        },
+        "lm_kpiname": {
+          "type": "string",
+          "title": "lm_kpiname",
+          "x-ms-dataverse-attribute": "lm_kpiname",
           "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "lm_MeetingTemplatePerBusinessUnitName",
+          "x-ms-schema-name": "lm_KPIName",
           "x-ms-read-only": true,
           "maxLength": 850
         },
-        "lm_meetingtemplateperregion": {
+        "lm_process": {
           "type": "string",
-          "title": "Meeting Template Per Region",
-          "x-ms-dataverse-attribute": "lm_meetingtemplateperregion",
+          "title": "Process",
+          "x-ms-dataverse-attribute": "lm_process",
           "x-ms-dataverse-type": "LookupType",
-          "x-ms-schema-name": "lm_MeetingTemplatePerRegion"
+          "x-ms-schema-name": "lm_Process"
         },
-        "lm_meetingtemplateperregionname": {
+        "lm_processname": {
           "type": "string",
-          "title": "lm_meetingtemplateperregionname",
-          "x-ms-dataverse-attribute": "lm_meetingtemplateperregionname",
+          "title": "lm_processname",
+          "x-ms-dataverse-attribute": "lm_processname",
           "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "lm_MeetingTemplatePerRegionName",
+          "x-ms-schema-name": "lm_ProcessName",
           "x-ms-read-only": true,
           "maxLength": 850
         },
-        "lm_newcolumn": {
+        "lm_reporttemplatesectionitemsid": {
           "type": "string",
-          "title": "New column",
-          "x-ms-dataverse-attribute": "lm_newcolumn",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "lm_Newcolumn",
-          "x-ms-dataverse-primary-name": true,
-          "maxLength": 850
-        },
-        "lm_reporttemplate": {
-          "type": "string",
-          "title": "Report Template ",
-          "x-ms-dataverse-attribute": "lm_reporttemplate",
-          "x-ms-dataverse-type": "LookupType",
-          "x-ms-schema-name": "lm_ReportTemplate"
-        },
-        "lm_reporttemplatename": {
-          "type": "string",
-          "title": "lm_reporttemplatename",
-          "x-ms-dataverse-attribute": "lm_reporttemplatename",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "lm_ReportTemplateName",
-          "x-ms-read-only": true,
-          "maxLength": 850
-        },
-        "lm_reporttemplatereviewchainid": {
-          "type": "string",
-          "title": "Report Template Review Chain",
-          "x-ms-dataverse-attribute": "lm_reporttemplatereviewchainid",
+          "title": "Report Template Section Items",
+          "x-ms-dataverse-attribute": "lm_reporttemplatesectionitemsid",
           "x-ms-dataverse-type": "UniqueidentifierType",
-          "x-ms-schema-name": "lm_ReportTemplateReviewChainId",
+          "x-ms-schema-name": "lm_ReportTemplateSectionItemsId",
           "x-ms-dataverse-primary-id": true,
           "required": true,
           "x-ms-keyType": "primary"
         },
-        "lm_reviewerposition": {
+        "lm_sectionchecklistitem": {
           "type": "string",
-          "title": "Reviewer Position ",
-          "x-ms-dataverse-attribute": "lm_reviewerposition",
+          "title": "Section Checklist Item",
+          "x-ms-dataverse-attribute": "lm_sectionchecklistitem",
           "x-ms-dataverse-type": "LookupType",
-          "x-ms-schema-name": "lm_ReviewerPosition"
+          "x-ms-schema-name": "lm_SectionChecklistItem"
         },
-        "lm_reviewerpositionname": {
+        "lm_sectionchecklistitemname": {
           "type": "string",
-          "title": "lm_reviewerpositionname",
-          "x-ms-dataverse-attribute": "lm_reviewerpositionname",
+          "title": "lm_sectionchecklistitemname",
+          "x-ms-dataverse-attribute": "lm_sectionchecklistitemname",
           "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "lm_ReviewerPositionName",
+          "x-ms-schema-name": "lm_SectionChecklistItemName",
           "x-ms-read-only": true,
           "maxLength": 850
         },
-        "lm_step": {
+        "lm_sectionitemname": {
           "type": "string",
-          "title": "Step",
-          "x-ms-dataverse-attribute": "lm_step",
-          "x-ms-dataverse-type": "IntegerType",
-          "x-ms-schema-name": "lm_Step"
+          "title": "Section Item Name",
+          "x-ms-dataverse-attribute": "lm_sectionitemname",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "lm_SectionItemName",
+          "x-ms-dataverse-primary-name": true,
+          "required": true,
+          "maxLength": 850
         },
         "modifiedby": {
           "type": "string",
@@ -343,7 +404,7 @@
             null,
             null
           ],
-          "x-ms-optionsetmetadataid": "9ea28198-e5e2-4572-bab8-6384ebc4691f",
+          "x-ms-optionsetmetadataid": "c3aa1d6d-70a5-f111-b8df-000d3a2a6b98",
           "x-ms-isGlobal": false,
           "x-ms-optionsetdisplayname": "Status",
           "x-ms-optionSetType": "State"
@@ -374,7 +435,7 @@
             null,
             null
           ],
-          "x-ms-optionsetmetadataid": "2e5e5413-e42c-4218-97b2-cce243e772bc",
+          "x-ms-optionsetmetadataid": "cdaa1d6d-70a5-f111-b8df-000d3a2a6b98",
           "x-ms-isGlobal": false,
           "x-ms-optionsetdisplayname": "Status Reason",
           "x-ms-optionSetType": "Status"
@@ -413,7 +474,8 @@
       "required": [
         "createdbyyominame",
         "createdonbehalfbyyominame",
-        "lm_reporttemplatereviewchainid",
+        "lm_reporttemplatesectionitemsid",
+        "lm_sectionitemname",
         "modifiedbyyominame",
         "modifiedonbehalfbyyominame",
         "ownerid",

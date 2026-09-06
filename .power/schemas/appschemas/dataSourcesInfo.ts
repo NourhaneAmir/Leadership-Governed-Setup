@@ -222,6 +222,27 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "lm_reportoccurrencesectionses": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "lm_reportoccurrencesectionsid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "lm_reportoccurrenceshares": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "lm_reportoccurrenceshareid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "lm_reportsectioncitationses": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "lm_reportsectioncitationsid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "lm_reporttemplatebusinessunitses": {
     "tableId": "",
     "version": "",
@@ -268,6 +289,13 @@ export const dataSourcesInfo = {
     "tableId": "",
     "version": "",
     "primaryKey": "lm_reporttemplatereviewchainid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
+  "lm_reporttemplatesectionitemses": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "lm_reporttemplatesectionitemsid",
     "dataSourceType": "Dataverse",
     "apis": {}
   },

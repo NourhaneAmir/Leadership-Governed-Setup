@@ -10,6 +10,8 @@
         "_createdby_type",
         "_createdonbehalfby_value",
         "_createdonbehalfby_type",
+        "_lm_citedreportsection_value",
+        "_lm_citedreportsection_type",
         "_modifiedby_value",
         "_modifiedby_type",
         "_modifiedonbehalfby_value",
@@ -44,6 +46,7 @@
       "nonFilterableProperties": [
         "_createdby_type",
         "_createdonbehalfby_type",
+        "_lm_citedreportsection_type",
         "_modifiedby_type",
         "_modifiedonbehalfby_type",
         "_ownerid_type",
@@ -208,6 +211,75 @@
           "title": "Decision Taken",
           "x-ms-visibility": "important",
           "x-ms-permission": "read-write"
+        },
+        "pms_employeebusinessunit": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "maxLength": 4000,
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "contains",
+              "startswith",
+              "endswith",
+              "null"
+            ]
+          },
+          "description": "",
+          "title": "Employee Business Unit",
+          "x-ms-visibility": "internal",
+          "x-ms-permission": "none"
+        },
+        "pms_employeedepartment": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "maxLength": 4000,
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "contains",
+              "startswith",
+              "endswith",
+              "null"
+            ]
+          },
+          "description": "",
+          "title": "Employee Department",
+          "x-ms-visibility": "internal",
+          "x-ms-permission": "none"
+        },
+        "pms_employeesector": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "maxLength": 4000,
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "contains",
+              "startswith",
+              "endswith",
+              "null"
+            ]
+          },
+          "description": "",
+          "title": "Employee Sector",
+          "x-ms-visibility": "internal",
+          "x-ms-permission": "none"
         },
         "wlog_escalatedon": {
           "x-ms-sort": "none",
@@ -654,6 +726,57 @@
           "x-ms-keyType": "primary",
           "x-ms-visibility": "advanced",
           "x-ms-permission": "read-only"
+        },
+        "_lm_citedreportsection_value": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "",
+          "title": "Cited Report Section",
+          "format": "guid",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-write"
+        },
+        "_lm_citedreportsection_type": {
+          "x-ms-sort": "none",
+          "type": "string",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "ne",
+              "gt",
+              "ge",
+              "lt",
+              "le",
+              "null"
+            ]
+          },
+          "description": "",
+          "title": "Cited Report Section Type",
+          "format": "string",
+          "x-ms-visibility": "advanced",
+          "x-ms-permission": "read-only",
+          "enum": [
+            "",
+            "lm_reportoccurrencesectionses"
+          ],
+          "default": "",
+          "x-ms-crm-targetentitynames": [
+            "lm_reportoccurrencesectionses"
+          ],
+          "x-ms-crm-navigationpropertynames ": [
+            "lm_CitedReportSection"
+          ]
         },
         "_createdby_value": {
           "x-ms-sort": "none",

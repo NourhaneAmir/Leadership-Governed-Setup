@@ -1,14 +1,14 @@
 {
-  "name": "lm_reporttemplatereviewchain",
-  "title": "Report Template Review Chains",
+  "name": "lm_reportoccurrencesections",
+  "title": "Report Occurrence Sections",
   "schema": {
     "type": "array",
     "items": {
       "type": "object",
       "x-ms-dataverse-entity": true,
-      "x-ms-dataverse-entityset": "lm_reporttemplatereviewchains",
-      "x-ms-dataverse-primary-id": "lm_reporttemplatereviewchainid",
-      "x-ms-dataverse-primary-name": "lm_newcolumn",
+      "x-ms-dataverse-entityset": "lm_reportoccurrencesectionses",
+      "x-ms-dataverse-primary-id": "lm_reportoccurrencesectionsid",
+      "x-ms-dataverse-primary-name": "lm_heading",
       "properties": {
         "createdby": {
           "type": "string",
@@ -79,111 +79,143 @@
           "x-ms-dataverse-type": "IntegerType",
           "x-ms-schema-name": "ImportSequenceNumber"
         },
-        "lm_meetingtemplate": {
+        "lm_body": {
           "type": "string",
-          "title": "Meeting Template ",
-          "x-ms-dataverse-attribute": "lm_meetingtemplate",
-          "x-ms-dataverse-type": "LookupType",
-          "x-ms-schema-name": "lm_MeetingTemplate"
-        },
-        "lm_meetingtemplatename": {
-          "type": "string",
-          "title": "lm_meetingtemplatename",
-          "x-ms-dataverse-attribute": "lm_meetingtemplatename",
+          "title": "Body",
+          "x-ms-dataverse-attribute": "lm_body",
           "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "lm_MeetingTemplateName",
-          "x-ms-read-only": true,
-          "maxLength": 850
+          "x-ms-schema-name": "lm_Body",
+          "maxLength": 4000
         },
-        "lm_meetingtemplateperbusinessunit": {
+        "lm_diagnosticangle": {
           "type": "string",
-          "title": "Meeting Template Per Business Unit",
-          "x-ms-dataverse-attribute": "lm_meetingtemplateperbusinessunit",
-          "x-ms-dataverse-type": "LookupType",
-          "x-ms-schema-name": "lm_MeetingTemplatePerBusinessUnit"
+          "title": "Diagnostic Angle",
+          "x-ms-dataverse-attribute": "lm_diagnosticangle",
+          "x-ms-dataverse-type": "PicklistType",
+          "x-ms-schema-name": "lm_DiagnosticAngle",
+          "enum": [
+            "Untyped (default)",
+            "Descriptive",
+            "Diagnostic",
+            "Predictive",
+            "Prescriptive"
+          ],
+          "x-ms-enum-values": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "Color": [
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "503387d4-a1a7-f111-b8de-00224882d001",
+          "x-ms-isGlobal": true,
+          "x-ms-optionsetdisplayname": "Diagnostic Angle",
+          "x-ms-optionSetType": "Picklist"
         },
-        "lm_meetingtemplateperbusinessunitname": {
+        "lm_diagnosticanglename": {
           "type": "string",
-          "title": "lm_meetingtemplateperbusinessunitname",
-          "x-ms-dataverse-attribute": "lm_meetingtemplateperbusinessunitname",
+          "title": "lm_diagnosticanglename",
+          "x-ms-dataverse-attribute": "lm_diagnosticanglename",
+          "x-ms-dataverse-type": "VirtualType",
+          "x-ms-schema-name": "lm_diagnosticangleName",
+          "x-ms-read-only": true
+        },
+        "lm_heading": {
+          "type": "string",
+          "title": "Heading",
+          "x-ms-dataverse-attribute": "lm_heading",
           "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "lm_MeetingTemplatePerBusinessUnitName",
-          "x-ms-read-only": true,
-          "maxLength": 850
-        },
-        "lm_meetingtemplateperregion": {
-          "type": "string",
-          "title": "Meeting Template Per Region",
-          "x-ms-dataverse-attribute": "lm_meetingtemplateperregion",
-          "x-ms-dataverse-type": "LookupType",
-          "x-ms-schema-name": "lm_MeetingTemplatePerRegion"
-        },
-        "lm_meetingtemplateperregionname": {
-          "type": "string",
-          "title": "lm_meetingtemplateperregionname",
-          "x-ms-dataverse-attribute": "lm_meetingtemplateperregionname",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "lm_MeetingTemplatePerRegionName",
-          "x-ms-read-only": true,
-          "maxLength": 850
-        },
-        "lm_newcolumn": {
-          "type": "string",
-          "title": "New column",
-          "x-ms-dataverse-attribute": "lm_newcolumn",
-          "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "lm_Newcolumn",
+          "x-ms-schema-name": "lm_Heading",
           "x-ms-dataverse-primary-name": true,
+          "required": true,
           "maxLength": 850
         },
-        "lm_reporttemplate": {
+        "lm_reportoccurrence": {
           "type": "string",
-          "title": "Report Template ",
-          "x-ms-dataverse-attribute": "lm_reporttemplate",
+          "title": "Report Occurrence",
+          "x-ms-dataverse-attribute": "lm_reportoccurrence",
           "x-ms-dataverse-type": "LookupType",
-          "x-ms-schema-name": "lm_ReportTemplate"
+          "x-ms-schema-name": "lm_ReportOccurrence"
         },
-        "lm_reporttemplatename": {
+        "lm_reportoccurrencename": {
           "type": "string",
-          "title": "lm_reporttemplatename",
-          "x-ms-dataverse-attribute": "lm_reporttemplatename",
+          "title": "lm_reportoccurrencename",
+          "x-ms-dataverse-attribute": "lm_reportoccurrencename",
           "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "lm_ReportTemplateName",
+          "x-ms-schema-name": "lm_ReportOccurrenceName",
           "x-ms-read-only": true,
           "maxLength": 850
         },
-        "lm_reporttemplatereviewchainid": {
+        "lm_reportoccurrencesectionsid": {
           "type": "string",
-          "title": "Report Template Review Chain",
-          "x-ms-dataverse-attribute": "lm_reporttemplatereviewchainid",
+          "title": "Report Occurrence Sections",
+          "x-ms-dataverse-attribute": "lm_reportoccurrencesectionsid",
           "x-ms-dataverse-type": "UniqueidentifierType",
-          "x-ms-schema-name": "lm_ReportTemplateReviewChainId",
+          "x-ms-schema-name": "lm_ReportOccurrenceSectionsId",
           "x-ms-dataverse-primary-id": true,
           "required": true,
           "x-ms-keyType": "primary"
         },
-        "lm_reviewerposition": {
+        "lm_sequence": {
           "type": "string",
-          "title": "Reviewer Position ",
-          "x-ms-dataverse-attribute": "lm_reviewerposition",
-          "x-ms-dataverse-type": "LookupType",
-          "x-ms-schema-name": "lm_ReviewerPosition"
+          "title": "Sequence",
+          "x-ms-dataverse-attribute": "lm_sequence",
+          "x-ms-dataverse-type": "IntegerType",
+          "x-ms-schema-name": "lm_Sequence"
         },
-        "lm_reviewerpositionname": {
+        "lm_source": {
           "type": "string",
-          "title": "lm_reviewerpositionname",
-          "x-ms-dataverse-attribute": "lm_reviewerpositionname",
+          "title": "Source",
+          "x-ms-dataverse-attribute": "lm_source",
+          "x-ms-dataverse-type": "PicklistType",
+          "x-ms-schema-name": "lm_Source",
+          "enum": [
+            "Migrated (from Template)",
+            "Added (this occurrence only)"
+          ],
+          "x-ms-enum-values": [
+            1,
+            2
+          ],
+          "Color": [
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "b6243866-a5a7-f111-b8de-00224882d001",
+          "x-ms-isGlobal": true,
+          "x-ms-optionsetdisplayname": "Section Source",
+          "x-ms-optionSetType": "Picklist"
+        },
+        "lm_sourcename": {
+          "type": "string",
+          "title": "lm_sourcename",
+          "x-ms-dataverse-attribute": "lm_sourcename",
+          "x-ms-dataverse-type": "VirtualType",
+          "x-ms-schema-name": "lm_sourceName",
+          "x-ms-read-only": true
+        },
+        "lm_sourcesectionchecklistitem": {
+          "type": "string",
+          "title": "Source Section Checklist Item",
+          "x-ms-dataverse-attribute": "lm_sourcesectionchecklistitem",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "lm_SourceSectionChecklistItem"
+        },
+        "lm_sourcesectionchecklistitemname": {
+          "type": "string",
+          "title": "lm_sourcesectionchecklistitemname",
+          "x-ms-dataverse-attribute": "lm_sourcesectionchecklistitemname",
           "x-ms-dataverse-type": "StringType",
-          "x-ms-schema-name": "lm_ReviewerPositionName",
+          "x-ms-schema-name": "lm_SourceSectionChecklistItemName",
           "x-ms-read-only": true,
           "maxLength": 850
-        },
-        "lm_step": {
-          "type": "string",
-          "title": "Step",
-          "x-ms-dataverse-attribute": "lm_step",
-          "x-ms-dataverse-type": "IntegerType",
-          "x-ms-schema-name": "lm_Step"
         },
         "modifiedby": {
           "type": "string",
@@ -343,7 +375,7 @@
             null,
             null
           ],
-          "x-ms-optionsetmetadataid": "9ea28198-e5e2-4572-bab8-6384ebc4691f",
+          "x-ms-optionsetmetadataid": "5ef07d4a-70a5-f111-b8df-000d3a2a6b98",
           "x-ms-isGlobal": false,
           "x-ms-optionsetdisplayname": "Status",
           "x-ms-optionSetType": "State"
@@ -374,7 +406,7 @@
             null,
             null
           ],
-          "x-ms-optionsetmetadataid": "2e5e5413-e42c-4218-97b2-cce243e772bc",
+          "x-ms-optionsetmetadataid": "68f07d4a-70a5-f111-b8df-000d3a2a6b98",
           "x-ms-isGlobal": false,
           "x-ms-optionsetdisplayname": "Status Reason",
           "x-ms-optionSetType": "Status"
@@ -413,7 +445,8 @@
       "required": [
         "createdbyyominame",
         "createdonbehalfbyyominame",
-        "lm_reporttemplatereviewchainid",
+        "lm_heading",
+        "lm_reportoccurrencesectionsid",
         "modifiedbyyominame",
         "modifiedonbehalfbyyominame",
         "ownerid",

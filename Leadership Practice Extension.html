@@ -1,0 +1,2197 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Andalusia Pulse · Role workspace</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+ --gold-dark:#A5845B;--gold-light:#F0C893;--brand-gold:#A5845B;--brand-gold-600:#2B160A;
+ --green-dark:#49604C;--brand-green:#49604C;--brand-green-700:#2E372D;
+ --ink:#211C1E;--neutral-400:#D9D9D9;--neutral-300:#EDEDED;--neutral-200:#F7F7F7;
+ --canvas:#F7F4EE;--surface:#FFFFFF;--surface-hover:#FBF8F2;--border:#E8E0D3;--border-hover:#D8CBB4;
+ --text-primary:#211C1E;--text-body:#514A44;--muted:#8A8079;--dim:#B3A99E;
+ --warning:#C98A1E;--danger:#B23A3A;--info:#6B7B6E;
+ --gold-soft:rgba(165,132,91,.12);--green-soft:rgba(73,96,76,.12);--danger-soft:rgba(178,58,58,.10);
+ --warn-soft:rgba(201,138,30,.12);--sage-soft:rgba(107,123,110,.14);--gold-glow:rgba(165,132,91,.22);
+ --grad-gold:linear-gradient(135deg,#A5845B 0%,#F0C893 100%);
+ --grad-nav:linear-gradient(135deg,#2B160A 0%,#211C1E 100%);
+ --sans:'Outfit',-apple-system,sans-serif;--body:'Inter',-apple-system,sans-serif;--mono:'JetBrains Mono',monospace;
+ --r-sm:8px;--r-md:12px;--r-lg:16px;--r-xl:22px;--r-pill:999px;
+ --shadow-sm:0 1px 3px rgba(33,28,30,.06);--shadow-lg:0 12px 32px rgba(33,28,30,.12);
+ --ease:cubic-bezier(0.22,1,0.36,1);
+ --pbi:#B8930A;--pbi-soft:rgba(242,200,17,.18);
+ --strat:#7A5AA8;--strat-soft:rgba(122,90,168,.13);
+ --pm:#3C5A99;--pm-soft:rgba(60,90,153,.11);
+ --unstruct:#9C5A2E;--unstruct-soft:rgba(156,90,46,.11);
+ --proc:#2F6F7E;--proc-soft:rgba(47,111,126,.11);
+ /* the four diagnostic types get their own quiet key */
+ --d1:#5B7C8D;--d2:#8E5B2A;--d3:#6B5A9E;--d4:#4A7C59;
+ --d1-soft:rgba(91,124,141,.13);--d2-soft:rgba(142,91,42,.12);
+ --d3-soft:rgba(107,90,158,.12);--d4-soft:rgba(74,124,89,.13);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--canvas);color:var(--text-primary);font-family:var(--body);font-size:13px;line-height:1.55;-webkit-font-smoothing:antialiased}
+button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:none}
+textarea,input,select{font-family:inherit}
+:focus-visible{outline:2px solid var(--gold-dark);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+.icon{width:13px;height:13px;flex:0 0 auto;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.icon-lg{width:16px;height:16px}.icon-sm{width:11px;height:11px}
+.mono{font-family:var(--mono)}
+
+.navbar{height:48px;background:var(--grad-nav);display:flex;align-items:center;gap:12px;padding:0 14px;position:sticky;top:0;z-index:50}
+.nb-mark{width:30px;height:30px;border-radius:var(--r-sm);background:var(--grad-gold);display:flex;align-items:center;justify-content:center;color:var(--brand-gold-600)}
+.nb-title{font-family:var(--sans);font-size:13px;font-weight:500;color:rgba(255,255,255,.55)}
+.nb-title b{font-weight:700;color:#fff}
+.nb-right{margin-left:auto;display:flex;align-items:center;gap:11px}
+.nb-role{display:flex;align-items:center;gap:6px;background:var(--gold-soft);border:1px solid rgba(165,132,91,.45);border-radius:var(--r-pill);
+ padding:3px 11px;color:var(--gold-light);font-family:var(--sans);font-size:11px;font-weight:600}
+.nb-user{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.06);border-radius:var(--r-pill);padding:3px 4px 3px 11px}
+.nb-user .n{font-family:var(--sans);font-size:11px;font-weight:600;color:rgba(255,255,255,.85)}
+.nb-av{width:24px;height:24px;border-radius:50%;background:var(--grad-gold);color:var(--brand-gold-600);display:flex;align-items:center;justify-content:center;font-family:var(--sans);font-size:9px;font-weight:800}
+.shell{display:grid;grid-template-columns:214px 1fr;min-height:calc(100vh - 48px)}
+.sidebar{background:var(--grad-nav);padding:12px 0}
+.sb-sec{font-family:var(--sans);font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.26);padding:14px 14px 5px}
+.sb-item{display:flex;align-items:center;gap:10px;width:100%;padding:9px 14px;border-left:3px solid transparent;color:rgba(255,255,255,.5);
+ font-family:var(--sans);font-size:12.5px;font-weight:500;text-align:left}
+.sb-item:hover{background:rgba(255,255,255,.05);color:rgba(255,255,255,.82)}
+.sb-item.active{background:var(--gold-soft);border-left-color:var(--brand-gold);color:var(--gold-light);font-weight:600}
+.nb-badge{margin-left:auto;background:var(--gold-soft);color:var(--gold-light);border-radius:var(--r-pill);font-family:var(--mono);font-size:9px;font-weight:600;padding:1px 6px}
+.nb-badge.red{background:var(--danger-soft);color:#E39A9A}
+
+.page-head{background:linear-gradient(180deg,#fff,var(--canvas));border-bottom:1px solid var(--border);padding:14px 20px 0}
+.crumb{font-size:11px;color:var(--muted);margin-bottom:4px}
+.crumb b{color:var(--gold-dark);font-weight:600}
+.title-row{display:flex;align-items:flex-start;gap:14px;margin-bottom:12px}
+h1{font-family:var(--sans);font-size:22px;font-weight:700;line-height:1.2}
+.subtitle{font-size:12px;color:var(--text-body);margin-top:2px;max-width:860px}
+.head-actions{margin-left:auto;display:flex;gap:8px;align-items:center}
+.rail{display:flex;gap:2px;align-items:flex-end;flex-wrap:wrap}
+.rtab{font-family:var(--sans);font-size:12px;font-weight:600;color:var(--muted);padding:8px 13px;border-bottom:2px solid transparent;display:flex;gap:7px;align-items:center}
+.rtab.active{color:var(--brand-green);border-bottom-color:var(--brand-green)}
+.rtab .ct{font-family:var(--mono);font-size:10px;background:var(--green-soft);color:var(--brand-green);border-radius:var(--r-pill);padding:1px 6px}
+.rtab .ct.red{background:var(--danger-soft);color:var(--danger)}
+.rtab .ct.amber{background:var(--warn-soft);color:var(--warning)}
+.content{padding:16px 20px 50px}
+
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow-sm)}
+.card.flush{padding:0;overflow:hidden}
+.ch{display:flex;align-items:center;gap:8px;padding:12px 15px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.ch .icon{color:var(--brand-gold)}.ch-t{font-family:var(--sans);font-size:14px;font-weight:600}
+.ch .r{margin-left:auto;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.cnote{padding:13px 15px;font-size:11px;color:var(--text-body);border-top:1px solid var(--border)}
+.btn{display:inline-flex;align-items:center;gap:7px;font-family:var(--sans);font-size:12px;font-weight:600;border-radius:var(--r-md);
+ padding:8px 14px;transition:background .18s var(--ease),border-color .18s var(--ease),transform .12s var(--ease);white-space:nowrap}
+.btn:active{transform:scale(.97)}
+.btn-primary{background:var(--gold-dark);color:#fff}.btn-primary:hover{background:#8E7049}
+.btn-go{background:var(--green-dark);color:#fff}.btn-go:hover{background:var(--brand-green-700)}
+.btn-outline{background:var(--surface);color:var(--text-body);border:1px solid var(--border)}
+.btn-outline:hover{background:var(--surface-hover);border-color:var(--border-hover);color:var(--ink)}
+.btn-ghost{background:transparent;color:var(--muted)}.btn-ghost:hover{background:var(--surface-hover);color:var(--ink)}
+.btn-pbi{background:var(--pbi-soft);color:#7A6000;border:1px solid rgba(242,200,17,.55)}
+.btn-pm{background:var(--pm-soft);color:var(--pm);border:1px solid rgba(60,90,153,.3)}
+.btn-strat{background:var(--strat-soft);color:var(--strat);border:1px solid rgba(122,90,168,.3)}
+.btn-sm{padding:5px 10px;font-size:11px;border-radius:var(--r-sm);gap:5px}
+.btn[disabled],.btn.blocked{opacity:.5;cursor:not-allowed;background:var(--neutral-200);color:var(--muted);border-color:var(--border)}
+.b{display:inline-flex;align-items:center;gap:5px;border-radius:var(--r-pill);padding:2px 9px;font-family:var(--sans);font-size:10px;
+ font-weight:700;letter-spacing:.5px;text-transform:uppercase;white-space:nowrap}
+.bdot{width:5px;height:5px;border-radius:50%;background:currentColor;flex:0 0 auto}
+.b-draft{background:var(--surface-hover);color:var(--muted)}
+.b-sub{background:var(--warn-soft);color:var(--warning)}
+.b-rev{background:var(--gold-soft);color:var(--gold-dark)}
+.b-rmi{background:var(--danger-soft);color:var(--danger)}
+.b-app{background:var(--green-soft);color:var(--green-dark)}
+.b-pbi{background:var(--pbi-soft);color:#7A6000}
+.b-pm{background:var(--pm-soft);color:var(--pm)}
+.b-strat{background:var(--strat-soft);color:var(--strat)}
+.b-un{background:var(--unstruct-soft);color:var(--unstruct)}
+.b-proc{background:var(--proc-soft);color:var(--proc)}
+.acts{display:flex;gap:5px;flex-wrap:wrap;align-items:center}
+table{width:100%;border-collapse:collapse}
+thead th{background:var(--gold-dark);color:#fff;text-align:left;font-family:var(--sans);font-size:10px;font-weight:700;letter-spacing:.7px;
+ text-transform:uppercase;padding:9px 14px;white-space:nowrap}
+tbody tr{border-bottom:1px solid var(--border)}
+tbody tr:nth-child(even){background:var(--neutral-200)}
+tbody td{padding:10px 14px;font-size:12px;vertical-align:top}
+.t-name{font-family:var(--sans);font-size:12px;font-weight:600}
+.t-sub{font-size:10px;color:var(--muted);margin-top:2px}
+
+/* ===== diagnostic key — four types, always the same colours ===== */
+.dg{display:inline-flex;align-items:center;gap:5px;border-radius:var(--r-sm);padding:2px 8px;font-family:var(--sans);
+ font-size:9.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;white-space:nowrap}
+.dg.d1{background:var(--d1-soft);color:var(--d1)}
+.dg.d2{background:var(--d2-soft);color:var(--d2)}
+.dg.d3{background:var(--d3-soft);color:var(--d3)}
+.dg.d4{background:var(--d4-soft);color:var(--d4)}
+.dg.none{background:var(--danger-soft);color:var(--danger)}
+.dgbar{display:flex;gap:3px;align-items:center}
+.dgbar i{width:16px;height:5px;border-radius:2px;background:var(--neutral-300);display:block}
+.dgbar i.d1{background:var(--d1)}.dgbar i.d2{background:var(--d2)}
+.dgbar i.d3{background:var(--d3)}.dgbar i.d4{background:var(--d4)}
+
+/* ===== artifacts ===== */
+.arts{display:grid;grid-template-columns:repeat(auto-fit,minmax(258px,1fr));gap:14px;margin-bottom:16px}
+.art{border:1px solid var(--border);border-radius:var(--r-lg);background:var(--surface);padding:14px;text-align:left;width:100%;
+ position:relative;overflow:hidden;box-shadow:var(--shadow-sm)}
+.art::before{content:"";position:absolute;inset:0 0 auto 0;height:3px;background:var(--brand-gold)}
+.art.report::before{background:var(--proc)}
+.art.pack::before{background:var(--strat)}
+.art.svc::before{background:var(--pm)}
+.art:hover{border-color:var(--gold-dark);box-shadow:0 4px 14px rgba(33,28,30,.08)}
+.art-k{font-family:var(--sans);font-size:9px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:var(--dim);margin-top:4px}
+.art-t{font-family:var(--sans);font-size:14.5px;font-weight:700;margin-top:4px;line-height:1.25}
+.art-m{font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:4px}
+.art-f{display:flex;gap:8px;align-items:center;margin-top:11px;padding-top:10px;border-top:1px dashed var(--border);flex-wrap:wrap}
+.prog{height:6px;border-radius:3px;background:var(--neutral-300);overflow:hidden;margin-top:9px}
+.prog i{display:block;height:100%;background:var(--brand-green)}
+.prog.warn i{background:var(--warning)}.prog.bad i{background:var(--danger)}
+
+/* ===== composer ===== */
+.cmp{display:grid;grid-template-columns:212px 1fr 330px;align-items:stretch}
+.outline{border-right:1px solid var(--border);background:var(--neutral-200);padding:12px 0}
+.ol-h{font-family:var(--sans);font-size:9px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--dim);padding:4px 14px 8px}
+.ol{display:flex;gap:9px;width:100%;text-align:left;padding:9px 14px;border-left:3px solid transparent;align-items:flex-start}
+.ol:hover{background:var(--surface)}
+.ol.on{background:var(--surface);border-left-color:var(--brand-gold)}
+.ol-n{font-family:var(--mono);font-size:10px;color:var(--dim);padding-top:2px;min-width:13px}
+.ol-t{font-family:var(--sans);font-size:11.5px;font-weight:600;line-height:1.3}
+.ol-s{font-size:10px;color:var(--muted);margin-top:2px}
+.editor{padding:16px 18px;min-width:0}
+.ed-t{font-family:var(--sans);font-size:17px;font-weight:700}
+.ed-s{font-size:11px;color:var(--muted);margin-top:2px}
+.para{border:1px solid var(--border);border-radius:var(--r-md);background:var(--surface);margin-bottom:11px;overflow:hidden}
+.para.on{border-color:var(--gold-dark);box-shadow:0 0 0 3px var(--gold-glow)}
+.p-h{display:flex;gap:8px;align-items:center;padding:9px 12px;background:var(--neutral-200);border-bottom:1px solid var(--border);flex-wrap:wrap}
+.p-t{font-family:var(--sans);font-size:12px;font-weight:700}
+.p-b{padding:11px 12px}
+.p-b textarea{width:100%;border:none;resize:vertical;font-size:12.5px;line-height:1.8;color:var(--text-body);min-height:66px;background:transparent}
+.p-b textarea:focus{outline:none}
+.p-f{display:flex;gap:6px;align-items:center;padding:8px 12px;border-top:1px dashed var(--border);flex-wrap:wrap}
+.chips{display:flex;gap:4px;flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--border);border-radius:var(--r-pill);padding:1px 8px;
+ font-family:var(--mono);font-size:9.5px;background:var(--surface);color:var(--text-body)}
+.chip.pbi{border-color:rgba(242,200,17,.6);background:var(--pbi-soft);color:#7A6000}
+.chip.pm{border-color:rgba(60,90,153,.35);background:var(--pm-soft);color:var(--pm)}
+.chip.strat{border-color:rgba(122,90,168,.35);background:var(--strat-soft);color:var(--strat)}
+.chip.concl{border-color:rgba(122,90,168,.4);background:rgba(122,90,168,.10);color:var(--strat)}
+.b-concl{background:rgba(122,90,168,.13);color:var(--strat)}
+.chip.un{border-color:rgba(156,90,46,.35);background:var(--unstruct-soft);color:var(--unstruct)}
+.chip.none{border-color:rgba(178,58,58,.4);background:var(--danger-soft);color:var(--danger)}
+.reuse{display:inline-flex;align-items:center;gap:5px;background:var(--gold-soft);color:var(--gold-dark);border-radius:var(--r-sm);
+ padding:1px 7px;font-family:var(--sans);font-size:9px;font-weight:700;letter-spacing:.4px;text-transform:uppercase}
+.side{border-left:1px solid var(--border);background:var(--neutral-200);display:flex;flex-direction:column;overflow:hidden}
+.side-tabs{display:flex;gap:1px;padding:10px 11px 0;flex-wrap:wrap}
+.stab{font-family:var(--sans);font-size:10.5px;font-weight:600;color:var(--muted);padding:6px 9px;border-radius:7px 7px 0 0;border-bottom:2px solid transparent}
+.stab.on{background:var(--surface);color:var(--gold-dark);border-bottom-color:var(--gold-dark)}
+.side-b{padding:12px 11px 18px;overflow-y:auto;flex:1}
+.side-h{font-family:var(--sans);font-size:9px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--dim);
+ display:flex;align-items:center;gap:7px;margin-bottom:8px}
+.side-h .n{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--muted)}
+.ref{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);padding:9px 10px;margin-bottom:8px}
+.ref.used{border-color:rgba(165,132,91,.5);background:#FDFAF5}
+.ref-t{font-family:var(--sans);font-size:11.5px;font-weight:600;display:flex;gap:6px;align-items:flex-start}
+.ref-m{font-family:var(--mono);font-size:9.5px;color:var(--muted);margin-top:3px}
+.ref-a{display:flex;gap:5px;margin-top:8px;flex-wrap:wrap}
+.scopebar{display:flex;gap:7px;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);
+ padding:8px 10px;margin-bottom:11px;flex-wrap:wrap}
+.q{border-left:2px solid var(--unstruct);padding:3px 0 3px 9px;font-size:11px;color:var(--text-body);font-style:italic;margin-top:6px}
+
+/* ===== power bi ===== */
+.tree{border-right:1px solid var(--border);padding:11px 8px;background:var(--neutral-200)}
+.tnode{display:flex;gap:8px;align-items:flex-start;width:100%;text-align:left;padding:7px 10px;border-radius:var(--r-sm)}
+.tnode:hover{background:var(--surface)}
+.tnode.on{background:var(--surface);box-shadow:inset 3px 0 0 var(--pbi)}
+.tnode .cap{font-family:var(--sans);font-size:11.5px;font-weight:600}
+.tnode .sub{font-size:10px;color:var(--muted);margin-top:1px}
+.tl2{padding-left:20px}.tl3{padding-left:36px}
+.vis{border:1px solid var(--border);border-radius:var(--r-md);background:var(--surface);overflow:hidden;margin-bottom:12px}
+.vis.on{border-color:var(--pbi);box-shadow:0 0 0 3px rgba(242,200,17,.2)}
+.vis-h{display:flex;gap:8px;align-items:center;padding:9px 11px;background:var(--neutral-200);border-bottom:1px solid var(--border);flex-wrap:wrap}
+.spark{display:flex;align-items:flex-end;gap:4px;height:56px;margin-top:8px}
+.spark i{flex:1;background:rgba(60,90,153,.35);border-radius:2px 2px 0 0;display:block}
+.spark i.last{background:var(--pm)}
+.cmtbox{border-top:1px dashed var(--border);background:#FDFBF6;padding:11px}
+.pdraft{border:1px solid rgba(165,132,91,.4);border-left:3px solid var(--gold-dark);border-radius:var(--r-sm);background:#FDF8F0;padding:10px 11px;margin-top:8px}
+
+/* ===== P&M entry ===== */
+.fgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.fld{display:flex;flex-direction:column;gap:5px;min-width:0}
+.flbl{font-family:var(--sans);font-size:9px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:var(--dim)}
+.inp{display:flex;align-items:center;border:1px solid var(--neutral-400);border-radius:var(--r-sm);background:var(--surface)}
+.inp:focus-within{border-color:var(--pm);box-shadow:0 0 0 3px rgba(60,90,153,.13)}
+.inp input,.inp select{flex:1;min-width:0;border:none;background:transparent;padding:8px 10px;font-size:12.5px;color:var(--ink)}
+.inp input:focus,.inp select:focus{outline:none}
+.inp .suf{font-family:var(--mono);font-size:10.5px;color:var(--muted);padding-right:10px}
+.rta{width:100%;border:1px solid var(--neutral-400);border-radius:var(--r-sm);background:var(--surface);padding:9px 11px;
+ font-size:12.5px;line-height:1.65;resize:vertical;min-height:62px;color:var(--ink)}
+.rta:focus{outline:none;border-color:var(--gold-dark);box-shadow:0 0 0 3px var(--gold-glow)}
+.derived{margin-top:13px;border:1px dashed var(--border-hover);border-radius:var(--r-md);background:var(--neutral-200);padding:12px 13px}
+.seg{display:flex;gap:4px;flex-wrap:wrap}
+.seg button{border:1px solid var(--border);background:var(--surface);border-radius:var(--r-sm);padding:6px 11px;
+ font-family:var(--sans);font-size:11.5px;font-weight:600;color:var(--text-body)}
+.seg button.on{background:var(--pm-soft);border-color:var(--pm);color:var(--pm)}
+.seg.d button.on{background:var(--gold-soft);border-color:var(--gold-dark);color:var(--gold-dark)}
+
+/* ===== communications ===== */
+.msg{display:flex;gap:11px;padding:13px 15px;border-bottom:1px solid var(--border);align-items:flex-start}
+.msg:last-child{border-bottom:none}
+.msg.unread{background:#FDF8F0}
+.msg-ic{width:28px;height:28px;border-radius:var(--r-sm);display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.msg-ic.in{background:var(--gold-soft);color:var(--gold-dark)}
+.msg-ic.out{background:var(--green-soft);color:var(--green-dark)}
+.msg-ic.esc{background:var(--strat-soft);color:var(--strat)}
+.msg-ic.sup{background:var(--unstruct-soft);color:var(--unstruct)}
+.msg-t{font-family:var(--sans);font-size:12.5px;font-weight:600;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.msg-m{font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:3px}
+.msg-x{font-size:11.5px;color:var(--text-body);margin-top:6px}
+.msg-a{display:flex;gap:6px;margin-top:9px;flex-wrap:wrap}
+.gate{display:flex;gap:11px;border-radius:var(--r-md);padding:12px 14px;margin:16px 0 0}
+.gate.open{background:var(--green-soft);border-left:3px solid var(--brand-green)}
+.gate.shut{background:var(--danger-soft);border-left:3px solid var(--danger)}
+.gate-t{font-family:var(--sans);font-size:12px;font-weight:700}
+.gate-b{font-size:11px;color:var(--text-body);margin-top:3px}
+.toasts{position:fixed;right:20px;bottom:20px;z-index:98;display:flex;flex-direction:column-reverse;gap:7px}
+.toast{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--brand-gold);border-radius:var(--r-md);
+ box-shadow:var(--shadow-lg);padding:11px 14px;font-size:12px;width:326px}
+.toast.ok{border-left-color:var(--brand-green)}.toast.al{border-left-color:var(--danger)}
+@media (max-width:1320px){.cmp{grid-template-columns:1fr}.outline,.side{border:none;border-bottom:1px solid var(--border)}
+ .fgrid{grid-template-columns:repeat(2,1fr)}}
+
+/* ===== composer: process → tactic work units ===== */
+.ol-t,.ol-s,.sub-t,.sub-m,.cc-t,.cc-m,.ts-q{display:block}
+.ol-p{font-family:var(--sans);font-size:9px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--proc);
+ padding:13px 14px 5px;display:flex;gap:6px;align-items:center;border-top:1px solid var(--border);margin-top:6px}
+.ol-p:first-child{border-top:none;margin-top:0}
+.cbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:linear-gradient(180deg,#FDF8F0,var(--surface));
+ border:1px solid var(--gold-light);border-left:4px solid var(--brand-gold);border-radius:var(--r-md);padding:11px 14px;margin-bottom:15px}
+.cbar>.icon{color:var(--gold-dark)}
+.cbar-l{font-family:var(--sans);font-size:9.5px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:var(--gold-dark)}
+.cbar-h{font-size:11px;color:var(--text-body);flex-basis:100%;margin-top:2px}
+.cbar .inp{background:var(--surface)}
+.covwrap{border:1px solid var(--border);border-radius:var(--r-md);background:var(--surface);margin-bottom:15px;overflow:hidden}
+.cov-h{display:flex;gap:11px;align-items:center;padding:11px 13px;flex-wrap:wrap}
+.cov-h>.icon{color:var(--gold-dark)}
+.gapstate{padding:12px 14px;background:var(--warn-soft);border-top:1px solid var(--border);font-size:11.5px;
+ color:var(--text-body);line-height:1.9}
+.unit{border:1px solid var(--border);border-radius:var(--r-md);background:var(--surface);overflow:hidden;margin-bottom:16px}
+.unit-h{display:flex;gap:9px;align-items:center;padding:13px 15px;background:linear-gradient(180deg,#F8F5FC,var(--surface));
+ border-bottom:1px solid var(--border);flex-wrap:wrap}
+.unit-t{font-family:var(--sans);font-size:15px;font-weight:700}
+.unit-s{border-top:1px solid var(--border)}
+.unit-s:first-of-type{border-top:none}
+.unit-sh{display:flex;gap:8px;align-items:center;padding:10px 15px;background:var(--neutral-200);
+ font-family:var(--sans);font-size:9.5px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:var(--dim);
+ border-bottom:1px solid var(--border)}
+.unit-sh>.icon{color:var(--gold-dark)}
+.unit-f{display:flex;gap:7px;align-items:center;padding:11px 15px;border-top:1px solid var(--border);flex-wrap:wrap;background:var(--neutral-200)}
+.tslot{border-top:1px solid var(--border);padding:13px 15px}
+.tslot:first-of-type{border-top:none}
+.tslot.empty{background:var(--neutral-200)}
+.tslot.on{background:#FDFAF5;box-shadow:inset 3px 0 0 var(--brand-gold)}
+.ts-h{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+.ts-q{font-family:var(--sans);font-size:12.5px;font-weight:600}
+.ts-need{font-size:11px;color:var(--muted)}
+.tslot textarea{width:100%;border:1px solid transparent;border-radius:var(--r-sm);resize:vertical;font-size:12.5px;
+ line-height:1.8;color:var(--text-body);min-height:58px;background:transparent;margin-top:8px;padding:6px 8px}
+.tslot textarea:focus{outline:none;border-color:var(--neutral-400);background:var(--surface)}
+.tslot .p-f{padding:8px 0 0;margin-top:6px;border-top:1px dashed var(--border)}
+.chip.concl{border-color:rgba(122,90,168,.4);background:rgba(122,90,168,.10);color:var(--strat)}
+.b-concl{background:rgba(122,90,168,.13);color:var(--strat)}
+.org-tree{display:flex;justify-content:center}
+.org-tree ul{display:flex;padding-top:28px;position:relative;margin:0}
+.org-tree li{display:flex;flex-direction:column;align-items:center;list-style:none;padding:28px 10px 0;position:relative}
+.org-tree li::before,.org-tree li::after{content:'';position:absolute;top:0;right:50%;border-top:2px solid var(--border);width:50%;height:28px}
+.org-tree li::after{right:auto;left:50%;border-left:2px solid var(--border)}
+.org-tree li:only-child{padding-top:0}
+.org-tree li:only-child::before,.org-tree li:only-child::after{display:none}
+.org-tree li:first-child::before{border:none}
+.org-tree li:last-child::after{border:none}
+.org-tree li:first-child::after{border-radius:6px 0 0 0}
+.org-tree li:last-child::before{border-radius:0 6px 0 0}
+.org-tree ul ul::before{content:'';position:absolute;top:0;left:50%;border-left:2px solid var(--border);width:0;height:28px}
+.org-tree>ul{padding-top:0}
+.org-tree>ul>li{padding-top:0}
+.org-tree>ul>li::before,.org-tree>ul>li::after{display:none}
+.org-tree>ul>li>ul::before{height:28px;top:0}
+.tnodebox{background:#fff;border:1px solid var(--border);border-radius:8px;padding:10px 14px;cursor:pointer;min-width:170px;
+ max-width:210px;text-align:left;box-shadow:0 1px 3px rgba(0,0,0,.06);transition:opacity .15s,box-shadow .15s}
+.tnodebox:hover{box-shadow:0 2px 8px rgba(0,0,0,.12)}
+.tnodebox.dim{opacity:.28}
+.tnodebox.focused{border-color:var(--gold-dark);box-shadow:0 0 0 2px var(--gold-soft)}
+.tnodebox .tn-t{font-size:12px;font-weight:600;color:var(--ink);line-height:1.3}
+.tnodebox .tn-m{font-size:10px;color:var(--muted);margin-top:4px}
+</style>
+</head>
+<body>
+<nav class="navbar">
+ <span class="nb-mark"><svg class="icon icon-lg" viewBox="0 0 24 24"><path d="M12 3l8 4.5-8 4.5-8-4.5L12 3z"/><path d="M4 12l8 4.5 8-4.5"/><path d="M4 16.5L12 21l8-4.5"/></svg></span>
+ <span class="nb-title">Andalusia Pulse · <b id="nbArt">Role workspace</b></span>
+ <div class="nb-right">
+  <span class="nb-role"><svg class="icon icon-sm" viewBox="0 0 24 24"><path d="M17 20v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9.5" cy="7" r="3.5"/></svg>Department Head · Clinical Services</span>
+  <span class="nb-user"><span class="n">Dr. Nabil Shafik</span><span class="nb-av">NS</span></span>
+ </div>
+</nav>
+<div class="shell">
+ <aside class="sidebar" id="sidebar"></aside>
+ <main>
+  <div class="page-head">
+   <div class="crumb" id="crumb"></div>
+   <div class="title-row"><div><h1 id="pgT"></h1><div class="subtitle" id="pgS"></div></div><div class="head-actions" id="pgA"></div></div>
+   <div class="rail" id="rail"></div>
+  </div>
+  <div class="content" id="content"></div>
+ </main>
+</div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script>
+(function(){
+"use strict";
+function $(i){return document.getElementById(i);}
+function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+function toast(m,k){var b=$("toasts");var t=document.createElement("div");t.className="toast "+(k||"ok");t.innerHTML=m;b.appendChild(t);
+ setTimeout(function(){if(t.parentNode)t.parentNode.removeChild(t);},4400);}
+var ME="Dr. Nabil Shafik";
+
+var IC={
+ open:'<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>',
+ chart:'<polyline points="3 17 9 11 13 15 21 7"/><polyline points="15 7 21 7 21 13"/>',
+ check:'<path d="M20 6L9 17l-5-5"/>',send:'<line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>',
+ pen:'<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+ doc:'<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>',
+ users:'<path d="M17 20v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9.5" cy="7" r="3.5"/>',
+ warn:'<circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="12"/>',
+ flow:'<path d="M3 12h4l3-8 4 16 3-8h4"/>',
+ grid:'<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="9" x2="9" y2="21"/>',
+ db:'<ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
+ up:'<line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>',
+ down:'<line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/>',
+ layers:'<path d="M12 3l8 4.5-8 4.5-8-4.5L12 3z"/><path d="M4 12l8 4.5 8-4.5"/>',
+ plus:'<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+ mail:'<rect x="3" y="5" width="18" height="14" rx="2"/><polyline points="3 7 12 13 21 7"/>',
+ lock:'<rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
+ back:'<polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/>'};
+function ico(k,c){return '<svg class="icon'+(c?" "+c:"")+'" viewBox="0 0 24 24">'+(IC[k]||"")+'</svg>';}
+
+/* ============================================================
+   THE FOUR DIAGNOSTIC TYPES
+   ============================================================ */
+var DIAG={
+ d1:{n:"Descriptive",q:"What happened",need:"a certified figure"},
+ d2:{n:"Diagnostic",q:"Why it happened",need:"a cause with evidence"},
+ d3:{n:"Predictive",q:"What happens next",need:"an assumption and a horizon"},
+ d4:{n:"Prescriptive",q:"What to do",need:"an owner and a date"}};
+function dgChip(d){return d?'<span class="dg '+d+'">'+DIAG[d].n+'</span>':'<span class="dg none">untyped</span>';}
+
+/* ============================================================
+   PROCESSES — the role owns these; everything hangs off them
+   ============================================================ */
+var PROC=[
+ {id:"PRC-045",n:"Cath lab operations",own:"Clinical Services",data:["DR-077"],reports:["OR-HR"]},
+ {id:"PRC-014",n:"Clinic scheduling",own:"Clinical Services",data:["DR-108"],reports:[]},
+ {id:"PRC-021",n:"Referral pathway",own:"Clinical Services",data:["DR-108","DR-041"],reports:["OR-SLR","OR-QUA"]},
+ {id:"PRC-030",n:"Theatre utilisation",own:"Clinical Services",data:["DR-108"],reports:["OR-THR","OR-TOT","OR-HR"]},
+ {id:"PRC-002",n:"Leadership practice",own:"Governance",data:[],reports:["OR-TOT"]}];
+function proc(id){for(var i=0;i<PROC.length;i++)if(PROC[i].id===id)return PROC[i];return null;}
+
+/* ============================================================
+   DATA — Power BI. Apps, reports, pages, visuals.
+   No authors, no paragraphs, nothing to contest. Only cited.
+   ============================================================ */
+var DATA=[
+ {id:"APP-COMM",n:"Commercial Performance",role:"Department heads · specialty managers",reports:[
+  {id:"DR-108",n:"Volume and contribution",pages:[
+   {id:"PG-VOL",n:"Volume by week",vis:[
+    {id:"V-10",n:"Planned against actual volume",kind:"Clustered column",val:"1,842 visits",diag:"d1",proc:"PRC-014"},
+    {id:"V-11",n:"Variance decomposition",kind:"Waterfall",val:"−468 visits",diag:"d2",proc:"PRC-014"}]},
+   {id:"PG-THR",n:"Theatre and list utilisation",vis:[
+    {id:"V-12",n:"List utilisation by theatre",kind:"Matrix",val:"82%",diag:"d1",proc:"PRC-030"},
+    {id:"V-13",n:"Unused list capacity",kind:"Bar",val:"3 lists a week",diag:"d2",proc:"PRC-030"}]},
+   {id:"PG-REF",n:"Referral and conversion",vis:[
+    {id:"V-14",n:"Referral conversion trend",kind:"Line",val:"27%",diag:"d2",proc:"PRC-021"},
+    {id:"V-15",n:"Conversion forecast band",kind:"Line and band",val:"29% ±4",diag:"d3",proc:"PRC-021"}]}]}]},
+ {id:"APP-CLIN",n:"Clinical Operations",role:"Quality · specialty",reports:[
+  {id:"DR-041",n:"Quality indicators",pages:[
+   {id:"PG-IND",n:"Indicator overview",vis:[
+    {id:"V-30",n:"24 indicators by month",kind:"Line",val:"3 flagged",diag:"d1",proc:"PRC-021"},
+    {id:"V-31",n:"Flagged variance detail",kind:"Table",val:"",diag:"d2",proc:"PRC-021"}]}]}]},
+ {id:"APP-PM",n:"Planning and Monitoring",role:"PMB · Finance BP",reports:[
+  {id:"DR-077",n:"Target against actual",pages:[
+   {id:"PG-TGT",n:"Attainment",vis:[
+    {id:"V-40",n:"Attainment by measure",kind:"Bar",val:"79%",diag:"d1",proc:"PRC-045"},
+    {id:"V-41",n:"Recovery scenarios",kind:"Line",val:"3 scenarios",diag:"d3",proc:"PRC-045"}]}]}]}];
+function findVis(id){var r=null;DATA.forEach(function(a){a.reports.forEach(function(rp){rp.pages.forEach(function(pg){
+ pg.vis.forEach(function(v){if(v.id===id)r={v:v,pg:pg,rp:rp,a:a};});});});});return r;}
+function dataFor(pid,diag,all){
+ var out=[];DATA.forEach(function(a){a.reports.forEach(function(rp){rp.pages.forEach(function(pg){
+  pg.vis.forEach(function(v){
+   var byProc=v.proc===pid,byDiag=diag&&v.diag===diag;
+   if(all)out.push({v:v,pg:pg,rp:rp,a:a,why:"browsed"});
+   else if(byProc||byDiag)out.push({v:v,pg:pg,rp:rp,a:a,why:byProc?(byDiag?"both":"process"):"diagnostic"});});});});});
+ return out;}
+
+/* ============================================================
+   REPORTS — organizational. The same class of artifact you produce:
+   paragraphs with an author, a process, a type and citations.
+   ============================================================ */
+var ORGREPS=[
+ {id:"OR-SLR",n:"Cardiology service line review",from:"Business Development",au:"Tarek Sabry",when:"20 Aug",
+  st:"Issued",dir:"in",type:"Conclusion",scope:{dept:"medical"},procs:["PRC-021"],paras:[
+   {id:"OP-01",h:"Referral conversion has not moved",proc:"PRC-021",diag:"d1",
+    v:"Referral conversion from the two feeder clinics has held between 31 and 34 per cent for three quarters.",cites:["V-14"]},
+   {id:"OP-02",h:"No recovery expected before Q2",proc:"PRC-021",diag:"d3",
+    v:"On the current pathway the review expects no recovery before Q2. The forecast band for the quarter is 29% ±4.",cites:["V-15","AT-02"]}]},
+ {id:"OR-THR",n:"Theatre scheduling review",from:"Surgical Services",au:"Yasmine Farouk",when:"21 Aug",
+  st:"Issued",dir:"in",type:"Conclusion",scope:{dept:"medical"},procs:["PRC-030"],paras:[
+   {id:"OP-10",h:"Three specialties, two spare lists",proc:"PRC-030",diag:"d2",
+    v:"Three surgical specialties are bidding for the same two spare lists; none has priority in the current rota.",cites:["V-13","AT-01"]},
+   {id:"OP-11",h:"Utilisation is high but mistimed",proc:"PRC-030",diag:"d1",
+    v:"List utilisation sits at 82 per cent, with the unused capacity falling almost entirely in evening blocks.",cites:["V-12"]}]},
+ {id:"OR-TOT",n:"Team of Teams alignment record",from:"TOT · Clinical Services",au:"TOT chair",when:"22 Aug",
+  st:"Issued",dir:"in",type:"Alignment record",scope:{dept:"medical"},procs:["PRC-030"],paras:[
+   {id:"OP-20",h:"Theatre allocation unsettled",proc:"PRC-030",diag:"d4",
+    v:"The peers could not settle the allocation and refer it to the department head.",cites:["OP-10"]}]},
+ {id:"OR-HR",n:"HR service plan",from:"Human Resources",au:"Dalia Mostafa",when:"19 Aug",
+  st:"Issued",dir:"in",type:"Plan",scope:{dept:"medical"},procs:["PRC-030","PRC-045"],paras:[
+   {id:"OP-30",h:"Establishment cannot grow before Q1",proc:"PRC-045",diag:"d3",
+    v:"Anaesthesia establishment cannot grow before Q1; any Q4 cover must come from overtime.",cites:["AT-03"]}]},
+ {id:"OR-QUA",n:"Quality indicators commentary",from:"Quality and Accreditation",au:"Hussain Ahmed",when:"20 Aug",
+  st:"Issued",dir:"in",type:"Commentary",scope:{dept:"medical"},procs:["PRC-021"],paras:[
+   {id:"OP-40",h:"The flags trace to the pathway",proc:"PRC-021",diag:"d2",
+    v:"Two of the three flags trace to the same referral pathway rather than to clinical practice.",cites:["V-30","V-31"]}]},
+ {id:"OR-BUQ",n:"BU Quarterly Rollup",from:"BU Strategy Committee",au:"Nabil Shafik",when:"22 Aug",
+  st:"Issued",dir:"out",type:"Conclusion",scope:{dept:"medical"},procs:["PRC-021","PRC-030","PRC-045"],paras:[
+   {id:"OP-50",h:"Referral, theatre and HR pictures for the quarter",proc:"PRC-021",diag:"d1",
+    v:"The quarterly picture across referral, theatre and HR service constraints, drawn from each service line\u2019s own review.",
+    cites:["OR-SLR","OR-THR","OR-HR"]}]}];
+function orgRep(id){for(var i=0;i<ORGREPS.length;i++)if(ORGREPS[i].id===id)return ORGREPS[i];return null;}
+function orgPara(id){var r=null;ORGREPS.forEach(function(x){x.paras.forEach(function(pp){if(pp.id===id)r={p:pp,r:x};});});return r;}
+/* hierarchy — a report is a parent of any report its paragraphs cite,
+   whether cited whole (Child report/plan) or via one of its paragraphs */
+function reportChildIds(rid){
+ var r=orgRep(rid);if(!r)return[];
+ var out=[];
+ r.paras.forEach(function(p){p.cites.forEach(function(c){
+  var direct=orgRep(c);if(direct&&direct.id!==rid&&out.indexOf(direct.id)<0)out.push(direct.id);
+  var viaPara=orgPara(c);if(viaPara&&viaPara.r.id!==rid&&out.indexOf(viaPara.r.id)<0)out.push(viaPara.r.id);
+ });});
+ return out;}
+function reportParentIds(rid){return ORGREPS.filter(function(r){return reportChildIds(r.id).indexOf(rid)>-1;}).map(function(r){return r.id;});}
+function reportIsTopLevel(rid){return reportParentIds(rid).length===0;}
+function reportOrgs(rid){var r=orgRep(rid);if(!r)return[];var out=[];
+ r.paras.forEach(function(p){p.cites.forEach(function(c){var kf=findKpiOrBd(c);if(kf&&kf.k.biReportId&&out.indexOf(kf.k.biReportId)<0)out.push(kf.k.biReportId);});});
+ return out.map(biReport).filter(Boolean);}
+
+function orgFor(pid,diag,all){
+ var out=[];ORGREPS.forEach(function(r){r.paras.forEach(function(pp){
+  var byProc=pp.proc===pid,byDiag=diag&&pp.diag===diag;
+  if(all)out.push({p:pp,r:r,why:"browsed"});
+  else if(byProc||byDiag)out.push({p:pp,r:r,why:byProc?(byDiag?"both":"process"):"diagnostic"});});});
+ return out;}
+/* how many conclusions deep a claim sits before it reaches a measurement */
+function depthOf(cites,seen){
+ seen=seen||{};var d=0;
+ (cites||[]).forEach(function(c){
+  if(seen[c])return;seen[c]=1;
+  var o=orgPara(c);
+  if(o)d=Math.max(d,1+depthOf(o.p.cites,seen));});
+ return d;}
+
+/* ============================================================
+   STRATEGY — authored elsewhere, referenced here
+   ============================================================ */
+var TASKS=[
+ {id:"TSK-4411",t:"Publish the revised theatre session grid",dir:"in",from:"MOM-031 · Quality Committee",who:"Dr. A. Kamel",
+  due:"Fri 29 Aug",st:"open",par:"PRJ-018",proc:"PRC-030",note:"Raised when the minutes were approved. Blocks the pooling tactic."},
+ {id:"TSK-4418",t:"Brief cath lab nursing on the new evening blocks",dir:"in",from:"Plan commit · Q3",who:"Specialty Manager",
+  due:"Mon 01 Sep",st:"open",par:"T-101",proc:"PRC-045",note:"Carried from last quarter's plan."},
+ {id:"TSK-4402",t:"Confirm anaesthesia overtime budget",dir:"in",from:"HR service plan",who:"Dalia Mostafa",
+  due:"Wed 27 Aug",st:"done",par:"",proc:"PRC-045",note:"Closed — overtime approved to the end of Q4."},
+ {id:"TSK-4425",t:"Return the theatre ask with the rota constraint stated",dir:"out",from:"You",who:"Sherif Adham · ENT",
+  due:"Tue 26 Aug",st:"open",par:"P-07",proc:"PRC-030",note:"Raised when you challenged the ENT conclusion."},
+ {id:"TSK-4430",t:"Model the pooled-list scenario",dir:"out",from:"You",who:"Nour Hegazy · FP&A",
+  due:"Thu 28 Aug",st:"open",par:"P-07",proc:"PRC-030",note:"Needed before the plan can quantify the pooling option."}];
+function task(id){for(var i=0;i<TASKS.length;i++)if(TASKS[i].id===id)return TASKS[i];return null;}
+
+var STRAT=[
+ {id:"OBJ-03",k:"Objective",n:"Grow cardiology contribution",st:"Published",own:"BU Director"},
+ {id:"KPI-101",k:"KPI",n:"Specialty revenue contribution",st:"+9% of +15%",own:"Finance BP"},
+ {id:"T-101",k:"Tactic",n:"Cath lab sessions per week",st:"18 → 24 · 58%",own:"Specialty Manager",par:"KPI-101",pct:58,proc:"PRC-045"},
+ {id:"T-202",k:"Tactic",n:"Insurance approval conversion",st:"81% → 90% · 74%",own:"Revenue Cycle",par:"KPI-101",pct:74,proc:"PRC-021"},
+ {id:"P-02",k:"POC",n:"Cath lab scheduling optimiser",st:"Pre-implementation",own:"Specialty Manager",par:"T-101",pct:25,proc:"PRC-045"},
+ {id:"P-07",k:"POC",n:"Theatre list pooling across surgical specialties",st:"Design",own:"Clinical Services",par:"T-101",pct:10,proc:"PRC-030"},
+ {id:"PRJ-018",k:"Project",n:"Cath lab scheduling rollout",st:"Pilot",own:"DT",par:"P-02",pct:45,proc:"PRC-045"}];
+function strat(id){for(var i=0;i<STRAT.length;i++)if(STRAT[i].id===id)return STRAT[i];return null;}
+
+/* ============================================================
+   PLANNING & MONITORING — entries are MADE here
+   ============================================================ */
+var VISITS_PER_FTE=254,CPV=1181;
+var PMT=[
+ {id:"TVP-01",k:"Target",n:"Department volume",tg:6550,ac:5228,u:"visits",own:"PMB"},
+ {id:"TVP-03",k:"Target",n:"Referral rate",tg:34,ac:27,u:"%",own:"Clinic Ops"}];
+var PMS=[
+ {id:"SEP-02",k:"Supply",n:"Add two cath lab sessions weekly",proc:"PRC-045",tac:"T-101",own:"Dr. Sameh Osman",vol:312,win:"15 Sep – 31 Dec",st:"Committed"},
+ {id:"SEP-03",k:"Supply",n:"Direct referral slots",proc:"PRC-021",tac:"T-202",own:"Clinic Ops",vol:96,win:"01 Oct – 31 Dec",st:"Under-covers"}];
+var PMD=[
+ {id:"DEP-01",k:"Demand",n:"Cardiology recall campaign",proc:"PRC-021",tac:"T-202",own:"CRM Manager",vol:420,win:"01 Sep – 31 Dec",st:"Committed"}];
+var PMC=[
+ {id:"CF-01",k:"Conflict",n:"Theatre capacity over-subscribed by three lists",gap:"3 lists per week",st:"open",own:"Department Head"}];
+function pmAll(){return PMT.concat(PMS,PMD,PMC);}
+function pmById(id){var a=pmAll();for(var i=0;i<a.length;i++)if(a[i].id===id)return a[i];return null;}
+
+/* ============================================================
+   ATTACHMENTS — files that came with an input report or were added here
+   ============================================================ */
+var ATTACH=[
+ {id:"AT-01",n:"Theatre rota Q4 draft.xlsx",au:"Surgical Services",when:"21 Aug",sz:"84 KB",rep:"OR-THR",proc:"PRC-030",
+  note:"Rota by theatre and week. The two spare lists are in columns J and K."},
+ {id:"AT-02",n:"Feeder clinic referral log.xlsx",au:"Business Development",when:"20 Aug",sz:"212 KB",rep:"OR-SLR",proc:"PRC-021",
+  note:"Referral records behind the conversion figure."},
+ {id:"AT-03",n:"Anaesthesia cover model.pdf",au:"Human Resources",when:"19 Aug",sz:"1.2 MB",rep:"OR-HR",proc:"PRC-045",
+  note:"Overtime cost model for evening cover."},
+ {id:"AT-04",n:"Cath lab session log W28-31.xlsx",au:"Dr. Sameh Osman",when:"22 Aug",sz:"96 KB",rep:"",proc:"PRC-045",
+  note:"Uploaded here — not part of any input report."}];
+function attach(id){for(var i=0;i<ATTACH.length;i++)if(ATTACH[i].id===id)return ATTACH[i];return null;}
+
+/* ============================================================
+   PARAGRAPH POOL — written once, referenced by many artifacts
+   ============================================================ */
+var PSEQ=8;
+var PARAS=[
+ {id:"P-001",h:"Volume shortfall for the quarter",proc:"PRC-045",tac:"T-101",diag:"d1",
+  v:"The department delivered 5,228 visits against a target of 6,550 for the quarter to date, a shortfall of 1,322.",
+  cites:["SEC-10","TVP-01"],v_no:2},
+ {id:"P-002",h:"The shortfall is theatre-bound, not demand-bound",proc:"PRC-030",tac:"P-07",diag:"d2",
+  v:"Three surgical specialties are bidding for the same two spare theatre lists, and utilisation sits at 82% with the unused capacity falling in evening blocks. The constraint is list availability and the rota behind it, not referral volume.",
+  cites:["SEC-15","Q-4450","Q-4431"],v_no:3},
+ {id:"P-003",h:"Referral conversion will not recover on its own",proc:"PRC-021",tac:"T-202",diag:"d3",
+  v:"Conversion has held between 31 and 34 per cent for three quarters. Assuming no change to the feeder clinic pathway, the forecast band for Q4 is 29% ±4 — below the 40% the cardiology plan assumes.",
+  cites:["SEC-13","Q-4402"],v_no:1},
+ {id:"P-004",h:"Pool the theatre lists before adding any",proc:"PRC-030",tac:"P-07",diag:"d4",
+  v:"",cites:[],v_no:1}];
+function para(id){for(var i=0;i<PARAS.length;i++)if(PARAS[i].id===id)return PARAS[i];return null;}
+function usedIn(pid){var pp=para(pid);if(!pp)return [];
+ return ARTS.filter(function(a){return units(a).filter(function(u){
+  return u.tac===pp.tac&&u.proc===pp.proc&&a.needs.indexOf(pp.diag)>-1;}).length;});}
+
+/* ============================================================
+   ORG SCOPE — Department / Function / Business Unit, taken from
+   the same dummy org data used in Planning & Monitoring. Month/
+   Year select the period.
+   ============================================================ */
+var DEPTS=[{id:"medical",n:"Medical"}];
+var FNS=[
+ {id:"opd",n:"Medical - OPD",dept:"medical"},
+ {id:"icu",n:"Medical - ICU",dept:"medical"},
+ {id:"er",n:"Medical - ER",dept:"medical"},
+ {id:"or_",n:"Medical - OR",dept:"medical"}];
+var BUS=[
+ {id:"ahj",n:"AHJ",region:"KSA"},{id:"akw",n:"AKW",region:"KSA"},{id:"alw",n:"ALW",region:"KSA"},
+ {id:"mkr",n:"MKR",region:"KSA"},{id:"snb",n:"SNB",region:"KSA"},
+ {id:"amh",n:"AMH",region:"EGY"},{id:"arc",n:"ARC",region:"EGY"},{id:"smh",n:"SMH",region:"EGY"},
+ {id:"ash",n:"ASH",region:"EGY"},{id:"aoh",n:"AOH",region:"EGY"}];
+var MONN=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function deptName(id){var d=DEPTS.filter(function(x){return x.id===id;})[0];return d?d.n:id;}
+function fnName(id){var f=FNS.filter(function(x){return x.id===id;})[0];return f?f.n:id;}
+function fnsOfDept(id){return FNS.filter(function(f){return f.dept===id;});}
+function buName(id){var b=BUS.filter(function(x){return x.id===id;})[0];return b?b.n+" ("+b.region+")":id;}
+
+/* ============================================================
+   BI REPORTS — the real catalogue naming convention (Dept - Area -
+   Audience). Each KPI links to the one BI report it lives in, with
+   a real embed link, so citing the KPI can surface that dashboard
+   as its own section, openable inline — not just a figure.
+   ============================================================ */
+var BIREPORTS=[
+ {id:"BI-01",n:"OPD - Service Leakage Dashboard",link:"https://app.powerbi.com/reportEmbed?reportId=demo-opd-leakage"},
+ {id:"BI-02",n:"Specialty & Bed Profitability",link:"https://app.powerbi.com/reportEmbed?reportId=demo-specialty-profitability"},
+ {id:"BI-03",n:"Hospital CareFlow Dashboard",link:"https://app.powerbi.com/reportEmbed?reportId=demo-careflow"}];
+function biReport(id){for(var i=0;i<BIREPORTS.length;i++)if(BIREPORTS[i].id===id)return BIREPORTS[i];return null;}
+var OPENBI={};
+
+/* ============================================================
+   ISSUES — incidents/tickets from other modules or systems
+   (maintenance, IT service desk, quality) that a report/plan
+   paragraph can rest on, same as any other citable source.
+   ============================================================ */
+var ISSUES=[
+ {id:"ISS-2201",n:"Anaesthesia machine #3 out of service",sys:"Biomedical Maintenance System",st:"Open",sev:"High",
+  own:"Biomedical Engineering",when:"22 Aug 2026",proc:"PRC-030"},
+ {id:"ISS-1847",n:"Cath lab scheduling module sync failures",sys:"IT Service Desk",st:"In progress",sev:"Medium",
+  own:"IT Applications",when:"20 Aug 2026",proc:"PRC-045"},
+ {id:"ISS-3390",n:"Referral portal drops attachments over 10MB",sys:"IT Service Desk",st:"Open",sev:"Medium",
+  own:"IT Applications",when:"21 Aug 2026",proc:"PRC-021"}];
+function issue(id){for(var i=0;i<ISSUES.length;i++)if(ISSUES[i].id===id)return ISSUES[i];return null;}
+
+/* ============================================================
+   KPIS — same catalogue P&M uses (name/type/unit/dept/fn), with
+   target/actual by BU · Month · Year, and breakdowns grouped by
+   dimension (Specialty / Physician / Account …). Where a KPI's
+   proc matches a Tactic's proc in STRAT below, POCs and Projects
+   on that Tactic surface automatically when citing "by KPI" —
+   the process registry is the link, same as everywhere else here.
+   ============================================================ */
+var KPIS=[
+ {id:"k_endoscopy_utilization_rate",n:"Endoscopy Utilization rate",dept:"medical",fn:"or_",type:"Output",unit:"%",proc:"PRC-030",biReportId:"BI-03",
+  ach:{"ahj:8:2026":{target:85,actual:82},"ahj:7:2026":{target:84,actual:80}},
+  breakdowns:[
+   {id:"bd-endo-card",dim:"Specialty",n:"Cardiology",ach:{"ahj:8:2026":{target:85,actual:79}}},
+   {id:"bd-endo-ortho",dim:"Specialty",n:"Orthopaedics",ach:{"ahj:8:2026":{target:85,actual:88}}},
+   {id:"bd-endo-ent",dim:"Specialty",n:"ENT",ach:{"ahj:8:2026":{target:85,actual:78}}},
+   {id:"bd-endo-drk",dim:"Physician",n:"Dr. Karim Fathy",ach:{"ahj:8:2026":{target:85,actual:91}}},
+   {id:"bd-endo-drs",dim:"Physician",n:"Dr. Sameh Osman",ach:{"ahj:8:2026":{target:85,actual:74}}}]},
+ {id:"k_leakage_lab_rad_procedures",n:"% leakage ( lab / rad / procedures )",dept:"medical",fn:"opd",type:"Output",unit:"%",proc:"PRC-021",biReportId:"BI-01",
+  ach:{"ahj:8:2026":{target:12,actual:19}},
+  breakdowns:[
+   {id:"bd-leak-drh",dim:"Physician",n:"Dr. Heba Nasr",ach:{"ahj:8:2026":{target:12,actual:15}}},
+   {id:"bd-leak-drm",dim:"Physician",n:"Dr. Mona Adel",ach:{"ahj:8:2026":{target:12,actual:23}}},
+   {id:"bd-leak-acc1",dim:"Account",n:"Corporate Account — Al Faisal Group",ach:{"ahj:8:2026":{target:12,actual:21}}}]},
+ {id:"k_icu_profitability",n:"ICU Profitability %",dept:"medical",fn:"icu",type:"Outcome",unit:"%",proc:"",biReportId:"BI-02",
+  ach:{"ahj:8:2026":{target:74.1,actual:68.4}},breakdowns:[]}];
+function kpi(id){for(var i=0;i<KPIS.length;i++)if(KPIS[i].id===id)return KPIS[i];return null;}
+function kpisByProc(proc){return proc?KPIS.filter(function(k){return k.proc===proc;}):[];}
+function findKpiOrBd(id){for(var i=0;i<KPIS.length;i++){if(KPIS[i].id===id)return{k:KPIS[i],bd:null};
+  var bd=(KPIS[i].breakdowns||[]).filter(function(b){return b.id===id;})[0];if(bd)return{k:KPIS[i],bd:bd};}return null;}
+function bdDims(k){var seen=[];(k.breakdowns||[]).forEach(function(b){if(seen.indexOf(b.dim)<0)seen.push(b.dim);});return seen;}
+function achFor(obj,bu,mo,yr){return (obj.ach||{})[bu+":"+mo+":"+yr]||null;}
+function achPct(a){return a&&a.target?Math.round(a.actual/a.target*10000)/100:null;}
+function achCls(pct){return pct==null?"":pct>=98?"b-app":pct>=85?"b-sub":"b-rmi";}
+
+/* ============================================================
+   POCs and Projects are NOT a separate list — they are STRAT
+   entries (kind "POC" / "Project") that already exist above,
+   found by their real parent link (par). "Related strategy" =
+   the Tactic; "related KPI" = any Tactic sharing that KPI's proc.
+   Project entries may additionally carry budget/start/end/scope.
+   ============================================================ */
+function tacticsForKpi(k){return k.proc?STRAT.filter(function(x){return x.k==="Tactic"&&x.proc===k.proc;}):[];}
+function pocsForTactic(tacId){return STRAT.filter(function(x){return x.k==="POC"&&x.par===tacId;});}
+function pocsForKpi(k){return k.proc?STRAT.filter(function(x){return x.k==="POC"&&x.proc===k.proc;}):[];}
+function projectsForPoc(pocId){return STRAT.filter(function(x){return x.k==="Project"&&x.par===pocId;});}
+function projectsForTactic(tacId){var pocs=pocsForTactic(tacId).map(function(p){return p.id;});return STRAT.filter(function(x){return x.k==="Project"&&pocs.indexOf(x.par)>-1;});}
+
+/* ============================================================
+   REPORT TEMPLATES — configured here, not hard-coded. A template
+   is a named list of expected sections; selecting one seeds those
+   as starting rows, all still freely editable, addable, removable.
+   ============================================================ */
+var TEMPLATES=[
+ {id:"TPL-SMO",n:"SMO Conclusion",desc:"Full conclusion sweep for the period: achievement, breakdown, POC/Tactic and project status.",
+  sections:[
+   {h:"KPI achievement — what happened",diag:"d1",items:[{type:"kpi",id:"k_endoscopy_utilization_rate"},{type:"kpi",id:"k_leakage_lab_rad_procedures"}]},
+   {h:"Breakdown — where it is concentrated",diag:"d1",items:[{type:"bd",id:"bd-endo-card"},{type:"bd",id:"bd-leak-drh"}]},
+   {h:"Why it happened",diag:"d2",items:[]},
+   {h:"POC / Tactic and project status",diag:"d4",items:[]}]},
+ {id:"TPL-PMO",n:"PMO Conclusion",desc:"POC/Tactic and project progress for governance review.",
+  sections:[{h:"POC / Tactic status",diag:"d4",items:[]},{h:"Project detail",diag:"",items:[]},{h:"Risks / escalations",diag:"d2",items:[]}]},
+ {id:"TPL-TOT",n:"Team of Teams alignment record",desc:"One shared constraint, what the team decided, who it is referred to.",
+  sections:[{h:"The constraint",diag:"d2",items:[]},{h:"What the team decided or could not settle",diag:"d4",items:[]}]}];
+function tpl(id){for(var i=0;i<TEMPLATES.length;i++)if(TEMPLATES[i].id===id)return TEMPLATES[i];return null;}
+function tplItemLabel(it){
+ if(it.type==="kpi"){var k=kpi(it.id);return k?k.n:it.id;}
+ if(it.type==="bd"){var kf=findKpiOrBd(it.id);return kf?kf.k.n+" — "+kf.bd.dim+": "+kf.bd.n:it.id;}
+ if(it.type==="report"){var r=orgRep(it.id);return r?r.n:it.id;}
+ return it.id;}
+
+/* ============================================================
+   ARTIFACTS — the role owns four; plans and reports differ
+   ============================================================ */
+var ARTS=[
+ {id:"ART-PLAN",fam:"plan",k:"Plan · quarterly",n:"Clinical Services department plan",per:"Q4 2026",due:"Fri 29 Aug",
+  st:"Draft",to:"BU Strategy Committee",cls:"",tpl:"TPL-201",
+  covers:[{proc:"PRC-045",tacs:["T-101","P-02"]},{proc:"PRC-030",tacs:["P-07"]},{proc:"PRC-021",tacs:["T-202"]}],
+  needs:["d1","d2","d3","d4"],pm:["targets","supply","demand"]},
+ {id:"ART-PERF",fam:"report",k:"Report/Plan · monthly",n:"Department performance report/plan",per:"August 2026",due:"Mon 31 Aug",
+  st:"Draft",to:"Department review",cls:"report",tpl:"TPL-041",
+  covers:[{proc:"PRC-030",tacs:["P-07"]},{proc:"PRC-021",tacs:["T-202"]}],
+  needs:["d1","d2","d3","d4"],pm:["targets"]},
+ {id:"ART-PACK",fam:"report",k:"Pack · per occurrence",n:"Committee pack",per:"Sep occurrence",due:"Wed 03 Sep",
+  st:"Not started",to:"Quality Committee",cls:"pack",tpl:"TPL-102",
+  covers:[{proc:"PRC-030",tacs:["P-07"]}],
+  needs:["d1","d2","d3","d4"],pm:[]},
+ {id:"ART-SVC",fam:"plan",k:"Service plan · quarterly",n:"Service plan to other departments",per:"Q4 2026",due:"Fri 29 Aug",
+  st:"Not started",to:"All departments",cls:"svc",tpl:"TPL-210",
+  covers:[{proc:"PRC-030",tacs:["P-07"]}],
+  needs:["d1","d2","d3","d4"],pm:["supply"]}];
+/* every unit the template names: one process, one tactic or POC */
+function units(a){var o=[];a.covers.forEach(function(c){c.tacs.forEach(function(t){o.push({proc:c.proc,tac:t});});});return o;}
+/* every paragraph that actually counts toward THIS role's own coverage —
+   the same combined set the Paragraphs tab shows (Compose pool + every
+   report/plan this role has issued), just flattened. Received paragraphs
+   are real and citable, but they're someone else's reasoning — they never
+   fill this role's own coverage gaps. Coverage, the strategy chain, and
+   process rollups all read from this, so a report/plan built the new way
+   counts exactly like one written the old way. */
+function allParas(){return allYourParagraphs().map(function(x){return x.p;});}
+function unitParas(u){return allParas().filter(function(p){return p.tac===u.tac&&p.proc===u.proc;});}
+function unitPara(u,d){
+ var matches=unitParas(u).filter(function(p){return p.diag===d;});
+ var filled=matches.filter(function(p){return p.v.trim();});
+ return filled[0]||matches[0]||null;}
+function artCoverage(a){
+ var need=units(a).length*a.needs.length,have=0;
+ units(a).forEach(function(u){a.needs.forEach(function(d){var p=unitPara(u,d);if(p&&p.v.trim())have++;});});
+ return {have:have,need:need,pct:need?Math.round(have/need*100):0};}
+function art(id){for(var i=0;i<ARTS.length;i++)if(ARTS[i].id===id)return ARTS[i];return ARTS[0];}
+function artDone(a){return artCoverage(a).have;}
+function pmEntries(form){
+ if(form==="targets")return PMT;
+ if(form==="supply")return PMS;
+ if(form==="demand")return PMD;
+ return PMC;}
+
+/* ============================================================
+   COMMUNICATION AND EXECUTION — everything in and out of this role
+   ============================================================ */
+var COMMS=[
+ {id:"M-01",dir:"in",k:"esc",from:"Team of Teams · alignment record",who:"TOT chair",when:"22 Aug 14:00",unread:true,
+  t:"Theatre allocation could not be settled by the peers",
+  x:"Three specialties are bidding for two spare lists. The team aligned that it is one constraint, not three, and referred the allocation to you.",
+  ref:"P-07",act:"resolve"},
+ {id:"M-02",dir:"in",k:"sup",from:"Cardiology",who:"Mona Adel",when:"22 Aug 09:12",unread:true,
+  t:"Contests your supersede on referral recovery",
+  x:"Holds that 40% is achievable with the direct slots and asks the Committee to hear it. Your plan proceeds; the pack shows the conclusion as unresolved.",
+  ref:"P-003",act:"committee"},
+ {id:"M-03",dir:"in",k:"in",from:"Internal Medicine",who:"Heba Nasr",when:"22 Aug 17:40",unread:false,
+  t:"Section plan filed late",
+  x:"Now filed. The stated gap in your plan can be withdrawn and the roll-up restated.",ref:"",act:"reroll"},
+ {id:"M-04",dir:"in",k:"in",from:"HR · service plan",who:"Dalia Mostafa",when:"19 Aug 10:15",unread:false,
+  t:"Anaesthesia establishment cannot grow before Q1",
+  x:"Any Q4 cover must come from overtime inside the existing headcount. Affects both the cath lab and theatre asks.",ref:"OR-HR",act:"cite"},
+ {id:"M-05",dir:"out",k:"out",from:"You",who:ME,when:"21 Aug 16:20",unread:false,
+  t:"Challenged ENT on the theatre ask",
+  x:"Returned for revision — the ask assumes anaesthesia cover that HR has said is not available.",ref:"TSK-4425",act:""},
+ {id:"M-06",dir:"out",k:"esc",from:"You",who:ME,when:"22 Aug 15:05",unread:false,
+  t:"Escalated theatre allocation to the BU Strategy Committee",
+  x:"Asked them to choose between funding a third list and cutting one specialty target.",ref:"CF-01",act:""}];
+
+/* ============================================================
+   STATE
+   ============================================================ */
+var view="home",tab=0;
+var navApp="APP-COMM",navRpt="DR-108",navPg="PG-VOL",navOrg="OR-THR",navSec=null,cmtDraft={};
+var BUILD=null,DRAFTS=[],ORGSEQ=100,STRATSEQ=100,decDraft={},escDraft={};
+var BIFILTER={kpiId:"",dept:"",fn:"",proc:"",openKpi:null};
+var DEFAULT_SCOPE={bu:"ahj",month:8,year:2026};
+var DASHPICK={};
+var SHAREOPEN=null;
+var TPLPICK={key:null,kind:"kpi",kpiId:"",dim:""};
+var HIERFILTER={name:"",type:"",dept:""},HIERFOCUS=null,HIERDETAIL=null;
+var NAV=[
+ {g:"Produce",items:[{id:"home",t:"Work",b:"4"},{id:"build",t:"Build a report/plan"},{id:"templates",t:"Report/Plan templates"}]},
+ {g:"Read",items:[{id:"data",t:"Business intelligence"},{id:"reports",t:"Reports/Plans",b:String(ORGREPS.length)},{id:"hier",t:"Reporting hierarchy"}]},
+ {g:"Exchange",items:[{id:"comms",t:"Communication &amp; execution",b:"2",r:1}]}];
+var TABS={home:["Artifacts","Paragraphs","Coverage","Strategy chain"],build:["Edit","Preview"],
+ data:["My BI reports"],reports:["Received","Sent"],comms:["Inbox","Sent","Tasks"]};
+
+function paintNav(){
+ $("sidebar").innerHTML=NAV.map(function(g){return '<div class="sb-sec">'+g.g+'</div>'+g.items.map(function(it){
+  return '<button class="sb-item'+(it.id===view?" active":"")+'" data-nav="'+it.id+'">'+ico("grid")+
+   '<span>'+it.t+'</span>'+(it.b?'<span class="nb-badge'+(it.r?" red":"")+'">'+it.b+'</span>':'')+'</button>';}).join("");}).join("");}
+
+/* ============================================================
+   BUILD A REPORT — flexible, Excel-like: add/remove/reorder any
+   number of paragraphs, each optionally citing a live record from
+   BI, Strategy, Planning & Monitoring, Tasks, or any paragraph
+   already written (yours or another role's). Nothing here is a
+   fixed grid of tactics × diagnostic types — that structure is
+   offered as an optional starting scaffold, never a requirement.
+   ============================================================ */
+function ensureBuild(){
+ if(!BUILD)BUILD={title:"",to:"All departments",template:"",blocks:[],pickerOpen:null,pickerKind:null,pickerSel:{},newFor:null,_seq:1,
+  scope:{dept:DEPTS[0].id,fn:"",bu:BUS[0].id,month:8,year:2026}};
+ return BUILD;}
+
+/* jump into Build a report/plan with a new paragraph already citing
+   something real — the single entry point every "write about this"
+   action in the app now funnels through, in place of the old Compose
+   targeting system. */
+function startBuildCiting(refId,titleHint){
+ var B=ensureBuild();
+ if(titleHint&&!B.title.trim())B.title=titleHint;
+ var blk={id:"b"+(B._seq++),h:"",proc:"",tac:"",diag:"",v:"",cites:[]};
+ if(refId){
+  var kf=findKpiOrBd(refId),st=strat(refId),pp=para(refId),op=orgPara(refId);
+  var srcPara=pp||(op?op.p:null);
+  if(kf&&kf.k.proc)blk.proc=kf.k.proc;
+  else if(st&&st.proc)blk.proc=st.proc;
+  else if(srcPara&&srcPara.proc)blk.proc=srcPara.proc;
+  if(st&&(st.k==="Tactic"||st.k==="POC"||st.k==="Project"))blk.tac=st.id;
+  else if(srcPara&&srcPara.tac)blk.tac=srcPara.tac;
+  blk.cites.push(refId);
+ }
+ B.blocks.push(blk);
+ view="build";tab=0;render();window.scrollTo(0,0);}
+
+/* every section a template names, inserted at once — this is what
+   both picking a template and re-clicking "Insert as starting rows"
+   run, so the two stay identical */
+function scaffoldFromTemplate(B,t){
+ var nsec=0,ndash=0;
+ t.sections.forEach(function(s){
+  var blk={id:"b"+(B._seq++),h:s.h,proc:"",tac:"",diag:s.diag||"",v:"",cites:[]};
+  (s.items||[]).forEach(function(it){
+   if(it.type==="kpi"||it.type==="bd"){
+    var kf9=findKpiOrBd(it.id);
+    if(kf9){
+     if(!blk.proc&&kf9.k.proc)blk.proc=kf9.k.proc;
+     if(kf9.k.biReportId&&!OPENBI[kf9.k.biReportId]){OPENBI[kf9.k.biReportId]=true;ndash++;}
+    }
+   }
+   if(blk.cites.indexOf(it.id)<0)blk.cites.push(it.id);
+  });
+  B.blocks.push(blk);nsec++;});
+ return {nsec:nsec,ndash:ndash};}
+
+/* KPIs, POCs and Projects scoped to Department / Function; everything else stays a simple filtered list */
+
+/* renders the actual data behind a citation — figures, not just a tag */
+function pmLine(e){
+ return e.k==="Target"?
+  ("Target <b>"+e.tg+(e.u||"")+"</b> \u00b7 actual <b>"+(e.ac!=null?e.ac+(e.u||""):"\u2014")+"</b>"):
+  ("Volume <b>"+(e.vol!=null?e.vol:"\u2014")+"</b> \u00b7 window "+esc(e.win||"\u2014")+" \u00b7 "+esc(e.st||""));}
+
+/* Power-BI-styled chrome, so an embedded dashboard reads unmistakably as a
+   foreign embedded widget — not a native part of this app's own UI — the
+   same way a real embedded Power BI report would look inside any host app. */
+function biChrome(title,link,inner,tabs){
+ return '<div style="border:1px solid #1b2a3a;border-radius:8px;overflow:hidden;margin-top:8px;box-shadow:0 1px 4px rgba(20,31,46,.18)">'+
+  '<div style="background:#141f2e;color:#e8ecf1;padding:8px 12px;display:flex;justify-content:space-between;align-items:center;gap:10px">'+
+  '<div style="display:flex;align-items:center;gap:8px;min-width:0">'+
+  '<span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;background:#f2c811;border-radius:3px;color:#141f2e;font-size:10px;font-weight:800;flex:none">P</span>'+
+  '<span style="font-size:11.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(title)+'</span>'+
+  '<span style="font-size:9px;color:#a7b1bf;border:1px solid #3a4657;border-radius:3px;padding:1px 6px;flex:none">EMBEDDED</span></div>'+
+  '<a href="'+esc(link)+'" target="_blank" rel="noopener" style="font-size:10.5px;color:#f2c811;white-space:nowrap;flex:none">Open in Power BI \u2197</a></div>'+
+  '<div style="background:#f3f2f1;padding:14px">'+inner+'</div>'+
+  (tabs?'<div style="background:#faf9f8;border-top:1px solid #e1dfdd;padding:6px 12px;display:flex;gap:6px">'+
+   tabs.map(function(t,i){return '<span style="font-size:10px;padding:3px 9px;border-radius:4px 4px 0 0;'+
+    (i===0?'background:#fff;color:#252423;font-weight:600;border:1px solid #e1dfdd;border-bottom:none':'color:#605e5c')+'">'+esc(t)+'</span>';}).join("")+'</div>':"")+
+  '</div>';}
+function biTile(title,badge,value,bars){
+ return '<div style="background:#fff;border:1px solid #e1dfdd;border-radius:4px;padding:12px;flex:1;min-width:180px">'+
+  '<div style="font-size:11px;font-weight:600;color:#252423;margin-bottom:2px">'+esc(title)+'</div>'+
+  (badge?'<div style="font-size:9.5px;color:#605e5c;margin-bottom:8px">'+esc(badge)+'</div>':'<div style="margin-bottom:8px"></div>')+
+  '<div class="mono" style="font-size:19px;font-weight:700;color:#252423">'+value+'</div>'+
+  (bars?'<div class="spark" style="height:38px;margin-top:8px">'+bars.map(function(x,i){return '<i class="'+(i===bars.length-1?"last":"")+'" style="height:'+x+'%"></i>';}).join("")+'</div>':'')+
+  '</div>';}
+
+/* a realistic-looking sample dashboard — stands in for the real Power BI
+   embed until a real report ID/token is wired up. */
+function sampleDashboard(kObj,scope){
+ var rec=scope?achFor(kObj,scope.bu,scope.month,scope.year):null;
+ var pct=achPct(rec);
+ var bars=[58,64,60,71,66,75,70,rec?Math.max(20,Math.min(96,rec.actual)):80];
+ var varBars=[70,64,58,66,52,60,55,rec&&pct!=null?Math.max(15,Math.min(96,pct)):62];
+ var inner='<div style="display:flex;gap:12px;flex-wrap:wrap">'+
+  biTile(kObj.n,rec?"Target "+rec.target+kObj.unit:"No target set",rec?rec.actual+kObj.unit:"\u2014",bars)+
+  biTile("Achievement vs. target","Same period",pct!=null?pct+"%":"\u2014",varBars)+
+  '</div>';
+ return biChrome(kObj.n+" \u2014 preview",biReport(kObj.biReportId||"").link||"#",inner,["Overview","Trend","Detail"]);}
+
+/* the BI dashboard behind a KPI — toggled open inline, not a navigate-away link */
+function biEmbedStrip(biId,kObj,scope){
+ var b=biReport(biId);if(!b)return"";
+ var open=!!OPENBI[biId];
+ return '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)">'+
+  '<button class="btn btn-outline btn-sm" data-act="togglebi|'+biId+'">'+ico(open?"up":"chart","icon-sm")+' '+
+  (open?"Close dashboard":'Open \u201c'+esc(b.n)+'\u201d inside this report')+'</button>'+
+  (open?sampleDashboard(kObj,scope||DEFAULT_SCOPE):"")+
+  '</div>';}
+function citeCard(id,scope){
+ var kf=findKpiOrBd(id);
+ if(kf){
+  var rec=scope?achFor(kf.bd||kf.k,scope.bu,scope.month,scope.year):null;
+  var pct=achPct(rec);
+  return '<div class="pdraft" style="margin:6px 0 0"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'+
+   '<span class="chip pbi">'+ico("chart","icon-sm")+(kf.bd?kf.k.n+" — "+kf.bd.dim+": "+kf.bd.n:kf.k.n)+'</span>'+
+   (rec?('<span class="mono" style="font-size:11.5px">Target <b>'+rec.target+kf.k.unit+'</b> · Actual <b>'+rec.actual+kf.k.unit+'</b></span>'+
+    '<span class="b '+achCls(pct)+'"><span class="bdot"></span>'+(pct!=null?pct+"% achievement":"—")+'</span>'):
+    '<span class="t-sub" style="margin:0">No achievement recorded for '+(scope?scope.bu+" · "+MONN[scope.month-1]+" "+scope.year:"this period")+'.</span>')+
+   '</div>'+(kf.k.biReportId?biEmbedStrip(kf.k.biReportId,kf.k,scope):'')+'</div>';}
+ var orep=orgRep(id);
+ if(orep)return '<div class="pdraft" style="margin:6px 0 0">'+
+   '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:4px">'+
+   '<span class="chip">Child report/plan</span><b style="font-size:12.5px">'+esc(orep.n)+'</b>'+
+   '<span class="b b-app"><span class="bdot"></span>'+esc(orep.st)+'</span></div>'+
+   '<div class="ed-s" style="margin-bottom:6px">'+esc(orep.au)+' · '+esc(orep.when)+' · '+orep.paras.length+' paragraph'+(orep.paras.length===1?"":"s")+'</div>'+
+   orep.paras.slice(0,2).map(function(p){return '<div style="font-size:12px;color:var(--muted);margin:2px 0">\u2022 '+esc(p.h)+'</div>';}).join("")+
+   (orep.paras.length>2?'<div class="ed-s">+ '+(orep.paras.length-2)+' more</div>':"")+
+   '<button class="btn btn-outline btn-sm" style="margin-top:6px" data-act="openrep|'+orep.id+'">'+ico("open")+'Open full report/plan</button></div>';
+ var tk=task(id);
+ if(tk)return '<div class="pdraft" style="margin:6px 0 0"><span class="chip">Task</span> <b>'+esc(tk.t)+'</b> — '+esc(tk.who)+' · due '+esc(tk.due)+' · '+esc(tk.st)+'</div>';
+ var iss=issue(id);
+ if(iss)return '<div class="pdraft" style="margin:6px 0 0"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:3px">'+
+   '<span class="chip un">'+esc(iss.sys)+'</span><b style="font-size:12.5px">'+esc(iss.n)+'</b>'+
+   '<span class="b '+(iss.sev==="High"?"b-rmi":"b-sub")+'"><span class="bdot"></span>'+esc(iss.sev)+'</span></div>'+
+   '<div class="ed-s">'+esc(iss.id)+' · '+esc(iss.st)+' · owner '+esc(iss.own)+' · opened '+esc(iss.when)+'</div></div>';
+ var pm=pmById(id);
+ if(pm)return '<div class="pdraft" style="margin:6px 0 0"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:3px">'+
+   '<span class="chip pm">'+esc(pm.k)+'</span><b style="font-size:12.5px">'+esc(pm.n)+'</b></div>'+
+   '<div class="ed-s">'+pmLine(pm)+' · owner '+esc(pm.own||"\u2014")+' · classified under '+esc(pm.tac||"")+'</div></div>';
+ var fv=findVis(id);
+ if(fv)return '<div class="pdraft" style="margin:6px 0 0"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
+   '<span class="chip pbi">'+ico("chart","icon-sm")+esc(fv.v.n)+'</span>'+
+   '<span class="mono" style="font-size:11.5px"><b>'+esc(fv.v.val)+'</b></span>'+dgChip(fv.v.diag)+'</div></div>';
+ var op=orgPara(id);
+ if(op)return '<div class="pdraft" style="margin:6px 0 0"><div class="ed-s" style="margin-bottom:4px">From '+esc(op.r.au)+' · '+esc(op.r.n)+'</div>'+
+   '<div style="font-size:12.5px;line-height:1.7;font-style:italic;border-left:3px solid var(--gold-dark);padding-left:10px">\u201c'+esc(op.p.v)+'\u201d</div></div>';
+ var mp=para(id);
+ if(mp&&mp.v.trim())return '<div class="pdraft" style="margin:6px 0 0"><div class="ed-s" style="margin-bottom:4px">Your paragraph</div>'+
+   '<div style="font-size:12.5px;line-height:1.7;font-style:italic;border-left:3px solid var(--gold-dark);padding-left:10px">\u201c'+esc(mp.v)+'\u201d</div></div>';
+ var st=null;for(var i=0;i<STRAT.length;i++)if(STRAT[i].id===id)st=STRAT[i];
+ if(st){
+  var parName=st.par&&strat(st.par)?strat(st.par).n:null;
+  var extra='';
+  if(st.k==="Project"&&(st.budget||st.start||st.end||st.scope)){
+   extra='<div class="ed-s">Project: owner '+esc(st.own||"—")+' · budget '+(st.budget?Number(st.budget).toLocaleString():"—")+
+    ' · '+esc(st.start||"—")+' \u2192 '+esc(st.end||"—")+' · '+esc(st.scope||"—")+'</div>';
+  } else {
+   extra='<div class="ed-s">'+esc(st.st||"")+(st.own?' · owner '+esc(st.own):'')+(st.pct!=null?' · '+st.pct+'%':'')+'</div>';
+  }
+  return '<div class="pdraft" style="margin:6px 0 0"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:2px">'+
+   '<span class="chip strat">'+esc(st.k)+'</span><b style="font-size:12.5px">'+esc(st.n)+'</b>'+
+   (parName?'<span class="chip">under '+esc(parName)+'</span>':'')+
+   (st.proc?'<span class="chip">'+st.proc+'</span>':'')+'</div>'+extra+'</div>';}
+ var at=attach(id);
+ if(at)return '<div class="pdraft" style="margin:6px 0 0"><span class="chip">Attachment</span> <b>'+esc(at.n)+'</b> · '+esc(at.note||"")+'</div>';
+ return '<div class="pdraft" style="margin:6px 0 0"><span class="chip none">'+esc(id)+' — nothing found for this id</span></div>';}
+
+function scBuild(){
+ var B=ensureBuild(),sc=B.scope;
+ var h='<div class="card flush"><div class="ch">'+ico("pen","icon-lg")+
+  '<span class="ch-t">Build a report/plan</span>'+
+  '<span class="r"><span class="mono" style="font-size:10px;color:var(--muted)">add, remove, reorder — nothing is fixed</span></span></div>'+
+  '<div style="padding:15px">'+
+  '<div class="flbl" style="margin-bottom:8px">Scope — which KPIs this report/plan can reference</div>'+
+  '<div class="fgrid" style="grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:10px">'+
+  '<div class="fld"><label class="flbl">Department</label><div class="inp"><select data-bf="scope:dept">'+
+   DEPTS.map(function(d){return '<option value="'+d.id+'"'+(sc.dept===d.id?" selected":"")+'>'+d.n+'</option>';}).join("")+'</select></div></div>'+
+  '<div class="fld"><label class="flbl">Function</label><div class="inp"><select data-bf="scope:fn">'+
+   '<option value="">All</option>'+fnsOfDept(sc.dept).map(function(f){return '<option value="'+f.id+'"'+(sc.fn===f.id?" selected":"")+'>'+f.n+'</option>';}).join("")+
+   '</select></div></div>'+
+  '<div class="fld"><label class="flbl">Business Unit</label><div class="inp"><select data-bf="scope:bu">'+
+   BUS.map(function(b){return '<option value="'+b.id+'"'+(sc.bu===b.id?" selected":"")+'>'+buName(b.id)+'</option>';}).join("")+'</select></div></div>'+
+  '<div class="fld"><label class="flbl">Month</label><div class="inp"><select data-bf="scope:month">'+
+   MONN.map(function(m,i){return '<option value="'+(i+1)+'"'+(sc.month===i+1?" selected":"")+'>'+m+'</option>';}).join("")+'</select></div></div>'+
+  '<div class="fld"><label class="flbl">Year</label><div class="inp"><select data-bf="scope:year">'+
+   [2025,2026,2027].map(function(y){return '<option value="'+y+'"'+(sc.year===y?" selected":"")+'>'+y+'</option>';}).join("")+'</select></div></div>'+
+  '</div>'+
+  '<div class="ed-s" style="margin-top:8px">Only KPIs (and POCs on them) in <b>'+deptName(sc.dept)+(sc.fn?" · "+fnName(sc.fn):"")+
+  '</b> are offered below, with achievement shown for <b>'+buName(sc.bu)+' · '+MONN[sc.month-1]+' '+sc.year+'</b>.</div>'+
+  '</div></div>';
+
+ h+='<div class="card flush"><div style="padding:15px">'+
+  '<div class="fgrid" style="grid-template-columns:2fr 1fr;gap:12px">'+
+  '<div class="fld"><label class="flbl">Title</label><div class="inp"><input data-bf="title" value="'+esc(B.title)+
+  '" placeholder="e.g. Theatre allocation — TOT alignment record"></div></div>'+
+  '<div class="fld"><label class="flbl">Audience</label><div class="inp"><input data-bf="to" value="'+esc(B.to)+
+  '" placeholder="Who receives this"></div></div></div>'+
+  '<div class="fld" style="margin-top:10px"><label class="flbl">Also share with <span class="mono" style="font-size:10px;color:var(--muted)">optional \u2014 beyond the default audience</span></label>'+
+  '<div class="inp"><input data-bf="shareWith" value="'+esc(B.shareWith||"")+'" placeholder="Names, comma separated \u2014 e.g. Dr. Hazem, Mona Adel"></div></div>'+
+  '<div class="fgrid" style="grid-template-columns:1fr auto;gap:12px;margin-top:10px;align-items:end">'+
+  '<div class="fld"><label class="flbl">Template <span class="mono" style="font-size:10px;color:var(--muted)">configured in Templates \u2192</span></label>'+
+  '<div class="inp"><select data-bf="template"><option value="">Blank — no scaffold</option>'+
+  TEMPLATES.map(function(t){return '<option value="'+t.id+'"'+(B.template===t.id?" selected":"")+'>'+t.n+'</option>';}).join("")+
+  '</select></div></div>'+
+  (B.template?'<button class="btn btn-outline btn-sm" data-act="buildscaffold|">'+ico("layers")+'Insert as starting rows</button>':"")+
+  '</div>'+(B.template&&tpl(B.template)?'<div class="ed-s" style="margin-top:6px">'+esc(tpl(B.template).desc)+'</div>':"")+
+  '</div></div>';
+
+ h+=B.blocks.map(function(b,i){return buildBlockHtml(b,i,B.blocks.length,sc);}).join("");
+
+ h+='<div class="card" style="padding:14px;text-align:center">'+
+  '<button class="btn btn-primary btn-sm" data-act="addblock|">'+ico("plus")+'Add unstructured paragraph / conclusion</button>'+
+  (B.blocks.length?"":'<div class="ed-s" style="margin-top:8px">Start blank, or pick a template above \u2014 its sections appear automatically, still fully editable.</div>')+
+  '</div>';
+
+ h+='<div class="card flush"><div style="padding:14px" class="acts">'+
+  '<span class="ed-s" style="margin-right:auto">'+B.blocks.length+' paragraph'+(B.blocks.length===1?"":"s")+
+  ' \u00b7 '+B.blocks.reduce(function(n,b){return n+b.cites.length;},0)+' citation'+(B.blocks.reduce(function(n,b){return n+b.cites.length;},0)===1?"":"s")+'</span>'+
+  '<button class="btn btn-outline btn-sm" data-act="savebuilddraft|">Save draft</button>'+
+  '<button class="btn btn-go" data-act="issuebuild|">'+ico("send")+'Issue the report/plan</button>'+
+  '</div></div>'+
+  '<div class="cnote"><b>Issuing sends it to every reviewer\u2019s Reports/Plans inbox, exactly like the ones you receive.</b> The figures you cited stay live — change the scope above later and they recompute. Add a task, a decision, or an escalation on any paragraph, before or after issuing.</div>';
+ return h;}
+
+function buildBlockHtml(b,i,total,scope){
+ var open=(BUILD.pickerOpen===b.id);
+ return '<div class="vis on"><div class="vis-h">'+ico("doc")+
+  '<input data-bf="h:'+b.id+'" value="'+esc(b.h||"")+'" placeholder="Heading (optional)" '+
+  'style="border:none;background:transparent;font-weight:600;font-size:12.5px;flex:1;min-width:140px;color:var(--ink)">'+
+  '<div class="seg d">'+["none","d1","d2","d3","d4"].map(function(x){
+   return '<button class="'+((b.diag||"none")===x?"on":"")+'" data-act="blockdiag|'+b.id+':'+x+'">'+(x==="none"?"untyped":DIAG[x].n)+'</button>';}).join("")+'</div>'+
+  '<span class="acts" style="margin-left:auto">'+
+  (i>0?'<button class="btn btn-ghost btn-sm" data-act="mvblock|'+b.id+':up" title="Move up">'+ico("up")+'</button>':"")+
+  (i<total-1?'<button class="btn btn-ghost btn-sm" data-act="mvblock|'+b.id+':down" title="Move down">'+ico("down")+'</button>':"")+
+  '<button class="btn btn-ghost btn-sm" data-act="rmblock|'+b.id+'" title="Remove">\u2715</button>'+
+  '</span></div>'+
+  '<div style="padding:12px">'+
+  '<textarea class="rta" data-bf="v:'+b.id+'" placeholder="Write it — the conclusion, the update, whatever this row is for. Cite what it rests on below.">'+esc(b.v||"")+'</textarea>'+
+  (b.cites.length?b.cites.map(function(c){
+   return '<div style="position:relative">'+citeCard(c,scope)+
+    '<button class="btn btn-ghost btn-sm" data-act="blockuncite|'+b.id+':'+c+'" style="position:absolute;top:4px;right:4px;padding:1px 6px">\u00d7</button></div>';}).join(""):
+   '<div class="chip none" style="margin-top:8px">no source yet — free text only</div>')+
+  '<div class="p-f" style="border-top:1px dashed var(--border);margin-top:9px;padding:8px 0 0">'+
+  '<button class="btn btn-outline btn-sm" data-act="blockpicker|'+b.id+'">'+ico("plus")+'Cite a KPI, breakdown, POC/project, task or paragraph</button>'+
+  (b.tac&&strat(b.tac)?' <span class="reuse" title="This paragraph will count toward coverage for '+esc(strat(b.tac).n)+' once issued">'+ico("check","icon-sm")+' counts toward '+esc(strat(b.tac).n)+'\u2019s coverage</span>':'')+
+  '</div>'+
+  (open?buildPicker(b,scope):"")+
+  (open&&BUILD.newFor&&BUILD.newFor.block===b.id?buildStratForm(b):"")+
+  '</div></div>';}
+
+function buildPicker(b,scope){
+ var kinds=[['kpi','KPI'],['bd','KPI breakdown'],['poc','POC / Tactic'],['project','Project'],
+   ['pm','P&M entry'],['task','Task'],['issue','Issue (other system)'],['vis','BI visual'],['para','Paragraph'],['report','Child report/plan']];
+ var pk=BUILD.pickerKind;
+ var h='<div class="cmtbox">'+
+  '<div class="flbl" style="margin-bottom:8px">What do you want to cite?</div>'+
+  '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'+
+  kinds.map(function(k){return '<button class="btn btn-sm '+(pk===k[0]?"btn-primary":"btn-outline")+'" data-act="pickkind|'+b.id+':'+k[0]+'">'+k[1]+'</button>';}).join("")+
+  '</div>'+
+  (pk?buildPickerBody(b,pk,scope):'<div class="ed-s">Pick a kind above to narrow the list.</div>')+
+  '</div>';
+ return h;}
+
+function pickList(items,actName,blockId){
+ return '<div style="max-height:220px;overflow:auto">'+
+  (items.length?items.map(function(c){
+   return '<div class="item" style="display:flex;gap:8px;align-items:center;padding:7px 9px;margin:2px 0;border-radius:6px;background:#fff;cursor:pointer;border:1px solid var(--border)" data-act="'+actName+'|'+blockId+':'+c.id+'">'+
+   '<span style="font-size:12.5px;flex:1">'+esc(c.label)+'</span>'+(c.sub?'<span class="mono" style="font-size:10px;color:var(--muted)">'+esc(c.sub)+'</span>':'')+
+   '</div>';}).join(""):'<div class="ed-s" style="padding:8px">Nothing here yet.</div>')+
+  '</div>';}
+
+function buildPickerBody(b,pk,scope){
+ var sel=BUILD.pickerSel=BUILD.pickerSel||{};
+ var scopedKpis=KPIS.filter(function(k){return k.dept===scope.dept&&(!scope.fn||k.fn===scope.fn);});
+
+ if(pk==="kpi"){
+  var items=scopedKpis.map(function(k){var rec=achFor(k,scope.bu,scope.month,scope.year);
+   return {id:k.id,label:k.n+" · "+k.type,sub:rec?"target "+rec.target+k.unit+", actual "+rec.actual+k.unit:"no data this period"};});
+  return pickList(items,"blockcite",b.id);}
+
+ if(pk==="bd"){
+  var kpisWithBd=scopedKpis.filter(function(k){return (k.breakdowns||[]).length;});
+  var h='<label class="flbl">Related KPI</label><select data-bf="pk:kpiId" style="width:100%;margin-bottom:8px">'+
+   '<option value="">Choose a KPI\u2026</option>'+kpisWithBd.map(function(k){return '<option value="'+k.id+'"'+(sel.kpiId===k.id?" selected":"")+'>'+k.n+'</option>';}).join("")+
+   '</select>';
+  var K=sel.kpiId?kpi(sel.kpiId):null;
+  if(K&&kpisWithBd.indexOf(K)<0)K=null;
+  if(K){
+   var dims=bdDims(K);
+   h+='<label class="flbl" style="margin:6px 0 6px;display:block">Breakdown type</label><div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">'+
+    dims.map(function(d){return '<button class="btn btn-sm '+(sel.dim===d?"btn-primary":"btn-outline")+'" data-act="pkset|'+b.id+':dim:'+d+'">'+d+'</button>';}).join("")+'</div>';
+   if(sel.dim){
+    var items2=K.breakdowns.filter(function(bd){return bd.dim===sel.dim;}).map(function(bd){var rec=achFor(bd,scope.bu,scope.month,scope.year);
+     return {id:bd.id,label:bd.n,sub:rec?"target "+rec.target+K.unit+", actual "+rec.actual+K.unit:"no data"};});
+    h+=pickList(items2,"blockcite",b.id);
+   }
+  }
+  return h;}
+
+ if(pk==="poc"){
+  var mode=sel.pocMode||"tactic";
+  var h='<div style="display:flex;gap:6px;margin-bottom:8px">'+
+   '<button class="btn btn-sm '+(mode==="tactic"?"btn-primary":"btn-outline")+'" data-act="pkset|'+b.id+':pocMode:tactic">By related Tactic (Strategy)</button>'+
+   '<button class="btn btn-sm '+(mode==="kpi"?"btn-primary":"btn-outline")+'" data-act="pkset|'+b.id+':pocMode:kpi">By related KPI</button></div>';
+  var tacticId=sel.pocTactic,pocs=[],tacticsList;
+  if(mode==="tactic"){
+   tacticsList=STRAT.filter(function(x){return x.k==="Tactic";});
+   h+='<select data-bf="pk:pocTactic" style="width:100%;margin-bottom:8px"><option value="">Choose a Tactic\u2026</option>'+
+    tacticsList.map(function(t){return '<option value="'+t.id+'"'+(tacticId===t.id?" selected":"")+'>'+t.n+'</option>';}).join("")+'</select>';
+   if(tacticId)pocs=pocsForTactic(tacticId);
+  } else {
+   var kpiId2=sel.pocKpi;
+   h+='<select data-bf="pk:pocKpi" style="width:100%;margin-bottom:8px"><option value="">Choose a KPI\u2026</option>'+
+    scopedKpis.map(function(k){return '<option value="'+k.id+'"'+(kpiId2===k.id?" selected":"")+'>'+k.n+'</option>';}).join("")+'</select>';
+   if(kpiId2){var K2=kpi(kpiId2);pocs=pocsForKpi(K2);
+    if(!K2.proc)h+='<div class="ed-s" style="margin-bottom:6px">This KPI has no related process, so no Tactic links to it yet.</div>';
+    tacticId=tacticsForKpi(K2)[0]?tacticsForKpi(K2)[0].id:null;}
+  }
+  if((mode==="tactic"&&tacticId)||(mode==="kpi"&&sel.pocKpi)){
+   h+=pickList(pocs.map(function(p){return {id:p.id,label:p.n,sub:p.st+(p.own?" · "+p.own:"")};}),"blockcite",b.id);
+   if(mode==="tactic"&&tacticId)h+='<button class="btn btn-strat btn-sm" style="margin-top:6px" data-act="newstrat|'+b.id+':POC:'+tacticId+'">'+ico("plus")+'New POC / Tactic on this Tactic</button>';
+  }
+  return h;}
+
+ if(pk==="project"){
+  var mode2=sel.projMode||"poc";
+  var h='<div style="display:flex;gap:6px;margin-bottom:8px">'+
+   '<button class="btn btn-sm '+(mode2==="poc"?"btn-primary":"btn-outline")+'" data-act="pkset|'+b.id+':projMode:poc">By related POC</button>'+
+   '<button class="btn btn-sm '+(mode2==="tactic"?"btn-primary":"btn-outline")+'" data-act="pkset|'+b.id+':projMode:tactic">By related Tactic (Strategy)</button></div>';
+  var projs=[],pocId=sel.projPoc,tacId2=sel.projTactic;
+  if(mode2==="poc"){
+   var allPocs=STRAT.filter(function(x){return x.k==="POC";});
+   h+='<select data-bf="pk:projPoc" style="width:100%;margin-bottom:8px"><option value="">Choose a POC / Tactic\u2026</option>'+
+    allPocs.map(function(p){return '<option value="'+p.id+'"'+(pocId===p.id?" selected":"")+'>'+p.n+'</option>';}).join("")+'</select>';
+   if(pocId)projs=projectsForPoc(pocId);
+  } else {
+   var tacticsList2=STRAT.filter(function(x){return x.k==="Tactic";});
+   h+='<select data-bf="pk:projTactic" style="width:100%;margin-bottom:8px"><option value="">Choose a Tactic\u2026</option>'+
+    tacticsList2.map(function(t){return '<option value="'+t.id+'"'+(tacId2===t.id?" selected":"")+'>'+t.n+'</option>';}).join("")+'</select>';
+   if(tacId2)projs=projectsForTactic(tacId2);
+  }
+  if(pocId||tacId2){
+   h+=pickList(projs.map(function(p){return {id:p.id,label:p.n,sub:p.st+(p.own?" · "+p.own:"")};}),"blockcite",b.id);
+   if(mode2==="poc"&&pocId)h+='<button class="btn btn-strat btn-sm" style="margin-top:6px" data-act="newstrat|'+b.id+':Project:'+pocId+'">'+ico("plus")+'New Project on this POC</button>';
+  }
+  return h;}
+
+ if(pk==="pm")return pickList(pmAll().map(function(e){return {id:e.id,label:e.n+" · "+e.k,sub:pmLine(e).replace(/<\/?b>/g,"")};}),"blockcite",b.id);
+ if(pk==="task")return pickList(TASKS.map(function(t){return {id:t.id,label:t.t,sub:t.who+" · "+t.st};}),"blockcite",b.id);
+ if(pk==="issue")return pickList(ISSUES.map(function(x){return {id:x.id,label:x.n,sub:x.sys+" · "+x.st+" · "+x.sev};}),"blockcite",b.id);
+ if(pk==="vis"){var items3=[];DATA.forEach(function(a){a.reports.forEach(function(rp){rp.pages.forEach(function(pg){pg.vis.forEach(function(v){
+   items3.push({id:v.id,label:v.n,sub:v.val});});});});});return pickList(items3,"blockcite",b.id);}
+ if(pk==="para"){
+  var items4=PARAS.filter(function(p){return p.v.trim();}).map(function(p){return {id:p.id,label:p.h,sub:"your paragraph"};});
+  ORGREPS.forEach(function(r){r.paras.forEach(function(p){items4.push({id:p.id,label:p.h,sub:r.au+" \u00b7 "+r.n});});});
+  return pickList(items4,"blockcite",b.id);}
+ if(pk==="report"){
+  var items5=ORGREPS.map(function(r){return {id:r.id,label:r.n,sub:r.au+" \u00b7 "+r.st};});
+  return pickList(items5,"blockcite",b.id);}
+ return "";}
+
+function buildStratForm(b){
+ var f=BUILD.newFor;if(!f)return"";
+ var par=strat(f.parId);
+ var vals=BUILD.stratForm=BUILD.stratForm||{name:"",owner:"",budget:"",start:"",end:"",scope:""};
+ return '<div style="padding:10px;border-radius:8px;background:var(--gold-soft);margin-top:8px">'+
+  '<div class="flbl" style="margin-bottom:8px">New '+f.kind+', under '+esc(par?par.n:f.parId)+'</div>'+
+  '<input data-sf="name" value="'+esc(vals.name)+'" placeholder="What it does" style="width:100%;margin-bottom:6px">'+
+  (f.kind==="Project"?
+   '<div class="fgrid" style="grid-template-columns:1fr 1fr 1fr 1fr">'+
+   '<input data-sf="owner" value="'+esc(vals.owner)+'" placeholder="Owner">'+
+   '<input data-sf="budget" value="'+esc(vals.budget)+'" placeholder="Budget">'+
+   '<input data-sf="start" value="'+esc(vals.start)+'" placeholder="Start">'+
+   '<input data-sf="end" value="'+esc(vals.end)+'" placeholder="End"></div>'+
+   '<input data-sf="scope" value="'+esc(vals.scope)+'" placeholder="Scope, e.g. 2 clinics, 8-week trial" style="width:100%;margin-top:6px">':
+   '<input data-sf="owner" value="'+esc(vals.owner)+'" placeholder="Owner" style="width:100%">')+
+  '<div class="acts" style="margin-top:10px">'+
+  '<button class="btn btn-go btn-sm" data-act="savestrat|'+b.id+'">'+ico("check")+'Create and cite it</button>'+
+  '<button class="btn btn-ghost btn-sm" data-act="cancelstrat|'+b.id+'">Cancel</button></div></div>';}
+
+/* read-only, story-shaped view of the same draft — no edit chrome */
+function nl2br(s){return esc(s).replace(/\n/g,"<br>");}
+function scBuildPreview(){
+ var B=ensureBuild(),sc=B.scope;
+ var written=B.blocks.filter(function(b){return b.v.trim()||b.cites.length;});
+ var h='<div class="card flush"><div class="ch">'+ico("doc","icon-lg")+
+  '<span class="ch-t">'+(B.title.trim()?esc(B.title):"Untitled report/plan")+'</span>'+
+  '<span class="r"><span class="mono" style="font-size:10px;color:var(--muted)">preview \u00b7 as it reads once issued</span></span></div>'+
+  '<div style="padding:22px 26px;max-width:760px">'+
+  '<div class="ed-s" style="margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--border)">'+
+  (B.to?'To <b>'+esc(B.to)+'</b> · ':'')+esc(deptName(sc.dept))+(sc.fn?' · '+esc(fnName(sc.fn)):'')+
+  ' · '+esc(buName(sc.bu))+' · '+MONN[sc.month-1]+' '+sc.year+'</div>'+
+  (written.length?written.map(function(b){
+   return (b.h?'<h4 style="margin:20px 0 6px;font-size:14.5px;color:var(--ink);font-family:var(--sans)">'+esc(b.h)+
+     (b.diag?' '+dgChip(b.diag):'')+'</h4>':(b.diag?'<div style="margin-top:18px">'+dgChip(b.diag)+'</div>':'<div style="margin-top:18px"></div>'))+
+    (b.v.trim()?'<p style="font-size:13.5px;line-height:1.95;color:var(--text-body);margin:6px 0 8px">'+nl2br(b.v.trim())+'</p>':
+     '<p class="ed-s" style="margin:6px 0 8px">Nothing written for this section yet.</p>')+
+    b.cites.map(function(c){return citeCard(c,sc);}).join("");}).join(""):
+   '<div class="ed-s" style="padding:20px 0;text-align:center">Nothing written yet — switch to Edit to start.</div>')+
+  '</div></div>';
+ h+='<div class="cnote">This is exactly how the report/plan reads once issued — heading, prose, then the data or project detail each paragraph rests on. Switch back to Edit to change anything.</div>';
+ return h;}
+
+function scTemplates(){
+ var h='<div class="card flush"><div class="ch">'+ico("layers","icon-lg")+
+  '<span class="ch-t">Report/Plan templates</span>'+
+  '<span class="r"><button class="btn btn-primary btn-sm" data-act="tpladd|">'+ico("plus")+'New template</button></span></div>'+
+  '<div class="cnote">Configured here, used in <b>Build a report/plan</b>. A template is a named list of sections; each section can carry any number of KPIs, KPI breakdowns, or child reports/plans, all seeded in automatically \u2014 with that period\u2019s achievement and dashboard \u2014 the moment the template is used. POCs, Tactics, Projects and other situational sources are still added while building the actual report, not here.</div></div>';
+
+ h+=TEMPLATES.map(function(t){
+  var open=(navSec==="tpl-"+t.id);
+  return '<div class="vis'+(open?" on":"")+'"><div class="vis-h">'+ico("doc")+
+   '<span class="t-name">'+esc(t.n)+'</span>'+
+   '<span class="mono" style="font-size:10px;color:var(--muted)">'+t.sections.length+' section'+(t.sections.length===1?"":"s")+'</span>'+
+   '<span class="acts" style="margin-left:auto">'+
+   '<button class="btn btn-outline btn-sm" data-sec="tpl-'+t.id+'">'+ico("pen")+(open?"Close":"Edit")+'</button>'+
+   '<button class="btn btn-ghost btn-sm" data-act="tpldel|'+t.id+'">'+ico("plus")+' Delete</button></span></div>'+
+   (open?'<div style="padding:12px">'+
+    '<label class="flbl">Name</label><input data-tpf="n:'+t.id+'" value="'+esc(t.n)+'" style="width:100%;margin-bottom:8px">'+
+    '<label class="flbl">Description</label><input data-tpf="desc:'+t.id+'" value="'+esc(t.desc)+'" style="width:100%;margin-bottom:10px">'+
+    '<label class="flbl" style="margin-bottom:6px;display:block">Sections</label>'+
+    t.sections.map(function(s,i){return tplSectionEditor(t,s,i);}).join("")+
+    '<button class="btn btn-outline btn-sm" style="margin-top:8px" data-act="tplsecadd|'+t.id+'">'+ico("plus")+'Add section</button>'+
+    '</div>':"")+'</div>';}).join("");
+ return h;}
+
+function tplSectionEditor(t,s,i){
+ var key=t.id+":"+i,pickOpen=(TPLPICK.key===key);
+ s.items=s.items||[];
+ return '<div style="border:1px solid var(--border);border-radius:8px;padding:10px;margin:6px 0">'+
+  '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
+  '<input data-tpf="sech:'+t.id+':'+i+'" value="'+esc(s.h)+'" style="flex:1;min-width:160px" placeholder="Section heading">'+
+  '<div class="seg d">'+["none","d1","d2","d3","d4"].map(function(x){
+   return '<button class="'+((s.diag||"none")===x?"on":"")+'" data-act="tplsecdiag|'+t.id+':'+i+':'+x+'">'+(x==="none"?"untyped":DIAG[x].n)+'</button>';}).join("")+'</div>'+
+  '<button class="btn btn-ghost btn-sm" data-act="tplsecdel|'+t.id+':'+i+'">\u2715</button></div>'+
+  (s.items.length?'<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">'+
+   s.items.map(function(it,ii){
+    var tag=it.type==="report"?"Child report/plan":it.type==="bd"?"Breakdown":"KPI";
+    var bi=(it.type==="kpi")&&kpi(it.id)&&kpi(it.id).biReportId;
+    return '<span class="chip '+(it.type==="report"?"strat":"pbi")+'">'+tag+': '+esc(tplItemLabel(it))+
+     (bi?' '+ico("chart","icon-sm"):'')+
+     '<button data-act="tplitemdel|'+t.id+':'+i+':'+ii+'" style="border:none;background:none;cursor:pointer;margin-left:4px;color:inherit">\u00d7</button></span>';}).join("")+
+   '</div>':'<div class="ed-s" style="margin-top:6px">No components yet \u2014 this section starts blank when the template is used.</div>')+
+  '<button class="btn btn-outline btn-sm" style="margin-top:8px" data-act="tplitemopen|'+key+'">'+ico("plus")+'Add KPI, breakdown or child report/plan</button>'+
+  (pickOpen?tplItemPicker(t,i):"")+
+  '</div>';}
+
+function tplItemPicker(t,i){
+ var sel=TPLPICK;
+ var h='<div class="cmtbox"><div style="display:flex;gap:6px;margin-bottom:8px">'+
+  [["kpi","KPI"],["bd","KPI breakdown"],["report","Child report/plan"]].map(function(k){
+   return '<button class="btn btn-sm '+(sel.kind===k[0]?"btn-primary":"btn-outline")+'" data-act="tplpickkind|'+k[0]+'">'+k[1]+'</button>';}).join("")+'</div>';
+ if(sel.kind==="kpi"){
+  h+=pickList(KPIS.map(function(k){return {id:k.id,label:k.n+" · "+k.type};}),"tplitemadd",t.id+":"+i+":kpi");
+ } else if(sel.kind==="bd"){
+  var kpisWithBd=KPIS.filter(function(k){return (k.breakdowns||[]).length;});
+  h+='<select data-bf="tplpk:kpiId" style="width:100%;margin-bottom:8px"><option value="">Choose a KPI\u2026</option>'+
+   kpisWithBd.map(function(k){return '<option value="'+k.id+'"'+(sel.kpiId===k.id?" selected":"")+'>'+k.n+'</option>';}).join("")+'</select>';
+  var K=sel.kpiId?kpi(sel.kpiId):null;
+  if(K){
+   var dims=bdDims(K);
+   h+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">'+dims.map(function(d){
+    return '<button class="btn btn-sm '+(sel.dim===d?"btn-primary":"btn-outline")+'" data-act="tplpickdim|'+d+'">'+d+'</button>';}).join("")+'</div>';
+   if(sel.dim){
+    var items=K.breakdowns.filter(function(bd){return bd.dim===sel.dim;}).map(function(bd){return {id:bd.id,label:bd.n};});
+    h+=pickList(items,"tplitemadd",t.id+":"+i+":bd");
+   }
+  }
+ } else if(sel.kind==="report"){
+  h+=pickList(ORGREPS.map(function(r){return {id:r.id,label:r.n,sub:r.au+" · "+r.st};}),"tplitemadd",t.id+":"+i+":report");
+ }
+ return h+'</div>';}
+
+/* ============================================================
+   HOME — the artifacts this role owns
+   ============================================================ */
+function scHome(){
+ var h='<div class="cnote" style="margin-bottom:14px"><b>An artifact is a recurring obligation, not a document.</b> Each card below is one of the four things this role must produce, on its own cadence, to its own audience — a template that says which processes and tactics/POCs it must speak to, and how many of the four diagnostic types each one needs before it counts as complete. The artifact itself holds no content; it only points at paragraphs in the pool below. \u201cBuild this\u201d is how you actually fulfil one.</div>';
+ h+='<div class="arts">'+ARTS.map(function(a){
+  var cv=artCoverage(a),d=cv.have,n=cv.need,pct=cv.pct;
+  return '<button class="art '+a.cls+'" data-openart="'+a.id+'">'+
+   '<span class="b '+(a.fam==="plan"?"b-rev":"b-proc")+'"><span class="bdot"></span>'+(a.fam==="plan"?"Plan":"Report/Plan")+'</span>'+
+   '<div class="art-k">'+a.k+'</div><div class="art-t">'+a.n+'</div>'+
+   '<div class="art-m">'+a.per+' · to '+a.to+' · due '+a.due+'</div>'+
+   '<div class="prog '+(pct===100?"":pct>=50?"warn":"bad")+'"><i style="width:'+pct+'%"></i></div>'+
+   '<div class="art-f"><span class="mono" style="font-size:10px;color:var(--muted)">'+d+' of '+n+' paragraphs · '+units(a).length+' tactics</span>'+
+   '<span class="b '+(a.st==="Draft"?"b-sub":"b-draft")+'" style="margin-left:auto"><span class="bdot"></span>'+a.st+'</span></div>'+
+   '<div class="art-f" style="border:none;padding-top:6px;margin-top:2px">'+
+   a.covers.map(function(c){return '<span class="chip">'+c.proc+'</span>';}).join("")+
+   units(a).map(function(u){return '<span class="chip strat">'+u.tac+'</span>';}).join("")+'</div>'+
+   '<div style="padding:10px 14px 12px"><span class="btn btn-go btn-sm" data-act="buildfromart|'+a.id+'">'+ico("pen")+'Build this</span></div></button>';}).join("")+'</div>';
+
+ h+='<div class="card flush"><div class="ch">'+ico("layers","icon-lg")+
+  '<span class="ch-t">Paragraphs shared across artifacts</span>'+
+  '<span class="r"><span class="mono" style="font-size:10px;color:var(--muted)">written once · referenced, never copied</span></span></div>'+
+  '<table><thead><tr><th>Paragraph</th><th>Process</th><th>Diagnostic</th><th>Appears in</th><th>Source</th><th></th></tr></thead><tbody>'+
+  allYourParagraphs().map(function(x){var p=x.p;var u=(x.source==="compose")?usedIn(p.id):[];
+   return '<tr><td><div class="t-name">'+esc(p.h)+'</div><div class="t-sub mono">'+p.id+'</div></td>'+
+   '<td><span class="chip">'+(p.proc||"\u2014")+'</span><div class="t-sub">'+(strat(p.tac)?strat(p.tac).n:p.tac||"unclassified")+'</div></td>'+
+   '<td>'+dgChip(p.diag)+'</td>'+
+   '<td>'+(x.source==="compose"?
+     (u.length?u.map(function(a){return '<span class="reuse">'+a.k.split(" ")[0]+'</span> ';}).join(""):'<span class="t-sub" style="margin:0">not placed</span>')+
+     (u.length>1?'<div class="t-sub">one version, '+u.length+' appearances</div>':''):
+     '<div class="t-sub" style="margin:0">'+esc(x.sourceLabel)+'</div>')+'</td>'+
+   '<td>'+(x.source==="compose"?'<span class="chip">Compose pool</span>':'<span class="chip strat">Report/Plan</span>')+'</td>'+
+   '<td>'+(x.source==="compose"?
+     '<button class="btn btn-outline btn-sm" data-editp="'+p.id+'">'+ico("pen")+'Open</button>':
+     '<button class="btn btn-outline btn-sm" data-act="openref|'+x.reportId+'">'+ico("open")+'Open</button>')+'</td></tr>'+
+   (x.source==="compose"&&navSec==="editp-"+p.id?'<tr><td colspan="6">'+paraEditBox(p)+'</td></tr>':'');}).join("")+
+  '</tbody></table>'+
+  '<div class="cnote"><b>Editing a shared paragraph changes it everywhere.</b> That is the point — one claim, one version, one history. If two artifacts need different wording, they need different paragraphs.</div></div>';
+ h+='<div style="margin-top:16px">'+homeByProc()+'</div>';
+ return h;}
+
+function homeByProc(){
+ return '<div class="card flush"><div class="ch">'+ico("flow","icon-lg")+
+  '<span class="ch-t">Artifacts by process</span>'+
+  '<span class="r"><span class="mono" style="font-size:10px;color:var(--muted)">a process is what links a paragraph to its reports/plans</span></span></div>'+
+  '<table><thead><tr><th>Process</th><th>Owner</th><th>Artifacts that cover it</th><th>Paragraphs</th><th>BI reports</th><th>Reports/Plans</th></tr></thead><tbody>'+
+  PROC.map(function(p){
+   var as=ARTS.filter(function(a){return a.covers.filter(function(c){return c.proc===p.id;}).length;});
+   var ps=allParas().filter(function(x){return x.proc===p.id;});
+   return '<tr><td><div class="t-name">'+p.n+'</div><div class="t-sub mono">'+p.id+'</div></td>'+
+   '<td>'+p.own+'</td>'+
+   '<td>'+(as.length?as.map(function(a){return '<div class="t-sub" style="margin:0">'+a.n+'</div>';}).join(""):'<span class="t-sub" style="margin:0">none</span>')+'</td>'+
+   '<td class="mono">'+ps.length+'</td>'+
+   '<td>'+(p.data.length?p.data.map(function(r){return '<span class="chip pbi">'+r+'</span> ';}).join(""):'—')+'</td>'+
+   '<td>'+(p.reports.length?p.reports.map(function(r){return '<span class="chip concl" style="cursor:pointer" data-act="openref|'+r+'">'+r+'</span> ';}).join(""):'—')+'</td></tr>';}).join("")+
+  '</tbody></table>'+
+  '<div class="cnote">The process registry is the spine. It decides which reports/plans a paragraph can reach, which artifacts must cover it, and who owns the answer when a paragraph about it goes unwritten.</div></div>';}
+
+/* ============================================================
+   COMPOSE
+   ============================================================ */
+function citeChip(id){
+ if(findVis(id))return '<span class="chip pbi" title="measurement">'+ico("chart","icon-sm")+id+'</span>';
+ var o=orgPara(id);
+ if(o)return '<span class="chip concl" title="someone else\u2019s conclusion">'+ico("doc","icon-sm")+id+'</span>';
+ if(pmById(id))return '<span class="chip pm">'+id+'</span>';
+ if(attach(id))return '<span class="chip un">'+id+'</span>';
+ if(orgRep(id))return '<span class="chip concl">'+id+' whole</span>';
+ for(var i=0;i<STRAT.length;i++)if(STRAT[i].id===id)return '<span class="chip strat">'+id+'</span>';
+ return '<span class="chip">'+id+'</span>';}
+
+/* a paragraph resting on conclusions is weaker than one resting on measurements */
+/* ============================================================
+   PARAGRAPH POOL
+   ============================================================ */
+/* every paragraph this role has actually authored, wherever it lives —
+   the old Compose pool AND every report/plan this role has issued.
+   Structured by process, since process is what decides where a
+   paragraph can be reused. */
+/* editing an existing pool paragraph in place — direct, live, no
+   separate save step, the same spirit as editing a block in the builder */
+function paraEditBox(p){
+ return '<div class="cmtbox">'+
+  '<div class="fld"><label class="flbl">Editing '+p.id+' \u2014 changes everywhere it\u2019s referenced</label>'+
+  '<textarea class="rta" data-pv="'+p.id+'">'+esc(p.v)+'</textarea></div>'+
+  '<div class="fgrid" style="grid-template-columns:1fr 1fr;margin-top:10px">'+
+  '<div class="fld"><label class="flbl">Process</label><div class="inp"><select data-pef-proc="'+p.id+'">'+
+  PROC.map(function(x){return '<option value="'+x.id+'"'+(p.proc===x.id?" selected":"")+'>'+x.id+' '+x.n+'</option>';}).join("")+
+  '</select></div></div>'+
+  '<div class="fld"><label class="flbl">Diagnostic type</label><div class="seg d">'+["d1","d2","d3","d4"].map(function(x){
+   return '<button class="'+(p.diag===x?"on":"")+'" data-act="pediag|'+p.id+':'+x+'">'+DIAG[x].n+'</button>';}).join("")+'</div></div></div>'+
+  '<div class="acts" style="margin-top:10px"><button class="btn btn-ghost btn-sm" data-sec="editp-'+p.id+'">Close</button></div></div>';}
+
+function allYourParagraphs(){
+ var out=PARAS.map(function(p){return {p:p,source:"compose",sourceLabel:"Compose pool",openId:p.id};});
+ ORGREPS.filter(function(r){return r.dir==="out";}).forEach(function(r){
+  r.paras.forEach(function(p){out.push({p:p,source:"report",sourceLabel:r.n,reportId:r.id,openId:p.id});});});
+ return out;}
+
+/* every section in every report/plan this role can see, in or out —
+   the paragraph IS the report section, so this is the real full set,
+   not just the ones this role authored */
+function allReportSections(){
+ var out=PARAS.map(function(p){return {p:p,source:"compose",sourceLabel:"Compose pool",tplLabel:"\u2014",openId:p.id};});
+ ORGREPS.forEach(function(r){
+  var t=r.tpl?tpl(r.tpl):null;
+  r.paras.forEach(function(p){out.push({p:p,source:"report",sourceLabel:r.n,reportId:r.id,dir:r.dir,
+   tplLabel:t?t.n:"No template",openId:p.id});});});
+ return out;}
+
+function scPool(){
+ var all=allReportSections();
+ var byProc={};all.forEach(function(x){var k=x.p.proc||"unclassified";(byProc[k]=byProc[k]||[]).push(x);});
+ var procIds=Object.keys(byProc).sort(function(a,b){return b.length-a.length;});
+ var composeCount=all.filter(function(x){return x.source==="compose";}).length;
+ var reportCount=all.filter(function(x){return x.source==="report";}).length;
+ var h='<div class="card flush"><div class="ch">'+ico("layers","icon-lg")+
+  '<span class="ch-t">Every section in every report/plan</span>'+
+  '<span class="r"><button class="btn btn-primary btn-sm" data-act="newloose|">'+ico("plus")+'New paragraph</button></span></div>'+
+  '<div class="cnote" style="border:none;padding:12px 15px 0">A paragraph <b>is</b> a report/plan section \u2014 this is every one that exists, from any report/plan, yours or received, plus the Compose pool. '+
+  all.length+' total — '+composeCount+' from the Compose pool, '+reportCount+' from report/plan sections. Grouped by process.</div></div>';
+
+ h+=procIds.map(function(pid){
+  var rows=byProc[pid];
+  var pr=proc(pid);
+  return '<div class="card flush" style="margin-top:14px"><div class="ch">'+ico("flow")+
+   '<span class="ch-t">'+(pr?pr.n:"Unclassified")+'</span>'+
+   '<span class="r"><span class="mono" style="font-size:10px;color:var(--muted)">'+pid+' \u00b7 '+rows.length+' section'+(rows.length===1?"":"s")+'</span></span></div>'+
+   '<table><thead><tr><th>Section</th><th>Diagnostic</th><th>Report/Plan</th><th>Artifact / template</th><th></th></tr></thead><tbody>'+
+   rows.map(function(x){
+    var p=x.p;
+    return '<tr><td><div class="t-name">'+esc(p.h)+'</div>'+
+    '<div class="t-sub">'+(p.v?esc(p.v.slice(0,88))+(p.v.length>88?"\u2026":""):"<i>empty</i>")+'</div></td>'+
+    '<td>'+dgChip(p.diag)+'</td>'+
+    '<td>'+(x.source==="compose"?'<span class="chip">Compose pool</span>':
+      '<span class="chip strat" style="cursor:pointer" data-act="openrep|'+x.reportId+'">'+esc(x.sourceLabel)+'</span>'+
+      (x.dir?'<div class="t-sub" style="margin-top:2px">'+(x.dir==="out"?"issued by you":"received")+'</div>':''))+'</td>'+
+    '<td><div class="t-sub" style="margin:0">'+esc(x.tplLabel)+'</div></td>'+
+    '<td><span class="acts">'+(x.source==="compose"?
+      '<button class="btn btn-outline btn-sm" data-editp="'+p.id+'">'+ico("pen")+'Open</button>':
+      '<button class="btn btn-outline btn-sm" data-act="openrep|'+x.reportId+'">'+ico("open")+'Open</button>')+
+      '<button class="btn btn-ghost btn-sm" data-act="cite|'+p.id+'" title="Add this section to a report/plan you\u2019re building">'+ico("plus")+'Add to a report/plan</button></span></td></tr>'+
+    (x.source==="compose"&&navSec==="editp-"+p.id?'<tr><td colspan="5">'+paraEditBox(p)+'</td></tr>':'');}).join("")+
+   '</tbody></table></div>';}).join("")+
+  '<div class="cnote" style="margin-top:14px"><b>The pool is the real asset.</b> Artifacts and reports/plans come and go on their cadences; the claims persist, each with its process, its diagnostic type, its sources — citable from anywhere, compose or report/plan alike.</div>';
+ return h;}
+
+/* ============================================================
+   REPORTS — role hierarchy, comment as a draft paragraph
+   ============================================================ */
+function scData(){
+ var pg=null,rp=null,ap=null;
+ DATA.forEach(function(a){a.reports.forEach(function(r){r.pages.forEach(function(g){
+  if(g.id===navPg){pg=g;rp=r;ap=a;}});});});
+ if(!pg){ap=DATA[0];rp=ap.reports[0];pg=rp.pages[0];navPg=pg.id;}
+ var active=BIFILTER.kpiId||BIFILTER.dept||BIFILTER.fn||BIFILTER.proc;
+ var matches=active?KPIS.filter(function(k){
+  if(BIFILTER.kpiId&&k.id!==BIFILTER.kpiId)return false;
+  if(BIFILTER.dept&&k.dept!==BIFILTER.dept)return false;
+  if(BIFILTER.fn&&k.fn!==BIFILTER.fn)return false;
+  if(BIFILTER.proc&&k.proc!==BIFILTER.proc)return false;
+  return true;}):[];
+ var h='<div class="card" style="padding:14px">'+
+  '<div class="flbl" style="margin-bottom:8px">Find related reports \u2014 by KPI, Department, Function or Process</div>'+
+  '<div class="fgrid" style="grid-template-columns:1fr 1fr 1fr 1fr;gap:10px">'+
+  '<select data-bf="bif:kpiId"><option value="">Any KPI</option>'+KPIS.map(function(k){return '<option value="'+k.id+'"'+(BIFILTER.kpiId===k.id?" selected":"")+'>'+esc(k.n)+'</option>';}).join("")+'</select>'+
+  '<select data-bf="bif:dept"><option value="">Any department</option>'+DEPTS.map(function(d){return '<option value="'+d.id+'"'+(BIFILTER.dept===d.id?" selected":"")+'>'+esc(d.n)+'</option>';}).join("")+'</select>'+
+  '<select data-bf="bif:fn"><option value="">Any function</option>'+(BIFILTER.dept?fnsOfDept(BIFILTER.dept):FNS).map(function(f){return '<option value="'+f.id+'"'+(BIFILTER.fn===f.id?" selected":"")+'>'+esc(f.n)+'</option>';}).join("")+'</select>'+
+  '<select data-bf="bif:proc"><option value="">Any process</option>'+PROC.map(function(x){return '<option value="'+x.id+'"'+(BIFILTER.proc===x.id?" selected":"")+'>'+esc(x.n)+'</option>';}).join("")+'</select>'+
+  '</div>'+
+  (active?('<div style="margin-top:12px"><div class="ed-s" style="margin-bottom:6px">'+matches.length+' matching KPI'+(matches.length===1?"":"s")+'</div>'+
+   (matches.length?matches.map(function(k){
+    var bi=k.biReportId?biReport(k.biReportId):null;
+    var kOpen=(BIFILTER.openKpi===k.id);
+    var secOpen=(navSec===k.id);
+    return '<div class="vis'+(kOpen?" on":"")+'" style="margin-top:8px"><div class="vis-h">'+ico("chart")+
+     '<span class="t-name">'+esc(k.n)+'</span>'+
+     '<span class="chip">'+esc(deptName(k.dept))+' \u00b7 '+esc(fnName(k.fn))+'</span>'+
+     (k.proc?'<span class="chip">'+k.proc+'</span>':'')+
+     (bi?'<span class="chip pbi">'+esc(bi.n)+'</span>':'<span class="chip none">no BI report linked</span>')+'</div>'+
+     '<div style="padding:12px">'+
+     (bi?'<button class="btn btn-outline btn-sm" data-act="bifopen|'+k.id+'">'+ico(kOpen?"up":"chart","icon-sm")+(kOpen?"Close dashboard":"View dashboard")+'</button>'+
+      (kOpen?sampleDashboard(k,DEFAULT_SCOPE):""):
+      '<div class="ed-s">Nothing to open \u2014 link a BI report to this KPI in the KPI catalogue first.</div>')+
+     (kOpen?'<div class="acts" style="margin-top:10px">'+
+      '<button class="btn btn-go btn-sm" data-sec="'+k.id+'">'+ico("pen")+(secOpen?"Close":"Write a conclusion from it")+'</button>'+
+      '<button class="btn btn-outline btn-sm" data-act="cite|'+k.id+'">'+ico("plus")+'Cite in a report/plan</button></div>'+
+      (secOpen?cmtBox(k.id,"d1",k.proc,"KPI "+k.n):""):"")+
+     '</div></div>';}).join(""):
+    '<div class="ed-s">No KPIs match this combination.</div>'))+'</div>':
+   '<div class="ed-s" style="margin-top:10px">Pick any combination above to find the reports behind it \u2014 filters combine.</div>')+
+  '</div>';
+
+ h+='<div class="card flush" style="margin-top:16px"><div class="ch">'+ico("chart","icon-lg")+
+  '<span class="ch-t">Browse all Power BI apps</span>'+
+  '<span class="r"><span class="mono" style="font-size:10px;color:var(--muted)">the Power BI apps your role holds</span></span></div>'+
+  '<div style="display:grid;grid-template-columns:300px 1fr;align-items:start">'+
+  '<div class="tree">'+DATA.map(function(a){
+   var h2='<button class="tnode'+(navApp===a.id?" on":"")+'" data-tapp="'+a.id+'">'+ico("grid")+
+    '<span><span class="cap">'+a.n+'</span><span class="sub">'+a.role+'</span></span></button>';
+   if(navApp===a.id)a.reports.forEach(function(r){
+    h2+='<button class="tnode tl2" data-trpt="'+r.id+'">'+ico("chart")+
+     '<span><span class="cap">'+r.n+'</span><span class="sub">'+r.id+'</span></span></button>';
+    if(navRpt===r.id)r.pages.forEach(function(g){
+     h2+='<button class="tnode tl3'+(navPg===g.id?" on":"")+'" data-tpg="'+g.id+'">'+
+      '<span><span class="cap">'+g.n+'</span><span class="sub">'+g.vis.length+' visuals</span></span></button>';});});
+   return h2;}).join("")+
+  '<div class="cnote" style="border:none;padding:12px 10px">The dashboard comes in as one embedded whole — the system can\u2019t see inside it any more finely than you can see inside a photo. Pick which measurement you mean, then cite or explain that one.</div></div>'+
+  '<div style="padding:15px">'+
+  '<div style="display:flex;gap:9px;align-items:baseline;flex-wrap:wrap;margin-bottom:12px">'+
+  '<span class="ed-t" style="font-size:15px">'+pg.n+'</span>'+
+  '<span class="ed-s">'+rp.n+' · '+rp.id+'</span></div>'+
+  dashEmbed(pg,rp,ap)+
+  '</div></div>'+
+  '<div class="cnote"><b>An embedded dashboard is one object, not a set of components.</b> Pick the measurement you mean below; your paragraph rests on that one figure, citable and re-queryable, the same as before — the dashboard itself stays whole.</div></div>';
+ return h;}
+
+/* the whole page, as one embedded Power-BI-looking dashboard — action
+   happens once, on whichever measurement inside it you point at, not
+   once per tile the way separate component cards implied. */
+function dashEmbed(pg,rp,ap){
+ var pickId=DASHPICK[pg.id]||pg.vis[0].id;
+ var pickV=pg.vis.filter(function(v){return v.id===pickId;})[0]||pg.vis[0];
+ var open=(navSec===pickV.id);
+ var others=[];ORGREPS.forEach(function(r){r.paras.forEach(function(pp){if(pp.cites.indexOf(pickV.id)>-1)others.push({p:pp,r:r});});});
+ var tiles=pg.vis.map(function(v,i){
+  var bars=[62,55,71,48,66,52,74,58].map(function(x,ii){return ii===7?Math.min(96,x+i*4):x;});
+  return '<div style="background:#fff;border:1px solid '+(v.id===pickId?'#f2c811':'#e1dfdd')+';border-radius:4px;padding:12px;flex:1;min-width:190px;cursor:pointer" data-act="pickvis|'+pg.id+':'+v.id+'">'+
+   '<div style="display:flex;gap:6px;align-items:center;margin-bottom:2px">'+dgChip(v.diag)+
+   '<span style="font-size:9.5px;color:#605e5c">'+esc(v.kind)+'</span></div>'+
+   '<div style="font-size:11.5px;font-weight:600;color:#252423;margin:4px 0 8px">'+esc(v.n)+'</div>'+
+   (v.val?'<div class="mono" style="font-size:18px;font-weight:700;color:#252423">'+esc(v.val)+'</div>':'')+
+   '<div class="spark" style="height:34px;margin-top:8px">'+bars.map(function(x,ii){return '<i class="'+(ii===bars.length-1?"last":"")+'" style="height:'+x+'%"></i>';}).join("")+'</div>'+
+   '</div>';}).join("");
+ var h=biChrome(rp.n+" \u2014 "+pg.n,"#",'<div style="display:flex;gap:12px;flex-wrap:wrap">'+tiles+'</div>');
+ h+='<div class="card" style="margin-top:10px;padding:14px">'+
+  '<div class="flbl" style="margin-bottom:8px">Act on this dashboard \u2014 which measurement do you mean?</div>'+
+  '<select data-bf="dashpick:'+pg.id+'" style="margin-bottom:10px;max-width:340px">'+
+  pg.vis.map(function(v){return '<option value="'+v.id+'"'+(v.id===pickId?" selected":"")+'>'+esc(v.n)+'</option>';}).join("")+'</select>'+
+  '<div class="ref-m">'+pickV.id+' · '+ap.n+' \u203a '+rp.n+' \u203a '+pg.n+'</div>'+
+  (others.length?'<div class="ref-m" style="margin-top:5px">'+ico("doc","icon-sm")+' also rested on by '+
+   others.map(function(o){return o.r.au;}).join(", ")+'</div>':'')+
+  '<div class="acts" style="margin-top:10px">'+
+  '<button class="btn btn-go btn-sm" data-sec="'+pickV.id+'">'+ico("pen")+(open?"Close":"Write a conclusion from it")+'</button>'+
+  '<button class="btn btn-outline btn-sm" data-act="cite|'+pickV.id+'">'+ico("plus")+'Cite in a report/plan</button>'+
+  '</div>'+
+  (open?cmtBox(pickV.id,pickV.diag,pickV.proc,"visual "+pickV.id):"")+'</div>';
+ return h;}
+
+function draftsCard(){
+ if(!DRAFTS.length)return "";
+ return '<div class="card flush" style="margin-bottom:16px"><div class="ch">'+ico("pen","icon-lg")+
+  '<span class="ch-t">Drafts</span><span class="r"><span class="mono" style="font-size:10px;color:var(--muted)">saved, not yet issued \u00b7 only you can see these</span></span></div>'+
+  '<table><thead><tr><th>Title</th><th>Paragraphs</th><th>Citations</th><th></th></tr></thead><tbody>'+
+  DRAFTS.map(function(d){
+   var cites=d.blocks.reduce(function(n,b){return n+b.cites.length;},0);
+   return '<tr><td><div class="t-name">'+esc(d.title||"Untitled")+'</div></td>'+
+   '<td class="mono">'+d.blocks.length+'</td><td class="mono">'+cites+'</td>'+
+   '<td><button class="btn btn-outline btn-sm" data-act="opendraft|'+d.id+'">'+ico("pen")+'Open</button> '+
+   '<button class="btn btn-ghost btn-sm" data-act="deldraft|'+d.id+'">Delete</button></td></tr>';}).join("")+
+  '</tbody></table></div>';}
+
+function scReports(){
+ var wantDir=tab===1?"out":"in";
+ var list=ORGREPS.filter(function(x){return (x.dir||"in")===wantDir;});
+ if(!list.length){
+  var dc=(wantDir==="out")?draftsCard():"";
+  return dc+'<div class="card flush"><div class="ch">'+ico(wantDir==="out"?"send":"doc","icon-lg")+
+  '<span class="ch-t">'+(wantDir==="out"?"Reports/Plans you have issued":"Reports/Plans received")+'</span></div>'+
+  '<div style="padding:26px 16px;text-align:center"><div class="ed-t" style="font-size:14px">'+
+  (wantDir==="out"?"Nothing issued yet":"Nothing received yet")+'</div>'+
+  '<div class="ed-s" style="margin-top:5px">'+(wantDir==="out"?
+   "Build one — pick a template or start blank, add whatever it needs to say, and issue it. It will appear here, and in every reviewer\u2019s inbox exactly like the ones you receive.":
+   "Reports/Plans other roles issue will appear here.")+'</div>'+
+  (wantDir==="out"?'<div class="acts" style="justify-content:center;margin-top:12px">'+
+   '<button class="btn btn-go btn-sm" data-nav="build">'+ico("plus")+'Build a report/plan</button></div>':"")+'</div></div>';}
+ var r=(navOrg&&list.filter(function(x){return x.id===navOrg;})[0])||list[0];
+ var h=(wantDir==="out"?draftsCard():"")+'<div class="card flush"><div class="ch">'+ico("doc","icon-lg")+
+  '<span class="ch-t">'+(wantDir==="out"?"Reports/Plans you have issued":"Reports/Plans received")+'</span>'+
+  '<span class="r"><span class="mono" style="font-size:10px;color:var(--muted)">'+
+  (wantDir==="out"?"issued by you · visible in every reviewer\u2019s inbox":"written by other roles · the same shape as yours")+'</span></span></div>'+
+  '<div style="display:grid;grid-template-columns:312px 1fr;align-items:start">'+
+  '<div class="tree">'+list.map(function(x){
+   return '<button class="tnode'+(r&&navOrg===x.id?" on":"")+'" data-torg="'+x.id+'">'+ico("doc")+
+   '<span><span class="cap">'+x.n+'</span>'+
+   '<span class="sub">'+x.au+' · '+x.when+'</span>'+
+   '<span class="sub">'+x.paras.length+' conclusions · '+x.procs.join(", ")+'</span></span></button>';}).join("")+
+  '<div class="cnote" style="border:none;padding:12px 10px">A report/plan is paragraphs, not pages. Each one carries its author, its process and what it rests on.</div></div>'+
+  '<div style="padding:15px">'+
+  '<div style="display:flex;gap:9px;align-items:baseline;flex-wrap:wrap;margin-bottom:6px">'+
+  '<span class="ed-t" style="font-size:15px">'+r.n+'</span>'+
+  '<span class="b b-app"><span class="bdot"></span>'+r.st+'</span></div>'+
+  '<div class="ed-s" style="margin-bottom:6px">'+r.from+' · '+r.au+' · '+r.when+' · covers '+r.procs.join(", ")+(r.to?' · to '+r.to:'')+'</div>'+
+  shareBlock(r)+
+  r.paras.map(function(pp){return orgParaBlock(pp,r);}).join("")+
+  '</div></div>'+
+  '<div class="cnote"><b>You can argue with a report/plan.</b> Every paragraph in it is a conclusion someone drew — citable, drillable to what it rests on, and contestable. None of that applies to a visual.</div></div>';
+ return h;}
+
+/* share any report/plan with anyone, any time — not just the default
+   audience it was issued to, and not only at the moment of issuing */
+function shareBlock(r){
+ var open=(SHAREOPEN===r.id);
+ var shared=r.shared||[];
+ return '<div class="card" style="padding:12px 14px;margin-bottom:12px">'+
+  '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'+
+  '<span class="flbl" style="margin:0">Shared with'+(shared.length?' <span class="mono" style="font-size:10px;color:var(--muted)">('+shared.length+')</span>':'')+'</span>'+
+  (shared.length?shared.map(function(s){return '<span class="chip">'+esc(s.who)+' · '+esc(s.when)+'</span>';}).join(""):
+   '<span class="t-sub" style="margin:0">only the default audience so far</span>')+
+  '<button class="btn btn-outline btn-sm" style="margin-left:auto" data-act="shareopen|'+r.id+'">'+ico("send","icon-sm")+(open?"Close":"Share")+'</button>'+
+  '</div>'+
+  (open?'<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">'+
+   '<input id="sharewho_'+r.id+'" placeholder="Name or names, comma separated" style="flex:1;min-width:220px">'+
+   '<button class="btn btn-go btn-sm" data-act="shareconfirm|'+r.id+'">'+ico("check")+'Share now</button></div>':'')+
+  '</div>';}
+
+function orgParaBlock(pp,r){
+ var open=(navSec===pp.id);
+ var mine=allParas().filter(function(x){return x.cites.indexOf(pp.id)>-1;});
+ var d=depthOf(pp.cites);
+ var decs=pp.decisions||[];
+ var tkOpen=(navSec==="tk-"+pp.id),dcOpen=(navSec==="dc-"+pp.id),esOpen=(navSec==="es-"+pp.id);
+ return '<div class="vis'+(open?" on":"")+'"><div class="vis-h">'+ico("doc")+
+  '<span class="t-name">'+pp.h+'</span>'+dgChip(pp.diag)+
+  '<span class="chip">'+pp.proc+'</span>'+
+  '<span class="b b-concl"><span class="bdot"></span>conclusion</span>'+
+  (pp.escalated?'<span class="b b-rmi"><span class="bdot"></span>escalated</span>':'')+
+  (mine.length?'<span class="reuse" style="margin-left:auto">cited by '+mine.length+' of yours</span>':'')+'</div>'+
+  '<div style="padding:12px">'+
+  '<div style="font-size:12.5px;line-height:1.8;color:var(--text-body)">'+pp.v+'</div>'+
+  pp.cites.map(function(c){return citeCard(c,r.scope);}).join("")+
+  '<div class="p-f" style="border-top:1px dashed var(--border);margin-top:9px;padding:8px 0 0">'+
+  (pp.cites.length?"":'<span class="chip none">no source</span>')+
+  (d?'<span class="b b-sub"><span class="bdot"></span>'+d+' conclusion'+(d>1?"s":"")+' deep</span>':
+   (pp.cites.length?'<span class="b b-app"><span class="bdot"></span>on measurement</span>':''))+'</div>'+
+  (decs.length?'<div style="margin-top:9px">'+decs.map(function(x){
+   return '<div class="chip" style="display:block;margin:3px 0;padding:5px 9px;background:var(--sage-soft)"><b>Decision:</b> '+esc(x.text)+' <span class="mono" style="font-size:10px;color:var(--muted)">\u2014 '+x.owner+' \u00b7 '+x.when+'</span></div>';}).join("")+'</div>':"")+
+  '<div class="acts" style="margin-top:10px">'+
+  '<button class="btn btn-outline btn-sm" data-act="cite|'+pp.id+'">'+ico("plus")+'Cite in a report/plan</button>'+
+  (pp.cites.filter(function(c){return findVis(c);}).length?
+   '<button class="btn btn-pbi btn-sm" data-act="citeunder|'+pp.id+'">'+ico("down")+'Cite what it rests on, in a report/plan</button>':'')+
+  '<button class="btn btn-go btn-sm" data-sec="'+pp.id+'">'+ico("pen")+(open?"Close":"Write my own conclusion")+'</button>'+
+  '<button class="btn btn-strat btn-sm" data-act="opentaskform|'+pp.id+'">'+ico("check")+(tkOpen?"Close":"+ Task")+'</button>'+
+  '<button class="btn btn-pm btn-sm" data-act="opendecform|'+pp.id+'">'+ico("pen")+(dcOpen?"Close":"+ Decision")+'</button>'+
+  '<button class="btn btn-ghost btn-sm" data-act="openescform|'+pp.id+'">'+ico("up")+(esOpen?"Close":"+ Escalate")+'</button>'+
+  '<button class="btn btn-ghost btn-sm" data-act="contest|'+pp.id+'">'+ico("back")+'Contest</button>'+
+  '</div>'+
+  (tkOpen?'<div class="cmtbox"><div class="flbl" style="margin-bottom:8px">New task, citing '+pp.id+'</div>'+
+   '<input id="tkn_'+pp.id+'" placeholder="What needs to be done" style="width:100%;margin-bottom:6px">'+
+   '<div class="fgrid" style="grid-template-columns:1fr 1fr">'+
+   '<input id="tkw_'+pp.id+'" placeholder="Assignee">'+
+   '<input id="tkd_'+pp.id+'" placeholder="Due (e.g. Fri 29 Aug)"></div>'+
+   '<div class="acts" style="margin-top:10px"><button class="btn btn-go btn-sm" data-act="savetask|'+pp.id+'">'+ico("check")+'Raise the task</button>'+
+   '<button class="btn btn-ghost btn-sm" data-act="opentaskform|'+pp.id+'">Cancel</button></div></div>':"")+
+  (dcOpen?'<div class="cmtbox"><div class="flbl" style="margin-bottom:8px">Record a decision, citing '+pp.id+'</div>'+
+   '<textarea class="rta" data-decf="'+pp.id+'" placeholder="What was decided">'+esc(decDraft[pp.id]||"")+'</textarea>'+
+   '<div class="acts" style="margin-top:10px"><button class="btn btn-go btn-sm" data-act="savedec|'+pp.id+'">'+ico("check")+'Save the decision</button>'+
+   '<button class="btn btn-ghost btn-sm" data-act="opendecform|'+pp.id+'">Cancel</button></div></div>':"")+
+  (esOpen?'<div class="cmtbox"><div class="flbl" style="margin-bottom:8px">Escalate, citing '+pp.id+'</div>'+
+   '<textarea class="rta" data-escf="'+pp.id+'" placeholder="What you need decided above both roles">'+esc(escDraft[pp.id]||"")+'</textarea>'+
+   '<div class="acts" style="margin-top:10px"><button class="btn btn-go btn-sm" data-act="saveesc|'+pp.id+'">'+ico("up")+'Send the escalation</button>'+
+   '<button class="btn btn-ghost btn-sm" data-act="openescform|'+pp.id+'">Cancel</button></div></div>':"")+
+  (open?cmtBox(pp.id,pp.diag,pp.proc,"conclusion "+pp.id+" by "+r.au):"")+'</div>';}
+
+function cmtBox(id,diag,pc,label){
+ var d=cmtDraft[id]||{};
+ var kf=findKpiOrBd(id),st=strat(id);
+ var inferProc=d.proc||pc||(kf&&kf.k.proc)||(st&&st.proc)||"";
+ var inferTac=(st&&(st.k==="Tactic"||st.k==="POC"||st.k==="Project"))?st.n:null;
+ return '<div class="cmtbox">'+
+  '<div class="fld"><label class="flbl">Your conclusion, citing '+label+'</label>'+
+  '<textarea class="rta" data-cmt="'+id+':v" placeholder="'+DIAG[diag].q+'? Write it as it should read in the pool.">'+esc(d.v||"")+'</textarea></div>'+
+  '<div class="fgrid" style="grid-template-columns:1fr 1fr;margin-top:10px">'+
+  '<div class="fld"><label class="flbl">Process</label><div class="inp"><select data-cmt="'+id+':proc">'+
+  PROC.map(function(x){return '<option value="'+x.id+'"'+((d.proc||inferProc)===x.id?" selected":"")+'>'+x.id+' '+x.n+'</option>';}).join("")+
+  '</select></div></div>'+
+  '<div class="fld"><label class="flbl">Diagnostic type</label>'+
+  '<div class="seg d">'+["d1","d2","d3","d4"].map(function(x){
+   return '<button class="'+((d.diag||diag)===x?"on":"")+'" data-cmtd="'+id+':'+x+'">'+DIAG[x].n+'</button>';}).join("")+'</div></div></div>'+
+  '<div class="pdraft"><b>Where it goes.</b> Into the shared pool, citing '+id+
+  (inferTac?', counting automatically toward <b>'+inferTac+'</b>\u2019s coverage':' — not tied to a tactic or POC, so it won\u2019t count toward artifact coverage')+
+  '. Reference it from Build a report/plan whenever you need it there.</div>'+
+  '<div class="acts" style="margin-top:10px">'+
+  '<button class="btn btn-go btn-sm" data-act="savecmt|'+id+'">'+ico("check")+'Save to the pool</button>'+
+  '<button class="btn btn-ghost btn-sm" data-sec="'+id+'">Cancel</button></div></div>';}
+
+function scAttach(){
+ return '<div class="card flush"><div class="ch">'+ico("doc","icon-lg")+
+  '<span class="ch-t">Attachments</span>'+
+  '<span class="r"><button class="btn btn-primary btn-sm" data-act="upload|">'+ico("plus")+'Attach a file</button></span></div>'+
+  '<table><thead><tr><th>File</th><th>From</th><th>Came with</th><th>Process</th><th>Size</th><th>Cited by</th><th></th></tr></thead><tbody>'+
+  ATTACH.map(function(x){
+   var cited=allParas().filter(function(p){return p.cites.indexOf(x.id)>-1;});
+   return '<tr><td><div class="t-name">'+x.n+'</div><div class="t-sub">'+x.note+'</div></td>'+
+   '<td>'+x.au+'<div class="t-sub">'+x.when+'</div></td>'+
+   '<td>'+(x.rep?'<span class="chip concl" style="cursor:pointer" data-act="openref|'+x.rep+'">'+x.rep+'</span>':'<span class="t-sub" style="margin:0">uploaded here</span>')+'</td>'+
+   '<td><span class="chip">'+x.proc+'</span></td><td class="mono">'+x.sz+'</td>'+
+   '<td class="mono">'+(cited.length||"—")+'</td>'+
+   '<td><button class="btn btn-outline btn-sm" data-act="openatt|'+x.id+'">'+ico("open")+'Open</button></td></tr>';}).join("")+
+  '</tbody></table>'+
+  '<div class="cnote">An attachment is a file, not a conclusion. It sits under a paragraph as backing — the working file behind a figure someone will ask about.</div></div>';}
+
+/* ============================================================
+   PLANNING & MONITORING — entries are MADE here
+   ============================================================ */
+
+/* ============================================================
+   STRATEGY — reference only
+   ============================================================ */
+/* ============================================================
+   STRATEGY CHAIN — objective to actuals, and what you said about it
+   ============================================================ */
+function scTasks(){
+ var inb=TASKS.filter(function(t){return t.dir==="in";}),out=TASKS.filter(function(t){return t.dir==="out";});
+ function row(t){
+  var late=(t.st==="open"&&/2[67] Aug/.test(t.due));
+  return '<div class="msg'+(t.st==="open"?" unread":"")+'"><span class="msg-ic '+(t.dir==="in"?"in":"out")+'">'+
+  ico(t.st==="done"?"check":t.dir==="in"?"down":"send","icon-lg")+'</span>'+
+  '<div style="flex:1;min-width:0"><div class="msg-t">'+t.t+
+  '<span class="b '+(t.st==="done"?"b-app":late?"b-rmi":"b-sub")+'"><span class="bdot"></span>'+
+  (t.st==="done"?"Done":late?"Due "+t.due:"Open")+'</span>'+
+  (t.par?'<span class="chip strat">'+t.par+'</span>':'')+
+  (t.proc?'<span class="chip">'+t.proc+'</span>':'')+'</div>'+
+  '<div class="msg-m">'+t.id+' · '+(t.dir==="in"?"from "+t.from:"to "+t.who)+' · due '+t.due+'</div>'+
+  '<div class="msg-x">'+t.note+'</div>'+
+  (t.st==="open"?'<div class="msg-a">'+
+    (t.dir==="in"?'<button class="btn btn-go btn-sm" data-act="taskdone|'+t.id+'">'+ico("check")+'Mark done</button>':
+     '<button class="btn btn-outline btn-sm" data-act="taskchase|'+t.id+'">'+ico("send")+'Chase</button>')+
+    (t.par?'<button class="btn btn-strat btn-sm" data-act="taskchain|'+t.id+'">'+ico("layers")+'See it in the chain</button>':'')+
+    '</div>':'')+
+  '</div></div>';}
+ return '<div class="card flush" style="margin-bottom:16px"><div class="ch">'+ico("check","icon-lg")+
+  '<span class="ch-t">Tasks assigned to you</span>'+
+  '<span class="r"><span class="b b-sub"><span class="bdot"></span>'+
+  inb.filter(function(t){return t.st==="open";}).length+' open</span></span></div>'+
+  inb.map(row).join("")+
+  '<div class="cnote">A task arrives when minutes are approved or a plan commits. It is not created here — this is where it lands and where it closes.</div></div>'+
+  '<div class="card flush"><div class="ch">'+ico("send","icon-lg")+
+  '<span class="ch-t">Tasks you raised on others</span>'+
+  '<span class="r"><span class="b b-sub"><span class="bdot"></span>'+
+  out.filter(function(t){return t.st==="open";}).length+' open</span></span></div>'+
+  out.map(row).join("")+
+  '<div class="cnote">Raised when you challenged a conclusion or committed a plan. Each one carries the strategy object it serves, so an unfinished task is visible in the chain rather than only in a list.</div></div>';}
+
+function scCoverage(){
+ var h='<div class="arts" style="grid-template-columns:repeat(auto-fit,minmax(212px,1fr))">'+
+  ["d1","d2","d3","d4"].map(function(d){
+   var ps=allParas().filter(function(p){return p.diag===d&&p.v.trim();});
+   var need=ARTS.reduce(function(n,a){return n+(a.needs.indexOf(d)>-1?units(a).length:0);},0);
+   var pct=need?Math.round(ps.length/need*100):0;
+   return '<div class="card" style="padding:14px"><div>'+dgChip(d)+'</div>'+
+   '<div class="art-t" style="font-size:13px;margin-top:8px">'+DIAG[d].q+'</div>'+
+   '<div class="ed-s">'+DIAG[d].need+'</div>'+
+   '<div style="font-family:var(--mono);font-size:22px;font-weight:600;margin-top:9px">'+ps.length+' <span style="font-size:12px;color:var(--muted)">of '+need+'</span></div>'+
+   '<div class="prog '+(pct>=70?"":pct>=35?"warn":"bad")+'"><i style="width:'+Math.min(pct,100)+'%"></i></div>'+
+   '</div>';}).join("")+'</div>';
+
+ h+='<div class="card flush" style="margin-bottom:16px"><div class="ch">'+ico("grid","icon-lg")+
+  '<span class="ch-t">Every tactic your templates name</span>'+
+  '<span class="r"><span class="mono" style="font-size:10px;color:var(--muted)">process · tactic · what sits under it</span></span></div>'+
+  '<table><thead><tr><th>Tactic or POC</th><th>Process</th><th>Named by</th><th>P&amp;M entries</th>'+
+  '<th>Paragraphs</th><th>Missing</th></tr></thead><tbody>'+
+  STRAT.filter(function(x){return x.k==="Tactic"||x.k==="POC";}).map(function(x){
+   var named=ARTS.filter(function(A){return units(A).filter(function(u){return u.tac===x.id;}).length;});
+   var es=pmAll().filter(function(e){return e.tac===x.id;});
+   var ps=allParas().filter(function(pp){return pp.tac===x.id&&pp.v.trim();});
+   var miss=["d1","d2","d3","d4"].filter(function(d){return !ps.filter(function(pp){return pp.diag===d;}).length;});
+   return '<tr><td><div class="t-name">'+x.n+'</div><div class="t-sub mono">'+x.id+' · '+x.own+'</div></td>'+
+   '<td><span class="chip">'+x.proc+'</span></td>'+
+   '<td>'+(named.length?named.map(function(A){return '<div class="t-sub" style="margin:0 0 2px">'+A.k.split(" ")[0]+'</div>';}).join("")
+    :'<span class="t-sub" style="margin:0">no template</span>')+'</td>'+
+   '<td class="mono">'+(es.length||"—")+'</td>'+
+   '<td><span class="dgbar">'+["d1","d2","d3","d4"].map(function(d){
+    return '<i class="'+(ps.filter(function(pp){return pp.diag===d;}).length?d:"")+'"></i>';}).join("")+'</span></td>'+
+   '<td>'+(named.length===0?'<span class="t-sub" style="margin:0">not in scope</span>':
+     miss.length?'<span class="b b-sub"><span class="bdot"></span>'+miss.map(function(d){return DIAG[d].n.slice(0,4);}).join(", ")+'</span>':
+     '<span class="b b-app"><span class="bdot"></span>complete</span>')+'</td></tr>';}).join("")+
+  '</tbody></table>'+
+  '<div class="cnote"><b>One row per tactic, across every artifact.</b> The composer shows you one artifact at a time; this is the only place the whole obligation is visible — including tactics with entries but no reasoning, and tactics no template has picked up at all.</div></div>';
+ return h;}
+
+function scChain(){
+ var order=["Objective","KPI","Tactic","POC","Project"];
+ var h='<div class="card flush" style="margin-bottom:16px"><div class="ch">'+ico("layers","icon-lg")+
+  '<span class="ch-t">Tactics and POCs, and what sits under them</span>'+
+  '<span class="r"><span class="b b-strat"><span class="bdot"></span>authored in Strategy</span>'+
+  '<button class="btn btn-outline btn-sm" data-act="openstrat|">'+ico("open")+'Open Strategy</button></span></div>'+
+  '<table><thead><tr><th>Tactic or POC</th><th>Process</th><th>Named by</th><th>P&amp;M entries</th>'+
+  '<th>Your paragraphs</th><th>Tasks</th></tr></thead><tbody>'+
+  STRAT.map(function(x){
+   var ex=pmAll().filter(function(e){return e.tac===x.id;});
+   var mine=allParas().filter(function(pp){return pp.cites.indexOf(x.id)>-1;});
+   var tk=TASKS.filter(function(t){return t.par===x.id&&t.st==="open";});
+   var named=ARTS.filter(function(A){return units(A).filter(function(u){return u.tac===x.id;}).length;});
+   return '<tr><td><div class="t-name">'+x.n+'</div>'+
+   '<div class="t-sub mono">'+x.id+' · '+x.own+'</div>'+
+   '<div style="margin-top:4px"><span class="b b-strat"><span class="bdot"></span>'+x.k+'</span></div></td>'+
+   '<td>'+(x.proc?'<span class="chip">'+x.proc+'</span>':'—')+'</td>'+
+   '<td>'+(named.length?named.map(function(A){return '<div class="t-sub" style="margin:0 0 3px">'+A.k.split(" ")[0]+' · '+A.tpl+'</div>';}).join("")
+    :'<span class="t-sub" style="margin:0">no template names it</span>')+'</td>'+
+   '<td>'+(ex.length?ex.map(function(e){
+     return '<div class="t-sub" style="margin:0 0 3px"><span class="chip pm">'+e.id+'</span> '+e.n+'</div>';}).join("")
+    :'<span class="b b-rmi"><span class="bdot"></span>no execution entry</span>')+'</td>'+
+   '<td>'+(mine.length?mine.map(function(pp){
+     return '<div class="t-sub" style="margin:0 0 3px">'+dgChip(pp.diag)+' '+pp.h+'</div>';}).join("")
+    :'<span class="t-sub" style="margin:0">nothing written</span>')+'</td>'+
+   '<td>'+(tk.length?tk.map(function(t){return '<div class="t-sub" style="margin:0 0 3px">'+t.id+'</div>';}).join("")
+    :'<span class="t-sub" style="margin:0">—</span>')+'</td></tr>';}).join("")+
+  '</tbody></table>'+
+  '<div class="cnote"><b>A tactic is a category, not a container.</b> Strategy defines it against a process; Planning and Monitoring entries and your paragraphs are both filed under it. '+
+  'That shared key is what lets an artifact ask whether a tactic is covered — entries without paragraphs is a commitment with no reasoning, paragraphs without entries is analysis with nothing behind it.</div></div>';
+
+ var orphan=STRAT.filter(function(x){return !pmAll().filter(function(e){return e.tac===x.id;}).length;});
+ var unsaid=STRAT.filter(function(x){return !allParas().filter(function(pp){return pp.cites.indexOf(x.id)>-1;}).length;});
+ h+='<div class="arts" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">'+
+  '<div class="card" style="padding:14px"><div class="art-k">Intent without execution</div>'+
+  '<div class="kpi-v" style="font-family:var(--mono);font-size:24px;font-weight:600;margin-top:6px">'+orphan.length+'</div>'+
+  '<div class="ed-s">'+(orphan.length?orphan.map(function(x){return x.n;}).join("; ")+
+   ' — nothing in Planning and Monitoring is delivering these.':'Every object has an execution entry.')+'</div></div>'+
+  '<div class="card" style="padding:14px"><div class="art-k">Named by a template but unwritten</div>'+
+  '<div class="kpi-v" style="font-family:var(--mono);font-size:24px;font-weight:600;margin-top:6px">'+unsaid.length+'</div>'+
+  '<div class="ed-s">'+(unsaid.length?'You have written nothing about '+unsaid.map(function(x){return x.id;}).join(", ")+
+   '. A committee will ask why.':'Every object has at least one paragraph about it.')+'</div></div>'+
+  '</div>';
+ return h;}
+
+/* ============================================================
+   COMMUNICATION AND EXECUTION
+   ============================================================ */
+/* resolve a reference code to wherever that real object actually lives,
+   and jump to it — a reference that doesn't do this is not a reference */
+function openRef(id){
+ if(!id)return;
+ if(strat(id)){view="home";tab=2;render();window.scrollTo(0,0);return;}
+ if(para(id)){view="home";tab=1;render();window.scrollTo(0,0);return;}
+ var rp=orgRep(id);if(rp){view="reports";tab=(rp.dir==="out")?1:0;navOrg=id;render();window.scrollTo(0,0);return;}
+ if(task(id)){view="comms";tab=2;render();window.scrollTo(0,0);return;}
+ if(pmById(id)){view="home";tab=0;render();window.scrollTo(0,0);return;}
+ toast("Nothing in the system resolves to <b>"+esc(id)+"</b> yet.","al");}
+
+/* ============================================================
+   REPORTING HIERARCHY — every report/plan and every child it
+   references, as one tree. Focus dims everything unrelated;
+   clicking pops up what's actually inside the report.
+   ============================================================ */
+function hierRelated(rid){
+ var set={};
+ function upAll(id){if(set[id])return;set[id]=true;reportParentIds(id).forEach(upAll);}
+ function downAll(id){if(set[id])return;set[id]=true;reportChildIds(id).forEach(downAll);}
+ upAll(rid);downAll(rid);return set;}
+function hierMatches(r){
+ if(HIERFILTER.name&&r.n.toLowerCase().indexOf(HIERFILTER.name.toLowerCase())<0)return false;
+ if(HIERFILTER.type&&r.type!==HIERFILTER.type)return false;
+ if(HIERFILTER.dept&&(!r.scope||r.scope.dept!==HIERFILTER.dept))return false;
+ return true;}
+function hierNode(rid,visited){
+ if(visited[rid])return "";
+ var v2={};for(var k in visited)v2[k]=true;v2[rid]=true;
+ var r=orgRep(rid);if(!r)return"";
+ var children=reportChildIds(rid);
+ var related=HIERFOCUS?hierRelated(HIERFOCUS):null;
+ var filtersActive=!!(HIERFILTER.name||HIERFILTER.type||HIERFILTER.dept);
+ var faded=(related&&!related[rid])||(filtersActive&&!hierMatches(r));
+ var box='<div class="tnodebox'+(faded?" dim":"")+(HIERFOCUS===rid?" focused":"")+'" data-act="hierclick|'+rid+'">'+
+  '<div class="tn-t">'+esc(r.n)+'</div>'+
+  '<div class="tn-m">'+esc(r.type||"Report/Plan")+' \u00b7 '+esc(r.au)+'</div>'+
+  '<div class="tn-m">'+r.paras.length+' section'+(r.paras.length===1?"":"s")+
+  (children.length?' \u00b7 '+children.length+' child'+(children.length===1?"":"ren"):"")+'</div></div>';
+ if(!children.length)return '<li>'+box+'</li>';
+ return '<li>'+box+'<ul>'+children.map(function(c){return hierNode(c,v2);}).join("")+'</ul></li>';}
+
+function scHierarchy(){
+ var tops=ORGREPS.filter(function(r){return reportIsTopLevel(r.id);});
+ var types=[];ORGREPS.forEach(function(r){if(r.type&&types.indexOf(r.type)<0)types.push(r.type);});
+ var depts=[];ORGREPS.forEach(function(r){if(r.scope&&r.scope.dept&&depts.indexOf(r.scope.dept)<0)depts.push(r.scope.dept);});
+ var h='<div class="card" style="padding:14px">'+
+  '<div class="flbl" style="margin-bottom:8px">Filter the hierarchy</div>'+
+  '<div class="fgrid" style="grid-template-columns:2fr 1fr 1fr;gap:10px">'+
+  '<input data-bf="hier:name" value="'+esc(HIERFILTER.name)+'" placeholder="Search report/plan name\u2026">'+
+  '<select data-bf="hier:type"><option value="">Any type</option>'+
+   types.map(function(t){return '<option value="'+t+'"'+(HIERFILTER.type===t?" selected":"")+'>'+t+'</option>';}).join("")+'</select>'+
+  '<select data-bf="hier:dept"><option value="">Any department</option>'+
+   depts.map(function(d){return '<option value="'+d+'"'+(HIERFILTER.dept===d?" selected":"")+'>'+esc(deptName(d))+'</option>';}).join("")+'</select>'+
+  '</div>'+
+  (HIERFOCUS?'<div class="ed-s" style="margin-top:8px">Focused on <b>'+esc(orgRep(HIERFOCUS)?orgRep(HIERFOCUS).n:HIERFOCUS)+
+   '</b> \u2014 <span style="cursor:pointer;text-decoration:underline" data-act="hierunfocus|">clear focus</span></div>':"")+
+  '</div>';
+ h+='<div class="card" style="padding:34px 14px;overflow-x:auto">'+
+  '<div class="org-tree"><ul>'+tops.map(function(t){return hierNode(t.id,{});}).join("")+'</ul></div></div>';
+ h+='<div class="cnote">Top-level reports/plans are the ones nothing else references. Every branch below one is a report/plan it cites \u2014 whole, or through one of its own paragraphs. Click any box to focus its branch and see what\u2019s inside it.</div>';
+
+ if(HIERDETAIL){
+  var r=orgRep(HIERDETAIL);
+  if(r){
+   var orgs=reportOrgs(r.id);
+   h+='<div style="position:fixed;inset:0;background:rgba(20,20,18,.45);z-index:50;display:flex;align-items:center;justify-content:center;padding:30px" data-backdrop="hier">'+
+    '<div style="background:#fff;border-radius:10px;max-width:640px;width:100%;max-height:80vh;overflow:auto;padding:20px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px">'+
+    '<div><div class="ed-t" style="font-size:15px">'+esc(r.n)+'</div>'+
+    '<div class="ed-s">'+esc(r.type||"Report/Plan")+' \u00b7 '+esc(r.au)+' \u00b7 '+esc(r.when)+'</div></div>'+
+    '<button class="btn btn-ghost btn-sm" data-act="hierclosedetail|">\u2715</button></div>'+
+    '<div class="flbl" style="margin:14px 0 6px">Sections</div>'+
+    r.paras.map(function(p){return '<div class="pdraft" style="margin-bottom:6px"><b style="font-size:12.5px">'+esc(p.h)+'</b> '+dgChip(p.diag)+
+     '<div class="ed-s" style="margin-top:3px">'+esc(p.v.slice(0,140))+(p.v.length>140?"\u2026":"")+'</div></div>';}).join("")+
+    (orgs.length?'<div class="flbl" style="margin:14px 0 6px">BI reports referenced</div>'+
+     orgs.map(function(b){return '<span class="chip pbi">'+ico("chart","icon-sm")+esc(b.n)+'</span> ';}).join(""):"")+
+    '<button class="btn btn-outline btn-sm" style="margin-top:14px" data-act="openref|'+r.id+'">'+ico("open")+'Open full report/plan</button>'+
+    '</div></div>';}}
+ return h;}
+
+function scComms(){
+ if(tab===2)return scTasks();
+ var dir=tab===1?"out":"in";
+ var list=COMMS.filter(function(m){return m.dir===dir;});
+ return '<div class="card flush"><div class="ch">'+ico("mail","icon-lg")+
+  '<span class="ch-t">'+(dir==="in"?"Everything coming to this role":"Everything you sent")+'</span>'+
+  '<span class="r"><span class="mono" style="font-size:10px;color:var(--muted)">escalations · alignments · supersedes · challenges · filings</span></span></div>'+
+  list.map(function(m){
+   return '<div class="msg'+(m.unread?" unread":"")+'"><span class="msg-ic '+m.k+'">'+
+   ico(m.k==="esc"?"up":m.k==="sup"?"layers":m.dir==="out"?"send":"down","icon-lg")+'</span>'+
+   '<div style="flex:1;min-width:0"><div class="msg-t">'+m.t+
+   (m.unread?'<span class="b b-rmi"><span class="bdot"></span>New</span>':'')+
+   '<span class="b '+(m.k==="esc"?"b-strat":m.k==="sup"?"b-un":"b-draft")+'"><span class="bdot"></span>'+
+   ({esc:"Escalation",sup:"Contest",in:"Filing",out:"Sent"}[m.k])+'</span></div>'+
+   '<div class="msg-m">'+m.from+' · '+m.who+' · '+m.when+
+    (m.ref?' · <span class="chip" style="cursor:pointer" data-act="openref|'+m.ref+'" title="Open '+m.ref+'">'+ico("open","icon-sm")+' '+m.ref+'</span>':
+     ' · <span class="chip none">no reference filed yet</span>')+'</div>'+
+   '<div class="msg-x">'+m.x+'</div>'+
+   (m.act?'<div class="msg-a">'+
+     (m.act==="resolve"?'<button class="btn btn-go btn-sm" data-act="mresolve|'+m.id+'">'+ico("pen")+'Write the resolution</button>':'')+
+     (m.act==="committee"?'<button class="btn btn-strat btn-sm" data-act="mcomm|'+m.id+'">'+ico("up")+'Add to the committee pack</button>':'')+
+     (m.act==="reroll"?'<button class="btn btn-go btn-sm" data-act="mroll|'+m.id+'">'+ico("check")+'Restate the roll-up</button>':'')+
+     (m.act==="cite"?'<button class="btn btn-outline btn-sm" data-act="mcite|'+m.id+'">'+ico("plus")+'Cite it in a paragraph</button>':'')+
+     '<button class="btn btn-ghost btn-sm" data-act="mread|'+m.id+'">Mark read</button></div>':'')+
+   '</div></div>';}).join("")+
+  '<div class="cnote"><b>One surface for everything that crosses the role boundary.</b> An escalation from the Team of Teams, a contest against your supersede, a late filing, a service constraint from HR — all arrive here, and each carries the action it wants from you. The ref beside each one opens the real thing it points at \u2014 a strategy object, a paragraph, a report/plan, or a task \u2014 never just a label.</div></div>';}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+var TITLES={
+ home:["Work","Four artifacts on three cadences, the pool of claims they draw on, and the strategy chain they are answerable to."],
+ build:["Build a report/plan","Flexible, like the Excel you use today — but every line you add is a live reference back to its source, not a typed-in copy."],
+ templates:["Report/Plan templates","A template is a named list of expected sections. Configure it here; select it in Build a report/plan."],
+ data:["Business intelligence reports","Sections of a BI report are measurements. You cite one; there is nothing in it to argue with."],
+ reports:["Reports/Plans","Organizational reports/plans, in and out. The same class of thing you produce: paragraphs with an author, a process and citations."],
+ hier:["Reporting hierarchy","Every report/plan template and every child it references, as one tree. Click a report to focus its branch; click again to see what\u2019s inside it."],
+ comms:["Communication and execution","Everything crossing the role boundary — escalations, alignments, contests, filings — and the tasks they generate."]};
+function render(){
+ if(view==="pool"||view==="attach"||view==="strategy"){view="home";tab=1;}
+ var t=TITLES[view];
+ $("crumb").innerHTML='Clinical Services / <b>'+t[0]+'</b>';
+ $("pgT").innerHTML=t[0];$("pgS").innerHTML=t[1];
+ $("nbArt").innerHTML="Role workspace";
+ $("pgA").innerHTML=(view==="home"&&tab===1?'<button class="btn btn-primary btn-sm" data-act="newloose|">'+ico("plus")+'New paragraph</button>':"");
+ var tabs=TABS[view]||[];
+ $("rail").innerHTML=tabs.length<2?"":tabs.map(function(x,i){
+  var ct="";
+  if(view==="comms"&&i===0){var u=COMMS.filter(function(m){return m.dir==="in"&&m.unread;}).length;
+   if(u)ct='<span class="ct red">'+u+'</span>';}
+  if(view==="comms"&&i===2){var ot=TASKS.filter(function(z){return z.st==="open";}).length;
+   if(ot)ct='<span class="ct amber">'+ot+'</span>';}
+  if(view==="home"&&i===2){var orp=STRAT.filter(function(z){return !pmAll().filter(function(e){return e.tac===z.id;}).length;}).length;
+   if(orp)ct='<span class="ct amber">'+orp+'</span>';}
+  return '<button class="rtab'+(i===tab?" active":"")+'" data-tab="'+i+'">'+x+ct+'</button>';}).join("");
+ $("content").innerHTML=
+  view==="home"?(tab===1?scPool():tab===2?scCoverage():tab===3?scChain():scHome()):
+  view==="build"?(tab===1?scBuildPreview():scBuild()):
+  view==="templates"?scTemplates():
+  view==="data"?scData():view==="reports"?scReports():view==="hier"?scHierarchy():scComms();
+ paintNav();}
+
+/* ============================================================
+   ACTIONS
+   ============================================================ */
+function act(a,v){
+ if(a==="cite"){startBuildCiting(v,"");toast("Started a report/plan citing "+v+".");return;}
+ if(a==="citeunder"){var o=orgPara(v);if(!o)return;
+  var vis=o.p.cites.filter(function(c){return findVis(c);});
+  if(!vis.length)return toast("Nothing measurable under this conclusion to take instead.","al");
+  var Bu=ensureBuild();Bu.blocks.push({id:"b"+(Bu._seq++),h:"",proc:"",tac:"",diag:"",v:"",cites:vis.slice()});
+  view="build";tab=0;render();window.scrollTo(0,0);
+  toast("Started a report/plan citing "+vis.join(", ")+" directly \u2014 not "+o.r.au+"\u2019s reasoning.");return;}
+ if(a==="contest"){var o2=orgPara(v);if(!o2)return;
+  COMMS.push({id:"M-"+(COMMS.length+1),dir:"out",k:"esc",from:"You",who:ME,when:"today",unread:false,
+   t:"Contested a conclusion in "+o2.r.n,
+   x:"Disputed "+v+" — "+o2.p.h+". Goes to the committee above both roles; "+o2.r.au+" is notified.",ref:v,act:""});
+  render();toast("Contested <b>"+v+"</b>. "+o2.r.au+" is notified and it goes to the committee above both roles.","al");return;}
+ if(a==="openvis"){var f=findVis(v);if(f){view="data";navApp=f.a.id;navRpt=f.rp.id;navPg=f.pg.id;navSec=v;render();window.scrollTo(0,0);}return;}
+ if(a==="openatt"){toast("Opening "+attach(v).n+" from where it is stored. Never copied into the artifact.");return;}
+ if(a==="upload"){toast("Pick a file. It attaches to the process, so it appears under paragraphs on that process.");return;}
+ if(a==="newloose"){var id2="P-"+String(++PSEQ).padStart(3,"0");
+  PARAS.push({id:id2,h:"New paragraph",proc:PROC[0].id,diag:"",v:"",cites:[],v_no:1});
+  render();toast("Created in the pool. Give it a process and a type, then place it in an artifact.");return;}
+ if(a==="savecmt"){var d=cmtDraft[v]||{};
+  var fv=findVis(v),op=orgPara(v),kf6=findKpiOrBd(v),st6=strat(v);
+  if(!d.v||d.v.trim().length<20)return toast("Write the conclusion — a comment with no conclusion is just a bookmark.","al");
+  var dp=d.proc||(fv?fv.v.proc:op?op.p.proc:(kf6&&kf6.k.proc)||(st6&&st6.proc)||PROC[0].id);
+  var dd=d.diag||(fv?fv.v.diag:op?op.p.diag:"d1");
+  var dtac=(st6&&(st6.k==="Tactic"||st6.k==="POC"||st6.k==="Project"))?st6.id:"";
+  var id3="P-"+String(++PSEQ).padStart(3,"0");
+  PARAS.push({id:id3,h:d.v.trim().slice(0,46)+(d.v.length>46?"…":""),proc:dp,tac:dtac,diag:dd,v:d.v.trim(),cites:[v],v_no:1});
+  delete cmtDraft[v];navSec=null;render();
+  toast("Saved to the pool as <b>"+id3+"</b>, citing "+v+"."+(dtac&&strat(dtac)?" Counts toward <b>"+strat(dtac).n+"</b>\u2019s coverage.":""));return;}
+ if(a==="showcited"){var cs=allParas().filter(function(p){return p.cites.indexOf(v)>-1;});
+  toast("<b>"+v+"</b> is cited by:<br>"+cs.map(function(p){return p.id+" · "+p.h;}).join("<br>"));return;}
+ if(a==="mresolve"){var m1=COMMS.filter(function(x){return x.id===v;})[0];
+  startBuildCiting(m1?m1.ref:"",m1?m1.t:"");
+  toast("Started a report/plan citing "+(m1?m1.ref:"the escalation")+" \u2014 write the resolution here.");return;}
+ if(a==="mcomm"){var m2=COMMS.filter(function(x){return x.id===v;})[0];
+  startBuildCiting(m2?m2.ref:"",m2?"Committee pack \u2014 "+m2.t:"");
+  toast("Started a report/plan citing "+(m2?m2.ref:"the contest")+" for the committee pack.");return;}
+ if(a==="mroll"){toast("Roll-up restated with five of five sections. The stated gap can be withdrawn.");return;}
+ if(a==="mcite"){var m4=COMMS.filter(function(x){return x.id===v;})[0];
+  startBuildCiting(m4?m4.ref:"",m4?m4.t:"");
+  toast("Started a report/plan citing "+(m4?m4.ref:"the constraint")+".");return;}
+ if(a==="mread"){COMMS.forEach(function(m){if(m.id===v)m.unread=false;});render();return;}
+ if(a==="taskdone"){var t4=task(v);if(t4)t4.st="done";render();
+  toast("Closed <b>"+v+"</b>. The chain updates with it.");return;}
+ if(a==="taskchase"){var t5=task(v);render();
+  toast("Chased "+(t5?t5.who:"the owner")+". It stays open until they close it.");return;}
+ if(a==="taskchain"){view="home";tab=2;render();window.scrollTo(0,0);
+  toast("Showing the chain — the task sits under "+(task(v)?task(v).par:"its object")+".");return;}
+ if(a==="openstrat"){toast("Opening the Strategy app — tactics, POCs and projects are authored there.");return;}
+ if(a==="pbi"){toast("Opening in Power BI, scoped to Clinical Services.");return;}
+ if(a==="newart"){toast("Artifact types come from the role's process registry — a new one is configured there, not here.");return;}
+ if(a==="buildfromart"){var A0=art(v);if(!A0)return;
+  BUILD={title:A0.n,to:A0.to,template:"",blocks:[],pickerOpen:null,pickerKind:null,pickerSel:{},newFor:null,_seq:1,
+   scope:{dept:DEPTS[0].id,fn:"",bu:BUS[0].id,month:8,year:2026}};
+  view="build";tab=0;render();window.scrollTo(0,0);
+  toast("Started \u201c"+A0.n+"\u201d as a report/plan. Pick the closest template above, or build it section by section \u2014 the artifact card tracks coverage either way.");return;}
+
+ /* ---- Build a report ---- */
+ if(a==="addblock"){var B=ensureBuild();
+  B.blocks.push({id:"b"+(B._seq++),h:"",proc:"",diag:"",v:"",cites:[]});render();
+  setTimeout(function(){var els=document.querySelectorAll('[data-bf^="v:"]');if(els.length)els[els.length-1].focus();},60);return;}
+ if(a==="rmblock"){var B2=ensureBuild();B2.blocks=B2.blocks.filter(function(b){return b.id!==v;});render();return;}
+ if(a==="mvblock"){var q=v.split(":"),B3=ensureBuild();var i=B3.blocks.findIndex(function(b){return b.id===q[0];});
+  if(i<0)return;var j=q[1]==="up"?i-1:i+1;if(j<0||j>=B3.blocks.length)return;
+  var tmp=B3.blocks[i];B3.blocks[i]=B3.blocks[j];B3.blocks[j]=tmp;render();return;}
+ if(a==="blockdiag"){var q2=v.split(":"),B4=ensureBuild();var b2=B4.blocks.filter(function(x){return x.id===q2[0];})[0];
+  if(b2)b2.diag=(q2[1]==="none"?"":q2[1]);render();return;}
+ if(a==="blockpicker"){var B5=ensureBuild();var opening=B5.pickerOpen!==v;B5.pickerOpen=opening?v:null;
+  B5.pickerKind=null;B5.pickerSel={};B5.newFor=null;render();return;}
+ if(a==="pickkind"){var qk=v.split(":"),Bk=ensureBuild();Bk.pickerKind=qk[1];Bk.pickerSel={};Bk.newFor=null;render();return;}
+ if(a==="pkset"){var qs=v.split(":"),Bs=ensureBuild();Bs.pickerSel=Bs.pickerSel||{};Bs.pickerSel[qs[1]]=qs[2];render();return;}
+ if(a==="blockcite"){var q3=v.split(":"),B6=ensureBuild();var b3=B6.blocks.filter(function(x){return x.id===q3[0];})[0];
+  if(b3&&b3.cites.indexOf(q3[1])<0){
+   b3.cites.push(q3[1]);
+   var st3=strat(q3[1]);
+   if(!b3.proc){var kf3=findKpiOrBd(q3[1]);if(kf3&&kf3.k.proc)b3.proc=kf3.k.proc;else if(st3&&st3.proc)b3.proc=st3.proc;}
+   if(!b3.tac&&st3&&(st3.k==="Tactic"||st3.k==="POC"||st3.k==="Project"))b3.tac=q3[1];
+   var kfb=findKpiOrBd(q3[1]);if(kfb&&kfb.k.biReportId)OPENBI[kfb.k.biReportId]=true;
+  }
+  B6.pickerOpen=null;B6.pickerKind=null;B6.pickerSel={};render();return;}
+ if(a==="blockuncite"){var q4=v.split(":"),B7=ensureBuild();var b4=B7.blocks.filter(function(x){return x.id===q4[0];})[0];
+  if(b4)b4.cites=b4.cites.filter(function(c){return c!==q4[1];});render();return;}
+ if(a==="togglebi"){OPENBI[v]=!OPENBI[v];render();return;}
+ if(a==="openref"){openRef(v);return;}
+ if(a==="hierclick"){HIERFOCUS=v;HIERDETAIL=v;render();return;}
+ if(a==="hierunfocus"){HIERFOCUS=null;HIERDETAIL=null;render();return;}
+ if(a==="hierclosedetail"){HIERDETAIL=null;render();return;}
+ if(a==="pediag"){var qd=v.split(":"),pd=para(qd[0]);if(pd)pd.diag=qd[1];render();return;}
+ if(a==="pickvis"){var qp=v.split(":");DASHPICK[qp[0]]=qp[1];navSec=null;render();return;}
+ if(a==="shareopen"){SHAREOPEN=(SHAREOPEN===v?null:v);render();return;}
+ if(a==="shareconfirm"){var rS=orgRep(v);if(!rS)return;
+  var inp=document.getElementById("sharewho_"+v);var names=(inp?inp.value:"").split(",").map(function(s){return s.trim();}).filter(Boolean);
+  if(!names.length)return toast("Enter at least one name first.","al");
+  rS.shared=rS.shared||[];
+  names.forEach(function(n){rS.shared.push({who:n,when:"today"});});
+  SHAREOPEN=null;render();
+  toast("Shared <b>"+rS.n+"</b> with "+names.join(", ")+".");return;}
+ if(a==="bifopen"){BIFILTER.openKpi=(BIFILTER.openKpi===v?null:v);render();return;}
+ if(a==="openrep"){var rp=orgRep(v);if(!rp)return;view="reports";tab=(rp.dir==="out")?1:0;navOrg=v;render();window.scrollTo(0,0);return;}
+ if(a==="buildscaffold"){var B8=ensureBuild();var t=tpl(B8.template);if(!t)return;
+  var res=scaffoldFromTemplate(B8,t);
+  render();toast("Inserted "+res.nsec+" starting row(s) from "+t.n+" \u2014 every KPI, breakdown and child report/plan is already cited, with this period\u2019s achievement"+(res.ndash?" and "+res.ndash+" dashboard"+(res.ndash===1?"":"s")+" open by default":"")+". Edit, delete or add to them freely.");return;}
+ if(a==="newstrat"){var qn=v.split(":"),Bn=ensureBuild();Bn.newFor={block:qn[0],kind:qn[1],parId:qn[2]};
+  Bn.stratForm={name:"",owner:"",budget:"",start:"",end:"",scope:""};render();return;}
+ if(a==="cancelstrat"){var Bc=ensureBuild();Bc.newFor=null;render();return;}
+ if(a==="savestrat"){var Bv=ensureBuild();var nf=Bv.newFor;if(!nf)return;var f=Bv.stratForm||{};
+  if(!f.name||!f.name.trim())return toast("Name it first.","al");
+  var par=strat(nf.parId);
+  var nid=(nf.kind==="Project"?"PRJ-":"POC-")+(++STRATSEQ);
+  var rec={id:nid,k:nf.kind,n:f.name.trim(),st:nf.kind==="Project"?"Pilot":"Design",own:f.owner||"",par:nf.parId,pct:0,proc:par?par.proc:""};
+  if(nf.kind==="Project"){rec.budget=+f.budget||0;rec.start=f.start||"";rec.end=f.end||"";rec.scope=f.scope||"";}
+  STRAT.push(rec);
+  var b6=Bv.blocks.filter(function(x){return x.id===nf.block;})[0];
+  if(b6){if(b6.cites.indexOf(nid)<0)b6.cites.push(nid);if(!b6.tac)b6.tac=nid;if(!b6.proc&&rec.proc)b6.proc=rec.proc;}
+  Bv.newFor=null;Bv.pickerOpen=null;Bv.pickerKind=null;Bv.pickerSel={};render();
+  toast("Created <b>"+nid+"</b> under "+(par?par.n:nf.parId)+" and cited it.");return;}
+
+ /* ---- Report templates (admin-configurable) ---- */
+ if(a==="tpladd"){var nid="TPL-"+(100+TEMPLATES.length);
+  TEMPLATES.push({id:nid,n:"New template",desc:"",sections:[]});navSec="tpl-"+nid;render();return;}
+ if(a==="tpldel"){TEMPLATES=TEMPLATES.filter(function(t){return t.id!==v;});render();return;}
+ if(a==="tplsecadd"){var t2=tpl(v);if(!t2)return;t2.sections.push({h:"New section",diag:"",items:[]});render();return;}
+ if(a==="tplsecdel"){var q7=v.split(":"),t3=tpl(q7[0]);if(!t3)return;t3.sections.splice(+q7[1],1);render();return;}
+ if(a==="tplsecdiag"){var q8=v.split(":"),t4=tpl(q8[0]);if(!t4)return;t4.sections[+q8[1]].diag=(q8[2]==="none"?"":q8[2]);render();return;}
+ if(a==="tplitemopen"){TPLPICK={key:(TPLPICK.key===v?null:v),kind:"kpi",kpiId:"",dim:""};render();return;}
+ if(a==="tplpickkind"){TPLPICK.kind=v;TPLPICK.kpiId="";TPLPICK.dim="";render();return;}
+ if(a==="tplpickdim"){TPLPICK.dim=v;render();return;}
+ if(a==="tplitemadd"){var qi=v.split(":"),t5=tpl(qi[0]);if(!t5)return;var sec=t5.sections[+qi[1]];if(!sec)return;
+  sec.items=sec.items||[];var it={type:qi[2],id:qi[3]};if(qi[2]==="bd")it.kpiId=TPLPICK.kpiId;
+  sec.items.push(it);TPLPICK={key:null,kind:"kpi",kpiId:"",dim:""};render();return;}
+ if(a==="tplitemdel"){var qd=v.split(":"),t6=tpl(qd[0]);if(!t6)return;var sec2=t6.sections[+qd[1]];if(!sec2)return;
+  sec2.items.splice(+qd[2],1);render();return;}
+ if(a==="savebuilddraft"){var Bd=ensureBuild();
+  if(!Bd.title.trim())return toast("Give the report/plan a title first.","al");
+  var snap=JSON.parse(JSON.stringify(Bd));
+  if(Bd._draftId){snap.id=Bd._draftId;var i=DRAFTS.findIndex(function(d){return d.id===Bd._draftId;});
+   if(i>-1)DRAFTS[i]=snap;else DRAFTS.push(snap);}
+  else{snap.id="DFT-"+(DRAFTS.length+1);Bd._draftId=snap.id;DRAFTS.push(snap);}
+  toast("Draft saved as <b>"+Bd._draftId+"</b>. Find it under Reports/Plans \u2192 Sent \u2192 Drafts, or keep editing here.");return;}
+ if(a==="opendraft"){var d=DRAFTS.filter(function(x){return x.id===v;})[0];if(!d)return;
+  BUILD=JSON.parse(JSON.stringify(d));BUILD._draftId=v;view="build";tab=0;render();window.scrollTo(0,0);return;}
+ if(a==="deldraft"){DRAFTS=DRAFTS.filter(function(x){return x.id!==v;});render();return;}
+ if(a==="issuebuild"){var B9=ensureBuild();
+  if(!B9.title.trim())return toast("Give the report/plan a title first.","al");
+  var written=B9.blocks.filter(function(b){return b.v.trim()||b.cites.length;});
+  if(!written.length)return toast("Write a paragraph or cite something before issuing.","al");
+  var oid="OR-"+(++ORGSEQ);
+  var procs=[];written.forEach(function(b){if(b.proc&&procs.indexOf(b.proc)<0)procs.push(b.proc);});
+  var paras=written.map(function(b){
+   var pid="OP-"+(++PSEQ);
+   var htxt=b.h.trim()||(b.v.trim()?b.v.trim().slice(0,46)+(b.v.trim().length>46?"\u2026":""):"Untitled paragraph");
+   return {id:pid,h:htxt,proc:b.proc,tac:b.tac||"",diag:b.diag||null,v:b.v.trim(),cites:b.cites.slice()};});
+  var shared=(B9.shareWith||"").split(",").map(function(s){return s.trim();}).filter(Boolean)
+   .map(function(who){return {who:who,when:"today"};});
+  var usedTpl=tpl(B9.template);
+  ORGREPS.push({id:oid,n:B9.title.trim(),from:"You \u00b7 Clinical Services",au:ME,when:"today",st:"Issued",dir:"out",
+   procs:procs.length?procs:["\u2014"],paras:paras,to:B9.to||"All departments",shared:shared,
+   tpl:B9.template||"",type:usedTpl?(usedTpl.n.indexOf("Conclusion")>-1?"Conclusion":usedTpl.n.indexOf("alignment")>-1?"Alignment record":usedTpl.n):"Report/Plan",
+   scope:{dept:B9.scope.dept,fn:B9.scope.fn,bu:B9.scope.bu,month:B9.scope.month,year:B9.scope.year}});
+  procs.forEach(function(pid){var pr=proc(pid);if(pr&&pr.reports.indexOf(oid)<0)pr.reports.push(oid);});
+  if(B9._draftId)DRAFTS=DRAFTS.filter(function(x){return x.id!==B9._draftId;});
+  BUILD=null;view="reports";tab=1;navOrg=oid;render();window.scrollTo(0,0);
+  toast("Issued <b>"+oid+"</b> to "+(procs.length?procs.join(", "):"no process")+
+   (shared.length?" and shared directly with "+shared.map(function(s){return s.who;}).join(", "):"")+
+   ". It is now in every reviewer's Reports/Plans inbox, same as one you'd receive.");return;}
+ if(a==="blockdec"){decDraft[v]=decDraft[v]||"";toast("");return;}
+ if(a==="savedec"){var op=orgPara(v)||{p:null};var pp=op.p;if(!pp)return;
+  var txt=(decDraft[v]||"").trim();if(!txt)return toast("Write the decision first.","al");
+  pp.decisions=pp.decisions||[];pp.decisions.push({text:txt,owner:ME,when:"today"});delete decDraft[v];navSec=null;render();
+  toast("Decision recorded on <b>"+pp.h+"</b>.");return;}
+ if(a==="saveesc"){var op2=orgPara(v)||{p:null};var pp2=op2.p;if(!pp2)return;
+  var txt2=(escDraft[v]||"").trim();if(!txt2)return toast("Write what you're escalating first.","al");
+  COMMS.push({id:"M-"+(COMMS.length+1),dir:"out",k:"esc",from:"You",who:ME,when:"today",unread:false,
+   t:"Escalated a paragraph in "+(op2.r?op2.r.n:""),x:txt2,ref:v,act:""});
+  pp2.escalated=true;delete escDraft[v];navSec=null;render();
+  toast("Escalated, citing <b>"+v+"</b>. It goes into Communication &amp; execution.","al");return;}
+ if(a==="savetask"){var op3=orgPara(v)||{p:null};var pp3=op3.p;if(!pp3)return;
+  var name=(document.getElementById("tkn_"+v)||{}).value,who=(document.getElementById("tkw_"+v)||{}).value,due=(document.getElementById("tkd_"+v)||{}).value;
+  if(!name||!name.trim())return toast("Name the task first.","al");
+  TASKS.push({id:"TSK-"+(4400+TASKS.length),t:name.trim(),dir:"out",from:"You",who:who&&who.trim()?who.trim():"Unassigned",
+   due:due&&due.trim()?due.trim():"\u2014",st:"open",par:"",proc:pp3.proc,note:"Raised from "+pp3.id+" \u00b7 "+pp3.h});
+  navSec=null;render();toast("Task raised, citing <b>"+v+"</b>. It appears in Communication &amp; execution \u00b7 Tasks.");return;}
+ if(a==="opentaskform"){navSec=(navSec===("tk-"+v)?null:"tk-"+v);render();return;}
+ if(a==="opendecform"){navSec=(navSec===("dc-"+v)?null:"dc-"+v);render();return;}
+ if(a==="openescform"){navSec=(navSec===("es-"+v)?null:"es-"+v);render();return;}}
+
+document.body.addEventListener("click",function(e){
+ var t=e.target;if(!t.closest)return;
+ if(t.hasAttribute&&t.hasAttribute("data-backdrop")){act("hierclosedetail","");return;}
+ var ac0=t.closest("[data-act]");if(ac0){if(ac0.disabled)return;var p0=ac0.getAttribute("data-act").split("|");act(p0[0],p0[1]);return;}
+ var nv=t.closest("[data-nav]");if(nv){view=nv.getAttribute("data-nav");tab=0;render();window.scrollTo(0,0);return;}
+ var tb=t.closest("[data-tab]");if(tb){tab=parseInt(tb.getAttribute("data-tab"),10);render();window.scrollTo(0,0);return;}
+ var oa=t.closest("[data-openart]");if(oa){act("buildfromart",oa.getAttribute("data-openart"));return;}
+
+ var ep=t.closest("[data-editp]");if(ep){var id=ep.getAttribute("data-editp");
+  navSec=(navSec==="editp-"+id?null:"editp-"+id);render();return;}
+ var ta=t.closest("[data-tapp]");if(ta){navApp=ta.getAttribute("data-tapp");
+  var a0=DATA.filter(function(x){return x.id===navApp;})[0];
+  navRpt=a0.reports[0].id;navPg=a0.reports[0].pages[0].id;navSec=null;render();return;}
+ var tr=t.closest("[data-trpt]");if(tr){navRpt=tr.getAttribute("data-trpt");
+  DATA.forEach(function(x){x.reports.forEach(function(r){if(r.id===navRpt)navPg=r.pages[0].id;});});
+  navSec=null;render();return;}
+ var tp=t.closest("[data-tpg]");if(tp){navPg=tp.getAttribute("data-tpg");navSec=null;render();return;}
+ var to=t.closest("[data-torg]");if(to){navOrg=to.getAttribute("data-torg");navSec=null;render();return;}
+ var sc=t.closest("[data-sec]");if(sc){var v=sc.getAttribute("data-sec");navSec=(navSec===v?null:v);render();return;}
+ var cd=t.closest("[data-cmtd]");if(cd){var q=cd.getAttribute("data-cmtd").split(":");
+  cmtDraft[q[0]]=cmtDraft[q[0]]||{};cmtDraft[q[0]].diag=q[1];render();return;}
+});
+
+function onField(e){
+ var el=e.target;
+ if(el.hasAttribute&&el.hasAttribute("data-pv")){var p=para(el.getAttribute("data-pv"));if(p)p.v=el.value;return;}
+ if(el.hasAttribute&&el.hasAttribute("data-cmt")){var q=el.getAttribute("data-cmt").split(":");
+  cmtDraft[q[0]]=cmtDraft[q[0]]||{};cmtDraft[q[0]][q[1]]=el.value;return;}
+ if(el.hasAttribute&&el.hasAttribute("data-decf")){decDraft[el.getAttribute("data-decf")]=el.value;return;}
+ if(el.hasAttribute&&el.hasAttribute("data-escf")){escDraft[el.getAttribute("data-escf")]=el.value;return;}
+ if(el.hasAttribute&&el.hasAttribute("data-sf")){var sfk=el.getAttribute("data-sf");ensureBuild();
+  BUILD.stratForm=BUILD.stratForm||{};BUILD.stratForm[sfk]=el.value;return;}
+ if(el.hasAttribute&&el.hasAttribute("data-tpf")){var tq=el.getAttribute("data-tpf").split(":"),t9=tpl(tq[1]);if(!t9)return;
+  if(tq[0]==="n"){t9.n=el.value;return;}
+  if(tq[0]==="desc"){t9.desc=el.value;return;}
+  if(tq[0]==="sech"){t9.sections[+tq[2]].h=el.value;return;}
+  return;}
+ if(el.hasAttribute&&el.hasAttribute("data-bf")){var bk=el.getAttribute("data-bf");
+  if(bk.indexOf("tplpk:")===0){var pkk2=bk.split(":")[1];TPLPICK[pkk2]=el.value;if(pkk2==="kpiId")TPLPICK.dim="";render();return;}
+  if(bk.indexOf("hier:")===0){var hk=bk.split(":")[1];HIERFILTER[hk]=el.value;render();return;}
+  if(bk.indexOf("bif:")===0){var bfk=bk.split(":")[1];BIFILTER[bfk]=el.value;if(bfk==="dept")BIFILTER.fn="";BIFILTER.openKpi=null;render();return;}
+  if(bk.indexOf("dashpick:")===0){var pgid=bk.split(":")[1];DASHPICK[pgid]=el.value;navSec=null;render();return;}
+  var B=ensureBuild();
+  if(bk==="title"){B.title=el.value;return;}
+  if(bk==="to"){B.to=el.value;return;}
+  if(bk==="shareWith"){B.shareWith=el.value;return;}
+  if(bk==="template"){B.template=el.value;
+   var t0=tpl(el.value);
+   if(t0&&B.blocks.length===0){var res0=scaffoldFromTemplate(B,t0);
+    render();toast("Inserted "+res0.nsec+" section"+(res0.nsec===1?"":"s")+" from "+t0.n+" automatically.");return;}
+   render();return;}
+  if(bk.indexOf("scope:")===0){var sk=bk.split(":")[1];
+   B.scope[sk]=(sk==="month"||sk==="year")?(+el.value):el.value;
+   if(sk==="dept")B.scope.fn="";render();return;}
+  if(bk.indexOf("pk:")===0){var pkk=bk.split(":")[1];B.pickerSel=B.pickerSel||{};B.pickerSel[pkk]=el.value;render();return;}
+  var q6=bk.split(":");var b=B.blocks.filter(function(x){return x.id===q6[1];})[0];if(!b)return;
+  if(q6[0]==="h"){b.h=el.value;return;}
+  if(q6[0]==="v"){b.v=el.value;return;}
+  if(q6[0]==="proc"){b.proc=el.value;render();return;}
+  return;}}
+document.body.addEventListener("input",onField);
+document.body.addEventListener("change",onField);
+render();
+})();
+</script>
+</body>
+</html>

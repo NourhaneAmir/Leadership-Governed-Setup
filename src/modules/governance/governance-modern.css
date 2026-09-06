@@ -405,6 +405,15 @@
 /* Position picker — a Position from the Organization Structure, with the
    employee currently holding it shown beneath, and a search over both. */
 .gov-root .pos-sel{ position:relative }
+/* Inside a Review Chain row the position picker should fill whatever space the
+   step's tags leave, not shrink to its own content. theme.css sizes
+   `.chain-row select`, but PosSel renders a button rather than a select, so
+   that rule never reached it — the control sat at content width and left the
+   row half empty. The button is already width:100%, so the sizing has to go on
+   its parent. `flex:1 1 240px` keeps it responsive: it grows to fill the row,
+   and below ~240px it wraps onto its own line instead of crushing the
+   reviews/approves tags. */
+.gov-root .chain-row .pos-sel{ flex:1 1 240px; min-width:0 }
 .gov-root .pos-sel-btn{
   width:100%; display:flex; align-items:center; gap:8px; text-align:left;
   background:#fff; border:1px solid var(--border-d); border-radius:8px;
@@ -519,3 +528,117 @@
 .gov-root .pub-diff-tag.rm{ background:var(--red); color:#fff }
 .gov-root .pub-diff-tag.add{ background:var(--green); color:#fff }
 .gov-root .pub-diff-line b{ color:inherit }
+/* ---------------------------------------------------------------------
+   Report Template Sections — the Expected Content Checklist editor
+   ---------------------------------------------------------------------
+   These carry their own styling rather than reusing .btn, because a kind
+   selector and a dimension picker are *choices*, not actions — they need to
+   read as toggles that hold state, which a button family styled for "do a
+   thing" does not. Each citation kind owns a colour, used consistently on the
+   selector, the chip and the picker, so the connection between "I picked
+   Process" and the green chip that comes back is visible rather than learned.
+   --------------------------------------------------------------------- */
+
+.gov-root .sec-card{
+  border:1px solid var(--border); border-radius:12px; padding:12px 13px;
+  margin-bottom:10px; background:#fff;
+  transition:border-color .15s, box-shadow .15s;
+}
+.gov-root .sec-card:focus-within{
+  border-color:var(--teal); box-shadow:0 0 0 3px var(--teal-l);
+}
+.gov-root .sec-head{ display:flex; gap:9px; align-items:center; flex-wrap:wrap }
+.gov-root .sec-head input[type=text]{ flex:1 1 220px; min-width:150px }
+
+/* index + reorder rail */
+.gov-root .sec-idx{
+  display:flex; align-items:center; gap:5px; margin-bottom:5px;
+}
+.gov-root .sec-idx .n{
+  font-size:10px; font-weight:700; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--muted);
+}
+
+/* --- kind selector: oval toggles, one colour per kind ------------------- */
+.gov-root .sec-kinds{ display:flex; gap:7px; flex-wrap:wrap; margin-bottom:10px }
+.gov-root .sec-kind{
+  display:inline-flex; align-items:center; gap:7px;
+  padding:7px 15px; border-radius:999px;
+  border:1.5px solid var(--border); background:#fff;
+  font-family:inherit; font-size:12.5px; font-weight:600; color:var(--muted);
+  cursor:pointer; transition:background .15s, border-color .15s, color .15s;
+}
+.gov-root .sec-kind:hover{ border-color:var(--border-d); color:var(--ink) }
+.gov-root .sec-kind:focus-visible{ outline:2px solid var(--teal); outline-offset:2px }
+.gov-root .sec-kind .dot{
+  width:8px; height:8px; border-radius:50%; flex:0 0 8px;
+  background:currentColor; opacity:.5; transition:opacity .15s;
+}
+.gov-root .sec-kind.on .dot{ opacity:1 }
+.gov-root .sec-kind.on.k-kpi   { background:var(--blue-bg);   border-color:var(--blue);   color:var(--blue) }
+.gov-root .sec-kind.on.k-bd    { background:var(--purple-bg); border-color:var(--purple); color:var(--purple) }
+.gov-root .sec-kind.on.k-proc  { background:var(--green-bg);  border-color:var(--green);  color:var(--green) }
+.gov-root .sec-kind.on.k-child { background:var(--amber-bg);  border-color:var(--amber);  color:var(--amber) }
+
+/* --- dimension picker: the same oval language, tinted to Breakdown ------ */
+.gov-root .sec-dims{ display:flex; gap:7px; flex-wrap:wrap }
+.gov-root .sec-dim{
+  padding:7px 14px; border-radius:999px;
+  border:1.5px solid var(--border); background:#fff;
+  font-family:inherit; font-size:12px; font-weight:600; color:var(--ink-2);
+  cursor:pointer; transition:background .15s, border-color .15s, color .15s, transform .1s;
+}
+.gov-root .sec-dim:hover{
+  background:var(--purple-bg); border-color:var(--purple); color:var(--purple);
+}
+.gov-root .sec-dim:active{ transform:scale(.97) }
+.gov-root .sec-dim:focus-visible{ outline:2px solid var(--purple); outline-offset:2px }
+
+/* --- citation chips ---------------------------------------------------- */
+.gov-root .sec-chips{ display:flex; gap:6px; flex-wrap:wrap; margin-top:9px }
+.gov-root .sec-chip{
+  display:inline-flex; align-items:center; gap:6px;
+  padding:4px 6px 4px 10px; border-radius:999px;
+  font-size:12px; border:1px solid transparent;
+}
+.gov-root .sec-chip b{ font-weight:700; letter-spacing:.01em }
+.gov-root .sec-chip .v{ color:var(--ink); font-weight:500 }
+.gov-root .sec-chip .x{
+  border:none; background:transparent; cursor:pointer; color:inherit;
+  font-size:15px; line-height:1; padding:0 3px; border-radius:50%; opacity:.6;
+  transition:opacity .15s, background .15s;
+}
+.gov-root .sec-chip .x:hover{ opacity:1; background:rgba(0,0,0,.07) }
+.gov-root .sec-chip.k-kpi   { background:var(--blue-bg);   border-color:var(--blue-bd);   color:var(--blue) }
+.gov-root .sec-chip.k-bd    { background:var(--purple-bg); border-color:var(--purple);    color:var(--purple) }
+.gov-root .sec-chip.k-proc  { background:var(--green-bg);  border-color:var(--green-bd);  color:var(--green) }
+.gov-root .sec-chip.k-child { background:var(--amber-bg);  border-color:var(--amber-bd);  color:var(--amber) }
+
+/* --- the picker panel -------------------------------------------------- */
+.gov-root .sec-pick{
+  margin-top:10px; padding:12px; border-radius:10px;
+  border:1px solid var(--border); background:var(--surface);
+}
+.gov-root .sec-optlist{
+  max-height:200px; overflow-y:auto; display:flex; flex-direction:column; gap:4px;
+  margin-top:2px;
+}
+.gov-root .sec-opt{
+  text-align:left; padding:8px 11px; border-radius:8px;
+  border:1px solid var(--border); background:#fff;
+  font-family:inherit; font-size:12.5px; color:var(--ink);
+  cursor:pointer; transition:background .12s, border-color .12s, transform .1s;
+}
+.gov-root .sec-opt:hover{ background:var(--teal-ll); border-color:var(--teal) }
+.gov-root .sec-opt:active{ transform:scale(.995) }
+.gov-root .sec-opt:focus-visible{ outline:2px solid var(--teal); outline-offset:1px }
+
+/* --- add buttons ------------------------------------------------------- */
+.gov-root .sec-add{
+  margin-top:9px; padding:7px 14px; border-radius:999px;
+  border:1.5px dashed var(--border-d); background:transparent;
+  font-family:inherit; font-size:12.5px; font-weight:600; color:var(--muted);
+  cursor:pointer; transition:border-color .15s, color .15s, background .15s;
+}
+.gov-root .sec-add:hover{ border-color:var(--teal); color:var(--teal-d); background:var(--teal-ll) }
+.gov-root .sec-add:focus-visible{ outline:2px solid var(--teal); outline-offset:2px }

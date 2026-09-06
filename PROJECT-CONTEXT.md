@@ -1,8 +1,8 @@
 # Leadership Practice — Working Context
 
 > Handoff notes for anyone (human or AI) picking this project up cold.
-> Written 30 Aug 2026, updated 01 Sep 2026, updated 02 Sep 2026 (twice)
-> against branch `leadership-practice`.
+> Written 30 Aug 2026, updated 01 Sep 2026, updated 02 Sep 2026 (twice),
+> updated 04 Sep 2026, updated 05 Sep 2026, against branch `leadership-practice`.
 >
 > This file records **decisions, hard-won schema facts and open questions** —
 > the things that are expensive to rediscover. It is not a substitute for the
@@ -22,7 +22,7 @@ Meeting Minutes (MOM) → Audit Grid scoring → Decisions → TMS Tasks.
 | Environment | `https://org319b4ea9.crm4.dynamics.com/` |
 | Solution | `LeadershipPractice` |
 | Branch | `leadership-practice` |
-| Dataverse tables | 42 registered in `power.config.json`, including Minutes, MOM Notes, Audit Grid instances/answers, Approval Cycles/Steps, Authority Matrix rows, `wlog_decisions`, and (02 Sep) `pm_kpiachievments`/`stf_kpiachievmentbreakdowns` — see §6 |
+| Dataverse tables | 43 schema files in `.power/schemas/dataverse/`, plus `wlog_decisions` under `commondataservice` and the two KPI tables — see §6. Includes Minutes, MOM Notes, Audit Grid instances/answers, Approval Cycles/Steps, Authority Matrix rows, `pm_kpiachievments`/`stf_kpiachievmentbreakdowns`, and (04 Sep) the four Report/Plan Composition tables |
 | Two modules | `src/modules/leadership/LeadershipApp.jsx` (execution), `src/modules/governance/GovernanceApp.jsx` (setup) |
 
 ---
@@ -66,7 +66,8 @@ comes up.
 | `README.md` | Conversion notes | How the HTML prototype became this Vite project |
 | `prototype.html` (repo root, added 01 Sep 2026) | The actual static HTML prototype | Not built or served by Vite — a reference file only, for checking visual/copy fidelity against the original |
 | `Leadership Practice Extension.html` | A **second**, richer prototype — shared in chat 02 Sep, **not saved to the repo** | Defines the full "Report/Plan Composition" feature: Sections with a Diagnostic Angle, KPI/Breakdown/Process/child-report citations, the Build-a-Report screen, Reports-received review actions, Sharing, Reporting Hierarchy. Source for the plan below — re-request it from the user if it's needed again, it only exists in that chat turn. |
-| `C:\Users\Nourhan.AbdElSalam\.claude\plans\gleaming-greeting-zephyr.md` | Approved implementation plan (02 Sep), not part of the repo | Dataverse schema + phased implementation steps for the Report/Plan Composition feature above. Read this before doing any further work on Reports & Plans — see §5/§7.8/§9. |
+| `C:\Users\Nourhan.AbdElSalam\.claude\plans\gleaming-greeting-zephyr.md` | Approved implementation plan (02 Sep), not part of the repo | Dataverse schema + phased implementation steps for the Report/Plan Composition feature above. Read this before doing any further work on Reports & Plans — see §5/§7.8/§9. ⚠️ **Not readable from the `nourh` Windows user this repo is checked out as** — copy it into the repo or it will keep being worked around. |
+| `REPORT-OCCURRENCE-FLOW-PLAN.md` (repo root, added 05 Sep) | Plan only, no code | The weekly Power Automate flow that creates next week's Report Occurrences from approved Setups — frequency rules, field mapping, section/citation copying, duplicate guard, and five open items. Written against the live schema. |
 
 The BRD **contradicts itself** in three places, and the code picked a side:
 
@@ -433,6 +434,135 @@ components to read/write the real tables is likely far less work than
 building the UI from scratch — check that code before writing new
 components for any of the plan's Part 2 steps.
 
+### This session (04 Sep): Report/Plan Composition schema registered, and Template Sections built in Governance Setup
+
+**Uncommitted at time of writing.** Last commit is `f5b1c39`.
+
+**Six tables registered or refreshed** — the plan's Part 1 schema is now
+substantially present:
+
+| Table | What |
+|---|---|
+| `lm_reporttemplatecontentchecklists` | **updated** — gained `lm_diagnosticangle` (1=Untyped … 5=Prescriptive) |
+| `lm_reportoccurrences` | **updated** — gained `lm_function` |
+| `lm_reporttemplatesectionitems` | **new** — Template-side citations: `lm_itemtype` (1=KPI, 2=Breakdown, 3=Process, 4=Child Template), `lm_KPI`, `lm_Process`, `lm_ChildReportTemplate`, `lm_breakdowndimension` (7 values), `lm_SectionChecklistItem`, required `lm_sectionitemname` |
+| `lm_reportoccurrencesections` | **new** — execution-side sections: `lm_heading` (850), **`lm_body` 4000**, `lm_sequence`, `lm_diagnosticangle`, `lm_source` (Migrated/Added), `lm_reportoccurrence`, `lm_sourcesectionchecklistitem` |
+| `lm_reportsectioncitations` | **new** — occurrence-side citations, **11 kinds** (`lm_kind`: KPI, Breakdown, Process, POC, Project, Strategy, BI Report, Paragraph, Issue, Task, Child Report). Live lookups only for `lm_kpi`, `lm_process`, `lm_citedsection`, `lm_citedreportoccurrence` — the rest are text-only, as decided |
+| `lm_reportoccurrenceshare` | **new** — the Sharing model. Columns not yet inspected |
+| `wlog_decisions` | **refreshed** — see the §6 note below; it gained a link column that a `wlog_`-prefix diff misses |
+
+**Governance Setup: the Expected Content Checklist is now a Section editor.**
+Built to the `Leadership Practice Extension.html` reference, for **both create
+and edit** (the same `Wizard` renders both). Each Section carries a heading, a
+Diagnostic Angle, and any number of cited KPIs / KPI breakdowns / Processes /
+child report-plans. Multi-select falls out of the schema — each citation is its
+own `lm_reporttemplatesectionitems` row, so no junction concept was needed.
+
+Product-owner decisions taken during the build, all three the recommended option:
+- **All 7 breakdown dimensions are offered for any KPI**, not filtered to the
+  ones that KPI actually holds data for — the KPI↔breakdown join is still
+  unconfirmed (§6), so filtering would mean guessing at it.
+- **Template-wide Related KPIs / Related Processes stay untouched** and coexist
+  with section-level citations. They answer different questions (what the report
+  is about vs. what this section pulls in).
+- **A child report/plan excludes the template being edited**, so a template
+  cannot cite itself and recurse when used.
+
+Then a second pass added **scope filters** (Business Unit / Department, cascading,
+with Function for child reports only — see §6) and **per-kind colour on the
+chips** (KPI blue, Breakdown purple, Process green, Child report amber), applied
+inline rather than in `theme.css` because that stylesheet is shared with the
+execution module.
+
+| File | What changed |
+|---|---|
+| `src/services/dataverse.js` | New exports `SECTION_ANGLE`/`_KEY`, `SECTION_ITEM_TYPE`/`_KEY`, `SECTION_BREAKDOWN_DIM`/`_KEY`, and `createSectionItems()`. Wired into all three paths: the create loop now **awaits the checklist row for its id** before binding items to it; `fetchReportTemplateChildIds()` gathers section items per checklist row so `updateReportTemplateToDataverse()` can delete them; the delete pass removes **section items before their parent checklist rows**; `fetchReportTemplateDetail()` reads the angle and attaches each row's items. |
+| `src/modules/governance/GovernanceApp.jsx` | New `SectionEditor` / `SectionRowEditor` / `PickList` / `ScopeFilter`, plus `SECTION_ANGLES`, `SECTION_ITEM_KINDS`, `SECTION_BREAKDOWN_DIMS`, `SEC_ITEM_STYLE`, `SEC_ITEM_LABEL`, `DV_SECTION_ANGLE`. The checklist `Field` swapped from a plain `RowEditor` to `SectionEditor`. `reportTemplatePayload()` and `dataverseReportToSetup()` extended to map sections both ways. |
+| `src/modules/governance/governance-modern.css` | One rule to make the Review Chain position picker fill its row — see §6. |
+
+**Bug fixed: the Review Chain picker never stretched.** `theme.css` has
+`.chain-row select{flex:1}`, but `PosSel` renders a **`<button>`**, not a
+`<select>`, so that rule never matched. `.pos-sel-btn` was already `width:100%`,
+which made it look like it should stretch — but 100% of a box that has shrunk to
+its content is still narrow, because the sizing has to be on the parent.
+Fixed with `.gov-root .chain-row .pos-sel{ flex:1 1 240px; min-width:0 }` —
+the basis keeps it responsive (it wraps below ~240px instead of crushing the
+reviews/approves tags), and `min-width:0` lets a long position name ellipsize
+rather than forcing the row wider than its container.
+
+**Not verified against live Dataverse.** Everything builds and renders with no
+runtime errors, but the section round-trip (save a template with several
+citations, reopen, confirm they come back with the right angle) still needs a
+pass through the Power Apps play URL.
+
+### This session (05 Sep): round-trip audit of the Report Template, four gaps closed, cadence completed
+
+**Uncommitted.** Last commit is still `f5b1c39`.
+
+**Schema refreshed three times as columns were added:**
+
+| Table | Change |
+|---|---|
+| `lm_report_templates` | **`lm_stage`** (1–4, same order as `STAGES`); `lm_destinationsharepointlink` **100 → 1000**; then **`lm_seconddayoftheweek`** (1–5), **`lm_seconddayofthemonth`** (int), **`lm_monthofthesemester`** (1–6) |
+| `lm_reporttemplatereviewchains` | gained **`lm_meetingtemplate`** — a Meeting Template lookup; nothing reads or writes it yet |
+| `wlog_decisions` | gained **`_lm_citedreportsection_value`** — see §6, it is an `lm_` column on a `wlog_` table |
+
+**Stage 3/4 Review Chains were being silently discarded.** The unit loop in
+`createReportTemplateChildren()` hit an `else { warn; continue; }` for any unit
+that was neither Business-Unit nor Region scoped — which is *every* group-wide
+Setup — and the comment claimed the chain had "nowhere to go". That was wrong:
+`lm_reporttemplatereviewchains` carries a direct `lm_reporttemplate` lookup
+alongside the two per-unit ones, and the write loop already bound it. Removing
+the `continue` was only a third of the fix — the read path and the delete pass
+both keyed on a BU/Region row that does not exist for these Setups, so without
+matching queries the rows would have saved, never come back, and **duplicated on
+every edit**. All three now handle the group-wide case, plus the form hydrate,
+which was hard-coding `reviewChain:[]`.
+
+**A round-trip audit** (form → payload → write → read → hydrate) found four
+fields that never survived an edit. Three are fixed:
+
+- **Destination is now derived, not typed.** The Delivery selector and the
+  Site / Library / Folder pickers are **gone**. `destinationOf(s)` walks the units
+  and takes the first Channel that resolves to a SharePoint path — the rule the
+  old auto-fill already used — and is called both when displaying and when
+  saving, so the stored value cannot drift from its Channel. Previously it was a
+  free-text field that auto-fill only *sometimes* overwrote, and `site`/`library`/
+  `folder` were never sent at all: a File-destination Template saved with no
+  destination and then **failed its own validation on reopen**.
+- **Stage now round-trips** via `lm_stage`, with the old "infer from whether BU or
+  Region rows exist" kept only as a fallback for older rows. That inference could
+  not tell Stage 3 from Stage 4, so a Stage 4 Template came back as Stage 3 —
+  and since the stage feeds the name prefix, **saving it again renamed it**.
+- **A name clash with a SAVED Template is now caught.** `nameRules()` only ever
+  checked `db.setups` — this session's Setups — so a clash with anything already
+  in Dataverse went unnoticed. New `savedTemplateNamed()` checks the live
+  register and says what to do about it: *open that Template and add your
+  Business Unit or Region to it* rather than creating a second one.
+- **Still open: `qualifier` is never saved.** The name is recomputed from
+  `derivedName()` on every save and includes the qualifier, so a Template named
+  "… (Clinical)" reopens with an empty qualifier and **re-saves without it** —
+  potentially renaming itself into a collision with the very Template the
+  qualifier existed to distinguish it from.
+
+**Cadence completed for the twice-per-period frequencies.** Twice Weekly now
+takes two days of the week (the second dropdown excludes the first), Twice
+Monthly two days of the month, and Semesterly its own 1–6 month list. `MIQ_FREQ`
+shrank to `['Quarterly']` — Semesterly and Annually were previously being
+described with a *three*-month quarter field. Validation requires the second day
+and rejects two identical days. **Annual is deliberately not wired** — see §6.
+
+**Also this session:** at least one Section with a heading is now required to
+publish (an untitled Section used to pass validation and then be dropped
+silently by the payload's `.filter(c=>c.text)`); the Setup Register defaults to
+newest first on the `Updated` column it already displays; and the child
+report/plan picker was fixed — it read local Setups, whose Dataverse id lives on
+`_dataverseId` not `dvId`, so it wrote a *session* id like `su-8` as a lookup and
+Dataverse rejected the row.
+
+**Produced, not built:** `REPORT-OCCURRENCE-FLOW-PLAN.md` (see §3) — the weekly
+Report Occurrence generator, planned in full against the live schema.
+
 ---
 
 ## 6. Schema facts that are expensive to rediscover
@@ -457,10 +587,94 @@ Region child row.
 
 | Plural | Singular |
 |---|---|
-| `lm_meetingminutes`, `lm_momnotes` | `lm_auditgridinstance`, `lm_auditgridanswer`, `lm_approvalcycle`, `lm_approvalcyclestep`, `lm_authoritymatrixrow` |
+| `lm_meetingminutes`, `lm_momnotes`, `lm_reporttemplatesectionitems`, `lm_reportsectioncitations` | `lm_auditgridinstance`, `lm_auditgridanswer`, `lm_approvalcycle`, `lm_approvalcyclestep`, `lm_authoritymatrixrow`, **`lm_reportoccurrence`**, **`lm_reporttemplatecontentchecklist`**, **`lm_reportoccurrenceshare`** |
 
 Guessing wrong gives `Failed to get entity definition`. **The CLI also fails
-transiently** — a name that fails once often works on retry.
+transiently** — a name that fails once often works on retry, so treat a single
+failure as inconclusive and retry before concluding the table doesn't exist.
+
+⚠️ **The schema FILE name is the entity set; the `-t` argument is the logical
+name, and they differ.** `lm_reportoccurrence` (singular) writes
+`reportoccurrences.Schema.json` (plural); `lm_reportoccurrenceshare` writes
+`reportoccurrenceshares.Schema.json`. So an existing plural filename is **no
+evidence** that the plural logical name will register — both of those tables
+had been registered before and still only accept the singular form.
+
+⚠️ **Generated service names double-pluralise.** The entity set already ends in
+`s`, and the generator adds `es`:
+`Lm_reportoccurrencesectionsesService`, `Lm_reporttemplatesectionitemsesService`,
+`Lm_reportsectioncitationsesService`. Cosmetic, but that is the import name.
+
+### A column can be added to a table under a DIFFERENT publisher prefix
+`wlog_decisions` gained **`_lm_citedreportsection_value`** — an `lm_`-prefixed
+lookup on a `wlog_` table. A diff filtered on the table's own prefix reports
+"no change" and misses it entirely; that happened twice this session before the
+full property list was dumped. **When checking whether a table gained a column,
+list every property, not just the ones matching its prefix.**
+
+This is also the current answer to Open Decision §7.7: a Decision cites a
+**Report Section**. Note what that does *not* give — there is still no path from
+a Decision to a **Meeting Agenda Item**.
+
+### A local Setup's Dataverse id is `_dataverseId`, NOT `dvId`
+Two different stores, easy to confuse:
+- `ALL_SETUPS.current` = `db.setups` — **this session's** Setups. A Dataverse one
+  opened into the session carries **`_dataverseId`**.
+- `DV_REPORTS.current` = the **live Dataverse register** (`fetchReportTemplatesList`),
+  whose rows carry the real `lm_report_templateid` as `.id`.
+
+`dvId` exists only on the register *display* rows built by `dvFace()`. Reading a
+local Setup's `.id` gives a session id like `su-8`, which Dataverse rejects as a
+lookup. **Anything citing a Template must source from `DV_REPORTS`**, capture the
+id at pick time, and never resolve it back by name — the Meeting side's Linked
+Report Templates picker already did this correctly and is the pattern to copy.
+
+### `lm_reportsectioncitations` has no explicit parent-section lookup
+Its four lookups are `lm_KPI`, `lm_Process`, `lm_CitedSection` and
+`lm_CitedReportOccurrence` — all of which read as *targets*. Confirmed by a fresh
+pull, twice. The Report Occurrence Flow plan (§3) assumes **`lm_CitedSection` is
+the parent section**, since it is the only candidate pointing at a section.
+**Confirm before building anything that writes citations.** Consequence of that
+reading: a **Paragraph** citation (kind 8), which cites another report's section,
+then has no target column.
+
+### Annual reports cannot be scheduled — there is no month-of-year column
+`lm_monthofthequarter` is 1–3 and `lm_monthofthesemester` is 1–6; neither reaches
+12. The cadence UI therefore shows a warning for Annually rather than a dropdown
+that cannot save — deliberately, since a field that displays but never persists is
+the exact silent-loss pattern this session's audit was chasing. Add
+**`lm_monthoftheyear` (1–12)** and both the form and the flow can be wired.
+
+### A Report Occurrence has no per-occurrence reviewer table
+`lm_reportoccurrences` carries **`lm_reviewstep` only**. The chain is **read from
+the Template** for that unit, never copied. So an occurrence "has" a review chain
+only by reference — and editing a Template changes the chain of reports already
+in review. A frozen per-occurrence chain would need a new table.
+
+### `lm_reportobjective` on the occurrence is 100 characters
+The Template's objective can be longer, and Dataverse **rejects with a 400 rather
+than truncating**. Anything copying the objective onto an occurrence has to cap
+it or skip it.
+
+### KPIs and Processes carry a Department only — never a Function
+`strategy_kpises` and `strategy_processes` both expose
+`_strategy_department_value` and nothing else organisational. So:
+- **Business Unit** is derivable via the existing `deptInBu()` helper, which
+  already handles a Department sitting under more than one BU.
+- **Function cannot be filtered on** — nothing links a KPI or a Process to one.
+  The Section picker therefore hides the Function control for KPI / Breakdown /
+  Process and shows it only for child report-plans, which do carry real
+  Department › Function lines. Adding Function filtering there would need a
+  lookup on those two tables, which are **shared org-wide tables outside this
+  app's ownership**.
+
+### `theme.css` styles a `<select>` that isn't one, and defines `.chain-row` twice
+`.chain-row select{flex:1;min-width:170px}` never applies to the Review Chain,
+because `PosSel` renders a `<button>`. Anything sizing a custom control has to
+target `.pos-sel` (the parent), not the button — see §5's 04 Sep entry.
+Separately, `.chain-row` is declared **twice** in `theme.css` (lines ~176 and
+~611) with different properties; the later one wins, so it is harmless today,
+but it is a live cascade collision for whoever edits those next.
 
 ### `wlog_decisions` — registered differently from every `lm_` table, and not linked to anything here
 Added this session. Worth reading in full before touching it again:
@@ -703,6 +917,13 @@ shape — also unconfirmed.
    `lm_reportoccurrences` (Report) — never both on the same row, matching how
    this schema already handles "either/or" scope elsewhere (Business Unit vs.
    Region on occurrences) rather than one polymorphic field.
+   **Partly answered 04 Sep, differently from that candidate.** `wlog_decisions`
+   now carries **`_lm_citedreportsection_value`** — so a Decision links to a
+   **Report Section**, not to a Report or an Agenda Item. What that still leaves
+   open: there is **no path from a Decision to a Meeting Agenda Item**, so the
+   Meeting-side half of the original ask ("Decisions raised here") has nothing to
+   join on yet. Decide whether Meeting-raised Decisions are in scope; if they
+   are, that lookup still has to be added.
 8. **How does the new Reports & Plans citation composer (02 Sep, §5) reconcile
    with the already-live `lm_reportoccurrences` occurrence flow
    (`NewReportModal`/`DvReportDetail`/`dvReportOccs`)?** — **Answered, later
@@ -713,6 +934,19 @@ shape — also unconfirmed.
    (see §5's second 02 Sep entry). Not yet built — every table in the
    plan's Part 1 needs to exist first, per explicit instruction. The
    seeded composer stays as-is and as the UI reference until then.
+   **Moved on substantially 04 Sep**: six of the Part 1 tables now exist and
+   are registered (§5), and the **Template side is built** — Sections with a
+   Diagnostic Angle and multi-select KPI / Breakdown / Process / Child Template
+   citations, in Governance Setup, for both create and edit. Still to do: the
+   **execution side** (`lm_reportoccurrencesections` + `lm_reportsectioncitations`
+   are registered but nothing reads or writes them), the **Sharing** step
+   (`lm_reportoccurrenceshare` registered, columns not yet inspected), and
+   wiring the orphaned `DvReportDetail` back into navigation.
+   ⚠️ **The approved plan file is not readable from this machine** — it sits
+   under `C:\Users\Nourhan.AbdElSalam\`, a different Windows user than the one
+   this repo is checked out as (`nourh`). Copy it into the repo, or the next
+   session will again be working from this file's summary rather than the plan
+   itself.
 
 ---
 
@@ -799,15 +1033,37 @@ something, except the one item below that's now live at a base level.
       The real blocker isn't the table, it's getting sign-off on each of the 8
       OD-xx values (§2) — the screen exists specifically to simulate a value
       without pretending it's approved.
-- [ ] **Reports & Plans content model** — **Open Decision §7.8 is now
-      answered**: the full schema (Template Sections + citation items,
-      Occurrence Sections + citations, Sharing) is specified in the
-      approved plan at
-      `C:\Users\Nourhan.AbdElSalam\.claude\plans\gleaming-greeting-zephyr.md`.
-      What's still blocking: the plan's Part 1 tables need to be built —
-      two (`pm_kpiachievments`, `stf_kpiachievmentbreakdowns`) already
-      existed and are now registered (§5/§6), the rest do not exist yet.
-      No application code until they do, per explicit instruction.
+- [x] **Reports & Plans content model — schema now largely exists** (04 Sep).
+      Six tables registered this session (§5) on top of the two KPI tables from
+      02 Sep. Open Decision §7.8 is answered and the plan's Part 1 is
+      substantially done.
+- [x] **Report Template Sections — built** (04 Sep, Governance Setup, create
+      *and* edit). Diagnostic Angle plus multi-select KPI / Breakdown / Process /
+      Child Template citations, with BU/Department scope filters and per-kind
+      colour. Round-trip **not yet verified against live Dataverse**.
+- [x] **Report Template create/edit round-trip audited and repaired** (05 Sep) —
+      destination derived from the Team Channel, Stage stored in `lm_stage`,
+      saved-name clashes caught, twice-weekly/twice-monthly/semesterly cadence
+      completed. See §5. **Not yet verified against live Dataverse.**
+- [ ] **`qualifier` still does not survive an edit** — the last of the four audit
+      gaps. The name is recomputed on every save and includes it, so a Template
+      can silently rename itself. Needs somewhere to store it, or a decision that
+      the qualifier lives only inside the derived name.
+- [ ] **Report Occurrence generator (Power Automate).** Planned in full —
+      `REPORT-OCCURRENCE-FLOW-PLAN.md`. Blocked on its own §9 open items, chiefly
+      the citation parent lookup and the missing month-of-year column.
+- [ ] **Report/Plan Composition, execution side.** `lm_reportoccurrencesections`
+      and `lm_reportsectioncitations` are registered but **nothing reads or
+      writes them** — this is the Build-a-Report half, and the natural next
+      step. The seeded composer in `LeadershipApp.jsx` (02 Sep) is the UI
+      reference; porting it is likely far less work than building fresh.
+- [ ] **Sharing.** `lm_reportoccurrenceshare` is registered, columns not yet
+      inspected. The plan's open question about whether Dataverse record-sharing
+      (`GrantAccess`) is reachable from this SDK at all is still unanswered.
+- [ ] **Re-connect `DvReportDetail` to navigation** — orphaned since 02 Sep,
+      still works against live Dataverse. No schema dependency; it was held back
+      only by the "nothing until Part 1 exists" instruction, which has now
+      largely lapsed.
 
 ### Blocked — needs a decision, not a table
 See §7 in full. In priority order by what they unblock: Setup Type (Audit Grid),

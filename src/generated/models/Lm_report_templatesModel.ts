@@ -6,7 +6,7 @@ export const Lm_report_templateslm_confidentiality = {
   1: 'Public',
   2: 'Internal',
   3: 'Confidential',
-  4: 'High Confidential',
+  4: 'HighConfidential',
   5: 'Restricted'
 } as const;
 export type Lm_report_templateslm_confidentiality = keyof typeof Lm_report_templateslm_confidentiality;
@@ -20,9 +20,9 @@ export const Lm_report_templateslm_dayoftheweek = {
 export type Lm_report_templateslm_dayoftheweek = keyof typeof Lm_report_templateslm_dayoftheweek;
 export const Lm_report_templateslm_frequency = {
   1: 'Daily',
-  2: 'Twice Weekly',
+  2: 'TwiceWeekly',
   3: 'Weekly',
-  4: 'Twice Monthly ',
+  4: 'TwiceMonthly',
   5: 'Monthly',
   6: 'Quarterly',
   7: 'Semesterly',
@@ -32,37 +32,46 @@ export const Lm_report_templateslm_frequency = {
 export type Lm_report_templateslm_frequency = keyof typeof Lm_report_templateslm_frequency;
 export const Lm_report_templateslm_month = {
   1: 'January',
-  2: 'February ',
+  2: 'February',
   3: 'March',
   4: 'April',
   5: 'May',
   6: 'June',
   7: 'July',
-  8: 'August ',
-  9: 'September ',
-  10: 'October ',
+  8: 'August',
+  9: 'September',
+  10: 'October',
   11: 'November',
   12: 'December'
 } as const;
 export type Lm_report_templateslm_month = keyof typeof Lm_report_templateslm_month;
 export const Lm_report_templateslm_monthofthequarter = {
-  1: '1st Month',
-  2: '2nd Month',
-  3: '3rd Month'
+  1: '_1stMonth',
+  2: '_2ndMonth',
+  3: '_3rdMonth'
 } as const;
 export type Lm_report_templateslm_monthofthequarter = keyof typeof Lm_report_templateslm_monthofthequarter;
+export const Lm_report_templateslm_monthofthesemester = {
+  1: '_1stMonth',
+  2: '_2ndMonth',
+  3: '_3rdMonth',
+  4: '_4thMonth',
+  5: '_5thMonth',
+  6: '_6thMonth'
+} as const;
+export type Lm_report_templateslm_monthofthesemester = keyof typeof Lm_report_templateslm_monthofthesemester;
 export const Lm_report_templateslm_reportcategory = {
-  1: 'Outcome Executive',
-  2: 'Process Executive',
-  3: 'Core Process',
-  4: 'Custom Content'
+  1: 'OutcomeExecutive',
+  2: 'ProcessExecutive',
+  3: 'CoreProcess',
+  4: 'CustomContent'
 } as const;
 export type Lm_report_templateslm_reportcategory = keyof typeof Lm_report_templateslm_reportcategory;
 export const Lm_report_templateslm_reportstatus = {
-  1: 'Under Review',
+  1: 'UnderReview',
   2: 'Expired',
   3: 'Draft',
-  4: 'Active / Approved'
+  4: 'Active_Approved'
 } as const;
 export type Lm_report_templateslm_reportstatus = keyof typeof Lm_report_templateslm_reportstatus;
 export const Lm_report_templateslm_reporttype = {
@@ -71,6 +80,21 @@ export const Lm_report_templateslm_reporttype = {
   3: 'Conclusion'
 } as const;
 export type Lm_report_templateslm_reporttype = keyof typeof Lm_report_templateslm_reporttype;
+export const Lm_report_templateslm_seconddayoftheweek = {
+  1: 'Sunday',
+  2: 'Monday',
+  3: 'Tuesday',
+  4: 'Wednesday',
+  5: 'Thursday'
+} as const;
+export type Lm_report_templateslm_seconddayoftheweek = keyof typeof Lm_report_templateslm_seconddayoftheweek;
+export const Lm_report_templateslm_stage = {
+  1: 'Stage1BUOperational',
+  2: 'Stage2RegionalFunctional',
+  3: 'Stage3GroupFunctional',
+  4: 'Stage4TopManagement_COO_CEO'
+} as const;
+export type Lm_report_templateslm_stage = keyof typeof Lm_report_templateslm_stage;
 export const Lm_report_templatesstatecode = {
   0: 'Active',
   1: 'Inactive'
@@ -91,6 +115,7 @@ export interface Lm_report_templatesBase {
   lm_frequency?: Lm_report_templateslm_frequency;
   lm_month?: Lm_report_templateslm_month;
   lm_monthofthequarter?: Lm_report_templateslm_monthofthequarter;
+  lm_monthofthesemester?: Lm_report_templateslm_monthofthesemester;
   lm_newcolumn?: string;
   lm_objective?: string;
   "lm_OwnerPosition@odata.bind"?: string;
@@ -99,10 +124,15 @@ export interface Lm_report_templatesBase {
   "lm_ReportSpecialty@odata.bind"?: string;
   lm_reportstatus?: Lm_report_templateslm_reportstatus;
   lm_reporttype?: Lm_report_templateslm_reporttype;
+  lm_seconddayofthemonth?: number;
+  lm_seconddayoftheweek?: Lm_report_templateslm_seconddayoftheweek;
+  lm_stage?: Lm_report_templateslm_stage;
   "lm_SubmittingPosition@odata.bind"?: string;
   "lm_TeamChannel@odata.bind"?: string;
   lm_version?: number;
   overriddencreatedon?: string;
+  ownerid: string;
+  owneridtype: string;
   statecode: Lm_report_templatesstatecode;
   statuscode?: Lm_report_templatesstatuscode;
   timezoneruleversionnumber?: number;
@@ -120,11 +150,14 @@ export interface Lm_report_templates extends Lm_report_templatesBase {
   lm_frequencyname?: string;
   lm_monthname?: string;
   lm_monthofthequartername?: string;
+  lm_monthofthesemestername?: string;
   lm_ownerpositionname?: string;
   lm_reportcategoryname?: string;
   lm_reportspecialtyname?: string;
   lm_reportstatusname?: string;
   lm_reporttypename?: string;
+  lm_seconddayoftheweekname?: string;
+  lm_stagename?: string;
   lm_submittingpositionname?: string;
   lm_teamchannelname?: string;
   modifiedbyname?: string;
@@ -132,9 +165,7 @@ export interface Lm_report_templates extends Lm_report_templatesBase {
   modifiedon?: string;
   modifiedonbehalfbyname?: string;
   modifiedonbehalfbyyominame: string;
-  ownerid: string;
   owneridname: string;
-  owneridtype: string;
   owneridyominame: string;
   owningbusinessunitname: string;
   statecodename?: string;

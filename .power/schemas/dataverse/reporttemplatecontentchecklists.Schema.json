@@ -95,6 +95,46 @@
           "x-ms-dataverse-type": "IntegerType",
           "x-ms-schema-name": "lm_ChecklistItemStep"
         },
+        "lm_diagnosticangle": {
+          "type": "string",
+          "title": "Diagnostic Angle",
+          "x-ms-dataverse-attribute": "lm_diagnosticangle",
+          "x-ms-dataverse-type": "PicklistType",
+          "x-ms-schema-name": "lm_DiagnosticAngle",
+          "enum": [
+            "Untyped (default)",
+            "Descriptive",
+            "Diagnostic",
+            "Predictive",
+            "Prescriptive"
+          ],
+          "x-ms-enum-values": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "Color": [
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "503387d4-a1a7-f111-b8de-00224882d001",
+          "x-ms-isGlobal": true,
+          "x-ms-optionsetdisplayname": "Diagnostic Angle",
+          "x-ms-optionSetType": "Picklist"
+        },
+        "lm_diagnosticanglename": {
+          "type": "string",
+          "title": "lm_diagnosticanglename",
+          "x-ms-dataverse-attribute": "lm_diagnosticanglename",
+          "x-ms-dataverse-type": "VirtualType",
+          "x-ms-schema-name": "lm_diagnosticangleName",
+          "x-ms-read-only": true
+        },
         "lm_reporttemplate": {
           "type": "string",
           "title": "Report Template ",

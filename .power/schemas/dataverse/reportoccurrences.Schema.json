@@ -149,7 +149,23 @@
           "x-ms-dataverse-attribute": "lm_fileurl",
           "x-ms-dataverse-type": "StringType",
           "x-ms-schema-name": "lm_FileURL",
-          "maxLength": 100
+          "maxLength": 500
+        },
+        "lm_function": {
+          "type": "string",
+          "title": "Function",
+          "x-ms-dataverse-attribute": "lm_function",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "lm_Function"
+        },
+        "lm_functionname": {
+          "type": "string",
+          "title": "lm_functionname",
+          "x-ms-dataverse-attribute": "lm_functionname",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "lm_FunctionName",
+          "x-ms-read-only": true,
+          "maxLength": 850
         },
         "lm_locked": {
           "type": "string",
