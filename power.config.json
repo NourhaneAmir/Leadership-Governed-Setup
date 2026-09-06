@@ -33,7 +33,8 @@
       "dataSources": [
         "worklogdecisions",
         "kpiachievements",
-        "kpiachievementbreakdowns"
+        "kpiachievementbreakdowns",
+        "reportoccurrencedepartment_functions"
       ],
       "dataSets": {
         "default.cds": {
@@ -46,6 +47,9 @@
             },
             "kpiachievementbreakdowns": {
               "tableName": "stf_kpiachievmentbreakdowns"
+            },
+            "reportoccurrencedepartment_functions": {
+              "tableName": "lm_reportoccurrencedepartmentfunctions"
             }
           }
         }

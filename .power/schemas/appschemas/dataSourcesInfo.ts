@@ -19,6 +19,13 @@ export const dataSourcesInfo = {
     "dataSourceType": "Connector",
     "apis": {}
   },
+  "lm_reportoccurrencedepartmentfunctions": {
+    "tableId": "lm_reportoccurrencedepartmentfunctions",
+    "version": "",
+    "primaryKey": "lm_reportoccurrencedepartmentfunctionid",
+    "dataSourceType": "Connector",
+    "apis": {}
+  },
   "wlog_decisions": {
     "tableId": "wlog_decisions",
     "version": "",

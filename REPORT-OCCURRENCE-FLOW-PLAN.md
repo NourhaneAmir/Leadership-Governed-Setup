@@ -5,6 +5,9 @@
 > their sections and citations copied from the template.
 >
 > **This is a plan, not code.** Written 05 Sep 2026 against the live schema.
+> Updated 06 Sep 2026: a Report Occurrence can now carry more than one
+> Department/Function line, once `lm_reportoccurrencedepartmentfunctions` was
+> registered — see the new subsection under §6 and the new Loop DF in §10.
 
 ---
 
@@ -50,6 +53,7 @@ shift by a day.
 | Table | What |
 |---|---|
 | `lm_reportoccurrences` | one row per unit per date |
+| `lm_reportoccurrencedepartmentfunctions` | one row per template Department/Function line, per occurrence |
 | `lm_reportoccurrencesections` | one row per template section |
 | `lm_reportsectioncitations` | one row per citation on that section |
 
@@ -81,14 +85,17 @@ Recurrence — Thursday 06:00
                           ├── Already exists?  → skip        (§7)
                           ├── Create lm_reportoccurrences    (§6)
                           │
+                          ├── LOOP DF · each department/function line
+                          │     └── Create lm_reportoccurrencedepartmentfunctions
+                          │
                           └── LOOP D · each template section
                                 ├── Create lm_reportoccurrencesections
                                 └── LOOP E · each section item
                                       └── Create lm_reportsectioncitations
 ```
 
-**Rows written per run** = Templates × DueDates × Units × (1 + Sections + Citations).
-Build Loop A→C first and confirm the counts before adding D and E.
+**Rows written per run** = Templates × DueDates × Units × (1 + DeptFnLines + Sections + Citations).
+Build Loop A→C first and confirm the counts before adding DF, D and E.
 
 ---
 
@@ -160,7 +167,7 @@ One row in `lm_reportoccurrences` per unit per due date.
 | `lm_ReportTemplate` | `/lm_report_templates({id})` |
 | `lm_BusinessUnit` | the BU row's business unit — **BU units only** |
 | `lm_Region` | the Region row's region — **Region units only** |
-| `lm_Department` | from the template's department/function line |
+| `lm_Department` | from the template's **first** department/function line only — see the subsection below for the rest |
 | `lm_Function` | from the same line |
 | `lm_CreatorPosition` | the unit's **Submitting Position** |
 
@@ -173,6 +180,28 @@ reviewer table. The chain is **not copied**; it is **read from the template** fo
 that unit (`lm_reporttemplatereviewchains`, filtered by the BU or Region row, or
 by the template alone for a group-wide Setup). Setting `lm_reviewstep = 0` is all
 the flow needs to do — the occurrence starts at step 1 of that chain.
+
+### Multiple departments — `lm_reportoccurrencedepartmentfunctions`
+
+A Report Template can name more than one Department/Function line
+(`lm_reporttemplatedepartmentfunctions`, already read as `DeptFn` in §3/Step 7).
+`lm_Department`/`lm_Function` on the occurrence itself only ever hold the
+**first** line — they were never meant to carry all of them. For **every** line
+on the template, create one child row:
+
+| Column | Value |
+|---|---|
+| `lm_Linkeddepartment` | that line's Department (`cr603_chklst_departmentses`) |
+| `lm_LinkedFunction` | that line's Function (`hr_functions`), only if the line has one |
+| `lm_Reportoccurrence` | the occurrence created above |
+
+⚠️ **The lookup names do not match the template-side table.**
+`lm_reporttemplatedepartmentfunctions` uses `lm_Department`/`lm_Function`; this
+table uses `lm_Linkeddepartment`/`lm_LinkedFunction` for the equivalent two
+relationships — copy the *values* across, not the field names. There is no
+sequence/step column here, so line order is not preserved, only which lines
+exist. `lm_Department`/`lm_Function` on the occurrence stay as they are (first
+line only) — this table is additive, not a replacement.
 
 ---
 
@@ -250,6 +279,7 @@ never create the child occurrence from here.
 | 3 | **`lm_reportobjective` is 100 characters.** | A longer template objective is **rejected with a 400**, not truncated. Either widen the column or don't copy the objective at all. |
 | 4 | **Custom frequency has no rule field.** | Templates set to Custom are skipped. If they need to generate, a rule column is required. |
 | 5 | **Group-wide (Stage 3/4) templates have no unit rows.** | Decide: create **one** occurrence with BU and Region left null, or skip them. This plan creates one, since its review chain and owner live on the template's parent row. |
+| 6 | **`lm_Department`/`lm_Function` on the occurrence are now redundant with `lm_reportoccurrencedepartmentfunctions`.** Both get populated — the singular fields keep the first line only, for whatever still reads them directly. | Not a blocker, just an open question: decide later whether to keep both or drop the singular fields once every consumer reads the child table instead. |
 
 ---
 
@@ -320,7 +350,7 @@ lm_monthofthequarter,lm_monthofthesemester,lm_month
 ```
 
 While testing append ` and lm_report_templateid eq {your-test-guid}`; remove at
-step 14.
+step 15.
 
 ### Step 6 — Loop A: Apply to each Template
 
@@ -489,7 +519,24 @@ _lm_reporttemplate_value eq @{item()?['_lm_childreporttemplate_value']}
 Row found → set `lm_CitedReportOccurrence`. Nothing found → create the citation
 with that lookup empty. Never create the child occurrence here; see §8.
 
-### Step 14 — Remove the test filter and turn it on
+### Step 14 — Loop DF: one row per department/function line
+
+Still inside Loop C (after `NewOcc`), a sibling of Loop D — not nested inside
+it. **Apply to each** over `value` from `DeptFn` (already listed in Step 7),
+renamed `Loop_DF`. Inside it, one **Add a new row** on
+`lm_reportoccurrencedepartmentfunctions`:
+
+| Column | Value |
+|---|---|
+| `lm_Linkeddepartment` | `/cr603_chklst_departmentses(@{item()?['_lm_department_value']})` |
+| `lm_LinkedFunction` | `/hr_functions(@{item()?['_lm_function_value']})` — only if the line has a Function |
+| `lm_Reportoccurrence` | `/lm_reportoccurrences(@{outputs('NewOcc')?['body/lm_reportoccurrenceid']})` |
+
+Guard `lm_LinkedFunction` behind a Condition on whether `_lm_function_value` is
+empty, same as the citation lookups in Step 13 — a lookup left empty is fine, a
+null GUID is not.
+
+### Step 15 — Remove the test filter and turn it on
 
 Delete ` and lm_report_templateid eq {guid}` from step 5, save, switch on — after
 working through §11.
@@ -512,7 +559,11 @@ working through §11.
    and confirm both a day-31 and a day-5 template fire.
 7. **Add sections (Loop D), then citations (Loop E).** Check a section's
    citations come back attached to the right section.
-8. Remove the single-template filter.
+8. **Add Loop DF.** Test a Template with 3 department/function lines and
+   confirm the occurrence gets 3 `lm_reportoccurrencedepartmentfunctions`
+   rows — not 1 (only the first, as `lm_Department`/`lm_Function` do), and
+   not duplicated on a second run of the same week.
+9. Remove the single-template filter.
 
 **Deleting test rows:** an occurrence has sections, and sections have citations.
 Delete parents only if the relationships cascade — check first, or you will leave

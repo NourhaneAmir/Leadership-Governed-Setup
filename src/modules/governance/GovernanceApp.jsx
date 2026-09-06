@@ -9,6 +9,12 @@ import './governance-modern.css';
    Governed option sets and Taxonomy-owned fixtures. In-memory only.
    ========================================================================= */
 const TODAY='2026-07-29';
+/* The register's "Updated" column is meant to read like Dataverse's own
+   modifiedon -- dataverseReportToSetup()/dataverseMeetingToSetup() already do
+   that correctly when a Setup is loaded FROM Dataverse. This is for every
+   local lifecycle action (create/save/publish/approve/expire/duplicate)
+   that follows: the moment of the action, not the fixed TODAY seed date. */
+const nowStamp=()=>new Date().toISOString().slice(0,10);
 
 /* ---- governed option sets (section 2) ----------------------------------- */
 const SETUP_TYPES=['Business Meeting','Accreditation Committee'];
@@ -30,7 +36,10 @@ const STAGES=['Stage 1 BU Operational','Stage 2 Regional Functional',
    organiser on the meeting screen and never needs a Setup. */
 const FREQUENCIES=['Daily','Twice Weekly','Weekly','Twice Monthly','Monthly',
                    'Quarterly','Semesterly','Annually','Custom'];
-const DOW_FREQ=['Daily','Twice Weekly','Weekly'];
+/* Daily is deliberately excluded -- it fires every working day, so there is no
+   single day to pick, and the Report Occurrence Generator flow never reads
+   lm_dayoftheweek for it (see REPORT-OCCURRENCE-FLOW-PLAN.md §5 rule 1). */
+const DOW_FREQ=['Twice Weekly','Weekly'];
 const DOM_FREQ=['Twice Monthly','Monthly','Quarterly','Semesterly','Annually'];
 /* Month-within-quarter is a quarter's three months, so it applies to Quarterly
    only. Semesterly picks from six months and has its own column and list;
@@ -190,6 +199,12 @@ const CLASS_NOUN={
   'Technology Meeting':'Technology Meeting',
   'Cross-Functional Meeting':'Cross-Functional Meeting'};
 const STAGE_PREFIX=['','Regional','Group','Executive'];
+/* Used only when subjectOf() drops out (3+ departments/functions) -- a distinct
+   wording from STAGE_PREFIX so the generalized name reads "Weekly BU Operational
+   Meeting" instead of leading with just the classification noun. Deliberately
+   separate from STAGE_PREFIX: changing STAGE_PREFIX itself would also rename
+   every 1-2-department Setup, which is out of scope here. */
+const FALLBACK_STAGE_WORD=['BU','Region','Group','Top Management'];
 
 /* the single pseudo-unit a Stage 3 / Stage 4 Setup runs as */
 const GROUP_KEY='__group';
@@ -447,9 +462,12 @@ function dropRepeats(subject,noun){
 function derivedName(s){
   const pre=STAGE_PREFIX[STAGES.indexOf(s.stage)]||'';
   const subj=subjectOf(s);
+  const fallbackStageWord=FALLBACK_STAGE_WORD[STAGES.indexOf(s.stage)]||'';
   let base;
   if(s.kind==='Report Template'){
-    base=[s.frequency, pre, subj, s.reportType].filter(Boolean).join(' ');
+    base = subj
+      ? [s.frequency, pre, subj, s.reportType].filter(Boolean).join(' ')
+      : [s.frequency, fallbackStageWord, s.reportType].filter(Boolean).join(' ');
   } else if(s.category===TOT){
     /* the Team of Teams is named after the Department it serves */
     const dep=(linesOf(s)[0]||{}).department;
@@ -457,7 +475,9 @@ function derivedName(s){
   } else {
     const noun = s.setupType==='Accreditation Committee'
       ? 'Committee' : (CLASS_NOUN[s.category]||'Meeting');
-    base=[pre, subj, subj?dropRepeats(subj,noun):noun].filter(Boolean).join(' ');
+    base = subj
+      ? [pre, subj, dropRepeats(subj,noun)].filter(Boolean).join(' ')
+      : [s.frequency, fallbackStageWord, noun].filter(Boolean).join(' ');
   }
   if(!base.trim()) return '';
   return s.qualifier && s.qualifier.trim() ? `${base} (${s.qualifier.trim()})` : base;
@@ -876,8 +896,7 @@ function unitRules(s, stepNo){
     } else {
       if(!u.chairman)    r.push({field:f, step:stepNo, msg:`${at}: Chairman is required.`});
       if(!u.facilitator) r.push({field:f, step:stepNo, msg:`${at}: Organizer / Facilitator is required.`});
-      if(!(u.coreMembers||[]).filter(m=>m.position).length)
-        r.push({field:f, step:stepNo, msg:`${at}: at least one attendee is required.`});
+      // Attendees are not mandatory for now, by explicit instruction.
     }
   });
   return r;
@@ -1850,7 +1869,7 @@ function UnitSetup({s,set,issues,shared,intro}){
                           onChange={v=>setUnit(k,{[key]:v})}/>
                       </Field>)}
                   </div>
-                  <Field id={'u-cm-'+k} label="Attendees" req
+                  <Field id={'u-cm-'+k} label="Attendees"
                     hint="Core attendees count towards the quorum. Supportive attendees do not.">
                     <RowEditor id={'u-cm-'+k} rows={u.coreMembers||[]}
                       onChange={v=>setUnit(k,{coreMembers:v})}
@@ -3820,7 +3839,7 @@ function App({onSwitch}){
      Every nested row gets a fresh local id for the same reason. */
   const duplicateFrom=async src=>{
     const nid=uid('su');
-    const copy={...src, id:nid, status:'Draft', version:0, updated:TODAY,
+    const copy={...src, id:nid, status:'Draft', version:0, updated:nowStamp(),
       _dataverseId:undefined,
       qualifier:((src.qualifier||'')+' copy').trim(),
       regions:(src.regions||[]).slice(),
@@ -3880,7 +3899,7 @@ function App({onSwitch}){
   const A={
     create:kind=>{const id=uid('su');
       mut(n=>{const base=kind==='Report Template'?BLANK_REPORT:BLANK_MEETING;
-        n.setups.push({...base,id,kind,updated:TODAY});
+        n.setups.push({...base,id,kind,updated:nowStamp()});
         logIt(n,id,'Created','Lifecycle Status','—','Draft');});
       setOpenId(id); setEditing(true); setScreen('register'); window.scrollTo({top:0});},
 
@@ -3931,7 +3950,7 @@ function App({onSwitch}){
         TRACKED.forEach(([k,label])=>{ if(prev[k]!==f[k])
           logIt(n,f.id,'Edited',label,showVal(k,prev[k]),showVal(k,f[k])); });
         logDerived(n,prev,f);
-        n.setups[i]={...f,updated:TODAY};});
+        n.setups[i]={...f,updated:nowStamp()};});
       setEditing(false);
       toast('Draft saved','Saved to Dataverse as a Draft. Nothing downstream changes until it is published.','ok');
       writeTemplateToDataverse(f,'saved as a draft');},
@@ -3953,7 +3972,7 @@ function App({onSwitch}){
         if(prev.version!==next) logIt(n,f.id,'Published','Version',prev.version||'—',String(next));
         if(prev.status!=='Under Review')
           logIt(n,f.id,'Published','Lifecycle Status',prev.status,'Under Review');
-        n.setups[i]={...f,updated:TODAY};});
+        n.setups[i]={...f,updated:nowStamp()};});
       setEditing(false);
       toast('Sent for review',
         `${displayName(f)} is Under Review at version ${next}. An admin needs to Approve it before it's Active / Approved.`,'ok');
@@ -3967,7 +3986,7 @@ function App({onSwitch}){
       let rec=null;
       mut(n=>{const s=n.setups.find(x=>x.id===id);
         logIt(n,id,'Approved','Lifecycle Status',s.status,'Active / Approved');
-        s.status='Active / Approved'; s.updated=TODAY;
+        s.status='Active / Approved'; s.updated=nowStamp();
         rec={...s};});
       toast('Setup approved',
         `${displayName(rec)} is now Active / Approved at version ${rec.version||1}.`,'ok');
@@ -4036,7 +4055,7 @@ function App({onSwitch}){
       let rec=null;
       mut(n=>{const s=n.setups.find(x=>x.id===id);
         logIt(n,id,'Expired','Lifecycle Status',s.status,'Expired');
-        s.status='Expired'; s.updated=TODAY;
+        s.status='Expired'; s.updated=nowStamp();
         rec={...s};});
       toast('Setup expired','It creates no new occurrences and stays readable.','warn');
       if(rec._dataverseId){

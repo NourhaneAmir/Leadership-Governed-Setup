@@ -2,7 +2,8 @@
 
 > Handoff notes for anyone (human or AI) picking this project up cold.
 > Written 30 Aug 2026, updated 01 Sep 2026, updated 02 Sep 2026 (twice),
-> updated 04 Sep 2026, updated 05 Sep 2026, against branch `leadership-practice`.
+> updated 04 Sep 2026, updated 05 Sep 2026, updated 06 Sep 2026, against
+> branch `leadership-practice`.
 >
 > This file records **decisions, hard-won schema facts and open questions** —
 > the things that are expensive to rediscover. It is not a substitute for the
@@ -22,7 +23,7 @@ Meeting Minutes (MOM) → Audit Grid scoring → Decisions → TMS Tasks.
 | Environment | `https://org319b4ea9.crm4.dynamics.com/` |
 | Solution | `LeadershipPractice` |
 | Branch | `leadership-practice` |
-| Dataverse tables | 43 schema files in `.power/schemas/dataverse/`, plus `wlog_decisions` under `commondataservice` and the two KPI tables — see §6. Includes Minutes, MOM Notes, Audit Grid instances/answers, Approval Cycles/Steps, Authority Matrix rows, `pm_kpiachievments`/`stf_kpiachievmentbreakdowns`, and (04 Sep) the four Report/Plan Composition tables |
+| Dataverse tables | 43 schema files in `.power/schemas/dataverse/`, plus `wlog_decisions`/`lm_reportoccurrencedepartmentfunctions` under `commondataservice` and the two KPI tables — see §6. Includes Minutes, MOM Notes, Audit Grid instances/answers, Approval Cycles/Steps, Authority Matrix rows, `pm_kpiachievments`/`stf_kpiachievmentbreakdowns`, (04 Sep) the four Report/Plan Composition tables, and (06 Sep) `lm_reportoccurrencedepartmentfunctions` |
 | Two modules | `src/modules/leadership/LeadershipApp.jsx` (execution), `src/modules/governance/GovernanceApp.jsx` (setup) |
 
 ---
@@ -563,6 +564,52 @@ Dataverse rejected the row.
 **Produced, not built:** `REPORT-OCCURRENCE-FLOW-PLAN.md` (see §3) — the weekly
 Report Occurrence generator, planned in full against the live schema.
 
+### This session (06 Sep): `lm_reportoccurrencedepartmentfunctions` registered — multi-department Report Occurrences
+
+Per an explicit ask: a Report Occurrence's `lm_department`/`lm_function` (04 Sep,
+§6) only ever hold **one** line, but a Report Template can name several
+(`lm_reporttemplatedepartmentfunctions`). This new child table lets an
+occurrence carry all of them, not just the first.
+
+**Registration needed two guesses before it worked — see §6 for the full
+story.** The logical name given for the ask (`lm_reportoccurrencedepartmentfunction`,
+singular) 404'd against the legacy `shared_commondataservice` connector, the same
+one used for `wlog_decisions`. The **plural** form
+(`lm_reportoccurrencedepartmentfunctions`) worked on the first try. An
+intermediate attempt via `shared_commondataserviceforapps` "succeeded" but
+produced the same empty, untyped connector entry (`dataSets: {}`) already
+documented as a dead end for `wlog_decisions` — backed out via the documented
+hand-edit procedure (git checkout the three touched files, delete the two new
+generated files) before retrying with the working connector.
+
+**Real columns, inspected after registration, not assumed:**
+`_lm_linkeddepartment_value` → `cr603_chklst_departmentses` (nav property
+`lm_Linkeddepartment`), `_lm_linkedfunction_value` → `hr_functions` (nav
+property `lm_LinkedFunction`), `_lm_reportoccurrence_value` →
+`lm_reportoccurrences` (nav property `lm_Reportoccurrence`), plus `lm_name`
+(850 chars) and the standard audit/state columns. **No sequence/step column**
+— row order is not preserved, only membership. **Lookup names do not match
+the template-side table**: `lm_reporttemplatedepartmentfunctions` uses
+`lm_Department`/`lm_Function`; this table uses
+`lm_Linkeddepartment`/`lm_LinkedFunction` for the equivalent two
+relationships — copying values across requires renaming the field, not a
+straight copy.
+
+**Registered the same way as `wlog_decisions`** — `"dataSourceType":
+"Connector"` in `dataSourcesInfo.ts`, sitting in `power.config.json` under
+`connectionReferences` (reusing the same `39b0e662674844b79a870b4e5a7485c9`
+legacy connection id), not `databaseReferences.default.cds`. Functionally
+identical `create`/`update`/`get`/`getAll` shape
+(`Lm_reportoccurrencedepartmentfunctionsService`).
+
+**Not yet wired into any app code** — this session only registered the table
+and updated `REPORT-OCCURRENCE-FLOW-PLAN.md` (§3) to write one child row per
+template Department/Function line, in a new Loop DF alongside the existing
+Loop D (sections). `lm_reportoccurrences.lm_department`/`lm_function` are left
+as they were — still populated from the first line only, now redundant with
+this table for anything that reads the full list. No screen in either module
+reads or writes this table yet.
+
 ---
 
 ## 6. Schema facts that are expensive to rediscover
@@ -587,7 +634,7 @@ Region child row.
 
 | Plural | Singular |
 |---|---|
-| `lm_meetingminutes`, `lm_momnotes`, `lm_reporttemplatesectionitems`, `lm_reportsectioncitations` | `lm_auditgridinstance`, `lm_auditgridanswer`, `lm_approvalcycle`, `lm_approvalcyclestep`, `lm_authoritymatrixrow`, **`lm_reportoccurrence`**, **`lm_reporttemplatecontentchecklist`**, **`lm_reportoccurrenceshare`** |
+| `lm_meetingminutes`, `lm_momnotes`, `lm_reporttemplatesectionitems`, `lm_reportsectioncitations`, **`lm_reportoccurrencedepartmentfunctions`** | `lm_auditgridinstance`, `lm_auditgridanswer`, `lm_approvalcycle`, `lm_approvalcyclestep`, `lm_authoritymatrixrow`, **`lm_reportoccurrence`**, **`lm_reporttemplatecontentchecklist`**, **`lm_reportoccurrenceshare`** |
 
 Guessing wrong gives `Failed to get entity definition`. **The CLI also fails
 transiently** — a name that fails once often works on retry, so treat a single
@@ -1052,6 +1099,9 @@ something, except the one item below that's now live at a base level.
 - [ ] **Report Occurrence generator (Power Automate).** Planned in full —
       `REPORT-OCCURRENCE-FLOW-PLAN.md`. Blocked on its own §9 open items, chiefly
       the citation parent lookup and the missing month-of-year column.
+      `lm_reportoccurrencedepartmentfunctions` (06 Sep, §5/§6) is now registered
+      and the plan's Loop DF is written, closing the "only the first department
+      survives" gap — the flow itself is still not built.
 - [ ] **Report/Plan Composition, execution side.** `lm_reportoccurrencesections`
       and `lm_reportsectioncitations` are registered but **nothing reads or
       writes them** — this is the Build-a-Report half, and the natural next
