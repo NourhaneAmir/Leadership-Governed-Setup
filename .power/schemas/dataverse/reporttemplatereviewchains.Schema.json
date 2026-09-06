@@ -152,6 +152,38 @@
           "x-ms-read-only": true,
           "maxLength": 850
         },
+        "lm_reporttemplateperbusinessunit": {
+          "type": "string",
+          "title": "Report Template Per Business Unit",
+          "x-ms-dataverse-attribute": "lm_reporttemplateperbusinessunit",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "lm_ReportTemplatePerBusinessUnit"
+        },
+        "lm_reporttemplateperbusinessunitname": {
+          "type": "string",
+          "title": "lm_reporttemplateperbusinessunitname",
+          "x-ms-dataverse-attribute": "lm_reporttemplateperbusinessunitname",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "lm_ReportTemplatePerBusinessUnitName",
+          "x-ms-read-only": true,
+          "maxLength": 850
+        },
+        "lm_reporttemplateperregion": {
+          "type": "string",
+          "title": "Report Template Per Region",
+          "x-ms-dataverse-attribute": "lm_reporttemplateperregion",
+          "x-ms-dataverse-type": "LookupType",
+          "x-ms-schema-name": "lm_ReportTemplatePerRegion"
+        },
+        "lm_reporttemplateperregionname": {
+          "type": "string",
+          "title": "lm_reporttemplateperregionname",
+          "x-ms-dataverse-attribute": "lm_reporttemplateperregionname",
+          "x-ms-dataverse-type": "StringType",
+          "x-ms-schema-name": "lm_ReportTemplatePerRegionName",
+          "x-ms-read-only": true,
+          "maxLength": 850
+        },
         "lm_reporttemplatereviewchainid": {
           "type": "string",
           "title": "Report Template Review Chain",

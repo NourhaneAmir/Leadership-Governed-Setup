@@ -20,6 +20,8 @@ export interface Lm_reporttemplatereviewchainsBase {
   "lm_MeetingTemplatePerRegion@odata.bind"?: string;
   lm_newcolumn?: string;
   "lm_ReportTemplate@odata.bind"?: string;
+  "lm_ReportTemplatePerBusinessUnit@odata.bind"?: string;
+  "lm_ReportTemplatePerRegion@odata.bind"?: string;
   lm_reporttemplatereviewchainid: string;
   "lm_ReviewerPosition@odata.bind"?: string;
   lm_step?: number;
@@ -42,6 +44,8 @@ export interface Lm_reporttemplatereviewchains extends Lm_reporttemplatereviewch
   lm_meetingtemplateperbusinessunitname?: string;
   lm_meetingtemplateperregionname?: string;
   lm_reporttemplatename?: string;
+  lm_reporttemplateperbusinessunitname?: string;
+  lm_reporttemplateperregionname?: string;
   lm_reviewerpositionname?: string;
   modifiedbyname?: string;
   modifiedbyyominame: string;
@@ -66,6 +70,10 @@ export interface Lm_reporttemplatereviewchains extends Lm_reporttemplatereviewch
   _lm_meetingtemplateperregion_value?: string;
   lm_reporttemplate?: object;
   _lm_reporttemplate_value?: string;
+  lm_reporttemplateperbusinessunit?: object;
+  _lm_reporttemplateperbusinessunit_value?: string;
+  lm_reporttemplateperregion?: object;
+  _lm_reporttemplateperregion_value?: string;
   lm_reviewerposition?: object;
   _lm_reviewerposition_value?: string;
   modifiedby?: object;

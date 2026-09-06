@@ -664,17 +664,43 @@ async function deleteRows(service, rows, idField, table, errors){
  *  create (fresh parent) and update (existing parent, after its old
  *  children were deleted) -- same fan-out either way, just a different
  *  `templateId` source. Mutates `errors` in place; nothing is returned. */
+/* A Report Template's Review Chain rows hang off a per-unit row through one of
+   two lookup pairs. Writes use lm_ReportTemplatePerBusinessUnit /
+   lm_ReportTemplatePerRegion (added 06 Sep 2026); rows saved before that date
+   sit on the Meeting module's lm_MeetingTemplatePerBusinessUnit /
+   ...PerRegion, which were the only per-unit columns the table had. Reads have
+   to accept both or editing an older Setup silently loses its chain. */
+function unitChainFilter(kind, rowId){
+  const pair = kind === 'region'
+    ? ['_lm_reporttemplateperregion_value', '_lm_meetingtemplateperregion_value']
+    : ['_lm_reporttemplateperbusinessunit_value', '_lm_meetingtemplateperbusinessunit_value'];
+  return `(${pair[0]} eq ${rowId} or ${pair[1]} eq ${rowId})`;
+}
+
+/* A group-wide (Stage 3/4) chain is one bound to the Template with NO per-unit
+   row at all -- so all four lookups must be null, not just the two we write.
+   Checking only the Meeting pair would sweep up every per-unit chain saved
+   since the new columns landed, since those leave the Meeting pair null. */
+const GROUP_CHAIN_UNBOUND = [
+  '_lm_reporttemplateperbusinessunit_value eq null',
+  '_lm_reporttemplateperregion_value eq null',
+  '_lm_meetingtemplateperbusinessunit_value eq null',
+  '_lm_meetingtemplateperregion_value eq null',
+].join(' and ');
+
 async function createReportTemplateChildren(templateId, payload, errors){
   const bind = `/lm_report_templates(${templateId})`;
 
   // One lm_reporttemplatebusinessunitses / lm_reporttemplateregions row per
   // configured unit, each with its own Speciality/Owner/Submitter, and its
   // own Review Chain bound back to that specific unit row (not just the
-  // parent template) via lm_MeetingTemplatePerBusinessUnit /
-  // lm_MeetingTemplatePerRegion on lm_reporttemplatereviewchains -- yes,
-  // those lookup names say "MeetingTemplate" even on the Report Template's
-  // review chain table; that's the real field name Dataverse generated,
-  // kept as-is rather than "corrected" to avoid guessing wrong.
+  // parent template) via lm_ReportTemplatePerBusinessUnit /
+  // lm_ReportTemplatePerRegion on lm_reporttemplatereviewchains.
+  // These two lookups were added on 06 Sep 2026. Before that the chain was
+  // bound through lm_MeetingTemplatePerBusinessUnit / ...PerRegion -- the
+  // Meeting module's lookups, reused because they were the only per-unit
+  // columns the table had. Rows written that way still exist, so every read
+  // below accepts EITHER lookup; only writes use the new columns.
   // Group-level Setups have no dedicated child table yet, so their units
   // (if any) are skipped with a console note rather than guessed at.
   for(const unit of (payload.units||[])){
@@ -693,7 +719,7 @@ async function createReportTemplateChildren(templateId, payload, errors){
         if(unit.channelId) rowPayload['lm_TeamChannel@odata.bind'] = `/and_teamschannels(${unit.channelId})`;
         const created = await Lm_reporttemplatebusinessunitsesService.create(rowPayload);
         const rowId = created?.data?.lm_reporttemplatebusinessunitsid;
-        if(rowId){ unitBind = `/lm_reporttemplatebusinessunitses(${rowId})`; unitLookupField = 'lm_MeetingTemplatePerBusinessUnit@odata.bind'; }
+        if(rowId){ unitBind = `/lm_reporttemplatebusinessunitses(${rowId})`; unitLookupField = 'lm_ReportTemplatePerBusinessUnit@odata.bind'; }
       }catch(e){ errors.push({ table:'lm_reporttemplatebusinessunitses', error:e }); }
     }else if(payload.stageLevel==='region' && unit?.regionId){
       try{
@@ -708,17 +734,20 @@ async function createReportTemplateChildren(templateId, payload, errors){
         if(unit.channelId) rowPayload['lm_TeamChannel@odata.bind'] = `/and_teamschannels(${unit.channelId})`;
         const created = await Lm_reporttemplateregionsService.create(rowPayload);
         const rowId = created?.data?.lm_reporttemplateregionid;
-        if(rowId){ unitBind = `/lm_reporttemplateregions(${rowId})`; unitLookupField = 'lm_MeetingTemplatePerRegion@odata.bind'; }
+        if(rowId){ unitBind = `/lm_reporttemplateregions(${rowId})`; unitLookupField = 'lm_ReportTemplatePerRegion@odata.bind'; }
       }catch(e){ errors.push({ table:'lm_reporttemplateregions', error:e }); }
     }
     /* A group-wide (Stage 3/4) Setup has no per-unit child table -- there is no
        Business Unit or Region row for its Review Chain steps to hang off. That
        used to `continue` here, which silently discarded the whole chain.
        It does NOT have to: lm_reporttemplatereviewchains carries a direct
-       lm_ReportTemplate lookup as well as the two per-unit ones, and the loop
+       lm_ReportTemplate lookup as well as the per-unit ones, and the loop
        below already binds the template on every row and adds the per-unit
        lookup only when there is one. So the chain is written against the
-       template itself, with the per-unit link left null. */
+       template itself, with the per-unit link left null. That null is what
+       identifies a group-wide chain on read, which is why the group-wide
+       queries have to null-check all FOUR per-unit lookups, not just the
+       two currently written. */
 
     for(const step of (unit.reviewChain||[])){
       try{
@@ -797,11 +826,11 @@ async function fetchReportTemplateChildIds(dvId){
   const regions = regionsRes?.data ?? [];
   const [buChains, regionChains] = await Promise.all([
     Promise.all(businessUnits.map(bu => Lm_reporttemplatereviewchainsService.getAll({
-      filter: `_lm_meetingtemplateperbusinessunit_value eq ${bu.lm_reporttemplatebusinessunitsid}`,
+      filter: unitChainFilter('businessunit', bu.lm_reporttemplatebusinessunitsid),
       select: ['lm_reporttemplatereviewchainid'],
     }).then(r=>r?.data??[]).catch(()=>[]))),
     Promise.all(regions.map(rg => Lm_reporttemplatereviewchainsService.getAll({
-      filter: `_lm_meetingtemplateperregion_value eq ${rg.lm_reporttemplateregionid}`,
+      filter: unitChainFilter('region', rg.lm_reporttemplateregionid),
       select: ['lm_reporttemplatereviewchainid'],
     }).then(r=>r?.data??[]).catch(()=>[]))),
   ]);
@@ -820,7 +849,7 @@ async function fetchReportTemplateChildIds(dvId){
      Without this the update path would leave those rows behind as orphans every
      time a group-wide template was edited. */
   const groupChainRes = await Lm_reporttemplatereviewchainsService.getAll({
-    filter: `${filter} and _lm_meetingtemplateperbusinessunit_value eq null and _lm_meetingtemplateperregion_value eq null`,
+    filter: `${filter} and ${GROUP_CHAIN_UNBOUND}`,
     select: ['lm_reporttemplatereviewchainid'],
   }).catch(()=>null);
 
@@ -1438,13 +1467,13 @@ export async function fetchReportTemplateDetail(id){
   const [buChains, regionChains] = await Promise.all([
     Promise.all(businessUnits.map(bu =>
       Lm_reporttemplatereviewchainsService.getAll({
-        filter: `_lm_meetingtemplateperbusinessunit_value eq ${bu.lm_reporttemplatebusinessunitsid}`,
+        filter: unitChainFilter('businessunit', bu.lm_reporttemplatebusinessunitsid),
         select: ['lm_step','_lm_reviewerposition_value','lm_newcolumn'],
       }).then(r => r?.data ?? []).catch(()=>[])
     )),
     Promise.all(regions.map(rg =>
       Lm_reporttemplatereviewchainsService.getAll({
-        filter: `_lm_meetingtemplateperregion_value eq ${rg.lm_reporttemplateregionid}`,
+        filter: unitChainFilter('region', rg.lm_reporttemplateregionid),
         select: ['lm_step','_lm_reviewerposition_value','lm_newcolumn'],
       }).then(r => r?.data ?? []).catch(()=>[])
     )),
@@ -1453,7 +1482,7 @@ export async function fetchReportTemplateDetail(id){
   /* A Stage 3/4 Setup's Review Chain binds to the template only, so it is
      invisible to the per-BU / per-Region queries above and needs its own read. */
   const groupChainDetailRes = await Lm_reporttemplatereviewchainsService.getAll({
-    filter: `${filter} and _lm_meetingtemplateperbusinessunit_value eq null and _lm_meetingtemplateperregion_value eq null`,
+    filter: `${filter} and ${GROUP_CHAIN_UNBOUND}`,
     select: ['lm_reporttemplatereviewchainid','lm_step','_lm_reviewerposition_value','lm_newcolumn'],
   }).catch(e=>{ console.warn('[dataverse] group-wide review chain fetch failed:', e); return null; });
 
