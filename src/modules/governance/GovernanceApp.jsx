@@ -1940,10 +1940,21 @@ function SumBlock({title,items}){
    ========================================================================= */
 function Wizard({rec,steps,renderStep,onClose}){
   const {A,role,db}=use();
+  // Was this record already a real row when the wizard opened? Computed
+  // once per editing session (Wizard remounts fresh via key={rec.id} at the
+  // call site) -- a brand-new Setup answers false here and stays false for
+  // the rest of this session even after its first edit promotes it, which
+  // is exactly what keeps every subsequent edit syncing to db.setups too
+  // ("saved in local storage" for as long as it hasn't been Saved as Draft).
+  const isNewRef=useRef(!db.setups.some(x=>x.id===rec.id));
   const [s,setS]=useState(rec);
   const [step,setStep]=useState(1);
   const [confirmPublish,setConfirmPublish]=useState(false);
-  const set=patch=>setS(x=>({...x,...patch}));
+  const set=patch=>setS(x=>{
+    const next={...x,...patch};
+    if(isNewRef.current) A.promoteDraft(next);
+    return next;
+  });
   const issues=useMemo(()=>validate(s,db.setups),[s,db.setups]);
   const invalidSteps=useMemo(()=>new Set(issues.map(i=>i.step)),[issues]);
   const canWrite=ROLES[role].write;
@@ -2924,12 +2935,17 @@ function dataverseMeetingToSetup(detail){
 /* =========================================================================
    S1 — SETUP REGISTER
    ========================================================================= */
+const REG_PAGE_SIZE=20;
 function ScreenRegister(){
   const {db,A,role,open,dvReports,dvMeetings,dvOpening}=use();
   const w=ROLES[role].write, canApprove=ROLES[role].approve;
   const [fKind,setFKind]=useState('All'), [fType,setFType]=useState('All');
   const [fCat,setFCat]=useState('All'), [fStage,setFStage]=useState('All');
   const [fStatus,setFStatus]=useState('All'), [q,setQ]=useState('');
+  const [page,setPage]=useState(1);
+  // A filter change makes the previous page number meaningless -- landing on
+  // "page 4 of 1" after narrowing the results reads as a bug, not a feature.
+  useEffect(()=>{ setPage(1); }, [fKind,fType,fCat,fStage,fStatus,q]);
   /* Both confirm modals below work off one flat shape, so a row that has
      been loaded into this session and a Dataverse row that hasn't both
      describe themselves the same way -- the latter has no full Setup to
@@ -3021,6 +3037,25 @@ function ScreenRegister(){
   ];
   const dvRows=dvAll.filter(matches).slice().sort(byNewest);
 
+  // Paged across BOTH groups as one continuous list, local Setups first --
+  // same order they already render in, just cut into pages. A page can
+  // straddle the boundary between the two groups (e.g. the last 3 local rows
+  // plus the first 17 Dataverse ones), which is why this slices one combined
+  // array rather than paging each group on its own.
+  const totalCount=rows.length+dvRows.length;
+  const totalPages=Math.max(1,Math.ceil(totalCount/REG_PAGE_SIZE));
+  const safePage=Math.min(page,totalPages);
+  const pageStart=(safePage-1)*REG_PAGE_SIZE;
+  const pageItems=[
+    ...rows.map(s=>({t:'local',s})),
+    ...dvRows.map(r=>({t:'dv',r})),
+  ].slice(pageStart,pageStart+REG_PAGE_SIZE);
+  // Filtering back into two arrays keeps the two row-rendering blocks below
+  // untouched -- relative order survives the filter, so this is exactly the
+  // slice of `rows` and the slice of `dvRows` that belong on this page.
+  const pageLocal=pageItems.filter(i=>i.t==='local').map(i=>i.s);
+  const pageDv=pageItems.filter(i=>i.t==='dv').map(i=>i.r);
+
   // The stat cards read from the tables, not just this session's loaded-in
   // Setups: every real Setup plus every Dataverse row not yet opened into this
   // session. Deliberately built from the UNFILTERED lists -- they are totals
@@ -3091,9 +3126,9 @@ function ScreenRegister(){
         <thead><tr><th>Setup name</th><th>Kind</th><th>Type</th><th>Category</th><th>Stage</th>
           <th>Scope and units</th><th>Frequency</th><th>Status</th><th className="reg-th-num">Ver</th><th>Updated</th>
           <th className="reg-th-actions"></th></tr></thead>
-        <tbody>{rows.length===0 && dvRows.length===0
+        <tbody>{totalCount===0
           ? <tr><td colSpan={11}><Empty>No Setup matches these filters.</Empty></td></tr>
-          : <>{rows.map(s=>{
+          : <>{pageLocal.map(s=>{
           const keys=scopeKeys(s), lv=stageLevel(s);
           const KindIcon=s.kind==='Report Template'?ClipboardList:CalendarDays;
           return <tr key={s.id} className="click" onClick={()=>open(s.id)}>
@@ -3118,7 +3153,7 @@ function ScreenRegister(){
             <td className="dim">{s.frequency||'—'}</td>
             <td><StatusPill s={s.status}/></td>
             <td className="num">{s.version||'—'}</td>
-            <td className="dim">{fmtD(s.updated)}</td>
+            <td className="dim reg-td-date">{fmtD(s.updated)}</td>
             <td className="reg-actions" onClick={e=>e.stopPropagation()}>
               <Btn k="reg-open" onClick={()=>open(s.id)}>Open</Btn>
               {w?<Btn k="reg-act" onClick={()=>A.duplicate(s.id)}
@@ -3132,7 +3167,7 @@ function ScreenRegister(){
               ]}/>
             </td>
           </tr>;})}
-          {dvRows.map(r=>{
+          {pageDv.map(r=>{
             const isOpening=dvOpening===r.dvId;
             const isReport=r.dvKind==='Report Template';
             const KindIcon=isReport?ClipboardList:CalendarDays;
@@ -3167,7 +3202,7 @@ function ScreenRegister(){
                 : undefined}>
                 <StatusPill s={r.status}/></td>
               <td className="num">{r.version??'—'}</td>
-              <td className="dim">{r.updated?fmtD(r.updated.slice(0,10)):'—'}</td>
+              <td className="dim reg-td-date">{r.updated?fmtD(r.updated.slice(0,10)):'—'}</td>
               <td className="reg-actions" onClick={e=>e.stopPropagation()}>
                 <Btn k="reg-open" disabled={isOpening} onClick={()=>A.openDataverse(r.dvKind,r.dvId)}>
                   {isOpening?'Working…':'Open'}</Btn>
@@ -3183,6 +3218,19 @@ function ScreenRegister(){
             </tr>;})}
           </>}
         </tbody></table></div>
+      {totalCount>REG_PAGE_SIZE
+        ? <div className="reg-pager" style={{display:'flex',alignItems:'center',
+            justifyContent:'space-between',padding:'10px 14px',borderTop:'1px solid var(--border)'}}>
+            <span style={{fontSize:12,color:'var(--muted)'}}>
+              Showing {pageStart+1}–{Math.min(pageStart+REG_PAGE_SIZE,totalCount)} of {totalCount}
+            </span>
+            <div style={{display:'flex',alignItems:'center',gap:10}}>
+              <Btn k="sm" disabled={safePage<=1} onClick={()=>setPage(p=>Math.max(1,p-1))}>Previous</Btn>
+              <span style={{fontSize:12,color:'var(--muted)'}}>Page {safePage} of {totalPages}</span>
+              <Btn k="sm" disabled={safePage>=totalPages} onClick={()=>setPage(p=>Math.min(totalPages,p+1))}>Next</Btn>
+            </div>
+          </div>
+        : null}
     </div>
 
     {confirm?<Modal
@@ -3698,6 +3746,12 @@ function App({onSwitch}){
   const [screen,setScreen]=useState('register');
   const [openId,setOpenId]=useState(null);
   const [editing,setEditing]=useState(false);
+  // Holds a brand-new Setup's blank record BEFORE it has any real data --
+  // opening "New Report"/"New Committee/Meeting" must not, by itself, create
+  // a Draft row in db.setups (and therefore in sessionStorage and the
+  // register). The Wizard promotes this into db.setups itself, the moment
+  // the user actually changes a field -- see Wizard's `set()`.
+  const [pendingNew,setPendingNew]=useState(null);
   const [toasts,setToasts]=useState([]);
   const [navOpen,setNavOpen]=useState(true);
 
@@ -3897,11 +3951,26 @@ function App({onSwitch}){
   };
 
   const A={
+    // Opens the wizard on an in-memory blank record that is NOT part of
+    // db.setups yet -- so it does not appear in the register, and nothing
+    // is written to sessionStorage, until the user actually enters data.
+    // See Wizard's `set()` for where it gets promoted.
     create:kind=>{const id=uid('su');
-      mut(n=>{const base=kind==='Report Template'?BLANK_REPORT:BLANK_MEETING;
-        n.setups.push({...base,id,kind,updated:nowStamp()});
-        logIt(n,id,'Created','Lifecycle Status','—','Draft');});
+      const base=kind==='Report Template'?BLANK_REPORT:BLANK_MEETING;
+      setPendingNew({...base,id,kind,updated:nowStamp()});
       setOpenId(id); setEditing(true); setScreen('register'); window.scrollTo({top:0});},
+
+    // Called by Wizard the moment a brand-new Setup gets its first real
+    // field change -- turns the in-memory-only `pendingNew` record into a
+    // real row in db.setups (and therefore sessionStorage), so "there is
+    // data now" is the trigger for the local save, not "the wizard opened".
+    promoteDraft:next=>{
+      mut(n=>{
+        const i=n.setups.findIndex(x=>x.id===next.id);
+        if(i>=0) n.setups[i]=next;
+        else { n.setups.push(next); logIt(n,next.id,'Created','Lifecycle Status','—','Draft'); }
+      });
+    },
 
     open:id=>{setOpenId(id); setEditing(false); setScreen('register'); window.scrollTo({top:0});},
 
@@ -3946,11 +4015,20 @@ function App({onSwitch}){
        there, update-in-place otherwise) -- previously Save Draft was
        local-only and a draft never reached Dataverse at all. */
     saveDraft:f0=>{ const f={...f0,name:derivedName(f0)};
-      mut(n=>{const i=n.setups.findIndex(x=>x.id===f.id); const prev=n.setups[i];
-        TRACKED.forEach(([k,label])=>{ if(prev[k]!==f[k])
-          logIt(n,f.id,'Edited',label,showVal(k,prev[k]),showVal(k,f[k])); });
-        logDerived(n,prev,f);
-        n.setups[i]={...f,updated:nowStamp()};});
+      mut(n=>{const i=n.setups.findIndex(x=>x.id===f.id);
+        // i<0 only if the user hit Save Draft without ever changing a field
+        // -- Wizard's promoteDraft() would already have added this row for
+        // any actual edit, so there is nothing to diff against here.
+        if(i>=0){
+          const prev=n.setups[i];
+          TRACKED.forEach(([k,label])=>{ if(prev[k]!==f[k])
+            logIt(n,f.id,'Edited',label,showVal(k,prev[k]),showVal(k,f[k])); });
+          logDerived(n,prev,f);
+          n.setups[i]={...f,updated:nowStamp()};
+        } else {
+          n.setups.push({...f,updated:nowStamp()});
+          logIt(n,f.id,'Created','Lifecycle Status','—','Draft');
+        }});
       setEditing(false);
       toast('Draft saved','Saved to Dataverse as a Draft. Nothing downstream changes until it is published.','ok');
       writeTemplateToDataverse(f,'saved as a draft');},
@@ -3965,14 +4043,24 @@ function App({onSwitch}){
       const wasApproved = named.status==='Active / Approved';
       const next = wasApproved ? (named.version||0)+1 : (named.version||1);
       const f={...named, status:'Under Review', version:next};
-      mut(n=>{const i=n.setups.findIndex(x=>x.id===f.id); const prev=n.setups[i];
-        TRACKED.forEach(([k,label])=>{ if(prev[k]!==f[k])
-          logIt(n,f.id,'Edited',label,showVal(k,prev[k]),showVal(k,f[k])); });
-        logDerived(n,prev,f);
-        if(prev.version!==next) logIt(n,f.id,'Published','Version',prev.version||'—',String(next));
-        if(prev.status!=='Under Review')
-          logIt(n,f.id,'Published','Lifecycle Status',prev.status,'Under Review');
-        n.setups[i]={...f,updated:nowStamp()};});
+      mut(n=>{const i=n.setups.findIndex(x=>x.id===f.id);
+        // Same edge case as saveDraft above: no prior row means no field to
+        // diff, since validation passing before Publish is even clickable
+        // means a real edit almost certainly already promoted this row.
+        if(i>=0){
+          const prev=n.setups[i];
+          TRACKED.forEach(([k,label])=>{ if(prev[k]!==f[k])
+            logIt(n,f.id,'Edited',label,showVal(k,prev[k]),showVal(k,f[k])); });
+          logDerived(n,prev,f);
+          if(prev.version!==next) logIt(n,f.id,'Published','Version',prev.version||'—',String(next));
+          if(prev.status!=='Under Review')
+            logIt(n,f.id,'Published','Lifecycle Status',prev.status,'Under Review');
+          n.setups[i]={...f,updated:nowStamp()};
+        } else {
+          n.setups.push({...f,updated:nowStamp()});
+          logIt(n,f.id,'Created','Lifecycle Status','—','Under Review');
+          if(next>1) logIt(n,f.id,'Published','Version','—',String(next));
+        }});
       setEditing(false);
       toast('Sent for review',
         `${displayName(f)} is Under Review at version ${next}. An admin needs to Approve it before it's Active / Approved.`,'ok');
@@ -4068,8 +4156,12 @@ function App({onSwitch}){
       }},
   };
 
-  const rec=openId?db.setups.find(s=>s.id===openId):null;
-  const close=()=>{setOpenId(null);setEditing(false);};
+  // A not-yet-promoted new Setup lives only in `pendingNew`, not db.setups --
+  // fall back to it so the wizard still has something to render. Once the
+  // Wizard promotes it (first real edit), db.setups.find() above finds it
+  // instead and this fallback stops mattering for that id.
+  const rec=openId?(db.setups.find(s=>s.id===openId) || (pendingNew&&pendingNew.id===openId?pendingNew:null)):null;
+  const close=()=>{setOpenId(null);setEditing(false);setPendingNew(null);};
   const ctx={db,setDb,mut,role,A,open:A.open,toast,dvReports,dvMeetings,dvOpening,currentUser};
 
   let body;
@@ -4113,7 +4205,7 @@ function App({onSwitch}){
         </label>
         <span className={'tb-scope gov-scope'+(ROLES[role].approve?' gov-scope-rw':' gov-scope-ro')}>
           <i className="gov-dot" aria-hidden="true"/>{ROLES[role].approve?'Can approve':'Author only'}</span>
-        <span className="tb-scope gov-date">{fmtD(TODAY)}</span>
+        <span className="tb-scope gov-date">{fmtD(nowStamp())}</span>
         <button type="button" className="gov-user" title={userTitle}>
           <span className="gov-user-av">{initials}</span>
           <span className="gov-user-name">

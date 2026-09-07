@@ -506,6 +506,13 @@
 .gov-root .reg-th-num{ text-align:right !important }
 .gov-root .reg-th-actions{ text-align:right !important }
 
+/* Updated column: "18 Aug 2026" wrapping onto two lines stretches the whole
+   row (table.data td is vertical-align:top, so every shorter cell in that
+   row ends up floating with dead space above the shared border-bottom
+   instead of the separator sitting right under the text). Keep it on one
+   line so row height tracks content again. */
+.gov-root .reg-table .reg-td-date{ white-space:nowrap }
+
 /* publish confirmation modal — one block per changed section, with a
    red "removed" line (rows that will be deleted in Dataverse) and a green
    "added" line (rows that will be created) so the delete/recreate a Stage

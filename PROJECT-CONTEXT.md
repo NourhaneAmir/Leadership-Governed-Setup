@@ -2,8 +2,8 @@
 
 > Handoff notes for anyone (human or AI) picking this project up cold.
 > Written 30 Aug 2026, updated 01 Sep 2026, updated 02 Sep 2026 (twice),
-> updated 04 Sep 2026, updated 05 Sep 2026, updated 06 Sep 2026, against
-> branch `leadership-practice`.
+> updated 04 Sep 2026, updated 05 Sep 2026, updated 06 Sep 2026,
+> updated 07 Sep 2026 (twice), against branch `leadership-practice`.
 >
 > This file records **decisions, hard-won schema facts and open questions** —
 > the things that are expensive to rediscover. It is not a substitute for the
@@ -610,6 +610,173 @@ as they were — still populated from the first line only, now redundant with
 this table for anything that reads the full list. No screen in either module
 reads or writes this table yet.
 
+**Superseded the next day, 07 Sep — see below.** The Loop DF design this
+entry describes was reversed within 24 hours: an occurrence now carries
+exactly one department, not several, so this table has no job left in the
+flow. Left as-is here since it's the accurate history of what was built and
+why; the current state is in the two entries below.
+
+### This session (07 Sep): Governance Setup — six small, independent UX fixes
+
+None of these touch the Leadership execution module — every fix stayed
+inside `GovernanceApp.jsx` / `governance-modern.css`, per standing
+instruction for this stretch of work.
+
+1. **A Setup's derived name now falls back to Frequency + a stage word
+   instead of just the classification noun once 3+ departments/functions are
+   in scope.** `subjectOf()` already dropped the subject at that point (three
+   or more reads as "too broad to name"); `derivedName()` used to fall back
+   to `[StagePrefix, Noun]` only (e.g. plain "Operational Meeting"), losing
+   every distinguishing detail. New `FALLBACK_STAGE_WORD =
+   ['BU','Region','Group','Top Management']` — deliberately a **separate**
+   array from `STAGE_PREFIX`, used **only** in this one fallback branch, so
+   1–2 department Setups keep naming exactly as before. Example: a Weekly,
+   Stage 1, Operational Meeting with 3 departments now reads "Weekly BU
+   Operational Meeting" instead of "Operational Meeting".
+2. **Attendees are no longer mandatory on a Meeting/Committee Setup's
+   per-unit editor.** The `unitRules()` check requiring at least one Core
+   attendee per unit was removed, and the `req` marker dropped from the
+   Attendees `Field`. Chairman and Organizer/Facilitator are still required —
+   only the attendee list itself is now optional. Report Templates were
+   never affected; they never had this rule.
+3. **Daily no longer asks for (or requires) a Day of week.** `DOW_FREQ` was
+   `['Daily','Twice Weekly','Weekly']`; `'Daily'` is now removed. Matches
+   `REPORT-OCCURRENCE-FLOW-PLAN.md` §5 rule 1, which treats Daily as "every
+   working day" and never reads `lm_dayoftheweek` for it — the form was
+   requiring data nothing downstream ever consumed.
+4. **The register's "Updated" column, and the top-bar date pill, now show
+   the real current date instead of a frozen seed constant.** `TODAY =
+   '2026-07-29'` was being used as the "now" stamp on every lifecycle action
+   (`create`/`saveDraft`/`publish`/`approve`/`expire`/`duplicateFrom`) *and*
+   directly in the top-bar date span — so any locally-saved-then-edited
+   Setup showed "29 Jul 2026" forever, while a Setup freshly opened from
+   Dataverse correctly showed its real `modifiedon` (already handled
+   correctly in `dataverseReportToSetup()`/`dataverseMeetingToSetup()`,
+   untouched). New `nowStamp()` (`new Date().toISOString().slice(0,10)`,
+   same `YYYY-MM-DD` shape as `TODAY`) replaces `TODAY` at all six lifecycle
+   sites and in the top-bar span. `TODAY` itself is untouched and still used
+   for unrelated seeded-data purposes — only the "this represents *now*"
+   usages were wrong.
+5. **Setup Register pagination.** New `REG_PAGE_SIZE = 20`. Local Setups
+   (`db.setups`) and not-yet-opened Dataverse rows render as two different
+   row shapes and were already deliberately kept in that order (local
+   first) — pagination slices **one combined array** of both
+   (`pageItems`), then filters back into `pageLocal`/`pageDv` so the two
+   existing render blocks needed no changes, only their source arrays
+   swapped. A page can straddle the boundary between the two groups. Any
+   filter or search change resets to page 1. The pager itself only renders
+   when there are more than 20 results.
+6. **Register row separators looked broken, but `border-collapse` was
+   already correct — the date column was wrapping onto two lines.** A row's
+   shared bottom border sits at the row's full height, and `table.data td`
+   is `vertical-align:top` (`theme.css`), so a short single-line cell (the
+   Status pill, Ver, Open/Duplicate) in a row whose Updated cell wrapped
+   into "18 Aug" / "2026" floated at the top with dead space beneath it,
+   before the separator — reading as "the lines aren't lining up" rather
+   than what it actually was. Fixed with `.reg-td-date{ white-space:nowrap }`
+   in `governance-modern.css`, applied to both Updated-column `<td>`s.
+
+### This session (07 Sep, continued): New Report/Meeting no longer creates a Draft just by being opened
+
+**The bug:** clicking "New Report Template Setup" or "New Committee /
+Meeting Setup" immediately pushed a blank record into `db.setups` — and
+therefore into `sessionStorage` and the register — before the user typed
+anything. `A.create()` did the push directly; the register's `rec =
+db.setups.find(...)` lookup needed the row to already exist there for the
+wizard to have anything to open, so there was no way to defer it under the
+old shape.
+
+**Fixed to match an explicit three-rule spec:** no data → nothing saved; data
+entered but not yet Saved as Draft → local storage only (session, not
+Dataverse); Saved as Draft → Dataverse too (already how `saveDraft` worked).
+
+- `A.create()` now stores the blank record in a new `pendingNew` state
+  (**not** `db.setups`) and opens the wizard on it. `rec` falls back to
+  `pendingNew` when `openId` isn't found in `db.setups` yet.
+- New `A.promoteDraft(next)` pushes a record into `db.setups` (creating the
+  `Draft` audit-log entry) or updates it in place if already there.
+- `Wizard`'s `set()` (the one function every field's `onChange` already goes
+  through) now calls `A.promoteDraft()` on every change, **but only** for a
+  record that didn't exist in `db.setups` when the wizard first mounted
+  (`isNewRef`, a `useRef` snapshot taken once — `Wizard` remounts fresh via
+  `key={rec.id}` per record, so this is a clean one-time check per editing
+  session). Editing an **existing** Setup is completely unaffected — that
+  path already only persisted on Save Draft/Publish, never on every
+  keystroke, and still does.
+- `A.saveDraft()`/`A.publish()` hardened for the one edge case this opens
+  up: a user who clicks Save Draft/Publish with **zero** prior field
+  changes (record never promoted, so `n.setups.findIndex()` returns `-1`).
+  Previously this would have crashed dereferencing an `undefined` `prev`
+  inside the audit-diff logic — both now `push()` a fresh row with a plain
+  "Created" log entry instead of diffing against nothing.
+- `close()` clears `pendingNew` but does **not** remove an already-promoted
+  record from `db.setups` — closing after typing something and never
+  clicking Save Draft correctly leaves it as a local-only Draft, per the
+  spec's second rule.
+
+### This session (07 Sep, continued again): Report Occurrence Generator rebuilt twice more
+
+Both changes are to `REPORT-OCCURRENCE-FLOW-PLAN.md` and its companion
+artifact only — **no application code**, this flow is still just a plan, see
+§3.
+
+**Rebuild 1 — the department model reversed, one day after it was built.**
+The 06 Sep design (above) gave one occurrence several departments via the
+new child table. The actual requirement turned out to be the opposite: each
+department fills in its **own** report, independently, so it needs its own
+occurrence. New design: **Loop CD**, a department/function loop nested
+*inside* the existing unit loop — occurrences now number
+`Units × DeptFnLines`, not `Units`. A Weekly Template with 2 BUs and 3
+department lines creates **6** occurrences on the day it fires, not 2.
+Consequences, all in the plan document:
+- `lm_Department`/`lm_Function` on the occurrence go back to "this
+  iteration's line" (their original, always-correct shape) instead of "the
+  first line only".
+- The duplicate guard needs a department clause too, or the exact same bug
+  the unit clause already guards against reappears one axis over — the
+  first department's occurrence looks like it satisfies the check for every
+  other department on the same unit and date, and they all silently get
+  skipped.
+- `lm_name` must include the department — three occurrences per unit per
+  date would otherwise be visually identical in the register.
+- `lm_reportoccurrencedepartmentfunctions` (registered 06 Sep) has **no job
+  left** — flagged as unused-but-not-deleted (Open item 6 in the plan; never
+  call `delete-data-source` casually, see §6 below).
+
+**Rebuild 2 — Child Report citations no longer guess an occurrence.** Once
+occurrences fan out per department, a child Template can have several
+occurrences for the same due date, so the flow's old "find the one
+occurrence with this template + this date, Row count 1" auto-match for a
+Child Report citation (`lm_reportsectioncitations`, `lm_kind = 11`) is no
+longer reliably a single match — it would just grab whichever row Dataverse
+happened to return first. Per an explicit decision, the fix does **not**
+try to be smarter about picking one:
+- `lm_reportsectioncitations` gained **`lm_ChildReportTemplate`** (a lookup,
+  assumed target `lm_report_templates`) — set directly from the citation
+  item's own `_lm_childreporttemplate_value`, no lookup needed.
+- **`lm_CitedReportOccurrence` is never set by the flow at all now, on any
+  Type 4 citation, even when there's only one unambiguous candidate** — this
+  was an explicit choice (always defer to a person) over the alternative
+  (auto-fill when unambiguous, ask when not). The person filling in the
+  parent report picks the exact occurrence later, from that Template's own
+  list of occurrences.
+- This incidentally **removes the ordering problem** the previous version of
+  the plan had to work around (parent generated before its child in the
+  same run) — since nothing here reaches across to another occurrence
+  anymore, generation order stops mattering.
+- **`lm_ChildReportTemplate`'s exact logical name and target are unverified
+  against live Dataverse.** The user added the column and confirmed its
+  table (`lm_reportsectioncitations`) but not its exact logical name; two
+  separate attempts this session to refresh that table's cached schema (the
+  legacy connector 404'd, the modern connector produced the same empty
+  generic stub already documented as a dead end) confirmed **there is
+  currently no way to refresh an existing native table's schema in this CLI
+  version** — worth remembering next time a column needs confirming on an
+  already-registered table, not just a brand-new one. The plan assumes
+  `lm_ChildReportTemplate`, matching the existing column of that exact name
+  on `lm_reporttemplatesectionitems` — flagged as Open item 7 in the plan,
+  not yet closed.
+
 ---
 
 ## 6. Schema facts that are expensive to rediscover
@@ -1022,6 +1189,14 @@ shape — also unconfirmed.
   Telemetry warnings (`OneDS`) are noise and never block anything.
 - **Bundle is ~1 MB** in one chunk, over Vite's advisory limit. `xlsx` is the
   obvious dynamic-import candidate.
+- **`npm run build` can fail with `ERR_MODULE_NOT_FOUND` for a file inside
+  `node_modules/vite/dist/node/chunks/`** (07 Sep) — a partial/corrupted
+  install, with one specific chunk file missing while its neighbors are
+  present. This repo lives inside a **OneDrive-synced folder**
+  (`OneDrive - Andalusia Group\...`), which is the likely cause: OneDrive can
+  lock or drop files mid-write during `npm install`'s tens of thousands of
+  small file writes. Fix: `rm -rf node_modules && npm install` — no code
+  change involved, and it isn't specific to any particular dependency.
 
 ---
 
@@ -1097,11 +1272,14 @@ something, except the one item below that's now live at a base level.
       can silently rename itself. Needs somewhere to store it, or a decision that
       the qualifier lives only inside the derived name.
 - [ ] **Report Occurrence generator (Power Automate).** Planned in full —
-      `REPORT-OCCURRENCE-FLOW-PLAN.md`. Blocked on its own §9 open items, chiefly
-      the citation parent lookup and the missing month-of-year column.
-      `lm_reportoccurrencedepartmentfunctions` (06 Sep, §5/§6) is now registered
-      and the plan's Loop DF is written, closing the "only the first department
-      survives" gap — the flow itself is still not built.
+      `REPORT-OCCURRENCE-FLOW-PLAN.md`. Blocked on its own open items, chiefly
+      the citation parent lookup, the missing month-of-year column (resolved
+      05 Sep), and (07 Sep) confirming `lm_ChildReportTemplate`'s real
+      logical name against live Dataverse. **Redesigned twice on 07 Sep** —
+      see §5: occurrences now fan out one-per-department via Loop CD (not
+      Loop DF's shared child table, which is now unused), and Child Report
+      citations set a Template reference instead of guessing an occurrence.
+      The flow itself is still not built, only planned.
 - [ ] **Report/Plan Composition, execution side.** `lm_reportoccurrencesections`
       and `lm_reportsectioncitations` are registered but **nothing reads or
       writes them** — this is the Build-a-Report half, and the natural next

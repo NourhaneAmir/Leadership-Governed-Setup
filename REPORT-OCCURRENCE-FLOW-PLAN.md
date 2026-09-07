@@ -1,13 +1,26 @@
 # Report Occurrence Generator — Flow Plan
 
 > A weekly Power Automate flow that creates next week's **Report Occurrences**
-> from approved Report Template Setups, one per Business Unit or Region, with
-> their sections and citations copied from the template.
+> from approved Report Template Setups — **one per Business Unit/Region AND
+> per Department/Function line**, not one per unit — with each occurrence's
+> own sections and citations copied from the template.
 >
 > **This is a plan, not code.** Written 05 Sep 2026 against the live schema.
-> Updated 06 Sep 2026: a Report Occurrence can now carry more than one
-> Department/Function line, once `lm_reportoccurrencedepartmentfunctions` was
-> registered — see the new subsection under §6 and the new Loop DF in §10.
+> Updated 06 Sep 2026, then **rebuilt 07 Sep 2026**: the 06 Sep version let one
+> occurrence carry several Department/Function lines as child rows
+> (`lm_reportoccurrencedepartmentfunctions`). That model is **reversed** —
+> every occurrence now carries exactly one Department/Function, and a
+> Template with several lines produces several occurrences instead. See "Why
+> this changed" right after §1.
+>
+> **Updated again, 07 Sep 2026:** Child Report citations (§8) no longer look
+> up the child's occurrence at all. `lm_reportsectioncitations` gained
+> `lm_ChildReportTemplate` — the flow sets that directly and leaves
+> `lm_CitedReportOccurrence` empty on every Type 4 citation, by explicit
+> decision, since a child Template can now have several occurrences for the
+> same date and the flow has no way to know which one is meant. A person
+> picks it later. **This column is unverified against live Dataverse** — see
+> Open item 7.
 
 ---
 
@@ -15,8 +28,48 @@
 
 Every week it looks at the **coming week (Sunday → Saturday)**, asks each
 approved Report Template *"do any of your dates fall in this week?"*, and for
-each date that does, creates one Report Occurrence per unit — with its sections
-and citations.
+each date that does, creates one Report Occurrence **per unit, per Department/
+Function line** — with its own sections and citations.
+
+### Worked example — the number to hold onto
+
+> A **Weekly** Report Template scoped to **2 Business Units**, with **3
+> Department/Function lines** on the Template.
+>
+> **On the one day a week it fires, that is 2 × 3 = 6 Report Occurrences** —
+> one for each (Business Unit, Department) pair:
+>
+> | | Cardiology | Radiology | Nursing |
+> |---|---|---|---|
+> | **BU — Al Ahli** | Occurrence 1 | Occurrence 2 | Occurrence 3 |
+> | **BU — Andalusia Care** | Occurrence 4 | Occurrence 5 | Occurrence 6 |
+>
+> Each cell is its **own** `lm_reportoccurrences` row, with its **own** copy
+> of every Template section and citation. None of the 6 shares a row with
+> any other — that is the entire point of this rebuild.
+
+### Why this changed (06 Sep → 07 Sep)
+
+The 06 Sep version kept **one** occurrence per unit and fanned every
+Department/Function line out as **child rows** underneath it
+(`lm_reportoccurrencedepartmentfunctions`, one row per line, all pointing back
+at the same occurrence). That models "this report covers several
+departments." The actual requirement is different: **each department fills in
+its own report**, independently — so each department needs its own
+occurrence, review chain progress, and set of section answers, not a shared
+occurrence with a list of departments attached to it. Reversing the model
+means:
+
+- The new inner loop (§10, Loop CD) creates **one occurrence per department
+  line**, not one child row per line.
+- `lm_Department`/`lm_Function` on the occurrence — which already existed,
+  unchanged since 04 Sep — go back to holding **that occurrence's one and
+  only** department, exactly as they were always shaped to.
+- `lm_reportoccurrencedepartmentfunctions` (registered 06 Sep) has **no job
+  left in this flow**. It is not deleted — `pac code delete-data-source` is
+  never a casual operation on this project (see `PROJECT-CONTEXT.md` §6) —
+  but nothing here writes to it any more. If nothing else in the app ever
+  starts using it, it is dead schema, not a mistake to panic over.
 
 ---
 
@@ -46,16 +99,18 @@ shift by a day.
 | `lm_reporttemplatecontentchecklists` | the sections to copy (heading, angle) |
 | `lm_reporttemplatesectionitems` | each section's KPI / Breakdown / Process / Child Template |
 | `lm_reporttemplatedepartmentfunctions` | department + function for the occurrence |
-| `lm_reportoccurrences` | the duplicate check, and to find a child report's occurrence |
+| `lm_reportoccurrences` | the duplicate check only — a Child Report citation no longer looks up the child's occurrence, see §8 |
 
 **Writes**
 
 | Table | What |
 |---|---|
-| `lm_reportoccurrences` | one row per unit per date |
-| `lm_reportoccurrencedepartmentfunctions` | one row per template Department/Function line, per occurrence |
-| `lm_reportoccurrencesections` | one row per template section |
+| `lm_reportoccurrences` | one row per unit, **per Department/Function line**, per date |
+| `lm_reportoccurrencesections` | one row per template section, **per occurrence** |
 | `lm_reportsectioncitations` | one row per citation on that section |
+
+`lm_reportoccurrencedepartmentfunctions` is **not written by this flow** — see
+"Why this changed" in §1.
 
 ---
 
@@ -82,20 +137,23 @@ Recurrence — Thursday 06:00
                     │
                     └── LOOP C · each unit  (BU rows, then Region rows)
                           │
-                          ├── Already exists?  → skip        (§7)
-                          ├── Create lm_reportoccurrences    (§6)
-                          │
-                          ├── LOOP DF · each department/function line
-                          │     └── Create lm_reportoccurrencedepartmentfunctions
-                          │
-                          └── LOOP D · each template section
-                                ├── Create lm_reportoccurrencesections
-                                └── LOOP E · each section item
-                                      └── Create lm_reportsectioncitations
+                          └── LOOP CD · each department/function line   ← §6, replaces the old Loop DF
+                                │
+                                ├── Already exists?  → skip        (§7 — now checks department too)
+                                ├── Create lm_reportoccurrences    (§6 — Department/Function = THIS line)
+                                │
+                                └── LOOP D · each template section
+                                      ├── Create lm_reportoccurrencesections
+                                      └── LOOP E · each section item
+                                            └── Create lm_reportsectioncitations
 ```
 
-**Rows written per run** = Templates × DueDates × Units × (1 + DeptFnLines + Sections + Citations).
-Build Loop A→C first and confirm the counts before adding DF, D and E.
+**Rows written per run** = Templates × DueDates × Units × DeptFnLines × (1 + Sections + Citations).
+The `Units × DeptFnLines` multiplication is the whole redesign — a Weekly
+Template with 2 units and 3 lines creates **6** occurrences a week, each with
+its own Sections/Citations, not 2 occurrences sharing 3 department child rows.
+Build Loop A→C first, then add Loop CD and confirm the occurrence **count**
+before adding D and E.
 
 ---
 
@@ -115,6 +173,12 @@ Jul / Oct**, semesters start **Jan / Jul**.
 | 7 | **Semesterly** | Month-of-semester must match `lm_monthofthesemester` **and** the day falls in the window | 0 or 1 |
 | 8 | **Annual** | Month must match `lm_month` **and** `lm_dayofthemonth` falls in the window | 0 or 1 |
 | 9 | **Custom** | No rule exists. Skip it. | 0 |
+
+⚠️ **"Occurrences in a week" here is per (unit, department) pair, not the
+Template's real total.** A Weekly Template fires once — but if it has 2 units
+and 3 department lines, that "once" still becomes **6** actual
+`lm_reportoccurrences` rows (§1's worked example). This table answers "does it
+fire this week", not "how many rows does it write."
 
 ### Two rules that differ from the Meeting flow — read these
 
@@ -151,11 +215,12 @@ against `lm_month` (1 = January … 12 = December).
 
 ## 6. Creating the occurrence
 
-One row in `lm_reportoccurrences` per unit per due date.
+One row in `lm_reportoccurrences` per unit, **per Department/Function line**,
+per due date — this is the nested-loop pairing §4's diagram calls Loop CD.
 
 | Column | Value |
 |---|---|
-| `lm_name` | **date + template name**, e.g. `5/9 Daily Performance Report` |
+| `lm_name` | **date + template name + department**, e.g. `5/9 Daily Performance Report — Cardiology` — see "Naming" below, this is not optional |
 | `lm_period` | **the exact due date** (not the first of the month) |
 | `lm_status` | `1` — Draft |
 | `lm_reviewstep` | `0` |
@@ -167,11 +232,29 @@ One row in `lm_reportoccurrences` per unit per due date.
 | `lm_ReportTemplate` | `/lm_report_templates({id})` |
 | `lm_BusinessUnit` | the BU row's business unit — **BU units only** |
 | `lm_Region` | the Region row's region — **Region units only** |
-| `lm_Department` | from the template's **first** department/function line only — see the subsection below for the rest |
-| `lm_Function` | from the same line |
+| `lm_Department` | **this Loop CD iteration's** Department (`cr603_chklst_departmentses`) — every occurrence has exactly one |
+| `lm_Function` | this iteration's Function (`hr_functions`), only if this line has one |
 | `lm_CreatorPosition` | the unit's **Submitting Position** |
 
 **Leave `lm_fileurl` empty.** The working copy does not exist yet.
+
+### Naming — the department has to be in `lm_name`
+
+Before this rebuild, `lm_name` was just `date + template name` because one
+occurrence covered every department at once. Now that 3 departments in the
+same BU on the same date each get their **own** occurrence, that name alone
+is no longer unique — all 3 would read `5/9 Daily Performance Report`, and
+the register would show three identical rows with no way to tell them apart
+without opening each one. Append the department (and the function, if the
+line has one): `5/9 Daily Performance Report — Cardiology` or
+`5/9 Daily Performance Report — Cardiology (Nursing)`.
+
+Getting the department's *display name* rather than its GUID into that string
+needs the lookup's formatted-value annotation, not the raw
+`_lm_department_value` id — see Step 12 for the exact expression, and confirm
+the annotation's property name against your own `DeptFn` List rows output
+before relying on it, the same way this plan already asks you to confirm
+entity-set names.
 
 ### About the review chain
 
@@ -179,29 +262,9 @@ One row in `lm_reportoccurrences` per unit per due date.
 reviewer table. The chain is **not copied**; it is **read from the template** for
 that unit (`lm_reporttemplatereviewchains`, filtered by the BU or Region row, or
 by the template alone for a group-wide Setup). Setting `lm_reviewstep = 0` is all
-the flow needs to do — the occurrence starts at step 1 of that chain.
-
-### Multiple departments — `lm_reportoccurrencedepartmentfunctions`
-
-A Report Template can name more than one Department/Function line
-(`lm_reporttemplatedepartmentfunctions`, already read as `DeptFn` in §3/Step 7).
-`lm_Department`/`lm_Function` on the occurrence itself only ever hold the
-**first** line — they were never meant to carry all of them. For **every** line
-on the template, create one child row:
-
-| Column | Value |
-|---|---|
-| `lm_Linkeddepartment` | that line's Department (`cr603_chklst_departmentses`) |
-| `lm_LinkedFunction` | that line's Function (`hr_functions`), only if the line has one |
-| `lm_Reportoccurrence` | the occurrence created above |
-
-⚠️ **The lookup names do not match the template-side table.**
-`lm_reporttemplatedepartmentfunctions` uses `lm_Department`/`lm_Function`; this
-table uses `lm_Linkeddepartment`/`lm_LinkedFunction` for the equivalent two
-relationships — copy the *values* across, not the field names. There is no
-sequence/step column here, so line order is not preserved, only which lines
-exist. `lm_Department`/`lm_Function` on the occurrence stay as they are (first
-line only) — this table is additive, not a replacement.
+the flow needs to do — the occurrence starts at step 1 of that chain. This is
+unchanged by the department rebuild: the chain is still read per **unit**, so
+every department's occurrence for the same BU shares the same chain.
 
 ---
 
@@ -214,6 +277,7 @@ windows. Before creating, check `lm_reportoccurrences` for:
 _lm_reporttemplate_value eq {templateId}
   and lm_period eq {dueDate}
   and _lm_businessunit_value eq {buId}          ← Region branch: _lm_region_value
+  and _lm_department_value eq {deptId}
 ```
 
 Set **Row count = 1** and create only when the result is empty.
@@ -223,9 +287,34 @@ produces several occurrences — one per unit. Checking only template + date wou
 create the first unit and treat every other one as a duplicate, silently losing
 all but one report per week.
 
+⚠️ **The department must be in the filter too — this is the same bug, one
+axis further.** Once occurrences fan out per department (§1, §6), one
+template + date + unit legitimately produces **several** occurrences again —
+one per department. Leaving the department out of the guard makes the first
+department's occurrence look like it satisfies the check for every other
+department on the same unit and date, and every one of them silently gets
+skipped. This is exactly the failure mode the unit clause above already warns
+about — it did not go away, it just moved to a new axis.
+
+**If a line also has a Function**, decide whether two lines can share a
+Department with different Functions (e.g. "Cardiology — Nursing" and
+"Cardiology — Medical" as separate `DeptFn` rows). If they can, the department
+clause alone is not enough to tell them apart either — add
+`and _lm_function_value eq {functionId}` (or `and _lm_function_value eq null`
+when the line has none) so two Function-scoped lines under the same
+Department don't collide the same way two departments would without the
+department clause.
+
 ---
 
 ## 8. Sections and citations
+
+Runs once per occurrence, and there is now one occurrence per (unit,
+department) pair — so a 3-department, 2-unit Weekly Template with 4 sections
+writes **24** section rows a week (6 occurrences × 4 sections), each an
+independent copy. Nothing here reads or filters by department; the Template's
+sections are the same set for every department, copied identically into each
+occurrence.
 
 ### Sections — copy from the template
 
@@ -254,19 +343,26 @@ For each `lm_reporttemplatesectionitems` under that checklist row, create one
 | `3` Process | `3` Process | `lm_Process` |
 | `4` Child Template | `11` Child Report | **see below** |
 
-**Child Report — cite the occurrence, never create one.**
-The template points at a child *Template*; the occurrence must point at that
-child's *Occurrence*. So look up an existing `lm_reportoccurrences` row where
-`_lm_reporttemplate_value` = the child template **and** `lm_period` = the same
-due date. If one exists, set `lm_CitedReportOccurrence` to it. **If none exists,
-create the citation with that lookup empty** and let it be filled in later —
-never create the child occurrence from here.
+**Child Report — cite the Template, let a person pick the Occurrence.**
+Set `lm_ChildReportTemplate` directly from `_lm_childreporttemplate_value` on
+the template's own citation item — no lookup needed, it's already on the row
+being read. **`lm_CitedReportOccurrence` is never set by this flow.** Once
+occurrences fan out per department (§1), a child Template can have several
+occurrences for the same due date — one per department — so there is no
+longer a single correct row for the flow to guess. The person filling in the
+parent report picks the exact occurrence later, from that Template's own list
+of occurrences.
 
-> ⚠️ **Ordering:** if parent and child are both generated in the same run, the
-> child may not exist yet when the parent is built. Two options, pick one:
-> **(a)** accept the empty lookup and fill it in on the next run, or
-> **(b)** add a second pass at the end of the flow that revisits citations with
-> `lm_kind = 11` and an empty occurrence lookup. (a) is simpler; (b) is complete.
+⚠️ **Column not yet confirmed against live Dataverse.** This plan assumes a
+lookup named `lm_ChildReportTemplate` was added to `lm_reportsectioncitations`,
+targeting `lm_report_templates` — matching the existing `lm_ChildReportTemplate`
+column already on `lm_reporttemplatesectionitems` (04 Sep). Confirm the real
+logical name and target before building this step; see Open item 7.
+
+This also **removes the ordering problem the previous version of this plan had
+to work around**: since nothing here looks up the child's occurrence any more,
+it no longer matters whether the parent or the child gets generated first in
+the same run.
 
 ---
 
@@ -275,11 +371,12 @@ never create the child occurrence from here.
 | # | Item | Why it matters |
 |---|---|---|
 | 1 | ~~Annual has no month column~~ — **resolved 05 Sep.** `lm_month` (1–12, January–December) now exists on `lm_report_templates` and is wired in the Setup form. | Annual works like Quarterly: match `lm_month` against the candidate date's month, then check the day falls in the window. |
-| 2 | **The citation's parent link.** `lm_reportsectioncitations` has four lookups — `lm_KPI`, `lm_Process`, `lm_CitedSection`, `lm_CitedReportOccurrence` — and no separate parent column. This plan assumes **`lm_CitedSection` is the parent Report Occurrence Section**. | If that assumption is wrong, citations will be created orphaned. Confirm before building §8. Consequence of this reading: a **Paragraph** citation (kind 8) has no target column — not needed by this flow, which only creates kinds 1, 2, 3 and 11. |
+| 2 | **The citation's parent link.** `lm_reportsectioncitations` has five lookups — `lm_KPI`, `lm_Process`, `lm_CitedSection`, `lm_CitedReportOccurrence`, and (07 Sep) `lm_ChildReportTemplate` — and no separate parent column. This plan assumes **`lm_CitedSection` is the parent Report Occurrence Section**. | If that assumption is wrong, citations will be created orphaned. Confirm before building §8. Consequence of this reading: a **Paragraph** citation (kind 8) has no target column — not needed by this flow, which only creates kinds 1, 2, 3 and 11. |
 | 3 | **`lm_reportobjective` is 100 characters.** | A longer template objective is **rejected with a 400**, not truncated. Either widen the column or don't copy the objective at all. |
 | 4 | **Custom frequency has no rule field.** | Templates set to Custom are skipped. If they need to generate, a rule column is required. |
-| 5 | **Group-wide (Stage 3/4) templates have no unit rows.** | Decide: create **one** occurrence with BU and Region left null, or skip them. This plan creates one, since its review chain and owner live on the template's parent row. |
-| 6 | **`lm_Department`/`lm_Function` on the occurrence are now redundant with `lm_reportoccurrencedepartmentfunctions`.** Both get populated — the singular fields keep the first line only, for whatever still reads them directly. | Not a blocker, just an open question: decide later whether to keep both or drop the singular fields once every consumer reads the child table instead. |
+| 5 | **Group-wide (Stage 3/4) templates have no unit rows.** | Decide: create **one occurrence per department line** with BU and Region left null, or skip them. Neither `Units_BU` nor `Units_Region` returns a row for a group-wide Template (Step 10/13), so Loop CD (§4/§6) would need a third copy that runs directly off `DeptFn` with no unit wrapping it, still reading the owner/review chain off the template's parent row. Not built out step-by-step below — flag it if a group-wide Report Template needs this flow. |
+| 6 | **`lm_reportoccurrencedepartmentfunctions` is now unused by this flow.** It was registered 06 Sep specifically so one occurrence could carry several departments; that model is reversed (§1). | Not a blocker — it stays registered (never call `delete-data-source` casually, see `PROJECT-CONTEXT.md` §6) but nothing here writes to it. Confirm nothing else in the app has since started reading or writing it before treating it as fully dead. |
+| 7 | **`lm_ChildReportTemplate` on `lm_reportsectioncitations` is unverified.** Added 07 Sep per an explicit ask, but not yet inspected against live Dataverse — every attempt to refresh this table's cached schema this session hit a CLI limitation (neither connector could pull real column metadata for an already-registered native table). This plan assumes the logical name is `lm_ChildReportTemplate`, targeting `lm_report_templates`, matching the existing column of the same name on `lm_reporttemplatesectionitems`. | If the real logical name or target differs, Step 14's Type 4 handling (§8) will fail with a 400 or bind to the wrong table. Confirm before building. |
 
 ---
 
@@ -395,9 +492,9 @@ Apply to each over `body('WeekDates')`. Rename `Loop_B`, concurrency **Off**.
 | `DOM` | `dayOfMonth(outputs('DueDate'))` |
 | `MO` | `int(formatDateTime(outputs('DueDate'),'MM'))` |
 
-Capture `item()` immediately. Inside the nested loops of steps 10–13 it stops
-meaning "the date" and starts meaning "the unit", then "the section". This is the
-most common way the flow goes wrong.
+Capture `item()` immediately. Inside the nested loops of steps 10–14 it stops
+meaning "the date" and starts meaning "the unit", then "the department", then
+"the section". This is the most common way the flow goes wrong.
 
 ### Step 9 — Compose `Fires`: the frequency test
 
@@ -427,7 +524,7 @@ as an expression). Everything from step 10 on goes in **If yes**.
 > every time — which reads like a time-zone bug and is not one.
 
 One Compose rather than a Switch on `lm_frequency`: a Switch would need steps
-10–13 duplicated into eight cases. This collapses the decision to one boolean so
+10–14 duplicated into eight cases. This collapses the decision to one boolean so
 the create logic is built once.
 
 ### Step 10 — Loop C: each Business Unit
@@ -436,7 +533,19 @@ Apply to each over `value` from `Units_BU`, renamed `Loop_C`, concurrency
 **Off**. Two Composes: `UnitId` = `item()?['_lm_businessunit_value']`,
 `SubmitPos` = `item()?['_lm_submittingposition_value']`.
 
-### Step 11 — The duplicate guard, then the occurrence
+### Step 11 — Loop CD: each department/function line
+
+**Inside** Loop C (not a sibling of it) — this is the new nesting level that
+replaces the old Loop DF. **Apply to each** over `value` from `DeptFn`
+(already listed in Step 7), renamed `Loop_CD`, concurrency **Off**. Two
+Composes: `DeptId` = `item()?['_lm_department_value']`, `FnId` =
+`item()?['_lm_function_value']`.
+
+Everything from Step 12 on now runs **once per (unit, department) pair**, not
+once per unit — that pairing is what produces the 6 occurrences in §1's
+worked example instead of 2.
+
+### Step 12 — The duplicate guard, then the occurrence
 
 **List rows** on `lm_reportoccurrences`, renamed `Existing`, **Row count = 1**:
 
@@ -444,6 +553,7 @@ Apply to each over `value` from `Units_BU`, renamed `Loop_C`, concurrency
 _lm_reporttemplate_value eq @{items('Loop_A')?['lm_report_templateid']}
   and lm_period eq @{outputs('DueDate')}
   and _lm_businessunit_value eq @{outputs('UnitId')}
+  and _lm_department_value eq @{outputs('DeptId')}
 ```
 
 Condition: `empty(body('Existing')?['value'])` **is equal to** `true`. In
@@ -452,32 +562,46 @@ field list is §6, with these expressions:
 
 | Column | Value |
 |---|---|
-| `lm_name` | `concat(outputs('DOM'),'/',outputs('MO'),' ',items('Loop_A')?['lm_newcolumn'])` |
+| `lm_name` | `concat(outputs('DOM'),'/',outputs('MO'),' ',items('Loop_A')?['lm_newcolumn'],' — ',item()?['_lm_department_value@OData.Community.Display.V1.FormattedValue'])` |
 | `lm_period` | `outputs('DueDate')` |
 | `lm_reportstage` | `items('Loop_A')?['lm_stage']` |
 | `lm_ReportTemplate` | `/lm_report_templates(@{items('Loop_A')?['lm_report_templateid']})` |
 | `lm_BusinessUnit` | `/businessunits(@{outputs('UnitId')})` |
+| `lm_Department` | `/cr603_chklst_departmentses(@{outputs('DeptId')})` |
+| `lm_Function` | `/hr_functions(@{outputs('FnId')})` — only when `FnId` is not empty |
 | `lm_CreatorPosition` | `/positions(@{outputs('SubmitPos')})` |
 
 Confirm each lookup's entity-set name in the Add-a-row form — the shapes above
-are the pattern, not a guarantee of the set name in your environment.
+are the pattern, not a guarantee of the set name in your environment. The
+`@OData.Community.Display.V1.FormattedValue` annotation on `lm_name` is the
+standard Dataverse convention for a lookup column's display text, but confirm
+it appears under that exact property name in your own `DeptFn` List rows
+output before relying on it — if it doesn't, add a **List rows** on
+`cr603_chklst_departmentses` (Row count 1, filtered by `DeptId`) and read the
+department's name column from that instead.
 
-⚠️ **The unit must be in the guard's filter** — see §7 for what breaks otherwise.
+⚠️ **The unit *and* the department must both be in the guard's filter** —
+see §7 for what breaks with either one missing.
 
 ⚠️ **If `lm_period` is Date *and Time*, not Date Only**, `eq` will not match.
 Use `lm_period ge @{outputs('DueDate')} and lm_period lt @{addDays(outputs('DueDate'),1,'yyyy-MM-dd')}`.
 
-### Step 12 — Loop C2: the same again for Regions
+### Step 13 — Loop C2: the same again for Regions
 
-Copy Loop C. Iterate `Units_Region`; `UnitId` = `item()?['_lm_region_value']`;
-guard's third clause becomes `_lm_region_value eq …`; set `lm_Region` =
-`/lm_regions(@{outputs('UnitId')})` and leave `lm_BusinessUnit` empty.
+Copy **all of Steps 10–12 as one block** — Loop C, its nested Loop CD, and the
+guard/create inside that. Iterate `Units_Region` instead of `Units_BU`;
+`UnitId` = `item()?['_lm_region_value']`; the guard's third clause becomes
+`_lm_region_value eq …` (the department clause stays as it is); and on the
+create action set `lm_Region` = `/lm_regions(@{outputs('UnitId')})` with
+`lm_BusinessUnit` left empty. `DeptFn`, `DeptId` and `FnId` are unchanged —
+the department loop does not care which unit table it sits under.
 
-Two loops rather than one merged array — the two unit tables have different
-lookup columns and write to different fields. A Stage 3/4 group-wide Template
-returns rows from neither; see open item 5.
+Two copies of the unit loop rather than one merged array — the two unit
+tables have different lookup columns and write to different fields. A Stage
+3/4 group-wide Template returns rows from neither `Units_BU` nor
+`Units_Region`; see open item 5.
 
-### Step 13 — Loop D and Loop E: sections, then citations
+### Step 14 — Loop D and Loop E: sections, then citations
 
 After `NewOcc`, Apply to each over `value` from `Sections`, renamed `Loop_D`.
 Inside: Compose `SecSrc` = `item()?['lm_reporttemplatecontentchecklistid']`, then
@@ -504,37 +628,17 @@ each over its `value`, renamed `Loop_E`. One **Add a new row** on
 | `lm_breakdowndimension` | `item()?['lm_breakdowndimension']` — type 2 only |
 | `lm_Process` | `/lm_processes(@{item()?['_lm_process_value']})` — type 3 |
 | `lm_CitedSection` | `/lm_reportoccurrencesections(@{outputs('NewSec')?['body/lm_reportoccurrencesectionid']})` |
-| `lm_CitedReportOccurrence` | type 4 only — below |
+| `lm_ChildReportTemplate` | `/lm_report_templates(@{item()?['_lm_childreporttemplate_value']})` — type 4 only |
 
 An empty lookup is fine; a null GUID is not. Guard each with a Condition on the
-item type rather than binding all four every time.
+item type rather than binding all five every time.
 
-**Type 4, the child report.** List rows on `lm_reportoccurrences`, Row count 1:
-
-```
-_lm_reporttemplate_value eq @{item()?['_lm_childreporttemplate_value']}
-  and lm_period eq @{outputs('DueDate')}
-```
-
-Row found → set `lm_CitedReportOccurrence`. Nothing found → create the citation
-with that lookup empty. Never create the child occurrence here; see §8.
-
-### Step 14 — Loop DF: one row per department/function line
-
-Still inside Loop C (after `NewOcc`), a sibling of Loop D — not nested inside
-it. **Apply to each** over `value` from `DeptFn` (already listed in Step 7),
-renamed `Loop_DF`. Inside it, one **Add a new row** on
-`lm_reportoccurrencedepartmentfunctions`:
-
-| Column | Value |
-|---|---|
-| `lm_Linkeddepartment` | `/cr603_chklst_departmentses(@{item()?['_lm_department_value']})` |
-| `lm_LinkedFunction` | `/hr_functions(@{item()?['_lm_function_value']})` — only if the line has a Function |
-| `lm_Reportoccurrence` | `/lm_reportoccurrences(@{outputs('NewOcc')?['body/lm_reportoccurrenceid']})` |
-
-Guard `lm_LinkedFunction` behind a Condition on whether `_lm_function_value` is
-empty, same as the citation lookups in Step 13 — a lookup left empty is fine, a
-null GUID is not.
+**Type 4, the child report — simpler than it used to be.** `lm_ChildReportTemplate`
+above is the whole job: set it straight from the item's own
+`_lm_childreporttemplate_value`, no List rows, no lookup. **`lm_CitedReportOccurrence`
+is not set here at all** — leave it empty, on every Type 4 citation, always
+(see §8 for why). There is no longer a second pass or an ordering concern to
+manage, because nothing here reaches across to another occurrence.
 
 ### Step 15 — Remove the test filter and turn it on
 
@@ -548,21 +652,31 @@ working through §11.
 1. **Trigger + WeekDates only.** Run it and read the seven dates in the run
    history. Confirm they are next Sunday → next Saturday.
 2. **Add Loop A and one frequency — Weekly.** Filter to a single template while
-   testing (`and lm_report_templateid eq {guid}`).
-3. **Add Loop C and the duplicate guard.** Then **run it twice** — the second run
-   must create nothing.
-4. **Check the count.** A template with 3 BUs, Daily, should create
-   **15** occurrences in a week (5 dates × 3 units). Not 5, not 45.
+   testing (`and lm_report_templateid eq {guid}`). Use a test Template with
+   **more than one** unit and **more than one** department line from the
+   start — a 1-unit, 1-department test Template can't catch a broken Loop CD
+   or a missing department clause in the guard, because everything still
+   works by accident when there's only one of each.
+3. **Add Loop C, then Loop CD, then the duplicate guard.** Then **run it
+   twice** — the second run must create nothing at all, for every
+   (unit, department) pair, not just the first one.
+4. **Check the count.** A Daily Template with 3 BUs and 2 department lines
+   should create **30** occurrences a week (5 dates × 3 units × 2
+   departments). **Not 15** — that's what you get if the department
+   multiplication silently drops out and only the unit axis survives, the
+   exact failure mode §7's second warning describes.
 5. **Add the remaining frequencies one at a time.** Test Monthly with a date that
    lands on a **Friday or Saturday** and confirm it is created, not moved.
 6. **Test a window spanning two months** — set the window to cover 30 Aug → 5 Sep
    and confirm both a day-31 and a day-5 template fire.
 7. **Add sections (Loop D), then citations (Loop E).** Check a section's
-   citations come back attached to the right section.
-8. **Add Loop DF.** Test a Template with 3 department/function lines and
-   confirm the occurrence gets 3 `lm_reportoccurrencedepartmentfunctions`
-   rows — not 1 (only the first, as `lm_Department`/`lm_Function` do), and
-   not duplicated on a second run of the same week.
+   citations come back attached to the right occurrence — with 3+ departments
+   in play, it's easy for a copy-paste mistake in Loop CD to leave every
+   department's sections pointing at the same (wrong) occurrence.
+8. **Open the register and read the names.** Confirm each of the 6 (or
+   however many) occurrences for the same date and unit is individually
+   named and distinguishable — see §6's "Naming" note — not 6 identical rows
+   you can't tell apart without opening every one.
 9. Remove the single-template filter.
 
 **Deleting test rows:** an occurrence has sections, and sections have citations.
