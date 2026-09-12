@@ -7,6 +7,13 @@ export default defineConfig({
               // per-environment content URL, not the domain root, so paths
               // must be relative or the built JS/CSS 404 at runtime.
   build: {
+    // Without this, the CSS minifier rewrites every `@media(max-width:760px)`
+    // into the modern range syntax `@media (width<=760px)`, which Safari did
+    // not support until 16.4. An iPad on iPadOS 15 would then ignore EVERY
+    // responsive rule and render the desktop layout. Pinning an older CSS
+    // target keeps the classic syntax. It affects syntax only, not which
+    // rules are emitted.
+    cssTarget: 'chrome61',
     assetsInlineLimit: 0, // Power Apps' CSP is font-src 'self' -- small font
                           // subset files would otherwise get base64-inlined
                           // as data: URIs and get blocked. Force every asset

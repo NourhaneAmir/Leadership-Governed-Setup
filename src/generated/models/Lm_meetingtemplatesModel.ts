@@ -6,8 +6,8 @@ export const Lm_meetingtemplateslm_daysoftheweek = {
   124330000: 'Sunday',
   124330001: 'Monday',
   124330002: 'Tuesday',
-  124330003: 'Wednesday ',
-  124330004: 'Thursday '
+  124330003: 'Wednesday',
+  124330004: 'Thursday'
 } as const;
 export type Lm_meetingtemplateslm_daysoftheweek = keyof typeof Lm_meetingtemplateslm_daysoftheweek;
 export const Lm_meetingtemplateslm_defaultmeetingmode = {
@@ -18,57 +18,74 @@ export const Lm_meetingtemplateslm_defaultmeetingmode = {
 export type Lm_meetingtemplateslm_defaultmeetingmode = keyof typeof Lm_meetingtemplateslm_defaultmeetingmode;
 export const Lm_meetingtemplateslm_frequency = {
   1: 'Daily',
-  2: 'Twice Weekly',
+  2: 'TwiceWeekly',
   3: 'Weekly',
-  4: 'Twice Monthly',
+  4: 'TwiceMonthly',
   5: 'Monthly',
-  6: 'Quarterly ',
-  7: 'Semesterly ',
-  8: 'Annually ',
-  9: 'Custom '
+  6: 'Quarterly',
+  7: 'Semesterly',
+  8: 'Annually',
+  9: 'Custom'
 } as const;
 export type Lm_meetingtemplateslm_frequency = keyof typeof Lm_meetingtemplateslm_frequency;
 export const Lm_meetingtemplateslm_meetingconfidentiality = {
   124330000: 'Public',
-  124330001: 'Internal ',
-  124330002: 'Confidential ',
-  124330003: 'High Confidential  ',
+  124330001: 'Internal',
+  124330002: 'Confidential',
+  124330003: 'HighConfidential',
   124330004: 'Restricted'
 } as const;
 export type Lm_meetingtemplateslm_meetingconfidentiality = keyof typeof Lm_meetingtemplateslm_meetingconfidentiality;
 export const Lm_meetingtemplateslm_meetingstatus = {
-  1: 'Under Review',
+  1: 'UnderReview',
   2: 'Expired',
   3: 'Draft',
-  4: 'Active / Approved'
+  4: 'Active_Approved'
 } as const;
 export type Lm_meetingtemplateslm_meetingstatus = keyof typeof Lm_meetingtemplateslm_meetingstatus;
 export const Lm_meetingtemplateslm_monthofthequarter = {
-  124330000: '1st Month',
-  124330001: '2nd Month',
-  124330002: '3rd Month '
+  124330000: '_1stMonth',
+  124330001: '_2ndMonth',
+  124330002: '_3rdMonth'
 } as const;
 export type Lm_meetingtemplateslm_monthofthequarter = keyof typeof Lm_meetingtemplateslm_monthofthequarter;
+export const Lm_meetingtemplateslm_monthofthesemesterseme = {
+  1: '_1stMonth',
+  2: '_2ndMonth',
+  3: '_3rdMonth',
+  4: '_4thMonth',
+  5: '_5thMonth',
+  6: '_6thMonth'
+} as const;
+export type Lm_meetingtemplateslm_monthofthesemesterseme = keyof typeof Lm_meetingtemplateslm_monthofthesemesterseme;
+export const Lm_meetingtemplateslm_seconddayoftheweek = {
+  1: 'Sunday',
+  2: 'Monday',
+  3: 'Tuesday',
+  4: 'Wednesday',
+  5: 'Thursday'
+} as const;
+export type Lm_meetingtemplateslm_seconddayoftheweek = keyof typeof Lm_meetingtemplateslm_seconddayoftheweek;
 export const Lm_meetingtemplateslm_setuptype = {
-  1: 'Business Meeting',
-  2: 'Accreditation Committee'
+  1: 'BusinessMeeting',
+  2: 'AccreditationCommittee'
 } as const;
 export type Lm_meetingtemplateslm_setuptype = keyof typeof Lm_meetingtemplateslm_setuptype;
 export const Lm_meetingtemplateslm_stages = {
-  1: 'Stage 1 BU Operational',
-  2: 'Stage 2 Regional Functional',
-  3: 'Stage 3 Group Functional',
-  4: 'Stage 4 Top Management, COO & CEO'
+  1: 'Stage1BUOperational',
+  2: 'Stage2RegionalFunctional',
+  3: 'Stage3GroupFunctional',
+  4: 'Stage4TopManagement_COO_CEO'
 } as const;
 export type Lm_meetingtemplateslm_stages = keyof typeof Lm_meetingtemplateslm_stages;
 export const Lm_meetingtemplateslm_typeclassification = {
-  124330000: 'Planning Meeting',
-  124330001: 'Performance Monitoring Meeting',
-  124330002: 'Clinical Meeting',
-  124330003: 'Operational Meeting',
-  124330004: 'Technology Meeting',
-  124330005: 'Cross-Functional Meeting',
-  124330006: 'Cross-Functional Team of Teams'
+  124330000: 'PlanningMeeting',
+  124330001: 'PerformanceMonitoringMeeting',
+  124330002: 'ClinicalMeeting',
+  124330003: 'OperationalMeeting',
+  124330004: 'TechnologyMeeting',
+  124330005: 'Cross_FunctionalMeeting',
+  124330006: 'Cross_FunctionalTeamofTeams'
 } as const;
 export type Lm_meetingtemplateslm_typeclassification = keyof typeof Lm_meetingtemplateslm_typeclassification;
 export const Lm_meetingtemplatesstatecode = {
@@ -96,13 +113,18 @@ export interface Lm_meetingtemplatesBase {
   lm_meetingtemplateid: string;
   lm_meetingtemplatename?: string;
   lm_monthofthequarter?: Lm_meetingtemplateslm_monthofthequarter;
+  lm_monthofthesemesterseme?: Lm_meetingtemplateslm_monthofthesemesterseme;
   lm_quorumthreshold?: number;
+  lm_seconddayofthemonth?: number;
+  lm_seconddayoftheweek?: Lm_meetingtemplateslm_seconddayoftheweek;
   lm_setuptype?: Lm_meetingtemplateslm_setuptype;
   lm_stages?: Lm_meetingtemplateslm_stages;
   lm_torpolicylink?: string;
   lm_typeclassification?: Lm_meetingtemplateslm_typeclassification;
   lm_version?: number;
   overriddencreatedon?: string;
+  ownerid: string;
+  owneridtype: string;
   statecode: Lm_meetingtemplatesstatecode;
   statuscode?: Lm_meetingtemplatesstatuscode;
   timezoneruleversionnumber?: number;
@@ -124,6 +146,8 @@ export interface Lm_meetingtemplates extends Lm_meetingtemplatesBase {
   lm_meetingorganizerfacilitatorname?: string;
   lm_meetingstatusname?: string;
   lm_monthofthequartername?: string;
+  lm_monthofthesemestersemename?: string;
+  lm_seconddayoftheweekname?: string;
   lm_setuptypename?: string;
   lm_stagesname?: string;
   lm_typeclassificationname?: string;
@@ -132,9 +156,7 @@ export interface Lm_meetingtemplates extends Lm_meetingtemplatesBase {
   modifiedon?: string;
   modifiedonbehalfbyname?: string;
   modifiedonbehalfbyyominame: string;
-  ownerid: string;
   owneridname: string;
-  owneridtype: string;
   owneridyominame: string;
   owningbusinessunitname: string;
   statecodename?: string;

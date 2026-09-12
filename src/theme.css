@@ -854,3 +854,306 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 .reuse{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:640;
   color:var(--green);background:var(--green-bg);border-radius:20px;padding:1px 8px}
 
+/* ── Governance Settings ─────────────────────────────────────────────────
+   Layout ported from the Governance Settings tab of leadership-practice.html:
+   one full-width column instead of a two-up grid, the settings table carrying
+   its own cell composition (name · AG tag · help · OD line), values as
+   clickable pills rather than buttons, and label/value blocks in place of the
+   nested reference tables. Palette and type come from the tokens above, which
+   the prototype already shares. */
+.gset-lede{background:var(--amber-bg);border:1px solid var(--amber-bd);border-radius:10px;
+  padding:12px 14px;display:flex;gap:10px;align-items:flex-start;margin-bottom:14px}
+.gset-lede .ic{flex:0 0 auto;font-size:14px;line-height:1.3}
+.gset-lede .t{font-weight:700;font-size:12.5px;color:#7a4c07}
+.gset-lede .s{font-size:11.5px;color:var(--ink-2);margin-top:2px;max-width:96ch}
+
+/* the Setting cell */
+.gset-name{font-weight:650;font-size:12px;color:var(--ink)}
+.gset-od{font-family:var(--mono);font-size:9.5px;font-weight:500;color:var(--amber);margin-top:4px}
+.gset-od.closed{color:var(--green)}
+
+/* the Value cell — numeric options run inline, choices stack */
+.gset-vals{display:flex;gap:4px;flex-wrap:wrap}
+.gset-vals.col{flex-direction:column;align-items:flex-start}
+.gset-chip{font-family:var(--mono);font-size:10px;font-weight:500;color:var(--muted);
+  padding:4px 9px;border:1px solid var(--border);border-radius:7px;background:var(--panel);
+  cursor:pointer;text-align:left;
+  transition:border-color .15s,color .15s,background .15s}
+.gset-chip:hover{border-color:var(--border-d);color:var(--ink)}
+.gset-chip:focus-visible{outline:2px solid var(--teal);outline-offset:1px}
+.gset-chip.word{font-family:var(--sans);font-size:10.5px}
+.gset-chip.on{background:var(--green-bg);border-color:var(--green-bd);color:var(--green);font-weight:700}
+/* "Not set" reads as switched-off, not as a chosen value */
+.gset-chip.on.unset{background:var(--red-bg);border-color:var(--red-bd);color:var(--red)}
+
+/* label/value reference rows — replaces the two nested tables */
+.gset-kv{display:flex;gap:12px;padding:7px 0;border-bottom:1px solid var(--border)}
+.gset-kv:last-child{border-bottom:none}
+.gset-kv .k{font-weight:650;font-size:11.5px;color:var(--ink);flex:0 0 190px}
+.gset-kv .v{font-size:11.5px;color:var(--muted);min-width:0}
+
+.gset-cal{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.gset-cal .k{font-weight:700;font-size:9px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint)}
+.gset-cal .v{font-weight:500;font-size:12.5px;color:var(--ink);margin-top:3px}
+.gset-cal .v.mono{font-family:var(--mono);font-size:11.5px}
+
+@media(max-width:760px){
+  .gset-kv{flex-direction:column;gap:2px}
+  .gset-kv .k{flex:none}
+  .gset-cal{grid-template-columns:1fr}
+}
+
+/* ── Governance Settings · elapsed-time cards ─────────────────────────────
+   The three timing periods, side by side at the top of the screen. Each card
+   names both ends of its window, so the reader never has to infer where the
+   clock starts. */
+.tset{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:14px}
+@media(max-width:1150px){.tset{grid-template-columns:1fr 1fr}}
+@media(max-width:720px){.tset{grid-template-columns:1fr}}
+
+.tset-c{background:var(--panel);border:1px solid var(--border);border-radius:14px;
+  padding:15px 16px;display:flex;flex-direction:column;gap:11px;box-shadow:var(--sh);
+  transition:border-color .15s,box-shadow .15s}
+.tset-c:hover{border-color:var(--border-d)}
+
+.tset-hd{display:flex;gap:11px;align-items:flex-start}
+.tset-n{flex:0 0 auto;width:30px;height:30px;border-radius:9px;
+  background:var(--teal-l);color:var(--teal-d);
+  font-family:var(--mono);font-size:11px;font-weight:700;
+  display:flex;align-items:center;justify-content:center}
+.tset-t{font-weight:650;font-size:14px;color:var(--ink);line-height:1.25;text-wrap:balance}
+.tset-w{font-size:12px;color:var(--muted);margin-top:2px}
+
+/* both ends of the window, with the direction between them */
+.tset-flow{display:flex;align-items:center;gap:10px;
+  background:var(--surface);border:1px solid var(--border);border-radius:9px;
+  padding:9px 12px;font-size:12.5px}
+.tset-flow .e{font-weight:600;color:var(--ink)}
+.tset-flow .a{flex:1;text-align:center;color:var(--faint)}
+
+.tset-d{font-size:12.5px;color:var(--ink-2);line-height:1.5}
+
+.tset-lbl{display:block;font-size:9.5px;font-weight:700;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--faint)}
+.tset-in{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+.tset-box{flex:1 1 130px;min-width:0;display:flex;align-items:center;
+  border:1px solid var(--border-d);border-radius:8px;background:#fff;overflow:hidden}
+.tset-box:focus-within{border-color:var(--teal);box-shadow:0 0 0 3px var(--teal-ll)}
+.tset-box input{flex:1;min-width:0;border:none;outline:none;background:transparent;
+  padding:8px 10px;font-size:13px;font-variant-numeric:tabular-nums;color:var(--ink)}
+.tset-box input::placeholder{color:var(--faint)}
+.tset-box .u{flex:0 0 auto;padding:0 10px;font-size:11.5px;color:var(--muted);
+  border-left:1px solid var(--border);line-height:2.4}
+
+/* the footer pins to the bottom so cards of unequal text still line up */
+.tset-ft{display:flex;gap:6px;flex-wrap:wrap;align-items:center;
+  border-top:1px solid var(--border);padding-top:11px;margin-top:auto}
+
+/* ── Governance Settings · awaiting-decision cards ────────────────────────
+   Same card as the timing periods (.tset-c) with three additions: the Audit
+   Grid question the value drives, the open question in the inset strip, and a
+   footer note beside the state tag. */
+.vset-tag{font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:.06em;
+  color:var(--amber);margin-bottom:3px}
+
+.vset-q{background:var(--surface);border:1px solid var(--border);border-radius:9px;
+  padding:9px 12px}
+.vset-q .l{display:block;font-size:9px;font-weight:700;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--faint);margin-bottom:3px}
+.vset-q .t{display:block;font-size:12.5px;color:var(--ink);line-height:1.45}
+
+.vset-help{font-size:11.5px;color:var(--faint);line-height:1.5}
+
+/* the tag stays short so it never wraps; the qualifier sits beside it */
+.vset-note{font-size:10.5px;color:var(--muted)}
+
+/* =========================================================================
+   RESPONSIVE — phones and tablets
+   Added 09 Sep. The file already had breakpoints at 1120 / 900 / 820 / 760;
+   this block finishes the job rather than replacing them. Ordered widest to
+   narrowest so the cascade reads top-down.
+
+   Breakpoints and what they are for:
+     1024  iPad landscape — the sidebar still fits, content tightens
+      860  iPad portrait  — two-up layouts go single column
+      760  phones         — the sidebar becomes a scrolling tab strip (above)
+      560  small phones   — modals go full-bleed, dense chrome drops away
+   ========================================================================= */
+
+/* ---- long content must never widen the page ----------------------------
+   `break-word` breaks a word only when it genuinely cannot fit. `anywhere` —
+   which this used at first — breaks eagerly, and inside a squeezed table cell
+   that turned "Weekly Group Digital Transformation Report" into one letter per
+   line. Table cells are deliberately excluded: they are handled by making the
+   table scroll instead (see the phone block below). */
+.main,.card,.modal{min-width:0}
+.card p,.ph .sub{overflow-wrap:break-word}
+
+/* ---- iPad landscape ---------------------------------------------------- */
+@media(max-width:1024px){
+  .main{padding:18px 18px 70px}
+  .side{width:212px;flex:0 0 212px}
+}
+
+/* ---- iPad portrait ----------------------------------------------------- */
+@media(max-width:860px){
+  /* Any two-up split becomes one column; the narrow rail was sized for a
+     desktop gutter that no longer exists at this width. */
+  .wa-grid,.grid2,.grid3{grid-template-columns:1fr}
+  .kv-block{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+  .score-hero{gap:14px}
+}
+
+/* ---- phones ------------------------------------------------------------ */
+@media(max-width:760px){
+  /* THE NAV FIX.
+     `.side` is turned into a horizontal strip by the block above, but
+     `.lp-side` sets flex-direction:column and the strip rule never overrode
+     it — so on a phone the sidebar rendered as a full-width vertical stack
+     that pushed the whole app below the fold. Same specificity, and .lp-side
+     is declared later, so it has to be named explicitly here. */
+  .lp-side{flex-direction:row;align-items:center;gap:6px}
+  .lp-side-sp{display:none}
+  .side{scrollbar-width:none;-webkit-overflow-scrolling:touch;
+    padding:9px 10px;min-height:56px;align-items:center;gap:6px}
+  .side::-webkit-scrollbar{display:none}
+  /* each nav GROUP is a wrapper div; lay its buttons out inline too */
+  .side > div{display:flex;align-items:center;flex:0 0 auto;gap:6px}
+  /* group headings cost width a phone does not have, and the labels below
+     already say where you are */
+  .side-grp{display:none}
+
+  /* Pills, not underlined text. The underline treatment this had first was
+     nearly invisible against the dark rail — the Governance module already
+     uses filled pills on mobile for the same reason, so the two modules now
+     read the same way. */
+  .nav-i{
+    flex:0 0 auto;width:auto;white-space:nowrap;
+    padding:8px 14px;border-radius:20px;min-height:38px;
+    border:1px solid rgba(255,255,255,.14);
+    background:rgba(255,255,255,.06);color:rgba(255,255,255,.88);
+    font-weight:600;
+  }
+  .nav-i.on{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:700}
+  .nav-i.on .nav-n{background:rgba(0,0,0,.22)}
+  .nav-b{margin-left:4px}
+  .lp-switch-nav{margin-bottom:0}
+  /* in a row layout "collapsed" means gone, not zero-width */
+  .lp-nav-closed .lp-side{display:none}
+
+  /* A table wider than the phone would otherwise stretch the page. 17 of the
+     40 tables are not inside a .t-wrap, so the scroll has to live on the card
+     that contains them. .card.flush sets overflow:hidden, which would clip
+     rather than scroll — hence the second rule. */
+  .card{overflow-x:auto}
+  .card.flush{overflow-x:auto}
+
+  /* THE FLOOR THAT MAKES THAT SCROLL WORK.
+     `table.data` is width:100%, so on a narrow screen it SHRINKS to fit rather
+     than overflowing — the scroll container never engages and the columns
+     squeeze until text wraps one character per line. Giving the table a
+     minimum width makes it overflow, which is what the scroll above is for.
+     580px leaves roughly 100–140px per column on the four- and five-column
+     registers, which is enough for a real title. */
+  table.data,table.tbl{min-width:580px}
+  table.data td,table.data th{white-space:normal;overflow-wrap:normal;word-break:normal}
+  .t-main,.t-sub{overflow-wrap:normal}
+  /* the columns that should never wrap at all */
+  table.data td.num,.mono-date{white-space:nowrap}
+
+  /* The calendar keeps seven columns; squeezed into 375px each cell is 50px
+     and unreadable, so let it scroll at a usable size instead. */
+  .cal{min-width:640px}
+  .cal-d{min-height:74px}
+
+  /* touch targets */
+  .nav-i{min-height:42px}
+  .tabs button{padding:10px 13px}
+}
+
+/* ---- small phones ------------------------------------------------------ */
+@media(max-width:560px){
+  .main{padding:12px 10px 56px}
+  /* a dialog on a 375px screen should use the screen */
+  .ovl{padding:10px 8px;align-items:flex-start}
+  .modal,.modal.wide{max-width:none}
+  .m-hd,.m-bd,.m-ft{padding-left:13px;padding-right:13px}
+  .ph h1{font-size:19px}
+  .stats{grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px}
+  .btn-row{gap:6px}
+  /* the settings cards and their pills stop fighting for the same line */
+  .tset-in{flex-wrap:wrap}
+  .tset-box{flex:1 1 100%}
+}
+
+/* ---- coarse pointers, any size ----------------------------------------
+   Hover styling is decoration on a touch screen, but hit size is not. Only
+   controls are grown — table rows are left alone, since inflating them would
+   make dense registers unusable on the devices that most need to scroll. */
+@media(hover:none) and (pointer:coarse){
+  .btn{min-height:38px}
+  .btn.sm{min-height:32px}
+  .seg-ctl button{min-height:36px}
+  .pill{min-height:34px}
+}
+
+/* ---------- register table search ----------
+   Sits in a card header beside the title, so it must not stretch the header
+   or push the count tag off the row. */
+.tbl-search{display:flex;align-items:center;gap:8px;flex:0 1 260px;min-width:0}
+.tbl-search input{flex:1;min-width:0;border:1px solid var(--border-d);border-radius:8px;
+  padding:6px 10px;font-size:12.5px;background:#fff;color:var(--ink)}
+.tbl-search input:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 3px var(--teal-ll)}
+.tbl-search input::placeholder{color:var(--faint)}
+@media(max-width:760px){
+  /* the header wraps on a phone; let the search take its own full line */
+  .tbl-search{flex:1 1 100%;order:9}
+}
+
+/* ---------- reporting hierarchy tree ---------- */
+.hier-node{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  padding:7px 9px;border-radius:8px;margin:3px 0;background:var(--surface);
+  border:1px solid var(--border)}
+.hier-node:hover{border-color:var(--border-d)}
+.hier-dot{width:8px;height:8px;flex:0 0 8px;border-radius:50%;background:var(--teal)}
+.hier-dot.leaf{background:var(--border-d)}
+.hier-name{background:none;border:none;padding:0;font-family:inherit;font-size:13px;
+  font-weight:650;color:var(--ink);cursor:pointer;text-align:left}
+.hier-name:hover{color:var(--teal-d);text-decoration:underline}
+
+/* ---------- Artifact · Reports / Plans ----------
+   The prototype's shape: a rail of reports on the left, one report open on the
+   right, shown as a stack of paragraphs rather than pages. */
+.org-split{display:grid;grid-template-columns:312px 1fr;gap:14px;align-items:start}
+@media(max-width:960px){.org-split{grid-template-columns:1fr}}
+
+.org-rail{position:sticky;top:66px}
+@media(max-width:960px){.org-rail{position:static}}
+.org-nodes{display:flex;flex-direction:column;padding:8px 8px 4px;max-height:52vh;overflow-y:auto}
+@media(max-width:960px){.org-nodes{max-height:none}}
+.org-node{display:flex;flex-direction:column;gap:2px;text-align:left;width:100%;
+  background:transparent;border:1px solid transparent;border-radius:9px;
+  padding:8px 10px;cursor:pointer;font-family:inherit;
+  transition:background .15s,border-color .15s}
+.org-node:hover{background:var(--teal-ll);border-color:var(--border)}
+.org-node.on{background:var(--teal-l);border-color:var(--teal)}
+.org-node .n{font-size:12.5px;font-weight:650;color:var(--ink)}
+.org-node .s{font-size:11px;color:var(--muted);line-height:1.45}
+.org-node.on .s{color:var(--teal-d)}
+
+/* one paragraph — a conclusion someone drew */
+.orp{border:1px solid var(--border);border-radius:10px;margin-bottom:9px;
+  background:var(--panel);overflow:hidden}
+.orp.on{border-color:var(--teal)}
+.orp-h{display:flex;align-items:center;gap:7px;flex-wrap:wrap;width:100%;
+  padding:10px 12px;background:var(--surface);border:none;cursor:pointer;
+  font-family:inherit;text-align:left}
+.orp-h:hover{background:var(--teal-ll)}
+.orp.on .orp-h{background:var(--teal-l)}
+.orp-t{font-size:12.5px;font-weight:650;color:var(--ink)}
+
+/* ---------- Power BI embed ---------- */
+.bi-frame{position:relative;width:100%;height:460px;border:1px solid var(--border);
+  border-radius:10px;overflow:hidden;background:var(--surface)}
+.bi-frame iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+@media(max-width:760px){.bi-frame{height:320px}}

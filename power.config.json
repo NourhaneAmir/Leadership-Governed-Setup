@@ -137,8 +137,7 @@
         },
         "meetingtemplates": {
           "entitySetName": "lm_meetingtemplates",
-          "logicalName": "lm_meetingtemplate",
-          "isHidden": false
+          "logicalName": "lm_meetingtemplate"
         },
         "meetingtemplateagendaitems": {
           "entitySetName": "lm_meetingtemplateagendaitems",
@@ -257,6 +256,10 @@
         "reportoccurrenceshares": {
           "entitySetName": "lm_reportoccurrenceshares",
           "logicalName": "lm_reportoccurrenceshare"
+        },
+        "setupactivities": {
+          "entitySetName": "lm_setupactivities",
+          "logicalName": "lm_setupactivity"
         }
       },
       "environmentVariableName": ""

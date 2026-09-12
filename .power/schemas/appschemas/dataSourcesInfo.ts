@@ -313,6 +313,13 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "lm_setupactivities": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "lm_setupactivityid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "cr301_specialtyksa_service_hubs": {
     "tableId": "",
     "version": "",

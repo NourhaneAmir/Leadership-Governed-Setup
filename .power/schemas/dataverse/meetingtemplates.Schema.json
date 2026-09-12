@@ -390,12 +390,102 @@
           "x-ms-schema-name": "lm_monthofthequarterName",
           "x-ms-read-only": true
         },
+        "lm_monthofthesemesterseme": {
+          "type": "string",
+          "title": "Month of the Semesterseme",
+          "x-ms-dataverse-attribute": "lm_monthofthesemesterseme",
+          "x-ms-dataverse-type": "PicklistType",
+          "x-ms-schema-name": "lm_MonthoftheSemesterseme",
+          "enum": [
+            "1st Month",
+            "2nd Month",
+            "3rd Month",
+            "4th Month",
+            "5th Month",
+            "6th Month"
+          ],
+          "x-ms-enum-values": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+          ],
+          "Color": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "ebdcb197-4aa9-f111-aaac-00224882d001",
+          "x-ms-isGlobal": true,
+          "x-ms-optionsetdisplayname": "Month of the Semester",
+          "x-ms-optionSetType": "Picklist"
+        },
+        "lm_monthofthesemestersemename": {
+          "type": "string",
+          "title": "lm_monthofthesemestersemename",
+          "x-ms-dataverse-attribute": "lm_monthofthesemestersemename",
+          "x-ms-dataverse-type": "VirtualType",
+          "x-ms-schema-name": "lm_monthofthesemestersemeName",
+          "x-ms-read-only": true
+        },
         "lm_quorumthreshold": {
           "type": "string",
           "title": "Quorum Threshold %",
           "x-ms-dataverse-attribute": "lm_quorumthreshold",
           "x-ms-dataverse-type": "DecimalType",
           "x-ms-schema-name": "lm_QuorumThreshold"
+        },
+        "lm_seconddayofthemonth": {
+          "type": "string",
+          "title": "Second Day of the Month",
+          "x-ms-dataverse-attribute": "lm_seconddayofthemonth",
+          "x-ms-dataverse-type": "IntegerType",
+          "x-ms-schema-name": "lm_SecondDayoftheMonth"
+        },
+        "lm_seconddayoftheweek": {
+          "type": "string",
+          "title": "Second Day of the Week ",
+          "x-ms-dataverse-attribute": "lm_seconddayoftheweek",
+          "x-ms-dataverse-type": "PicklistType",
+          "x-ms-schema-name": "lm_SecondDayoftheWeek",
+          "enum": [
+            "Sunday",
+            "Monday",
+            "Tuesday ",
+            "Wednesday ",
+            "Thursday "
+          ],
+          "x-ms-enum-values": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "Color": [
+            null,
+            null,
+            null,
+            null,
+            null
+          ],
+          "x-ms-optionsetmetadataid": "7a5521ab-49a9-f111-aaac-00224882d001",
+          "x-ms-isGlobal": true,
+          "x-ms-optionsetdisplayname": "WeekDays",
+          "x-ms-optionSetType": "Picklist"
+        },
+        "lm_seconddayoftheweekname": {
+          "type": "string",
+          "title": "lm_seconddayoftheweekname",
+          "x-ms-dataverse-attribute": "lm_seconddayoftheweekname",
+          "x-ms-dataverse-type": "VirtualType",
+          "x-ms-schema-name": "lm_seconddayoftheweekName",
+          "x-ms-read-only": true
         },
         "lm_setuptype": {
           "type": "string",

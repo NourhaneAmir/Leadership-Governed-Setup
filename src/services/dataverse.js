@@ -658,6 +658,77 @@ async function deleteRows(service, rows, idField, table, errors){
   }
 }
 
+/* =========================================================================
+   Reconcile, instead of delete-and-recreate
+
+   The update path used to delete EVERY child row and write them all back.
+   Adding one Business Unit therefore rewrote all of them: every row got a new
+   GUID and a reset createdon, and anything holding a reference to one -- an
+   Attendees list bound to its Business Unit row, a Review Chain step bound to
+   the same -- had to be torn down and rebuilt with it.
+
+   reconcileRows() diffs instead. `keyOf` decides what makes two rows the same
+   thing; rows present on both sides are KEPT (and patched only if a field
+   actually changed), rows only in Dataverse are deleted, rows only in the
+   Setup are created.
+
+   It returns a Map of key -> row id covering BOTH kept and newly created rows,
+   so children of those rows (attendees, review chain steps) can bind to a
+   stable parent whether or not it is new.
+   ========================================================================= */
+async function reconcileRows({ service, existing, wanted, idField, table,
+                               keyOfExisting, keyOfWanted, build, diff, errors }){
+  const have = new Map();
+  for(const r of (existing || [])){
+    const k = keyOfExisting(r);
+    if(k != null) have.set(String(k), r);
+  }
+
+  const byKey = new Map();
+  const seen  = new Set();
+
+  for(const w of (wanted || [])){
+    const k = keyOfWanted(w);
+    if(k == null) continue;              // an unconfigured row cannot be identified
+    const key = String(k);
+    if(seen.has(key)) continue;          // the Setup listed the same thing twice
+    seen.add(key);
+
+    const row = have.get(key);
+    if(row){
+      byKey.set(key, row[idField]);
+      /* Only PATCH when something actually differs -- an untouched row should
+         not get a new modifiedon just because its Setup was saved. */
+      const patch = diff ? diff(w, row) : null;
+      if(patch && Object.keys(patch).length){
+        try{ assertSuccess(await service.update(row[idField], patch)); }
+        catch(e){ errors.push({ table, error:e }); }
+      }
+    }else{
+      try{
+        const created = await service.create(build(w));
+        const id = created?.data?.[idField];
+        if(id) byKey.set(key, id);
+        else errors.push({ table, error:new Error('created but no id returned') });
+      }catch(e){ errors.push({ table, error:e }); }
+    }
+  }
+
+  /* Whatever the Setup no longer lists is removed -- and only that. */
+  for(const [key, row] of have){
+    if(seen.has(key)) continue;
+    try{ await service.delete(row[idField]); }
+    catch(e){ errors.push({ table, error:e }); }
+  }
+
+  return byKey;
+}
+
+/** True when a lookup column's current value differs from what is wanted.
+ *  `_x_value` columns come back as a GUID string or undefined. */
+const lookupChanged = (current, wantedId) =>
+  (current || null) !== (wantedId || null);
+
 /** Creates every child row (per-unit Business Unit/Region rows, each with
  *  its own Review Chain, plus the template-level checklist/lines/KPI/
  *  Process rows) for an already-existing lm_report_templates row. Shared by
@@ -688,7 +759,7 @@ const GROUP_CHAIN_UNBOUND = [
   '_lm_meetingtemplateperregion_value eq null',
 ].join(' and ');
 
-async function createReportTemplateChildren(templateId, payload, errors){
+async function createReportTemplateChildren(templateId, payload, errors, opts = {}){
   const bind = `/lm_report_templates(${templateId})`;
 
   // One lm_reporttemplatebusinessunitses / lm_reporttemplateregions row per
@@ -703,7 +774,9 @@ async function createReportTemplateChildren(templateId, payload, errors){
   // below accepts EITHER lookup; only writes use the new columns.
   // Group-level Setups have no dedicated child table yet, so their units
   // (if any) are skipped with a console note rather than guessed at.
-  for(const unit of (payload.units||[])){
+  /* On the update path the unit rows and their chains have already been
+     reconciled in place; running this loop again would duplicate them. */
+  for(const unit of (opts.skipUnits ? [] : payload.units||[])){
     let unitBind = null, unitLookupField = null;
 
     if(payload.stageLevel==='bu' && unit?.businessUnitId){
@@ -807,6 +880,109 @@ async function createReportTemplateChildren(templateId, payload, errors){
   }
 }
 
+/* The Report counterpart of reconcileMeetingUnits(): unit rows and the Review
+   Chain steps that hang off them are kept in place, so adding one Business
+   Unit no longer rewrites the others or rebuilds their chains.
+
+   Everything else on a Report Setup -- checklist, section items, department/
+   function lines, related KPIs and Processes -- stays delete-and-recreate.
+   Those are flat template-level lists nothing references by id. */
+async function reconcileReportUnits(templateId, payload, existing, errors){
+  const bind = `/lm_report_templates(${templateId})`;
+  const level = payload.stageLevel;
+  const units = payload.units || [];
+
+  const buWanted     = level === 'bu'     ? units.filter(u => u?.businessUnitId) : [];
+  const regionWanted = level === 'region' ? units.filter(u => u?.regionId)       : [];
+
+  const posBind = id => `/cr603_organizationstructures(${id})`;
+  const common = (u, specialityField) => {
+    const f = {};
+    if(u.specialityId)        f[specialityField] = `/cr301_specialtyksa_service_hubs(${u.specialityId})`;
+    if(u.ownerPositionId)     f['lm_OwnerPosition@odata.bind'] = posBind(u.ownerPositionId);
+    if(u.submittingPositionId) f['lm_SubmittingPosition@odata.bind'] = posBind(u.submittingPositionId);
+    if(u.channelId)           f['lm_TeamChannel@odata.bind'] = `/and_teamschannels(${u.channelId})`;
+    return f;
+  };
+  const diffOf = specialityValueField => (u, row) => {
+    const patch = {};
+    if((row.lm_name || null) !== (u.name || null)) patch.lm_name = u.name || null;
+    if(u.specialityId && lookupChanged(row[specialityValueField], u.specialityId))
+      patch[specialityValueField === '_lm_speciality_value' ? 'lm_Speciality@odata.bind' : 'lm_ReportSpeciality@odata.bind']
+        = `/cr301_specialtyksa_service_hubs(${u.specialityId})`;
+    if(u.ownerPositionId && lookupChanged(row._lm_ownerposition_value, u.ownerPositionId))
+      patch['lm_OwnerPosition@odata.bind'] = posBind(u.ownerPositionId);
+    if(u.submittingPositionId && lookupChanged(row._lm_submittingposition_value, u.submittingPositionId))
+      patch['lm_SubmittingPosition@odata.bind'] = posBind(u.submittingPositionId);
+    if(u.channelId && lookupChanged(row._lm_teamchannel_value, u.channelId))
+      patch['lm_TeamChannel@odata.bind'] = `/and_teamschannels(${u.channelId})`;
+    return patch;
+  };
+
+  const buIds = await reconcileRows({
+    service: Lm_reporttemplatebusinessunitsesService,
+    existing: existing?.businessUnits, wanted: buWanted,
+    idField: 'lm_reporttemplatebusinessunitsid', table: 'lm_reporttemplatebusinessunitses',
+    keyOfExisting: r => r._lm_businessunit_value,
+    keyOfWanted:   u => u.businessUnitId,
+    build: u => ({ 'lm_ReportTemplate@odata.bind': bind,
+                   'lm_BusinessUnit@odata.bind': `/businessunits(${u.businessUnitId})`,
+                   lm_name: u.name || undefined, ...common(u, 'lm_Speciality@odata.bind') }),
+    diff: diffOf('_lm_speciality_value'), errors,
+  });
+
+  const regionIds = await reconcileRows({
+    service: Lm_reporttemplateregionsService,
+    existing: existing?.regions, wanted: regionWanted,
+    idField: 'lm_reporttemplateregionid', table: 'lm_reporttemplateregions',
+    keyOfExisting: r => r._lm_region_value,
+    keyOfWanted:   u => u.regionId,
+    build: u => ({ 'lm_ReportTemplate@odata.bind': bind,
+                   'lm_Region@odata.bind': `/crd04_regionses(${u.regionId})`,
+                   lm_name: u.name || undefined, ...common(u, 'lm_ReportSpeciality@odata.bind') }),
+    diff: diffOf('_lm_reportspeciality_value'), errors,
+  });
+
+  /* Review Chain steps, per surviving unit. A step is identified by its step
+     NUMBER within its unit: changing who reviews at step 2 is an edit to that
+     step, not the removal of one step and the addition of another. */
+  const byUnit = existing?.chainsByUnit || new Map();
+  const doChain = async (unit, unitRowId, lookupField, unitSet) => {
+    if(!unitRowId) return;
+    await reconcileRows({
+      service: Lm_reporttemplatereviewchainsService,
+      existing: byUnit.get(unitRowId) || [],
+      wanted: (unit.reviewChain || []).filter(st => st && st.step != null),
+      idField: 'lm_reporttemplatereviewchainid', table: 'lm_reporttemplatereviewchains',
+      keyOfExisting: r => r.lm_step,
+      keyOfWanted:   st => st.step,
+      build: st => {
+        const row = { 'lm_ReportTemplate@odata.bind': bind,
+                      [lookupField]: `/${unitSet}(${unitRowId})`,
+                      lm_step: st.step, lm_newcolumn: st.positionName || undefined };
+        if(st.positionId) row['lm_ReviewerPosition@odata.bind'] = posBind(st.positionId);
+        return row;
+      },
+      diff: (st, row) => {
+        const patch = {};
+        if((row.lm_newcolumn || null) !== (st.positionName || null))
+          patch.lm_newcolumn = st.positionName || null;
+        if(st.positionId && lookupChanged(row._lm_reviewerposition_value, st.positionId))
+          patch['lm_ReviewerPosition@odata.bind'] = posBind(st.positionId);
+        return patch;
+      },
+      errors,
+    });
+  };
+
+  for(const u of buWanted)
+    await doChain(u, buIds.get(String(u.businessUnitId)),
+      'lm_ReportTemplatePerBusinessUnit@odata.bind', 'lm_reporttemplatebusinessunitses');
+  for(const u of regionWanted)
+    await doChain(u, regionIds.get(String(u.regionId)),
+      'lm_ReportTemplatePerRegion@odata.bind', 'lm_reporttemplateregions');
+}
+
 /** Ids only (not the full display shape fetchReportTemplateDetail() builds)
  *  for every child row -- including each Business-Unit/Region row's own
  *  Review Chain -- of one Report Template. Used by
@@ -819,19 +995,25 @@ async function fetchReportTemplateChildIds(dvId){
     Lm_reporttemplatedepartmentfunctionsService.getAll({ filter, select:['lm_reporttemplatedepartmentfunctionid'] }),
     Lm_reporttemplaterelatedkpisesService.getAll({ filter, select:['lm_reporttemplaterelatedkpisid'] }),
     Lm_reporttemplaterelatedprocessesesService.getAll({ filter, select:['lm_reporttemplaterelatedprocessesid'] }),
-    Lm_reporttemplatebusinessunitsesService.getAll({ filter, select:['lm_reporttemplatebusinessunitsid'] }),
-    Lm_reporttemplateregionsService.getAll({ filter, select:['lm_reporttemplateregionid'] }),
+    /* Identifying lookup and own fields, not just the id — reconcileRows()
+       needs them to tell an existing unit from a new one. */
+    Lm_reporttemplatebusinessunitsesService.getAll({ filter, select:['lm_reporttemplatebusinessunitsid',
+      'lm_name','_lm_businessunit_value','_lm_speciality_value','_lm_ownerposition_value',
+      '_lm_submittingposition_value','_lm_teamchannel_value'] }),
+    Lm_reporttemplateregionsService.getAll({ filter, select:['lm_reporttemplateregionid',
+      'lm_name','_lm_region_value','_lm_reportspeciality_value','_lm_ownerposition_value',
+      '_lm_submittingposition_value','_lm_teamchannel_value'] }),
   ]);
   const businessUnits = busRes?.data ?? [];
   const regions = regionsRes?.data ?? [];
   const [buChains, regionChains] = await Promise.all([
     Promise.all(businessUnits.map(bu => Lm_reporttemplatereviewchainsService.getAll({
       filter: unitChainFilter('businessunit', bu.lm_reporttemplatebusinessunitsid),
-      select: ['lm_reporttemplatereviewchainid'],
+      select: ['lm_reporttemplatereviewchainid','lm_step','_lm_reviewerposition_value','lm_newcolumn'],
     }).then(r=>r?.data??[]).catch(()=>[]))),
     Promise.all(regions.map(rg => Lm_reporttemplatereviewchainsService.getAll({
       filter: unitChainFilter('region', rg.lm_reporttemplateregionid),
-      select: ['lm_reporttemplatereviewchainid'],
+      select: ['lm_reporttemplatereviewchainid','lm_step','_lm_reviewerposition_value','lm_newcolumn'],
     }).then(r=>r?.data??[]).catch(()=>[]))),
   ]);
   /* Section items hang off the checklist rows, not off the Template, so they
@@ -850,8 +1032,13 @@ async function fetchReportTemplateChildIds(dvId){
      time a group-wide template was edited. */
   const groupChainRes = await Lm_reporttemplatereviewchainsService.getAll({
     filter: `${filter} and ${GROUP_CHAIN_UNBOUND}`,
-    select: ['lm_reporttemplatereviewchainid'],
+    select: ['lm_reporttemplatereviewchainid','lm_step','_lm_reviewerposition_value','lm_newcolumn'],
   }).catch(()=>null);
+  /* keyed by unit row id, for the reconcile path */
+  const chainsByUnit = new Map([
+    ...businessUnits.map((bu,i) => [bu.lm_reporttemplatebusinessunitsid, buChains[i]]),
+    ...regions.map((rg,i) => [rg.lm_reporttemplateregionid, regionChains[i]]),
+  ]);
 
   return {
     checklist,
@@ -859,7 +1046,7 @@ async function fetchReportTemplateChildIds(dvId){
     lines: linesRes?.data ?? [],
     kpis: kpisRes?.data ?? [],
     processes: procsRes?.data ?? [],
-    businessUnits, regions,
+    businessUnits, regions, chainsByUnit,
     reviewChains: [...buChains.flat(), ...regionChains.flat(), ...(groupChainRes?.data ?? [])],
   };
 }
@@ -934,7 +1121,14 @@ export async function updateReportTemplateToDataverse(dvId, payload){
   const errors = [];
 
   try{
-    await Lm_report_templatesService.update(dvId, reportTemplateParentPayload(payload));
+    /* assertSuccess, not a bare await. The SDK does NOT throw on a Dataverse
+       validation failure -- it resolves with { success:false, error } -- so
+       this PATCH could be rejected and the caller would still be told the
+       Setup saved. That silently swallowed the lm_version bump on a
+       re-publish: the local Setup showed version N+1 while Dataverse kept N,
+       and the next publish computed N+1 again from the stale read. */
+    const parentResult = await Lm_report_templatesService.update(dvId, reportTemplateParentPayload(payload));
+    assertSuccess(parentResult);
   }catch(e){
     errors.push({ table:'lm_report_templates', error:e });
     return { id:null, errors };
@@ -948,11 +1142,10 @@ export async function updateReportTemplateToDataverse(dvId, payload){
   }
 
   if(existing){
-    // Deepest first: a Review Chain row points at its Business Unit/Region
-    // row, so it must go before that row does.
-    await deleteRows(Lm_reporttemplatereviewchainsService, existing.reviewChains, 'lm_reporttemplatereviewchainid', 'lm_reporttemplatereviewchains', errors);
-    await deleteRows(Lm_reporttemplatebusinessunitsesService, existing.businessUnits, 'lm_reporttemplatebusinessunitsid', 'lm_reporttemplatebusinessunitses', errors);
-    await deleteRows(Lm_reporttemplateregionsService, existing.regions, 'lm_reporttemplateregionid', 'lm_reporttemplateregions', errors);
+    /* Unit rows and the Review Chain steps hanging off them are RECONCILED,
+       not deleted: adding one Business Unit must not rewrite the others or
+       rebuild their chains. */
+    await reconcileReportUnits(dvId, payload, existing, errors);
     // A Section item hangs off a checklist row, so it must go before that row does.
     await deleteRows(Lm_reporttemplatesectionitemsesService, existing.sectionItems, 'lm_reporttemplatesectionitemsid', 'lm_reporttemplatesectionitemses', errors);
     await deleteRows(Lm_reporttemplatecontentchecklistsService, existing.checklist, 'lm_reporttemplatecontentchecklistid', 'lm_reporttemplatecontentchecklists', errors);
@@ -961,7 +1154,7 @@ export async function updateReportTemplateToDataverse(dvId, payload){
     await deleteRows(Lm_reporttemplaterelatedprocessesesService, existing.processes, 'lm_reporttemplaterelatedprocessesid', 'lm_reporttemplaterelatedprocesseses', errors);
   }
 
-  await createReportTemplateChildren(dvId, payload, errors);
+  await createReportTemplateChildren(dvId, payload, errors, { skipUnits: !!existing });
   return { id: dvId, errors };
 }
 
@@ -990,6 +1183,18 @@ const MEETING_FREQUENCY_KEY = {
 };
 const MEETING_DAY_OF_WEEK_KEY = { 'Sunday':124330000, 'Monday':124330001, 'Tuesday':124330002, 'Wednesday':124330003, 'Thursday':124330004 };
 const MEETING_MONTH_IN_QUARTER_KEY = { '1st month':124330000, '2nd month':124330001, '3rd month':124330002 };
+/* Added 08 Sep with lm_seconddayoftheweek / lm_seconddayofthemonth /
+   lm_monthofthesemesterseme.
+
+   ⚠️ The second day of the week is 1..5, NOT 124330000-based like
+   lm_daysoftheweek directly above it. Two columns on the same table, holding
+   the same five weekdays, on two different scales -- so the two cannot share a
+   map, and anything reading them has to know which is which. The semester
+   month is likewise a plain 1..6, matching the Report table's
+   lm_monthofthesemester rather than the Meeting table's own quarter column. */
+const MEETING_SECOND_DAY_OF_WEEK_KEY = { 'Sunday':1, 'Monday':2, 'Tuesday':3, 'Wednesday':4, 'Thursday':5 };
+const MEETING_MONTH_IN_SEMESTER_KEY = { '1st month':1, '2nd month':2, '3rd month':3,
+                                        '4th month':4, '5th month':5, '6th month':6 };
 const MEETING_CONFIDENTIALITY_KEY = { 'Public':124330000, 'Internal':124330001, 'Confidential':124330002, 'High Confidential':124330003, 'Restricted':124330004 };
 const MEETING_MODE_KEY = { 'Physical':1, 'Virtual':2, 'Hybrid':3 };
 const MEETING_SETUP_TYPE_KEY = { 'Business Meeting':1, 'Accreditation Committee':2 };
@@ -1024,6 +1229,12 @@ export const MEETING_DAY_OF_WEEK = {
   124330000:'Sunday', 124330001:'Monday', 124330002:'Tuesday',
   124330003:'Wednesday', 124330004:'Thursday',
 };
+export const MEETING_SECOND_DAY_OF_WEEK = {
+  1:'Sunday', 2:'Monday', 3:'Tuesday', 4:'Wednesday', 5:'Thursday',
+};
+export const MEETING_MONTH_IN_SEMESTER = {
+  1:'1st month', 2:'2nd month', 3:'3rd month', 4:'4th month', 5:'5th month', 6:'6th month',
+};
 export const MEETING_MONTH_IN_QUARTER = {
   124330000:'1st month', 124330001:'2nd month', 124330002:'3rd month',
 };
@@ -1046,6 +1257,9 @@ export const MEETING_MONTH_IN_QUARTER = {
  * @param {string} [payload.dayOfWeek] one of MEETING_DAY_OF_WEEK_KEY's keys
  * @param {number} [payload.dayOfMonth]
  * @param {string} [payload.monthInQuarter] one of MEETING_MONTH_IN_QUARTER_KEY's keys
+ * @param {string} [payload.secondDayOfWeek] one of MEETING_SECOND_DAY_OF_WEEK_KEY's keys (Twice Weekly)
+ * @param {number} [payload.secondDayOfMonth] (Twice Monthly)
+ * @param {string} [payload.monthInSemester] one of MEETING_MONTH_IN_SEMESTER_KEY's keys (Semesterly)
  * @param {string} [payload.mode] one of MEETING_MODE_KEY's keys
  * @param {string} [payload.confidentiality] one of MEETING_CONFIDENTIALITY_KEY's keys
  * @param {number} [payload.quorum]
@@ -1081,6 +1295,9 @@ function meetingTemplateParentPayload(payload){
     lm_daysoftheweek: payload.dayOfWeek ? MEETING_DAY_OF_WEEK_KEY[payload.dayOfWeek] : null,
     lm_dayofthemonth: typeof payload.dayOfMonth === 'number' ? payload.dayOfMonth : null,
     lm_monthofthequarter: payload.monthInQuarter ? MEETING_MONTH_IN_QUARTER_KEY[payload.monthInQuarter] : null,
+    lm_seconddayoftheweek: payload.secondDayOfWeek ? MEETING_SECOND_DAY_OF_WEEK_KEY[payload.secondDayOfWeek] : null,
+    lm_seconddayofthemonth: typeof payload.secondDayOfMonth === 'number' ? payload.secondDayOfMonth : null,
+    lm_monthofthesemesterseme: payload.monthInSemester ? MEETING_MONTH_IN_SEMESTER_KEY[payload.monthInSemester] : null,
     lm_defaultmeetingmode: payload.mode ? MEETING_MODE_KEY[payload.mode] : null,
     lm_meetingconfidentiality: payload.confidentiality ? MEETING_CONFIDENTIALITY_KEY[payload.confidentiality] : null,
     lm_quorumthreshold: typeof payload.quorum === 'number' ? payload.quorum : null,
@@ -1094,12 +1311,110 @@ function meetingTemplateParentPayload(payload){
   return row;
 }
 
+/* Reconciles a Meeting Setup's unit rows and their Attendees against what the
+   Setup now says, keeping every row that is still wanted.
+
+   Everything else on a Meeting Setup -- agenda, department/function lines,
+   supportive functions, linked reports -- is still delete-and-recreate. Those
+   are flat, ordered, template-level lists that nothing holds a reference to,
+   so churning their ids costs nothing. Unit rows are different: the Attendees
+   list points at one, so recreating a unit orphaned or rebuilt its people. */
+async function reconcileMeetingUnits(templateId, payload, existing, errors){
+  const bind = `/lm_meetingtemplates(${templateId})`;
+  const level = payload.stageLevel;
+  const units = payload.units || [];
+
+  const buWanted     = level === 'bu'     ? units.filter(u => u?.businessUnitId) : [];
+  const regionWanted = level === 'region' ? units.filter(u => u?.regionId)       : [];
+
+  const posBind = id => id ? `/cr603_organizationstructures(${id})` : undefined;
+  const roleFields = u => {
+    const f = {};
+    if(u.chairmanId)    f['lm_MeetingChairman@odata.bind'] = posBind(u.chairmanId);
+    if(u.coChairmanId)  f['lm_MeetingCoChairman@odata.bind'] = posBind(u.coChairmanId);
+    if(u.facilitatorId) f['lm_MeetingOrganizerFacilitator@odata.bind'] = posBind(u.facilitatorId);
+    if(u.channelId)     f['lm_TeamChannel@odata.bind'] = `/and_teamschannels(${u.channelId})`;
+    return f;
+  };
+  /* Only the fields that actually differ. A lookup that was cleared in the
+     Setup is left alone: Dataverse does not clear a lookup through a plain
+     PATCH value, which is the same limitation every other write here has. */
+  const roleDiff = (u, row) => {
+    const patch = {};
+    if((row.lm_name || null) !== (u.name || null)) patch.lm_name = u.name || null;
+    if(u.chairmanId    && lookupChanged(row._lm_meetingchairman_value, u.chairmanId))
+      patch['lm_MeetingChairman@odata.bind'] = posBind(u.chairmanId);
+    if(u.coChairmanId  && lookupChanged(row._lm_meetingcochairman_value, u.coChairmanId))
+      patch['lm_MeetingCoChairman@odata.bind'] = posBind(u.coChairmanId);
+    if(u.facilitatorId && lookupChanged(row._lm_meetingorganizerfacilitator_value, u.facilitatorId))
+      patch['lm_MeetingOrganizerFacilitator@odata.bind'] = posBind(u.facilitatorId);
+    if(u.channelId     && lookupChanged(row._lm_teamchannel_value, u.channelId))
+      patch['lm_TeamChannel@odata.bind'] = `/and_teamschannels(${u.channelId})`;
+    return patch;
+  };
+
+  const buIds = await reconcileRows({
+    service: Lm_meetingtemplatebusinessunitsesService,
+    existing: existing?.businessUnits, wanted: buWanted,
+    idField: 'lm_meetingtemplatebusinessunitsid', table: 'lm_meetingtemplatebusinessunitses',
+    keyOfExisting: r => r._lm_businessunit_value,
+    keyOfWanted:   u => u.businessUnitId,
+    build: u => ({ 'lm_MeetingTemplate@odata.bind': bind,
+                   'lm_BusinessUnit@odata.bind': `/businessunits(${u.businessUnitId})`,
+                   lm_name: u.name || undefined, ...roleFields(u) }),
+    diff: roleDiff, errors,
+  });
+
+  const regionIds = await reconcileRows({
+    service: Lm_meetingtemplateregionsService,
+    existing: existing?.regions, wanted: regionWanted,
+    idField: 'lm_meetingtemplateregionid', table: 'lm_meetingtemplateregions',
+    keyOfExisting: r => r._lm_region_value,
+    keyOfWanted:   u => u.regionId,
+    build: u => ({ 'lm_MeetingTemplate@odata.bind': bind,
+                   'lm_Region@odata.bind': `/crd04_regionses(${u.regionId})`,
+                   lm_name: u.name || undefined, ...roleFields(u) }),
+    diff: roleDiff, errors,
+  });
+
+  /* Attendees, per surviving unit. */
+  const byUnit = existing?.attendeesByUnit || new Map();
+  const doAttendees = async (unit, unitRowId, lookupField, unitSet) => {
+    if(!unitRowId) return;
+    await reconcileRows({
+      service: Lm_meetingattendeeslistsService,
+      existing: byUnit.get(unitRowId) || [],
+      wanted: (unit.attendeePositionIds || []).filter(Boolean),
+      idField: 'lm_meetingattendeeslistid', table: 'lm_meetingattendeeslists',
+      keyOfExisting: r => r._lm_attendeeposition_value,
+      keyOfWanted:   positionId => positionId,
+      build: positionId => ({
+        /* Same shape the create path writes: the template bind AND the
+           per-unit one. Dropping the template bind here would leave rows the
+           template-level queries cannot see. */
+        'lm_MeetingTemplate@odata.bind': `/lm_meetingtemplates(${templateId})`,
+        [lookupField]: `/${unitSet}(${unitRowId})`,
+        'lm_AttendeePosition@odata.bind': `/cr603_organizationstructures(${positionId})`,
+        lm_attendeetype: 1, // Core -- these come from each unit's coreMembers list
+      }),
+      errors,
+    });
+  };
+
+  for(const u of buWanted)
+    await doAttendees(u, buIds.get(String(u.businessUnitId)),
+      'lm_MeetingTemplatePerBusinessUnit@odata.bind', 'lm_meetingtemplatebusinessunitses');
+  for(const u of regionWanted)
+    await doAttendees(u, regionIds.get(String(u.regionId)),
+      'lm_MeetingTemplatePerRegion@odata.bind', 'lm_meetingtemplateregions');
+}
+
 /** Same role as createReportTemplateChildren above, for the Meeting side:
  *  creates every child row (per-unit Business Unit/Region rows with their
  *  own Attendees, plus template-level agenda/lines/supportive/linked-report
  *  rows) for an already-existing lm_meetingtemplates row. Mutates `errors`
  *  in place. */
-async function createMeetingTemplateChildren(templateId, payload, errors){
+async function createMeetingTemplateChildren(templateId, payload, errors, opts = {}){
   const bind = `/lm_meetingtemplates(${templateId})`;
 
   // One lm_meetingtemplatebusinessunitses / lm_meetingtemplateregions row
@@ -1108,7 +1423,10 @@ async function createMeetingTemplateChildren(templateId, payload, errors){
   // unit row via lm_MeetingTemplatePerBusinessUnit /
   // lm_MeetingTemplatePerRegion on lm_meetingattendeeslists. Group-level
   // Setups have no dedicated child table yet, skipped with a console note.
-  for(const unit of (payload.units||[])){
+  /* On the update path the unit rows and their Attendees have already been
+     reconciled in place, so this loop must not run again -- it would create a
+     second copy of every unit. */
+  for(const unit of (opts.skipUnits ? [] : payload.units||[])){
     let unitBind = null, unitLookupField = null;
 
     if(payload.stageLevel==='bu' && unit?.businessUnitId){
@@ -1217,19 +1535,28 @@ async function fetchMeetingTemplateChildIds(dvId){
     Lm_meetingtemplatedepartmentfunctionsService.getAll({ filter, select:['lm_meetingtemplatedepartmentfunctionid'] }),
     Lm_meetingtemplatesupportivefunctionsesService.getAll({ filter, select:['lm_meetingtemplatesupportivefunctionsid'] }),
     Lm_meetingtemplatelinkedreportsesService.getAll({ filter, select:['lm_meetingtemplatelinkedreportsid'] }),
-    Lm_meetingtemplatebusinessunitsesService.getAll({ filter, select:['lm_meetingtemplatebusinessunitsid'] }),
-    Lm_meetingtemplateregionsService.getAll({ filter, select:['lm_meetingtemplateregionid'] }),
+    /* The unit rows carry their identifying lookup and their own fields, not
+       just an id: reconcileRows() needs them to tell an existing unit from a
+       new one, and to know whether anything on it actually changed. */
+    Lm_meetingtemplatebusinessunitsesService.getAll({ filter, select:['lm_meetingtemplatebusinessunitsid',
+      'lm_name','_lm_businessunit_value','_lm_meetingchairman_value','_lm_meetingcochairman_value',
+      '_lm_meetingorganizerfacilitator_value','_lm_teamchannel_value'] }),
+    Lm_meetingtemplateregionsService.getAll({ filter, select:['lm_meetingtemplateregionid',
+      'lm_name','_lm_region_value','_lm_meetingchairman_value','_lm_meetingcochairman_value',
+      '_lm_meetingorganizerfacilitator_value','_lm_teamchannel_value'] }),
   ]);
   const businessUnits = busRes?.data ?? [];
   const regions = regionsRes?.data ?? [];
+  /* Attendees are kept PER UNIT rather than flattened: an attendee is only
+     the same attendee within the same unit, so the diff has to run per unit. */
   const [buAttendees, regionAttendees] = await Promise.all([
     Promise.all(businessUnits.map(bu => Lm_meetingattendeeslistsService.getAll({
       filter: `_lm_meetingtemplateperbusinessunit_value eq ${bu.lm_meetingtemplatebusinessunitsid}`,
-      select: ['lm_meetingattendeeslistid'],
+      select: ['lm_meetingattendeeslistid','_lm_attendeeposition_value','lm_attendeetype'],
     }).then(r=>r?.data??[]).catch(()=>[]))),
     Promise.all(regions.map(rg => Lm_meetingattendeeslistsService.getAll({
       filter: `_lm_meetingtemplateperregion_value eq ${rg.lm_meetingtemplateregionid}`,
-      select: ['lm_meetingattendeeslistid'],
+      select: ['lm_meetingattendeeslistid','_lm_attendeeposition_value','lm_attendeetype'],
     }).then(r=>r?.data??[]).catch(()=>[]))),
   ]);
   return {
@@ -1239,6 +1566,11 @@ async function fetchMeetingTemplateChildIds(dvId){
     linkedReports: linkedRes?.data ?? [],
     businessUnits, regions,
     attendees: [...buAttendees.flat(), ...regionAttendees.flat()],
+    /* keyed by unit row id, for the reconcile path */
+    attendeesByUnit: new Map([
+      ...businessUnits.map((bu,i) => [bu.lm_meetingtemplatebusinessunitsid, buAttendees[i]]),
+      ...regions.map((rg,i) => [rg.lm_meetingtemplateregionid, regionAttendees[i]]),
+    ]),
   };
 }
 
@@ -1260,6 +1592,9 @@ async function fetchMeetingTemplateChildIds(dvId){
  * @param {string} [payload.dayOfWeek] one of MEETING_DAY_OF_WEEK_KEY's keys
  * @param {number} [payload.dayOfMonth]
  * @param {string} [payload.monthInQuarter] one of MEETING_MONTH_IN_QUARTER_KEY's keys
+ * @param {string} [payload.secondDayOfWeek] one of MEETING_SECOND_DAY_OF_WEEK_KEY's keys (Twice Weekly)
+ * @param {number} [payload.secondDayOfMonth] (Twice Monthly)
+ * @param {string} [payload.monthInSemester] one of MEETING_MONTH_IN_SEMESTER_KEY's keys (Semesterly)
  * @param {string} [payload.mode] one of MEETING_MODE_KEY's keys
  * @param {string} [payload.confidentiality] one of MEETING_CONFIDENTIALITY_KEY's keys
  * @param {number} [payload.quorum]
@@ -1310,7 +1645,14 @@ export async function updateMeetingTemplateToDataverse(dvId, payload){
   const errors = [];
 
   try{
-    await Lm_meetingtemplatesService.update(dvId, meetingTemplateParentPayload(payload));
+    /* assertSuccess, not a bare await. The SDK does NOT throw on a Dataverse
+       validation failure -- it resolves with { success:false, error } -- so
+       this PATCH could be rejected and the caller would still be told the
+       Setup saved. That silently swallowed the lm_version bump on a
+       re-publish: the local Setup showed version N+1 while Dataverse kept N,
+       and the next publish computed N+1 again from the stale read. */
+    const parentResult = await Lm_meetingtemplatesService.update(dvId, meetingTemplateParentPayload(payload));
+    assertSuccess(parentResult);
   }catch(e){
     errors.push({ table:'lm_meetingtemplates', error:e });
     return { id:null, errors };
@@ -1324,14 +1666,20 @@ export async function updateMeetingTemplateToDataverse(dvId, payload){
   }
 
   if(existing){
-    // Deepest first: an Attendee row points at its Business Unit/Region row.
-    await deleteRows(Lm_meetingattendeeslistsService, existing.attendees, 'lm_meetingattendeeslistid', 'lm_meetingattendeeslists', errors);
-    await deleteRows(Lm_meetingtemplatebusinessunitsesService, existing.businessUnits, 'lm_meetingtemplatebusinessunitsid', 'lm_meetingtemplatebusinessunitses', errors);
-    await deleteRows(Lm_meetingtemplateregionsService, existing.regions, 'lm_meetingtemplateregionid', 'lm_meetingtemplateregions', errors);
+    /* Unit rows and their Attendees are RECONCILED, not deleted: adding one
+       Business Unit or one Attendee must not rewrite the others. Everything
+       below is a flat, template-level list that nothing references by id, so
+       delete-and-recreate stays -- it is simpler and costs nothing there. */
+    await reconcileMeetingUnits(dvId, payload, existing, errors);
+
     await deleteRows(Lm_meetingtemplateagendaitemsService, existing.agenda, 'lm_meetingtemplateagendaitemid', 'lm_meetingtemplateagendaitems', errors);
     await deleteRows(Lm_meetingtemplatedepartmentfunctionsService, existing.lines, 'lm_meetingtemplatedepartmentfunctionid', 'lm_meetingtemplatedepartmentfunctions', errors);
     await deleteRows(Lm_meetingtemplatesupportivefunctionsesService, existing.supportive, 'lm_meetingtemplatesupportivefunctionsid', 'lm_meetingtemplatesupportivefunctionses', errors);
     await deleteRows(Lm_meetingtemplatelinkedreportsesService, existing.linkedReports, 'lm_meetingtemplatelinkedreportsid', 'lm_meetingtemplatelinkedreportses', errors);
+
+    /* Units are already handled above, so the recreate pass must skip them. */
+    await createMeetingTemplateChildren(dvId, payload, errors, { skipUnits:true });
+    return { id: dvId, errors };
   }
 
   await createMeetingTemplateChildren(dvId, payload, errors);
@@ -1530,7 +1878,8 @@ export async function fetchReportTemplateDetail(id){
 export async function fetchMeetingTemplateDetail(id){
   const parentRes = await Lm_meetingtemplatesService.get(id, {
     select: ['lm_meetingtemplateid','lm_meetingtemplatename','lm_setuptype','lm_typeclassification','lm_stages',
-      'lm_frequency','lm_daysoftheweek','lm_dayofthemonth','lm_monthofthequarter','lm_defaultmeetingmode',
+      'lm_frequency','lm_daysoftheweek','lm_dayofthemonth','lm_monthofthequarter',
+      'lm_seconddayoftheweek','lm_seconddayofthemonth','lm_monthofthesemesterseme','lm_defaultmeetingmode',
       'lm_meetingconfidentiality','lm_quorumthreshold','lm_torpolicylink','lm_meetingstatus','lm_version','modifiedon','createdon',
       // Group-wide (Stage 3/4) Chairman/Co-Chairman/Facilitator -- see
       // meetingTemplateParentPayload()'s comment for why these live here
@@ -3031,4 +3380,110 @@ export async function createWorkLogDecision({ name, decisionTaken, expectedOutpu
   }catch(e){
     return { id: null, errors: [{ table:'wlog_decisions', error:e }] };
   }
+}
+
+/* =========================================================================
+   Setup Activity trail (lm_setupactivities)
+
+   One row per recorded change to a Meeting or Report Template Setup. The two
+   Template lookups are mutually exclusive -- exactly one is set, never both --
+   the same either/or shape lm_reporttemplatereviewchains uses for its per-BU /
+   per-Region pair.
+
+   `createdon` is the timestamp; there is deliberately no lm_occurredon column
+   to keep in sync with it.
+   ========================================================================= */
+import { Lm_setupactivitiesService } from '../generated/services/Lm_setupactivitiesService';
+
+/* Dataverse renders option 3 as "Editopened" with no space -- the label was
+   typed without one. Both directions go through these maps rather than the
+   generated labels, so the app keeps saying "Edit opened". */
+export const SETUP_ACTIVITY_ACTION_KEY = {
+  'Created':1, 'Edited':2, 'Edit opened':3, 'Published':4, 'Approved':5, 'Expired':6,
+};
+export const SETUP_ACTIVITY_ACTION = {
+  1:'Created', 2:'Edited', 3:'Edit opened', 4:'Published', 5:'Approved', 6:'Expired',
+};
+
+export const ACTIVITY_TEXT_MAX  = 2000; // lm_before / lm_after
+export const ACTIVITY_FIELD_MAX = 100;  // lm_field
+export const ACTIVITY_ACTOR_MAX = 200;  // lm_actor
+export const ACTIVITY_NAME_MAX  = 850;  // lm_name (primary)
+
+/* Unlike capped() above, this TRUNCATES instead of throwing. capped() is right
+   for content a user typed -- refusing the write and telling them is better
+   than silently losing half a sentence. An audit entry is different: the row
+   is written on the user's behalf as a side effect, and a "Units covered"
+   change across many units can run long. Losing the whole trail entry because
+   one value overflowed would be worse than recording a shortened value, so
+   this keeps the head and marks it. */
+function trimmed(value, max){
+  const v = (value ?? '').toString().trim();
+  if(!v) return null;
+  return v.length > max ? v.slice(0, max - 1) + '…' : v;
+}
+
+/** Writes one activity row. `kind` is the app's Setup kind string, which
+ *  decides which of the two Template lookups is bound.
+ *  Never throws: the trail must not be able to break the save it describes. */
+export async function logSetupActivity(kind, templateId, entry){
+  if(!templateId) return { id:null, errors:[{ table:'lm_setupactivities', error:new Error('no template id') }] };
+  const isReport = kind === 'Report Template';
+  const row = {
+    lm_name: trimmed(`${entry.action} · ${entry.field}`, ACTIVITY_NAME_MAX) || 'Activity',
+    lm_action: SETUP_ACTIVITY_ACTION_KEY[entry.action] ?? null,
+    lm_field: trimmed(entry.field, ACTIVITY_FIELD_MAX),
+    lm_before: trimmed(entry.before, ACTIVITY_TEXT_MAX),
+    lm_after: trimmed(entry.after, ACTIVITY_TEXT_MAX),
+    lm_actor: trimmed(entry.actor, ACTIVITY_ACTOR_MAX),
+    lm_version: typeof entry.version === 'number' ? entry.version : null,
+  };
+  row[isReport ? 'lm_ReportTemplate@odata.bind' : 'lm_MeetingTemplate@odata.bind'] =
+    isReport ? `/lm_report_templates(${templateId})` : `/lm_meetingtemplates(${templateId})`;
+  if(entry.actorUserId) row['lm_ActorUser@odata.bind'] = `/systemusers(${entry.actorUserId})`;
+
+  try{
+    const created = await Lm_setupactivitiesService.create(row);
+    return { id: idOrThrow(created, 'lm_setupactivityid'), errors: [] };
+  }catch(e){
+    return { id:null, errors:[{ table:'lm_setupactivities', error:e }] };
+  }
+}
+
+/** Writes a batch in order, and never rejects -- returns whatever failed so a
+ *  caller can log it without the trail affecting the save it describes. */
+export async function logSetupActivityBatch(kind, templateId, entries){
+  const errors = [];
+  for(const e of (entries || [])){
+    const r = await logSetupActivity(kind, templateId, e);
+    if(r.errors.length) errors.push(...r.errors);
+  }
+  return { count: (entries||[]).length - errors.length, errors };
+}
+
+/** Every recorded change for one Template, newest first — the shape the
+ *  Setup Detail Activity tab already renders. */
+export async function fetchSetupActivity(kind, templateId){
+  if(!templateId) return [];
+  const valueField = kind === 'Report Template'
+    ? '_lm_reporttemplate_value' : '_lm_meetingtemplate_value';
+  const res = await Lm_setupactivitiesService.getAll({
+    filter: `${valueField} eq ${templateId}`,
+    select: ['lm_setupactivityid','lm_action','lm_field','lm_before','lm_after',
+             'lm_actor','lm_version','createdon'],
+  });
+  return (res?.data ?? [])
+    .map(r => ({
+      id: r.lm_setupactivityid,
+      at: (r.createdon || '').replace('T',' ').slice(0,16),
+      actor: r.lm_actor || 'System',
+      action: SETUP_ACTIVITY_ACTION[r.lm_action] || 'Edited',
+      field: r.lm_field || '—',
+      before: r.lm_before || '—',
+      after: r.lm_after || '—',
+      version: r.lm_version ?? null,
+      live: true,
+    }))
+    /* createdon is an ISO string, so a plain string sort is chronological. */
+    .sort((a,b) => String(b.at).localeCompare(String(a.at)));
 }

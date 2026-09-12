@@ -3,7 +3,7 @@
 > Handoff notes for anyone (human or AI) picking this project up cold.
 > Written 30 Aug 2026, updated 01 Sep 2026, updated 02 Sep 2026 (twice),
 > updated 04 Sep 2026, updated 05 Sep 2026, updated 06 Sep 2026,
-> updated 07 Sep 2026 (twice), against branch `leadership-practice`.
+> updated 07 Sep 2026 (twice), updated 08 Sep 2026, against branch `leadership-practice`.
 >
 > This file records **decisions, hard-won schema facts and open questions** —
 > the things that are expensive to rediscover. It is not a substitute for the
@@ -25,6 +25,7 @@ Meeting Minutes (MOM) → Audit Grid scoring → Decisions → TMS Tasks.
 | Branch | `leadership-practice` |
 | Dataverse tables | 43 schema files in `.power/schemas/dataverse/`, plus `wlog_decisions`/`lm_reportoccurrencedepartmentfunctions` under `commondataservice` and the two KPI tables — see §6. Includes Minutes, MOM Notes, Audit Grid instances/answers, Approval Cycles/Steps, Authority Matrix rows, `pm_kpiachievments`/`stf_kpiachievmentbreakdowns`, (04 Sep) the four Report/Plan Composition tables, and (06 Sep) `lm_reportoccurrencedepartmentfunctions` |
 | Two modules | `src/modules/leadership/LeadershipApp.jsx` (execution), `src/modules/governance/GovernanceApp.jsx` (setup) |
+| Shared layer (08 Sep) | `src/shared/format.js` (dates, working calendar, formatting) and `src/shared/ui.jsx` (presentational primitives) — pure, importable by either module. `src/modules/leadership/store.jsx` holds `Ctx`/`use`. A `SCREENS` registry in `LeadershipApp.jsx` is now the single definition of each nav tab. See §5/§9. |
 
 ---
 
@@ -779,6 +780,96 @@ try to be smarter about picking one:
 
 ---
 
+### This session (08 Sep): Review Chain columns wired, Governance Settings rebuilt, and the first cut of the module split
+
+Five separate pieces of work, all built and green. Nothing is committed.
+
+**1. `lm_reporttemplatereviewchains` — the two new per-unit lookups wired.**
+Refreshed the table, found `lm_ReportTemplatePerBusinessUnit` and
+`lm_ReportTemplatePerRegion`, and moved saving onto them. Six touchpoints: 2 writes,
+2 per-unit reads (delete path + hydrate path), 2 group-wide reads. Full detail in §6
+— including the group-wide query that had to start null-checking all four lookups,
+which would otherwise have deleted every per-unit chain on edit.
+
+**2. Governance Setup — four UI fixes.**
+- The filter bar wrapped between a label and its dropdown (STATUS ended up on its
+  own line). Each label now travels with its control in a `.fltr-f` box, so it
+  reflows correctly at every width, not just the one in the screenshot.
+- The section-item picker's KPI Breakdown had **no search at all** — a bare
+  `<select>`. It now uses the same searchable `PickList` as the other kinds, with a
+  chip showing the chosen KPI. `PickList` itself became a real search field
+  (`type="search"`, named placeholder, match count).
+- **Duplicate React keys fixed.** KPI names are not unique in the live data (three
+  `Test 24-6` rows exist), and the option list was keyed by name, so those rows
+  shared identity. Now keyed by name + index.
+- The picker's search box inherited the panel's beige ground and read as a caption;
+  it is now white, matching the option rows beneath it.
+
+**3. Attendees, and every Position picker, as member rows.**
+Ported the People & Roles layout from `leadership-practice.html`. `AttendeeList`
+(new, `GovernanceApp.jsx`) replaces the generic `RowEditor` for attendees: avatar,
+Position, Core/Supportive as pill toggles, remove. The avatar then moved **inside
+`PosSel`**, so all six Position pickers in Setup get it — Chairman, Co-Chairman,
+Facilitator, Attendees, Submitting/Owner Position, Review Chain steps and Agenda
+owners — rather than the attendee list alone. Initials come from the person holding
+the Position, falling back to the Position name. Colour encodes the attendee TYPE
+(gold Core, green Supportive), not decoration.
+
+**4. Governance Settings (execution module) rebuilt.**
+- Relaid out to match the prototype's Governance Settings tab: gold lede, the
+  settings table carrying name/AG/help/OD in one cell, label-value blocks instead of
+  nested tables, one full-width column.
+- Added `set` to the `full` screen list — the screen was capped at 1380px with a
+  quarter of the window empty. `.main.full` already existed; the screen just was
+  not opted in.
+- **New timing section** at the top: three elapsed-time cards (MOM write-up, MOM
+  approval, Audit Grid submission), each naming both ends of its window, with a
+  free-hours input rather than the table's 24/48/72 presets.
+- **New setting `gridSubmitHours`** with an `OD_NOTES` entry. It has no OD (no open
+  item covers the Grid submission window) and ⚠️ **nothing reads it yet** — the
+  Audit Grid lifecycle has no submission timer wired to it. No `KEY` bump needed: an
+  older localStorage save has no such key, and `undefined` reads as unset.
+- The **Values awaiting a business decision** table became cards in the same
+  language. No number chip on those — they are not a sequence, so the slot carries
+  the AG question the value drives instead.
+- ⚠️ **Known duplication:** `momWriteupHours` and `momApprovalHours` now appear
+  twice on the screen, as timing cards 01/02 and again in the values grid. They read
+  and write the same setting so they cannot disagree, but it is visible. Flagged to
+  the product owner; removing the two rows from the grid is a two-line change.
+
+**5. The module split — foundation only (see §9).**
+Agreed approach: foundation first, screens one at a time. Done and green:
+`src/shared/format.js` (dates, the working calendar, formatting — pure, importable
+by either module), `src/shared/ui.jsx` (the presentational primitives),
+`src/modules/leadership/store.jsx` (`Ctx` + `use`), and a **screen registry**
+inside `LeadershipApp.jsx`. `LeadershipApp.jsx` went 10,115 → ~9,980 lines.
+
+The registry is the part that matters: a tab used to be defined in **four** places
+(`NAV`, `NAV_HINT`, the router's screen map, the hardcoded full-width list) and is
+now one `SCREENS` entry with all four derived from it. Found `NAV_HINT` was dead —
+defined, never read; the hints were kept on the registry entries as the natural home
+for them, but nothing renders them.
+
+⚠️ **Screens cannot move to their own files yet.** They still reach into
+`LeadershipApp.jsx` for domain and seed values — Settings, the smallest at ~350
+lines, needs `OD_NOTES`, `AG_ACTIVE`, `AG_TEMPLATE_VERSION`, `TOPIC_NATURES`,
+`TOPIC_CATEGORIES`, `MTG_SETUPS`, `scoreGrid`, `gridTotals` and `occName`. Next
+foundation pieces are `domain.js` then `seed.js`; then screens smallest-first:
+Settings → Grid → Meetings → Workspace → Calendar → Decisions → Reports → Minutes.
+Stopped before `domain.js` deliberately — it is the first extraction that touches
+live scoring rather than pure helpers, and deserves its own pass.
+
+**6. Meeting Occurrence Generator plan rebuilt** (§10, same URL). Rewritten to the
+Report flow's structure with a 12-step build guide, and **one occurrence per unit,
+not per department** — 2 BUs covering 10 departments give 2 occurrences, with
+`lm_Department` left empty. Three schema findings drove it, all in §6: the Meeting
+option-set codes are 124330000-based where the Report ones are 1-based; the
+roll-forward rule **reverses** (meetings move off a weekend, reports keep the date,
+so the duplicate guard must query the booked date); and five of nine frequencies
+cannot fire. No companion `.md` was written — the artifact is the only copy.
+
+---
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### NEW this session: group-wide (Stage 3/4) roles now live on the parent row
@@ -852,12 +943,20 @@ the parent section**, since it is the only candidate pointing at a section.
 reading: a **Paragraph** citation (kind 8), which cites another report's section,
 then has no target column.
 
-### Annual reports cannot be scheduled — there is no month-of-year column
-`lm_monthofthequarter` is 1–3 and `lm_monthofthesemester` is 1–6; neither reaches
-12. The cadence UI therefore shows a warning for Annually rather than a dropdown
-that cannot save — deliberately, since a field that displays but never persists is
-the exact silent-loss pattern this session's audit was chasing. Add
-**`lm_monthoftheyear` (1–12)** and both the form and the flow can be wired.
+### Annual scheduling — RESOLVED for Reports, still open for Meetings
+~~Annual reports cannot be scheduled~~ — corrected 08 Sep. This entry used to say
+no month-of-year column existed and to add `lm_monthoftheyear`; both are wrong now.
+The column landed on 05 Sep as **`lm_month`** (a plain 1–12 calendar month,
+1 = January), and it is wired end to end: the Setup form, `dataverse.js`'s
+`MONTH_KEY`, the read select, and the Report Occurrence flow plan.
+
+**`lm_meetingtemplates` still has none of this.** It carries only `lm_frequency`,
+`lm_daysoftheweek`, `lm_dayofthemonth` and `lm_monthofthequarter` — no second day
+of week, no second day of month, no month of semester, no month of year. So on the
+Meeting side **five of the nine frequencies cannot fire at all**: Twice Weekly,
+Twice Monthly, Semesterly, Annually and Custom. A Setup saved with one of them
+generates nothing, silently. Either add the four columns the Report table already
+has, or stop offering those values in the Meeting Setup form.
 
 ### A Report Occurrence has no per-occurrence reviewer table
 `lm_reportoccurrences` carries **`lm_reviewstep` only**. The chain is **read from
@@ -948,6 +1047,27 @@ way to back out an unwanted `add-data-source` call: **hand-edit
 `src/generated/index.ts` to remove just the one entry, delete that table's
 own two generated files, and never call `delete-data-source`** unless the
 plan is to immediately diff the entire `src/generated/` tree afterward.
+
+### A Report Template's Review Chain now has its OWN per-unit lookups (06 Sep)
+`lm_reporttemplatereviewchains` gained **`lm_ReportTemplatePerBusinessUnit`** and
+**`lm_ReportTemplatePerRegion`**. Saving uses these. Before they existed the code
+bound a Report unit row into the **Meeting** module's
+`lm_MeetingTemplatePerBusinessUnit` / `...PerRegion`, which were the only per-unit
+columns the table had.
+
+Two consequences, both wired 06 Sep:
+
+- **Reads accept EITHER pair** (`unitChainFilter()` in `dataverse.js`), so a chain
+  saved before that date still hydrates when an older Setup is opened for edit.
+- **A group-wide (Stage 3/4) chain must null-check all FOUR lookups**
+  (`GROUP_CHAIN_UNBOUND`), not just the Meeting pair. Checking only the old pair
+  would sweep up every per-unit chain saved since — those leave the Meeting pair
+  null — and the update path would delete them as if they were group rows.
+
+⚠️ **Unverified:** whether rows written before 06 Sep actually carry the Meeting
+lookups, or whether Dataverse was rejecting those binds all along and they have all
+four null. If the latter, the group-wide query now treats them as group chains.
+Open an existing Stage 1 or 2 Template with a saved chain to find out.
 
 ### Chair / Co-Chair / Facilitator are NOT on the Setup — except now, sometimes
 They live on the **per-scope child rows** for a Business-Unit- or Region-scoped
@@ -1069,8 +1189,12 @@ shape — also unconfirmed.
 - **No `taxonomyState`** on report or meeting occurrences — the no-setup flag is
   written but nothing consumes it and no sync exists.
 - **`lm_customname`** exists on report occurrences and is never written.
-- **Stray `lm_newcolumn`** on `lm_meetingtemplatedepartment_functions` and
-  `lm_reporttemplatereviewchains` — accidental default-named columns, safe to delete.
+- **Stray `lm_newcolumn`** on `lm_meetingtemplatedepartment_functions` — an
+  accidental default-named column, safe to delete. ⚠️ **Corrected 08 Sep: the one on
+  `lm_reporttemplatereviewchains` is NOT stray and must not be deleted.** It stores
+  the reviewer's Position NAME (`dataverse.js`, `createReportTemplateChildren` writes
+  `lm_newcolumn: step.positionName`) and all three chain queries select it back.
+  Deleting it silently strips the position label off every Review Chain step.
 - **`DATAVERSE_CONFIG.publisherPrefix` is `'lp'`** but every table is `lm_`.
 
 ---
@@ -1189,6 +1313,13 @@ shape — also unconfirmed.
   Telemetry warnings (`OneDS`) are noise and never block anything.
 - **Bundle is ~1 MB** in one chunk, over Vite's advisory limit. `xlsx` is the
   obvious dynamic-import candidate.
+- **A source file can be silently corrupted mid-session** (08 Sep). A stray `3`
+  and an extra blank line appeared at the top of `LeadershipApp.jsx`'s
+  `DEFAULT_SETTINGS`, in a region nothing was editing, and broke the build with
+  `Invalid characters after number`. `git diff` showed the committed version was
+  clean, so it was introduced after checkout, not by an edit. Same suspected cause
+  as the `node_modules` corruption below: this repo lives in a **OneDrive-synced
+  folder**. If a build fails on a line nobody touched, diff before debugging.
 - **`npm run build` can fail with `ERR_MODULE_NOT_FOUND` for a file inside
   `node_modules/vite/dist/node/chunks/`** (07 Sep) — a partial/corrupted
   install, with one specific chunk file missing while its neighbors are
@@ -1267,10 +1398,31 @@ something, except the one item below that's now live at a base level.
       destination derived from the Team Channel, Stage stored in `lm_stage`,
       saved-name clashes caught, twice-weekly/twice-monthly/semesterly cadence
       completed. See §5. **Not yet verified against live Dataverse.**
+- [x] **Report Template Review Chain per-unit lookups wired** (08 Sep) — saving now
+      uses `lm_ReportTemplatePerBusinessUnit` / `lm_ReportTemplatePerRegion`, reads
+      accept either pair, and the group-wide query null-checks all four. See §6.
+      **Not yet verified against pre-06-Sep rows** — see the warning there.
+- [ ] **Module split — foundation done, screens not moved** (08 Sep). `shared/format.js`,
+      `shared/ui.jsx`, `store.jsx` and the `SCREENS` registry are in and green.
+      Remaining: extract `domain.js`, then `seed.js`, then one screen file at a time
+      (Settings → Grid → Meetings → Workspace → Calendar → Decisions → Reports →
+      Minutes). Until a screen is in its own file, moving a tab to Governance is
+      still a copy job out of a ~10k-line file.
+- [ ] **`gridSubmitHours` is stored but unconsumed** (08 Sep) — the Audit Grid has no
+      submission timer reading it. Either wire it into the Grid lifecycle or drop the
+      third timing card.
+- [ ] **Two settings are edited in two places** (08 Sep) — `momWriteupHours` and
+      `momApprovalHours` appear as timing cards *and* as value cards on Governance
+      Settings. They cannot disagree; decide whether to remove them from the grid.
 - [ ] **`qualifier` still does not survive an edit** — the last of the four audit
       gaps. The name is recomputed on every save and includes it, so a Template
       can silently rename itself. Needs somewhere to store it, or a decision that
       the qualifier lives only inside the derived name.
+- [ ] **Meeting Occurrence generator (Power Automate).** Planned in full — the
+      artifact in §10, rebuilt 08 Sep to the Report flow's structure with a 12-step
+      build guide and the one-occurrence-per-unit rule. Blocked on its own open
+      items: five of nine frequencies have no columns, there is no holidays table for
+      the roll-forward, and Meeting Setups carry no times. Not built, only planned.
 - [ ] **Report Occurrence generator (Power Automate).** Planned in full —
       `REPORT-OCCURRENCE-FLOW-PLAN.md`. Blocked on its own open items, chiefly
       the citation parent lookup, the missing month-of-year column (resolved
@@ -1332,9 +1484,12 @@ Three working documents were produced alongside an earlier version of this file:
 - **Build-Out Checklist** — 63 tickable items across tables, columns, services,
   screens, integrations and decisions
   <https://claude.ai/code/artifact/59f13ef0-773f-438e-b172-c24820fe0e66>
-- **Meeting Occurrence Generator** — step-by-step Power Automate build for the
-  weekly Thursday flow that creates next week's occurrences, one per BU / Region /
-  Department
+- **Meeting Occurrence Generator** — **rebuilt 08 Sep, same URL.** The weekly
+  Thursday flow, restructured to match the Report generator, with a 12-step build
+  guide. One occurrence **per unit** — NOT per department, which is the rule that
+  changed: 2 BUs covering 10 departments produce 2 occurrences, not 20. Carries the
+  124330000-vs-1 option-set trap, the reversed weekend roll-forward, and the five
+  frequencies that cannot fire.
   <https://claude.ai/code/artifact/6d7fefca-78cf-4172-a967-ce99bab2dbd1>
 
 Three more were produced this session:
