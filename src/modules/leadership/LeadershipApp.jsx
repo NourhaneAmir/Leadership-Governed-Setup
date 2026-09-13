@@ -14,7 +14,8 @@ import { Ctx, use } from './store.jsx';
 import { ScreenBI } from './screens/BusinessIntelligence.jsx';
 import { ScreenOrgReports } from './screens/OrgReports.jsx';
 import { ScreenHierarchy } from './screens/Hierarchy.jsx';
-import { PEOPLE, P, RPT_SETUPS, RS, DIAG, DiagChip, PROC_REG, PR, BI_REPORTS, BIR, KPI_CAT, KPIC, findKpi, bdDims, achFor, achPct, achCls, CITE_KINDS, citeKind, citeId, citeCls, canSeeReport, rptCfg, rptTagC, matchesQuery, CiteCard } from './domain.jsx';
+import { PEOPLE, P, RPT_SETUPS, RS, DIAG, DiagChip, PROC_REG, PR, BI_REPORTS, BIR, KPI_CAT, KPIC, findKpi, bdDims, achFor, achPct, achCls, CITE_KINDS, citeKind, citeId, citeCls, canSeeReport, rptCfg, rptTagC, matchesQuery, CiteCard,
+  STRAT, ST, PM_ENTRIES, PME, ISSUES, ISS, rptName } from './domain.jsx';
 import { Tag, Btn, Note, OD, Bar, Field, Empty, Stat, KVBlock, Rail,
          Modal, Pills, ScoreHero } from '../../shared/ui.jsx';
 import * as XLSX from 'xlsx';
@@ -159,68 +160,6 @@ const RPT_CATEGORIES = ['Executive','Core','Custom'];
 /* Achievement for a Business Unit and period. A Report scoped to ALL reads
    the mean of the units that hold a figure, rather than showing nothing. */
 
-/* ---- Strategy chain: Objective → Tactic → POC → Project ---------------- */
-const STRAT = [
-  {id:'OBJ-01', k:'Objective', n:'Improve patient safety and clinical outcomes', own:'u7', st:'Published'},
-  {id:'OBJ-05', k:'Objective', n:'Strengthen workforce capability',              own:'u7', st:'Published'},
-  {id:'OBJ-06', k:'Objective', n:'Improve operating margin',                     own:'u7', st:'Published'},
-
-  {id:'TAC-11', k:'Tactic', n:'Sepsis screening at every admission point', par:'OBJ-01',
-   kpi:'KPI-QLT-011', proc:'PRC-QLT-02', own:'u5', st:'78% → 90%', pct:62},
-  {id:'TAC-12', k:'Tactic', n:'Close corrective actions within the agreed window', par:'OBJ-01',
-   kpi:'KPI-QLT-014', proc:'PRC-QLT-02', own:'u5', st:'69% → 85%', pct:41},
-  {id:'TAC-21', k:'Tactic', n:'Reduce nursing vacancy through pipeline hiring', par:'OBJ-05',
-   kpi:'KPI-NUR-003', proc:'PRC-NUR-01', own:'u10', st:'13.4% → 8%', pct:28},
-  {id:'TAC-31', k:'Tactic', n:'Recover evening theatre lists', par:'OBJ-06',
-   kpi:'KPI-OPS-004', proc:'PRC-OPS-01', own:'u1', st:'82% → 85%', pct:55},
-
-  {id:'POC-04', k:'POC', n:'Electronic sepsis alert in the ED triage form', par:'TAC-11',
-   proc:'PRC-QLT-02', own:'u2', st:'Pre-implementation', pct:35},
-  {id:'POC-09', k:'POC', n:'Pooled evening theatre lists across specialties', par:'TAC-31',
-   proc:'PRC-OPS-01', own:'u1', st:'Design', pct:15},
-  {id:'POC-12', k:'POC', n:'Imaging maintenance contract moved to the OEM', par:'TAC-31',
-   proc:'PRC-BME-01', own:'u6', st:'Under evaluation', pct:20},
-
-  {id:'PRJ-07', k:'Project', n:'Sepsis alert rollout — Phase 1 ED', par:'POC-04',
-   proc:'PRC-QLT-02', own:'u2', st:'Pilot', pct:45,
-   budget:340000, start:'2026-05-01', end:'2026-11-30', scope:'AHJ Emergency Department'},
-  {id:'PRJ-14', k:'Project', n:'Nursing pipeline recruitment programme', par:'TAC-21',
-   proc:'PRC-NUR-01', own:'u10', st:'In delivery', pct:30,
-   budget:1250000, start:'2026-03-01', end:'2027-02-28', scope:'AHJ · ADC nursing establishment'},
-];
-const ST = id => STRAT.find(s=>s.id===id);
-const stratKids  = pid => STRAT.filter(s=>s.par===pid);
-const tacticsFor = kpiId => STRAT.filter(s=>s.k==='Tactic' && s.kpi===kpiId);
-
-/* ---- Planning & Monitoring entries ------------------------------------- */
-const PM_ENTRIES = [
-  {id:'TVP-11', k:'Target',   n:'Sepsis screens completed',   tg:4200, ac:3276, u:' screens',
-   proc:'PRC-QLT-02', tac:'TAC-11', own:'u5'},
-  {id:'TVP-14', k:'Target',   n:'Theatre cases delivered',    tg:1860, ac:1712, u:' cases',
-   proc:'PRC-OPS-01', tac:'TAC-31', own:'u1'},
-  {id:'SEP-21', k:'Supply',   n:'Two additional evening lists per week', vol:96,
-   win:'01 Sep – 31 Dec', st:'Committed',    proc:'PRC-OPS-01', tac:'TAC-31', own:'u1'},
-  {id:'SEP-24', k:'Supply',   n:'Agency nursing cover for ICU', vol:14,
-   win:'01 Aug – 31 Oct', st:'Under-covers', proc:'PRC-NUR-01', tac:'TAC-21', own:'u10'},
-  {id:'DEP-08', k:'Demand',   n:'Orthopaedic referral campaign', vol:340,
-   win:'01 Sep – 31 Dec', st:'Committed',    proc:'PRC-OPS-01', tac:'TAC-31', own:'u1'},
-  {id:'CNF-03', k:'Conflict', n:'Evening theatre capacity over-subscribed by three lists',
-   gap:'3 lists per week', st:'Open',        proc:'PRC-OPS-01', tac:'TAC-31', own:'u1'},
-];
-const PME = id => PM_ENTRIES.find(p=>p.id===id);
-
-/* ---- Issues raised in other systems, citable as evidence --------------- */
-const ISSUES = [
-  {id:'ISS-2201', n:'Anaesthesia machine 3 out of service', sys:'Biomedical Maintenance System',
-   st:'Open', sev:'High', own:'Biomedical Engineering', when:'2026-07-22', proc:'PRC-BME-01'},
-  {id:'ISS-1847', n:'Theatre scheduling module sync failures', sys:'IT Service Desk',
-   st:'In progress', sev:'Medium', own:'IT Applications', when:'2026-07-20', proc:'PRC-OPS-01'},
-  {id:'ISS-3390', n:'Sepsis alert not firing on transferred admissions', sys:'IT Service Desk',
-   st:'Open', sev:'High', own:'IT Applications', when:'2026-07-18', proc:'PRC-QLT-02'},
-  {id:'ISS-4102', n:'CT scanner PM overdue past contractual window', sys:'Biomedical Maintenance System',
-   st:'Open', sev:'Medium', own:'Biomedical Engineering', when:'2026-07-11', proc:'PRC-BME-01'},
-];
-const ISS = id => ISSUES.find(i=>i.id===id);
 
 /* ---- Section templates ------------------------------------------------
    This is what a Report Setup now points at instead of a .docx or .xlsx.
@@ -2960,7 +2899,6 @@ function ScreenWorkspace(){
 /* =========================================================================
    3 · REPORTS & PLANS
    ========================================================================= */
-const rptName = r => r.setup ? RS(r.setup).name : r.custom.name;
 
 /* due date derived from the approved Setup's due day and the reporting period */
 const rptDue = r => { const c=rptCfg(r); return c.dueDay
@@ -3274,15 +3212,15 @@ function ReportDetail({rec,back}){
         <div className="card">
           <h2>Report Details</h2>
           <div className="wa-mo-r"><label>ID</label><span className="v mono">{rptCode(rec)}</span></div>
-          <div className="wa-mo-r"><label>Template</label>
-            <span className="v" style={{fontFamily:'inherit'}}>
+          <div className="wa-mo-r txt"><label>Template</label>
+            <span className="v">
               {c.tpl && tplOf(db,c.tpl) ? tplOf(db,c.tpl).n : 'None — built free'}</span></div>
           <div className="wa-mo-r"><label>Sections</label>
             <span className="v">{secCount(rec)}</span></div>
           <div className="wa-mo-r"><label>Live citations</label>
             <span className="v">{citeCount(db,rec)}</span></div>
-          <div className="wa-mo-r"><label>Submitted</label>
-            <span className="v" style={{fontFamily:'inherit'}}>
+          <div className="wa-mo-r txt"><label>Submitted</label>
+            <span className="v">
               {submittedAt?fmtD(submittedAt.split(' ')[0]):'—'}</span></div>
           <div className="wa-mo-r"><label>Version</label><span className="v">v{(rec.ver||0).toFixed(1)}</span></div>
         </div>
@@ -3313,42 +3251,6 @@ function ReportDetail({rec,back}){
    so editing it anywhere updates it everywhere it appears.
    ========================================================================= */
 
-/* the embedded Power BI preview behind a KPI — opened in place, not a link
-   away. Styled as a foreign embed so it never reads as native chrome. */
-function BIEmbed({k,rec}){
-  const [open,setOpen] = useState(false);
-  const b = BIR(k.bi); if(!b) return null;
-  const pct = achPct(rec,k.dir);
-  const bars = [58,64,60,71,66,75,70, rec?Math.max(18,Math.min(96,pct||60)):60];
-  return <div style={{marginTop:8,paddingTop:8,borderTop:'1px dashed var(--border)'}}>
-    <Btn k="sm" onClick={()=>setOpen(o=>!o)}>
-      {open?'Close dashboard':'Open “'+b.n+'” inside this Report'}</Btn>
-    {open && <div className="pbi">
-      <div className="pbi-h">
-        <div className="m"><span className="p">P</span>
-          <span className="n">{b.n}</span><span className="e">EMBEDDED</span></div>
-        <a href={b.link} target="_blank" rel="noopener">Open in Power BI ↗</a>
-      </div>
-      <div className="pbi-b">
-        <div className="pbi-tile">
-          <div className="t">{k.n}</div>
-          <div className="s">{rec?'Target '+rec.target+k.unit:'No target set'}</div>
-          <div className="v">{rec?rec.actual+k.unit:'—'}</div>
-          <div className="spk">{bars.map((h,i)=>
-            <i key={i} className={i===bars.length-1?'last':''} style={{height:h+'%'}}/>)}</div>
-        </div>
-        <div className="pbi-tile">
-          <div className="t">Achievement against target</div>
-          <div className="s">Same period</div>
-          <div className="v">{pct!=null?pct+'%':'—'}</div>
-          <div className="spk">{[70,64,58,66,52,60,55,Math.max(15,Math.min(96,pct||55))].map((h,i)=>
-            <i key={i} className={i===7?'last':''} style={{height:h+'%'}}/>)}</div>
-        </div>
-      </div>
-      <div className="pbi-tabs"><span className="on">Overview</span><span>Trend</span><span>Detail</span></div>
-    </div>}
-  </div>;
-}
 
 /* one citation, rendered with the figures it actually carries for this
    Report's Business Unit and period — never a pasted number. */
@@ -4179,12 +4081,12 @@ function ReportWizard({onClose}){
       <div>
         <div className="card">
           <h2>Report Details</h2>
-          <div className="wa-mo-r"><label>Template</label>
-            <span className="v" style={{fontFamily:'inherit'}}>{isCustom?'Custom':setupLabel}</span></div>
-          <div className="wa-mo-r"><label>Setup</label>
-            <span className="v" style={{fontFamily:'inherit'}}>{isCustom?'—':setupLabel}</span></div>
-          <div className="wa-mo-r"><label>Created</label>
-            <span className="v" style={{fontFamily:'inherit'}}>{fmtD(TODAY)}</span></div>
+          <div className="wa-mo-r txt"><label>Template</label>
+            <span className="v">{isCustom?'Custom':setupLabel}</span></div>
+          <div className="wa-mo-r txt"><label>Setup</label>
+            <span className="v">{isCustom?'—':setupLabel}</span></div>
+          <div className="wa-mo-r txt"><label>Created</label>
+            <span className="v">{fmtD(TODAY)}</span></div>
           <div className="wa-mo-r"><label>Status</label><Tag c="grey">Draft</Tag></div>
         </div>
 
@@ -6161,10 +6063,10 @@ function DvMeetingDetail({rec,back}){
   const dow = rec.date
     ? new Date(rec.date+'T00:00:00').toLocaleDateString('en-US',{weekday:'long'}).toUpperCase() : '';
 
+  /* Label above value, not beside it. This rail is 300px wide, so a label
+     column left the value about 66px and every name wrapped a word per line. */
   const Row=({label,value})=> value==null||value===''||value==='—' ? null :
-    <div style={{display:'flex',gap:12,padding:'7px 0',borderBottom:'1px solid var(--border)'}}>
-      <div style={{flex:'0 0 190px',fontSize:12,color:'var(--muted)'}}>{label}</div>
-      <div style={{flex:1,fontSize:13,overflowWrap:'anywhere'}}>{value}</div></div>;
+    <div className="kvr"><label>{label}</label><div className="v">{value}</div></div>;
 
   return <>
     <div className="crumb"><a onClick={back}>Meetings</a> › <b>Meeting Detail</b></div>
@@ -6799,25 +6701,25 @@ function DvReportDetail({rec,back}){
 
         <div className="card">
           <h2>Report Details</h2>
-          <div className="wa-mo-r"><label>Status</label>
-            <span className="v" style={{fontFamily:'inherit'}}>{rec.status||'—'}</span></div>
-          <div className="wa-mo-r"><label>Report Type</label>
-            <span className="v" style={{fontFamily:'inherit'}}>{tplRow?(REPORT_TYPE[tplRow.reportTypeCode]||'—'):'—'}</span></div>
-          <div className="wa-mo-r"><label>Category</label>
-            <span className="v" style={{fontFamily:'inherit'}}>{tplRow?(REPORT_CATEGORY[tplRow.reportCategoryCode]||'—'):'—'}</span></div>
-          <div className="wa-mo-r"><label>Frequency</label>
-            <span className="v" style={{fontFamily:'inherit'}}>{tplRow?(REPORT_FREQUENCY[tplRow.frequencyCode]||'—'):'—'}</span></div>
-          <div className="wa-mo-r"><label>Business Unit</label>
-            <span className="v" style={{fontFamily:'inherit'}}>{dvBu(rec.businessUnitId)||'—'}</span></div>
-          <div className="wa-mo-r"><label>Region</label>
-            <span className="v" style={{fontFamily:'inherit'}}>{dvRegion(rec.regionId)||'—'}</span></div>
+          <div className="wa-mo-r txt"><label>Status</label>
+            <span className="v">{rec.status||'—'}</span></div>
+          <div className="wa-mo-r txt"><label>Report Type</label>
+            <span className="v">{tplRow?(REPORT_TYPE[tplRow.reportTypeCode]||'—'):'—'}</span></div>
+          <div className="wa-mo-r txt"><label>Category</label>
+            <span className="v">{tplRow?(REPORT_CATEGORY[tplRow.reportCategoryCode]||'—'):'—'}</span></div>
+          <div className="wa-mo-r txt"><label>Frequency</label>
+            <span className="v">{tplRow?(REPORT_FREQUENCY[tplRow.frequencyCode]||'—'):'—'}</span></div>
+          <div className="wa-mo-r txt"><label>Business Unit</label>
+            <span className="v">{dvBu(rec.businessUnitId)||'—'}</span></div>
+          <div className="wa-mo-r txt"><label>Region</label>
+            <span className="v">{dvRegion(rec.regionId)||'—'}</span></div>
           <div className="wa-mo-r"><label>Version</label>
             <span className="v">{rec.version!=null?'v'+rec.version:'—'}</span></div>
-          <div className="wa-mo-r"><label>Review step</label>
-            <span className="v" style={{fontFamily:'inherit'}}>{rec.reviewStep!=null
+          <div className="wa-mo-r txt"><label>Review step</label>
+            <span className="v">{rec.reviewStep!=null
               ?`Step ${rec.reviewStep+1} of ${reviewChain.length||'—'}`:'—'}</span></div>
-          <div className="wa-mo-r"><label>Locked</label>
-            <span className="v" style={{fontFamily:'inherit'}}>{rec.locked?'Yes':'No'}</span></div>
+          <div className="wa-mo-r txt"><label>Locked</label>
+            <span className="v">{rec.locked?'Yes':'No'}</span></div>
         </div>
 
         <div className="card">
@@ -6996,43 +6898,43 @@ function MeetingDetail({rec,back}){
         <div className="card">
           <h2>Occurrence</h2>
           <div className="wa-mo-r"><label>ID</label><span className="v mono">{occCode(rec)}</span></div>
-          <div className="wa-mo-r"><label>Setup</label>
-            <span className="v" style={{fontFamily:'inherit'}}>{setup?setup.name:'Custom Ad Hoc'}</span></div>
-          <div className="wa-mo-r"><label>Setup Type</label>
-            <span className="v" style={{fontFamily:'inherit'}}>{setup?setup.type:'Ad Hoc'}</span></div>
-          <div className="wa-mo-r"><label>Classification</label>
-            <span className="v" style={{fontFamily:'inherit'}}>{occCls(rec)}</span></div>
-          <div className="wa-mo-r"><label>Cadence</label>
-            <span className="v" style={{fontFamily:'inherit'}}>{setup?setup.cadence:'Ad Hoc — no cadence'}</span></div>
-          {rec.adhoc && <div className="wa-mo-r"><label>Ad Hoc Type</label>
-            <span className="v" style={{fontFamily:'inherit'}}>{rec.adhoc}</span></div>}
-          <div className="wa-mo-r"><label>Business Unit</label>
-            <span className="v" style={{fontFamily:'inherit'}}>
+          <div className="wa-mo-r txt"><label>Setup</label>
+            <span className="v">{setup?setup.name:'Custom Ad Hoc'}</span></div>
+          <div className="wa-mo-r txt"><label>Setup Type</label>
+            <span className="v">{setup?setup.type:'Ad Hoc'}</span></div>
+          <div className="wa-mo-r txt"><label>Classification</label>
+            <span className="v">{occCls(rec)}</span></div>
+          <div className="wa-mo-r txt"><label>Cadence</label>
+            <span className="v">{setup?setup.cadence:'Ad Hoc — no cadence'}</span></div>
+          {rec.adhoc && <div className="wa-mo-r txt"><label>Ad Hoc Type</label>
+            <span className="v">{rec.adhoc}</span></div>}
+          <div className="wa-mo-r txt"><label>Business Unit</label>
+            <span className="v">
               {rec.bu}{(BUS.find(b=>b.id===rec.bu)||{}).region?' · '+BUS.find(b=>b.id===rec.bu).region:''}</span></div>
-          <div className="wa-mo-r"><label>Meeting Chair</label>
-            <span className="v" style={{fontFamily:'inherit'}}>{P(r.chair).name}</span></div>
-          <div className="wa-mo-r"><label>Facilitator</label>
-            <span className="v" style={{fontFamily:'inherit'}}>{P(r.facilitator).name}</span></div>
-          <div className="wa-mo-r"><label>MoM Recorder</label>
-            <span className="v" style={{fontFamily:'inherit'}}>{P(r.recorder).name}</span></div>
-          <div className="wa-mo-r"><label>TOR or Policy Reference</label>
-            <span className="v" style={{fontFamily:'inherit'}}>{setup&&setup.tor
+          <div className="wa-mo-r txt"><label>Meeting Chair</label>
+            <span className="v">{P(r.chair).name}</span></div>
+          <div className="wa-mo-r txt"><label>Facilitator</label>
+            <span className="v">{P(r.facilitator).name}</span></div>
+          <div className="wa-mo-r txt"><label>MoM Recorder</label>
+            <span className="v">{P(r.recorder).name}</span></div>
+          <div className="wa-mo-r txt"><label>TOR or Policy Reference</label>
+            <span className="v">{setup&&setup.tor
               ? setup.tor
               : accred ? 'Required — none held' : 'Optional — none held'}</span></div>
-          <div className="wa-mo-r"><label>Quorum Threshold</label>
-            <span className="v" style={{fontFamily:'inherit'}}>
+          <div className="wa-mo-r txt"><label>Quorum Threshold</label>
+            <span className="v">
               {setup&&setup.quorumPct!=null?setup.quorumPct+'%':'Not configured'}</span></div>
-          <div className="wa-mo-r"><label>Agenda Distributed</label>
-            <span className="v" style={{fontFamily:'inherit'}}>
+          <div className="wa-mo-r txt"><label>Agenda Distributed</label>
+            <span className="v">
               {rec.agendaSent?fmtD(rec.agendaSent):'Not recorded'}</span></div>
-          <div className="wa-mo-r"><label>Outlook and Teams</label>
-            <span className="v" style={{fontFamily:'inherit'}}>{rec.sync||'—'}</span></div>
-          <div className="wa-mo-r"><label>Mode</label>
-            <span className="v" style={{fontFamily:'inherit'}}>{rec.mode}</span></div>
-          <div className="wa-mo-r"><label>Location</label>
-            <span className="v" style={{fontFamily:'inherit'}}>{rec.location||'—'}</span></div>
-          <div className="wa-mo-r"><label>Created</label>
-            <span className="v" style={{fontFamily:'inherit'}}>{fmtD(rec.inviteSent)}</span></div>
+          <div className="wa-mo-r txt"><label>Outlook and Teams</label>
+            <span className="v">{rec.sync||'—'}</span></div>
+          <div className="wa-mo-r txt"><label>Mode</label>
+            <span className="v">{rec.mode}</span></div>
+          <div className="wa-mo-r txt"><label>Location</label>
+            <span className="v">{rec.location||'—'}</span></div>
+          <div className="wa-mo-r txt"><label>Created</label>
+            <span className="v">{fmtD(rec.inviteSent)}</span></div>
           {rec.link && <div style={{marginTop:8,paddingTop:8,borderTop:'1px solid var(--border)',
             fontSize:12,overflowWrap:'anywhere'}}>
             <span style={{color:'var(--ink-2)'}}>Online link: </span>{rec.link}</div>}
@@ -8183,15 +8085,15 @@ function MomDetail({rec,occ,back}){
         <div className="card">
           <h2>MOM Details</h2>
           <div className="wa-mo-r"><label>ID</label><span className="v mono">{momCode(rec)}</span></div>
-          <div className="wa-mo-r"><label>Meeting</label>
-            <span className="v" style={{fontFamily:'inherit'}}>{occCls(occ)}</span></div>
+          <div className="wa-mo-r txt"><label>Meeting</label>
+            <span className="v">{occCls(occ)}</span></div>
           <div className="wa-mo-r"><label>Date Held</label><span className="v">{fmtD(occ.date)}</span></div>
-          <div className="wa-mo-r"><label>Recorder</label>
-            <span className="v" style={{fontFamily:'inherit'}}>{P(r.recorder).name}</span></div>
+          <div className="wa-mo-r txt"><label>Recorder</label>
+            <span className="v">{P(r.recorder).name}</span></div>
           <div className="wa-mo-r"><label>Submitted</label>
             <span className="v">{rec.submittedAt?fmtD(rec.submittedAt.split(' ')[0]):'—'}</span></div>
-          <div className="wa-mo-r"><label>Type</label>
-            <span className="v" style={{fontFamily:'inherit'}}>
+          <div className="wa-mo-r txt"><label>Type</label>
+            <span className="v">
               {(occ.setup&&(MS(occ.setup).cls||'').includes('Accreditation'))?'Accreditation':occType(occ)}</span></div>
         </div>
 

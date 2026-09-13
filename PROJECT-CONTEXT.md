@@ -3,7 +3,8 @@
 > Handoff notes for anyone (human or AI) picking this project up cold.
 > Written 30 Aug 2026, updated 01 Sep 2026, updated 02 Sep 2026 (twice),
 > updated 04 Sep 2026, updated 05 Sep 2026, updated 06 Sep 2026,
-> updated 07 Sep 2026 (twice), updated 08 Sep 2026, against branch `leadership-practice`.
+> updated 07 Sep 2026 (twice), updated 08 Sep 2026, updated 12 Sep 2026
+> (covering 09-12 Sep), updated 13 Sep 2026, against branch `leadership-practice`.
 >
 > This file records **decisions, hard-won schema facts and open questions** —
 > the things that are expensive to rediscover. It is not a substitute for the
@@ -23,9 +24,10 @@ Meeting Minutes (MOM) → Audit Grid scoring → Decisions → TMS Tasks.
 | Environment | `https://org319b4ea9.crm4.dynamics.com/` |
 | Solution | `LeadershipPractice` |
 | Branch | `leadership-practice` |
-| Dataverse tables | 43 schema files in `.power/schemas/dataverse/`, plus `wlog_decisions`/`lm_reportoccurrencedepartmentfunctions` under `commondataservice` and the two KPI tables — see §6. Includes Minutes, MOM Notes, Audit Grid instances/answers, Approval Cycles/Steps, Authority Matrix rows, `pm_kpiachievments`/`stf_kpiachievmentbreakdowns`, (04 Sep) the four Report/Plan Composition tables, and (06 Sep) `lm_reportoccurrencedepartmentfunctions` |
+| Dataverse tables | 44 schema files in `.power/schemas/dataverse/`, plus `wlog_decisions`/`lm_reportoccurrencedepartmentfunctions` under `commondataservice` and the two KPI tables — see §6. Includes Minutes, MOM Notes, Audit Grid instances/answers, Approval Cycles/Steps, Authority Matrix rows, `pm_kpiachievments`/`stf_kpiachievmentbreakdowns`, (04 Sep) the four Report/Plan Composition tables, (06 Sep) `lm_reportoccurrencedepartmentfunctions`, and (10 Sep) `lm_setupactivity` |
 | Two modules | `src/modules/leadership/LeadershipApp.jsx` (execution), `src/modules/governance/GovernanceApp.jsx` (setup) |
 | Shared layer (08 Sep) | `src/shared/format.js` (dates, working calendar, formatting) and `src/shared/ui.jsx` (presentational primitives) — pure, importable by either module. `src/modules/leadership/store.jsx` holds `Ctx`/`use`. A `SCREENS` registry in `LeadershipApp.jsx` is now the single definition of each nav tab. See §5/§9. |
+| Domain + first screen files (11 Sep) | `src/modules/leadership/domain.jsx` — the report-composition domain, **26 symbols moved** out of LeadershipApp (KPI/Process/BI catalogues, achievement maths, citation vocabulary, `CiteCard`, `P`, `rptCfg`). `src/modules/leadership/screens/` holds the first three screens in their own files (`BusinessIntelligence.jsx`, `OrgReports.jsx`, `Hierarchy.jsx`), importing only from `domain.jsx`, `store.jsx` and `shared/`. LeadershipApp is down to ~9,765 lines from 10,115. |
 
 ---
 
@@ -98,6 +100,8 @@ The BRD **contradicts itself** in three places, and the code picked a side:
 | **My Workspace (nav screen)** | ✅ **live** — reads its Work Queue, Upcoming panel and This Month stats directly off the full `dvMeetingOccs`/`dvReportOccs` arrays via `dvWorkItems()`. Two silent-data-loss bugs fixed here 01 Sep — see §5: an overdue Meeting with partial attendance recording used to vanish from Work Queue, and a blank/unrecognized status code used to vanish a row from every screen at once. Its Decisions filter tab still shows 0 because Decisions (below) only just went live. |
 | **Decisions register** | 🟡 **partially live** (this session) — `wlog_decisions` read + minimal create wired as its own list on the Decisions tab, alongside (not replacing) the existing seeded Decision workflow. Not yet linked to the Meeting Agenda Item or Report that raised it — deferred by explicit instruction, see §5/§6/§7. |
 | **Committee Scores (nav screen)** | ✅ **live** (01 Sep) — `ScreenGrid` now reads `fetchAuditGridInstances()` joined against `dvMeetingOccs`, instead of seeded `db.grids`. See §5 for the join details and the Approved-only Coverage/Score rule. |
+| **Setup Activity trail** — the Activity tab on a Report/Meeting Setup | ✅ **live** (10 Sep) — `lm_setupactivity` is written on create, edit, publish, approve and expire, and the tab reads the real rows back for any Setup that has a `_dataverseId`. A Setup that has never been saved still shows the seeded sample trail. |
+| **Artifact group** — Business intelligence, Reports / Plans, Reporting hierarchy | 🟡 **mixed** (11 Sep) — all three run on the app's own data rather than the prototype's parallel seed model, but that data is itself seeded: BI reports from `BI_REPORTS`, reports from `db.reports`, hierarchy edges derived from real `RPT:` paragraph citations. The Power BI report itself **cannot be embedded** — see §8. |
 | Tasks, Comments, Governance Settings (persisted values) | ❌ **seeded demo data only** |
 
 **`scoreGrid()` (seeded) and `liveScoreGrid()` (live) are two separate functions**,
@@ -870,6 +874,236 @@ cannot fire. No companion `.md` was written — the artifact is the only copy.
 
 ---
 
+### 09-12 Sep: responsiveness, the Meeting cadence columns, the Setup Activity trail, a version-bump bug, incremental child saves, the Artifact group — and two infrastructure incidents
+
+Long stretch. Everything below is built and green. **Nothing is committed.**
+
+**1. Whole-app responsiveness (09 Sep).** Breakpoints at 1024 / 860 / 760 / 560 on
+top of the existing ones, plus a `(hover:none) and (pointer:coarse)` block that
+grows controls only — table rows are deliberately left dense. Four real bugs
+found, all in §8 or below:
+- ⚠️ **The minifier was emitting `@media (width<=760px)`**, modern range syntax
+  Safari did not support until 16.4. An iPad on iPadOS 15/16.0 would have
+  ignored **every** responsive rule, old and new. Fixed by pinning
+  `build.cssTarget:'chrome61'` in `vite.config.js` — syntax only, no rule
+  changes. Verified in the built bundle before and after.
+- **The Leadership sidebar never actually went horizontal.** The ≤760 block
+  turns `.side` into a strip, but `.lp-side` sets `flex-direction:column` at
+  equal specificity and later in the file, so column won — the nav rendered as
+  a full-width vertical stack pushing the app below the fold. It is now filled
+  pills, matching what the Governance module already did correctly.
+- **Tables squeezed instead of scrolling.** `table.data` is `width:100%`, so it
+  shrank rather than overflowing and the `overflow-x:auto` never engaged;
+  combined with an `overflow-wrap:anywhere` I had added, titles broke one
+  letter per line. Fixed with a `min-width:580px` floor below 760px and
+  `break-word` instead of `anywhere`.
+- The same `anywhere` rule existed in the Governance Lists viewer at a
+  specificity the theme rule could not reach; turned off at that breakpoint.
+
+**2. `lm_meetingtemplates` — three cadence columns added and wired (09 Sep).**
+`lm_seconddayoftheweek`, `lm_seconddayofthemonth`, `lm_monthofthesemesterseme`.
+Round-trip wired through `dataverse.js` (two new key maps, the write, both
+JSDoc blocks, the read select, two exported decodes) and `GovernanceApp.jsx`
+(payload + hydrate). **The form was already collecting these** — `CadenceFields`
+is shared by both wizards — so they were being dropped silently on save; this
+fixed a loss rather than adding a field. Seven of nine frequencies now fire.
+See §6 for the numbering trap, which is worse than the Report side's.
+
+⚠️ **Annual still cannot be generated.** There is no month-of-year column on
+`lm_meetingtemplates`; `lm_month` exists on `lm_report_templates` only. Rather
+than collect a value with nowhere to go, `CadenceFields` takes a `noMonth` prop
+from the Meeting wizard and shows a note in place of the Month dropdown.
+
+**3. Meeting Occurrence flow plan rebuilt twice (09 Sep).** §10, same URL.
+First to the Report flow's structure with a per-unit rule; then again once the
+three columns landed. ⚠️ **The weekend rule reversed on the product owner's
+instruction**: a Meeting due on a weekend day is now **created on that day**
+and rescheduled later by its owner, exactly like a Report. The `BookedDate`
+roll-forward step is gone and the duplicate guard queries the due date. The
+plan is 11 steps, and says so explicitly in case anyone built from the earlier
+version.
+
+**4. `lm_setupactivity` registered and wired (10 Sep).** The table I specified
+was created exactly as spec'd, caps included. `dataverse.js` gained
+`logSetupActivity` / `logSetupActivityBatch` / `fetchSetupActivity`; the
+Activity tab on Setup Detail now reads live rows and replaces the seeded ones
+when the Setup has a `_dataverseId`. Detail in §6.
+
+**5. ⚠️ The version number never increased — found and fixed (10 Sep).**
+I first reported this as working after reading `publish` in isolation. It was
+not. `A.edit()` flips an approved Setup to Under Review **the moment the editor
+opens**, so by the time `publish` asked "is this Setup approved?" the answer was
+always no. The version rose 0→1 on first publish and then never again; the bump
+branch was unreachable. Fixed with a module-level `REVISING` map recording the
+version an edit started from, consumed by `publish` through a shared
+`nextVersionFor()` — which the Publish preview modal now also uses, since it
+had its own copy of the same broken logic and was under-promising identically.
+Kept off the Setup object deliberately: the edit form rebuilds its state and
+writes the whole object back, so a marker stored on the record could be lost.
+
+**6. Child rows are reconciled, not deleted and recreated (10 Sep).** On the
+product owner's instruction: adding one Business Unit or Attendee must not
+rewrite the others. A shared `reconcileRows()` diffs by a stable key — the BU
+or Region lookup for units, the Position within its unit for attendees, the
+step number within its unit for review chain steps. Rows on both sides are
+kept and only patched when a field actually differs, so an unrelated edit no
+longer bumps every row's `modifiedon`. Flat template-level lists (agenda,
+lines, KPIs, Processes, checklist, section items) still delete-and-recreate —
+nothing references their ids and they have no stable natural key.
+
+⚠️ Two consequences worth knowing: attendee **type** is not diffed (the create
+path hardcodes Core), and a **cleared lookup still will not clear**, because
+Dataverse does not clear a lookup through a plain PATCH value. Previously the
+row was deleted and rebuilt, which cleared it as a side effect — so this change
+makes that limitation more visible, not new.
+
+**7. Governance Settings merged into one list (10 Sep).** The three timing
+cards and the eight "Values awaiting a business decision" rows became **nine
+cards, each setting appearing exactly once** — MOM write-up and MOM approval
+had been in both sections with two different controls for the same value. One
+card component renders whichever parts a setting has: the from→to strip for
+the three elapsed periods, the open question and effect for all, then a free
+numeric input or choice pills. `TimingCard`, `ValueCard`, `TIMING_PERIODS`,
+`NUM`, `CHOICE` and `.ph-sec` were all removed rather than left orphaned.
+
+**8. Ad Hoc pickers list approved Setups only, with search (10 Sep).** Both
+modals had been offering every Setup — Draft, Under Review and Expired — while
+the Meeting one's own label said "Approved Setup". `setupIsApproved` decides it
+the same way the rest of the app does, so a blank or unrecognised status still
+reads as approved (rows predating the status column are genuinely in use).
+
+**9. Search on the Meetings and Reports registers (10 Sep)** — matching every
+column the table shows, including the date in raw and displayed form, terms
+AND-ed rather than treated as a phrase. It composes with the tab and type
+filters; Reset filters clears it.
+
+⚠️ **This shipped a crash — React error #310** — because both `useState` calls
+landed *after* the screens' early returns, so opening any meeting or report
+rendered fewer hooks. Fixed by hoisting the state and replacing the `useMemo`
+with a plain filter (a hook in that position would reintroduce it). See §8:
+there is no lint on this machine, so a scan script is the only guard.
+
+**10. Setup Register row separators aligned (10 Sep).** `.reg-actions` had
+`display:flex` on a `<td>`, which takes a cell out of the table's row-height
+sharing — its `border-bottom` painted at its own content height, so the line
+under Open/Duplicate sat above the rest of the row wherever a name wrapped.
+
+**11. Console noise removed (11 Sep).** 22 of 27 `console.log` calls gone: all
+17 `[dataverse] fetchX() returned N row(s)` (which also dumped the whole array
+every load) and 5 routine success confirmations. **Kept deliberately:** every
+`console.warn`, because user-facing toasts say "Check the console for details",
+and the four `[Excel]` logs, which are the file-reader proof of concept's only
+output.
+
+**12. New `Artifact` nav group, three screens (11 Sep).** Ported from the
+"Read" group of `Leadership Practice Extension.html`: **Business intelligence**
+(find the BI report behind a measure), **Reports / Plans** and **Reporting
+hierarchy**. Built on this app's own data rather than importing the
+prototype's parallel seed model — BI reports from `BI_REPORTS`, reports from
+`db.reports`, and hierarchy children **derived from real `RPT:` paragraph
+citations**. Reports / Plans was rebuilt once to the prototype's actual shape:
+a rail of reports beside one open report shown as a stack of paragraphs, each
+carrying its author, process, diagnostic angle and citations, with both of the
+prototype's concept notes.
+
+⚠️ **I invented CSS class names again** here (`.vis`, `.vis-h`, `.t-name` are
+prototype-only) and caught it before shipping. Second occurrence this month —
+see §8.
+
+**13. The first screens moved into their own files (11 Sep).** The domain had
+to move first: the three screens reached into `KPI_CAT`, `PROC_REG`,
+`CiteCard`, `rptCfg` and a dozen more, and importing those back from
+`LeadershipApp.jsx` would have created a circular import that ESM tolerates
+only because the bindings are read at render time. So `domain.jsx` was created
+by **moving** 26 symbols, with LeadershipApp importing them back. See §1 and §9.
+
+⚠️ **The move shipped broken and I reported it as clean** (found 12 Sep, from a
+`BIEmbed is not defined` crash in the deployed app). `CiteCard` moved, but nine
+of the things it reaches for did not: `BIEmbed`, `ST`, `PME`, `ISS`, `rptName`
+stayed in LeadershipApp.jsx, and `Bar`, `TODAY`, `fmtDS`, `fmtP` were never
+imported from `shared/`. In an ES module each of those is a free identifier —
+**a ReferenceError at render, and not a build error**, so `npm run build` stayed
+green the whole time. Fixed by moving the Strategy / Planning-&-Monitoring /
+Issues catalogues and their accessors, `rptName` and `BIEmbed` into
+`domain.jsx` as well (36 exported symbols now), and adding the four `shared/`
+imports. §8 has the scan script that would have caught it.
+
+**14. Power BI embedding — settled, negatively (11 Sep).** See §8. Worth
+reading before anyone tries again: the answer is not more URL tweaking, a
+library, or a login step.
+
+**18. The Meeting flow's first live run failed, and the guide was the cause
+(13 Sep).** Dataverse returned `400 / 0x80060888 — Bad Request - Error in query
+syntax` from a List rows action. Three separate defects in the flow guide could
+each produce it, all now fixed in the artifact (§10):
+
+- **Two OData strings were printed across several lines** for readability — the
+  step 5 `Select columns` and the step 10 duplicate guard. Pasted with the line
+  breaks intact, Dataverse rejects them. Both are now single lines with a
+  standing warning at the top of the build section.
+- **The weekend-rule box named the wrong Compose.** It said "there is no
+  `DueDate` step" when it meant `BookedDate`, the roll-forward Compose deleted on
+  09 Sep. Anyone following it literally deletes `DueDate` — which steps 7 to 12
+  all read — leaving every later expression null and the guard filter ending in a
+  bare `eq`.
+- **The Region branch left a literal `…` placeholder** where
+  `_lm_region_value eq @{outputs('UnitId')}` belongs.
+
+⚠️ Also corrected in the same pass, and this one was silently wrong rather than
+loud: the guard used `lm_date eq`. `lm_date` is typed **DateTime**, so `eq`
+against a bare `yyyy-MM-dd` compares midnight to a date, matches nothing, and the
+guard passes on every run — re-creating the same meetings weekly without ever
+erroring. It now uses the half-open range `ge` / `lt`.
+
+**Occurrence names now carry the unit** — on the product owner's instruction. The
+name ends with the Business Unit, or the Region, or for a group-wide meeting the
+stage (`Group Functional` / `Top Management`). Until now one Setup firing on one
+date produced several occurrences that were indistinguishable in every list in
+the app. Neither name costs a lookup — see §6.
+
+**Stage 3/4 meetings are generated at all, for the first time.** This was open
+item #4 on the flow plan: a group-wide Setup has no unit rows, so both unit lists
+come back empty, the unit loop never runs, and nothing was created — silently.
+The decision taken, which the naming request forced: **one occurrence, both
+lookups null**, chair and facilitator from the Setup's parent row, named by its
+stage. It is step 12 of the guide. ⚠️ It carries **no attendees** —
+`lm_meetingattendeeslists` can only hang off a per-unit row, so there is nothing
+for an attendee to point at. Giving these meetings a roster needs a Setup-level
+lookup on that table.
+
+**17. Reporting hierarchy rebuilt to the prototype's layout (12 Sep).** It was
+an indented list; it is now the prototype's centred top-down org chart -- the
+`.org-tree` ul/li rule where each connector is a pair of `::before`/`::after`
+borders, so the tree reflows with its boxes and needs no measuring pass. With
+it came the three-field filter (name / type / department), click-to-focus that
+dims everything outside the focused report's ancestors and descendants, and the
+detail modal listing the report's sections and the BI reports it ultimately
+rests on. A child is still derived from real citations -- a `RPT:` reference, or
+a `PAR:` reference resolved to its owning report -- never declared.
+
+Two deliberate departures from the prototype: a repeated node (the same report
+reached by two paths) renders as a dashed "already shown higher up" marker
+rather than being dropped silently, because hiding it makes the tree read as
+smaller than it is; and the prototype's `--gold-dark` is `#A5845B`, which is
+this theme's `--teal` to the digit, so the palette ports across unchanged
+despite the token names disagreeing.
+
+**16. Side-rail key/value rows stack instead of squeezing (12 Sep).** A rail is
+a fixed 300px grid column. Both row components in it laid the label beside the
+value, which left the value roughly 66px: a meeting name wrapped one word per
+line and `Scheduled` broke as `Schedule` / `d`. Both now put the label above
+the value -- the shape `.lp-produced-row` in the same rail already used. For
+`.wa-mo-r` this is a `txt` modifier applied to the 32 rows whose value is text,
+identified by the inline `fontFamily:'inherit'` each of them already carried to
+undo the class's monospace; the 21 rows holding a count, id or version keep the
+side-by-side shape, which suits them. The 32 inline style objects are gone.
+
+**15. Two infrastructure incidents (12 Sep)** — the `pac` push timeout and
+OneDrive destroying two source files. Both in §8; the second one cost a
+recovery and is the strongest argument yet for moving the repo out of OneDrive.
+
+---
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### NEW this session: group-wide (Stage 3/4) roles now live on the parent row
@@ -950,13 +1184,41 @@ The column landed on 05 Sep as **`lm_month`** (a plain 1–12 calendar month,
 1 = January), and it is wired end to end: the Setup form, `dataverse.js`'s
 `MONTH_KEY`, the read select, and the Report Occurrence flow plan.
 
-**`lm_meetingtemplates` still has none of this.** It carries only `lm_frequency`,
-`lm_daysoftheweek`, `lm_dayofthemonth` and `lm_monthofthequarter` — no second day
-of week, no second day of month, no month of semester, no month of year. So on the
-Meeting side **five of the nine frequencies cannot fire at all**: Twice Weekly,
-Twice Monthly, Semesterly, Annually and Custom. A Setup saved with one of them
-generates nothing, silently. Either add the four columns the Report table already
-has, or stop offering those values in the Meeting Setup form.
+**`lm_meetingtemplates` — three of the four columns landed 09 Sep**, leaving one
+gap. It now carries `lm_frequency`, `lm_daysoftheweek`, `lm_dayofthemonth`,
+`lm_monthofthequarter`, **`lm_seconddayoftheweek`**, **`lm_seconddayofthemonth`**
+and **`lm_monthofthesemesterseme`** — all wired end to end (see below for the
+numbering trap, which is not the same as the Report table's).
+
+Twice Weekly, Twice Monthly and Semesterly now fire. **Annually still cannot**:
+there is no month-of-year column on `lm_meetingtemplates` — `lm_month` exists on
+`lm_report_templates` only. Rather than collect a month with nowhere to store it,
+the shared `CadenceFields` component takes a `noMonth` prop from the Meeting
+wizard and renders a note in place of the Month dropdown. **To unblock Annual
+meetings, add `lm_month` (1–12, 1 = January) to `lm_meetingtemplates`**; the flow
+branch and the form change are already written and waiting on the column. Custom
+remains unsupported on both sides — there is no rule field anywhere.
+
+#### ⚠️ The Meeting cadence columns do NOT all use the same numbering
+This is the single most expensive trap on this table. Two day-of-week columns sit
+side by side with **different bases**:
+
+| Column | Numbering | Sunday | Monday | … |
+|---|---|---|---|---|
+| `lm_daysoftheweek` | **124330000-based** | 124330000 | 124330001 | … |
+| `lm_seconddayoftheweek` | **1-based** | 1 | 2 | … |
+
+`dataverse.js` therefore keeps two separate maps — `MEETING_DAY_OF_WEEK_KEY` and
+`MEETING_SECOND_DAY_OF_WEEK_KEY` — and they are **not interchangeable.** Writing
+the wrong one is accepted by Dataverse (both are valid integers for a choice
+column with those options) and only shows up as meetings generated on the wrong
+day. `lm_monthofthesemesterseme` is 1–6, and `lm_seconddayofthemonth` is a plain
+whole number.
+
+Also note the **truncated logical name**: the column is
+`lm_monthofthesemesterseme`, not `lm_monthofthesemester`. Dataverse cut it at the
+length limit. Any hand-written FetchXML or flow expression has to use the
+truncated form.
 
 ### A Report Occurrence has no per-occurrence reviewer table
 `lm_reportoccurrences` carries **`lm_reviewstep` only**. The chain is **read from
@@ -1179,6 +1441,101 @@ live data. Figures: `stf_value` (actual), `comp_breakdowntarget` (target).
 nested/hierarchical breakdown structure beyond a flat dimension·member
 shape — also unconfirmed.
 
+### `lm_setupactivity` — the audit trail for Setup templates (10 Sep)
+One table serving **both** Report and Meeting templates, registered as
+`lm_setupactivity` (singular logical name, entity set `lm_setupactivities`). It is
+a **flat, denormalised log** by design — it carries the Setup's Dataverse id as a
+plain text column rather than two optional lookups, so one query returns the trail
+for either kind.
+
+Facts worth knowing before touching it:
+- The **before/after text columns are 2000 characters**, and Dataverse **rejects
+  with a 400 rather than truncating**. `dataverse.js` has a `trimmed()` helper for
+  exactly this — unlike `capped()`, which throws. Never feed an activity value
+  through `capped()`; a long field description would then block the whole save.
+- The action choice's **label for code 3 is `Editopened` — no space.** That is
+  what is deployed; `SETUP_ACTIVITY_ACTION_KEY` matches it verbatim. Don't "fix"
+  the label without changing the map.
+- Logging **must never fail a save.** Every activity write is fire-and-forget: it
+  is queued while the Setup is still local, flushed after the parent row's id
+  exists, and a failure is `console.warn`ed only. A Setup that saved but whose
+  activity row did not is the correct outcome, not an error state.
+- Because the log is written *after* the parent, an activity row for a
+  **brand-new** Setup can only be written once the create returns. `ACTIVITY_QUEUE`
+  in `GovernanceApp.jsx` holds those rows against the local id and rewrites them
+  to the Dataverse id on flush.
+
+### Version numbers only increase on publishing a revision — and the trigger is subtle
+`lm_version` on both template tables is an integer the app owns; Dataverse does
+not maintain it. The rule is: **a Setup's version increases when an approved Setup
+is edited and re-published.** Publishing a Draft for the first time gives version 1.
+
+⚠️ The part that is easy to get wrong, and was wrong until 10 Sep: **by the time
+`publish()` runs, the Setup is no longer approved.** Opening the editor
+(`A.edit()`) flips Active / Approved → Under Review immediately, so any check of
+the form "was this approved?" asked at publish time always answers no, and the
+version silently never moves past 1. The version an edit *started from* has to be
+recorded when the editor opens — that is what the module-level `REVISING` map is
+for — and read back through the shared `nextVersionFor()` helper. The Publish
+preview modal uses the same helper, so the number shown to the user and the number
+written are the same value by construction.
+
+`REVISING` is deliberately **not** stored on the Setup object: the edit form
+rebuilds its own state and writes the whole object back, so a marker living on the
+record can be lost by the very save it is meant to survive.
+
+### Child rows are reconciled by a natural key — which not every child has
+As of 10 Sep, three child collections are diffed rather than deleted and recreated
+(see §5), and the key is what makes that possible:
+
+| Child | Key |
+|---|---|
+| Template per-unit rows | the BU **or** Region lookup |
+| Attendees | the Position, within its unit |
+| Review chain steps | the step number, within its unit |
+
+Everything else — agenda items, report lines, KPIs, Processes, checklist items,
+section items — is **still delete-and-recreate**, because those rows have no
+stable natural key and nothing references their ids.
+
+⚠️ Two live limitations of the reconcile path:
+- **Attendee type is not diffed.** The create path hardcodes Core, so switching an
+  existing attendee to Supportive does not persist.
+- **Clearing a lookup still does not clear it.** Dataverse will not null a lookup
+  through a plain PATCH value (it needs the `/$ref` DELETE form). The old
+  delete-and-recreate path cleared lookups as a side effect of deleting the row,
+  so reconcile makes this limitation *visible*, not new.
+
+### A lookup's display name is already on the row — no `$expand` needed
+Both Meeting per-unit tables carry a **read-only denormalised name column**, kept
+in step by Dataverse, holding the related record's primary name:
+
+| Table | Column | Mirrors |
+|---|---|---|
+| `lm_meetingtemplatebusinessunitses` | `lm_businessunitname` | `businessunits.name` |
+| `lm_meetingtemplateregions` | `lm_regionname` | `crd04_regionses.crd04_id` |
+
+Select the column and read it straight off the unit row. This is what lets the
+occurrence generator name a meeting after its unit without a second query per
+row (§5, 13 Sep). The Report per-unit tables have the same pair.
+
+⚠️ **The Region table has no `name` column.** `crd04_regionses` stores its display
+name in **`crd04_id`** — a primary-name field someone called "ID", which
+`fetchRegions()` already maps as `name`. Anything reaching for `name` on that
+table gets nothing. `lm_regionname` mirrors whatever the primary name is, so the
+denormalised column is also the shortcut past the trap.
+
+### Two `lm_meetingoccurrences` column facts worth knowing before writing to it
+- **`lm_name` is 850 characters**, not the 100 that most text columns on these
+  tables are capped at. There is room to append a unit or a stage to a generated
+  name without the usual 400-on-overflow risk.
+- **`lm_date` is typed DateTime**, not Date Only. A filter of the form
+  `lm_date eq 2026-09-15` therefore matches **nothing** — stored midnight is not
+  equal to a bare date string. Any duplicate guard or day query has to use a
+  half-open range: `lm_date ge <date> and lm_date lt <date+1>`. This fails
+  *silently*, which is the dangerous part: the guard simply never finds the row
+  it is looking for and the caller re-creates it.
+
 ### Other gaps found by reading the schema
 - **No TOR review date** on `lm_meetingtemplates` — only the link. AG-01 can return
   5 or 0, never 3 ("present but past its review date").
@@ -1329,6 +1686,109 @@ shape — also unconfirmed.
   small file writes. Fix: `rm -rf node_modules && npm install` — no code
   change involved, and it isn't specific to any particular dependency.
 
+- **⚠️ Moving a symbol between modules cannot be verified by building.** A free
+  identifier — one the module neither declares nor imports — is a **runtime**
+  `ReferenceError` in an ES module, not a build error. Rollup does not fail on
+  it, and with lint blocked on this machine (above) nothing else looks either.
+  This shipped `BIEmbed is not defined` to the deployed app after `CiteCard` was
+  moved into `domain.jsx` and nine of its dependencies were left behind (12 Sep,
+  §5). **After any extract-and-move, scan for free identifiers**: strip comments
+  and double-quoted strings, collect every `<Capitalised` JSX tag and every
+  `name(` call that is not a property access, and subtract everything the file
+  declares, destructures, imports or takes as a parameter. Two traps in writing
+  that scan: never strip single-quoted strings (an apostrophe in JSX prose —
+  `isn't` — pairs with the next one and swallows the code between them, which
+  hid a real declaration on the first run), and expect prose words from inside
+  JSX text as false positives. Over-reporting is the right failure mode; check
+  the hits by eye. The script is committed at **`scripts/undef-scan.py`** — run
+  `python scripts/undef-scan.py`; it lists the files it covers at the top, so
+  add any new extracted module to that list.
+- **⚠️ Power Automate: `0x80060888 — Error in query syntax` never names the
+  column** (13 Sep). It means Dataverse could not *parse* the text in a
+  `Filter rows`, `Select columns` or `Order By` box — not that a column is wrong.
+  A wrong column name gives a different message (`Could not find a property named
+  'x'`), so seeing `0x80060888` tells you the names are fine and the string is
+  not. Two things produce it, and neither is visible in the designer:
+  **a line break** pasted into the box (documentation that wraps a long filter
+  for readability is the usual source), and **an expression that resolved to
+  nothing** — `_lm_businessunit_value eq @{outputs('UnitId')}` becomes
+  `_lm_businessunit_value eq ` when the Compose is empty or missing. To find it,
+  open the failed run → the failed action → **Inputs**, which shows the filter
+  fully resolved; the gap after the `eq` is then obvious. Both bit the Meeting
+  Occurrence flow on its first live run (§5).
+- **⚠️ Power Apps blocks `frame-src app.powerbi.com` — a Power BI report cannot
+  be embedded in this app, at all** (11 Sep). This is settled; do not spend time
+  on it again. The host page's Content-Security-Policy is served by Power Apps
+  and cannot be changed from the code app, and the block was **confirmed by
+  evidence, not assumed**: a `securitypolicyviolation` listener fires with
+  `violatedDirective: "frame-src"` and `blockedURI: "https://app.powerbi.com"`
+  the moment the iframe is attached. What does *not* help, so don't retry it:
+  rewriting the portal URL to `/reportEmbed`, adding `autoAuth=true`, passing
+  `ctid`, the `powerbi-client` / `powerbi-client-react` libraries (they inject
+  the same iframe into the same page), or signing the user in to Power BI on app
+  open (the frame never loads far enough to *ask* for a login — the browser
+  refuses the navigation before any request is sent). Two things do work and are
+  both implemented on the Business intelligence screen: a **popup viewer**
+  (`window.open`, a real top-level browsing context, so no `frame-src` applies)
+  and a **native figures panel** rendering the numbers in the app's own markup.
+  Note the earlier CSP evidence in this repo's history was `connect-src` (a
+  URL-shortener fetch), which is a *different* directive — `frame-src` was
+  verified separately.
+- **⚠️ OneDrive can dehydrate a source file mid-session and leave it unreadable
+  by the build** (12 Sep). Two files — `LeadershipApp.jsx` and
+  `governance-modern.css` — became Files-On-Demand placeholders: file attributes
+  `4199968` (`FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS`), stale modified timestamps,
+  and a build failing with **`ERROR_CLOUD_FILE_VALIDATION_FAILED` (os error
+  383)**. Only 2 of 117 tracked files were affected, so a green `git status` is
+  no reassurance. **The placeholder cannot be hydrated back** by touching or
+  copying it — the cloud copy is what got corrupted. Recovery route that worked:
+  rebuild from the newest clean source (an off-OneDrive snapshot, or
+  `git show HEAD:<path>`) and **replay the session's edits as file-based
+  scripts**, then verify by grepping for the expected content — *not* by a green
+  build, which only proves the file parses. This is the fourth OneDrive-caused
+  failure recorded in this section. **Move the repo off OneDrive.**
+- **`pac`/`power-apps push` times out on `generateResourceStorage`** (12 Sep) —
+  `Network request failed for POST …/powerapps/generateResourceStorage?api-version=1.
+  Connection timed out`. Authentication is fine (the CLI reports the connected
+  account); the failure is the network reaching an Azure Private Link host. Retry
+  first — it is usually transient. If it repeats, it is an IPv6/VPN path problem
+  rather than anything in the app, and the push is safe to re-run: it is
+  idempotent.
+- **There is no lint, so hooks-after-early-return has to be scanned for by
+  hand** (10 Sep). React error **#310** ("Rendered fewer hooks than expected")
+  shipped twice from the same mistake: a `useState` added to a screen *below* an
+  `if (…) return …`. Any component with an early return must have every hook
+  above it. With oxlint blocked (see above), the substitute is a scan script that
+  walks each `function Screen*`, finds the first `return` at the top level of the
+  body, and flags any `use*(` call after it. Run it after adding state to an
+  existing screen.
+- **The CSS minifier rewrites media queries into range syntax, which breaks
+  older Safari** (09 Sep). Lightning CSS emitted `@media (width<=760px)` from a
+  `max-width:760px` source rule. Safari did not support that syntax until 16.4,
+  so an iPad on iPadOS 15 or 16.0 silently ignored **every** responsive rule in
+  the bundle. Fixed by pinning `build.cssTarget: 'chrome61'` in
+  `vite.config.js`. This changes the emitted syntax only — no rule is altered.
+  Check the built CSS, not the source, when a breakpoint "doesn't work" on a
+  device.
+- **A patch script that opens a file for writing empties it before it encodes
+  anything.** `open(path,'w').write(text)` truncates the moment it opens; if the
+  `write()` then raises, the file is left at **zero bytes** and the traceback
+  says nothing about the loss. Python evaluates the `open()` call before the
+  argument, so `open(path,'wb').write(text.encode('utf-8'))` fails exactly the
+  same way. Encode into a variable on its own line first, *then* open. The
+  trigger seen here was a lone surrogate reaching `encode()` — a doubled
+  backslash in an escape like `\\ud83d` collapsing to a single one somewhere
+  between the editor and the interpreter, which Python then reads as half a
+  character. Write emoji as literal characters, not escapes.
+  **Recovery, when it happens:** `git show HEAD:<path> > <path>`, re-run each
+  patch script in order, and compare the character count each one prints against
+  what it printed the first time. Matching counts prove the restored base was
+  the same base, so nothing uncommitted was lost.
+- **Backtick-quoted patch scripts get mangled by the shell.** Writing a
+  JS/Python patch script inline through a shell heredoc strips template literals
+  and backticks, producing a script that runs but patches the wrong text. Write
+  patch scripts to a file with the Write tool and execute the file.
+
 ---
 
 ## 9. Remaining features checklist
@@ -1374,6 +1834,33 @@ something, except the one item below that's now live at a base level.
       (Direct/Authority-Check routing, Approval Cycle, Proposals) staying
       seeded-only until Open Decision §7.2 resolves — `wlog_decisions` was a
       deliberate choice not to build that onto this flatter table.
+
+### Done (09-12 Sep)
+- [x] **Whole-app responsiveness** — phones and iPads, both modules. Breakpoints
+      at 1024 / 860 / 760 / 560 plus a coarse-pointer block. See §5 and §8 for
+      the four bugs this surfaced, one of which (`cssTarget`) had been silently
+      disabling responsiveness on older iPads.
+- [x] **Meeting cadence: Twice Weekly, Twice Monthly, Semesterly** — three
+      columns wired end to end. Annual still blocked on one column (below).
+- [x] **Setup activity trail** — `lm_setupactivity` wired for create / edit /
+      publish / approve / expire, and read live into the Activity tab.
+- [x] **Version bump on re-publish** — was broken, now correct; see §6.
+- [x] **Incremental child saves** — adding one BU or Attendee no longer rewrites
+      the rest. Two known limits recorded in §6.
+- [x] **Governance Settings merged into nine cards** — each setting appears
+      exactly once. Still simulation-only; persistence is blocked below.
+- [x] **Approved-only Ad Hoc pickers, with search** — both Meeting and Report.
+- [x] **Search on the Meetings and Reports registers.**
+- [x] **`Artifact` nav group** — Business intelligence, Reports / Plans,
+      Reporting hierarchy, each in its own file under
+      `src/modules/leadership/screens/`.
+
+### Blocked — needs a new Dataverse column
+- [ ] **Annual meetings** — add **`lm_month`** (1–12, 1 = January) to
+      `lm_meetingtemplates`, matching the column already on
+      `lm_report_templates`. The flow branch and the form change are written;
+      only the column is missing. Until then the Meeting wizard shows a note
+      where the Month dropdown belongs. See §6.
 
 ### Blocked — needs a new Dataverse table
 - [ ] **Tasks** — `lm_tasks` (1 table), plus its own screen (Tasks are currently
@@ -1455,6 +1942,41 @@ quorum definition, Decision↔Meeting/Report linking (§7.7, deferred on purpose
       equivalent) — see §7.6. Don't pick this up without asking first.
 
 ### Smaller, self-contained gaps
+- [ ] **Commit the working tree.** Nothing from 09–12 Sep is committed — branch
+      `leadership-practice`, HEAD `e71b66f`. Twelve modified files plus
+      `domain.jsx`, `screens/`, `store.jsx`, `shared/` and the
+      `lm_setupactivity` generated files are all untracked or unstaged. Given
+      the OneDrive corruption in §8, this is the highest-value five minutes
+      available.
+- [ ] **Move the repo out of OneDrive** — four separate failures now traced to
+      it (§8), one of which destroyed two source files.
+- [ ] **`src/modules/leadership/LeadershipApp-Nourhane.jsx` is a stray copy** —
+      untracked, imported by nothing, and a pre-move snapshot (it still defines
+      `BIEmbed`). Almost certainly a OneDrive conflict copy. Confirm and delete;
+      leaving it there means a future grep finds two answers for every symbol.
+- [ ] **A group-wide (Stage 3/4) meeting has no attendees.**
+      `lm_meetingattendeeslists` links only to a per-unit row
+      (`_lm_meetingtemplateperbusinessunit_value` /
+      `_lm_meetingtemplateperregion_value`), and a group-wide Setup has no unit
+      row — so these occurrences are generated with a chair, a facilitator and an
+      agenda, and an empty roster. Needs a Setup-level lookup on
+      `lm_meetingattendeeslists`. Now reachable rather than theoretical, because
+      Stage 3/4 occurrences are generated as of 13 Sep (§5).
+- [ ] **Attendee type is not reconciled** — switching Core → Supportive on an
+      existing attendee does not persist (§6).
+- [ ] `gridSubmitHours` is stored in `DEFAULT_SETTINGS` and surfaced in
+      Governance Settings, but **nothing reads it**. Either wire it into the
+      Audit Grid submission window or drop it.
+- [ ] `reviewTimeoutDays` still has **no UI control** on the merged Governance
+      Settings list.
+- [ ] The Effect-on-Grids card in Governance Settings still reads seeded
+      `db.grids` rather than live data.
+- [ ] Module split, remaining: `seed.js`, then the rest of the screens
+      smallest-first (Settings → Grid → Meetings → Workspace → Calendar →
+      Decisions → Reports → Minutes). Paused by instruction, not blocked.
+- [ ] Optionally point the Business intelligence screen's `KpiPanel` at the
+      registered `pm_kpiachievments` / `stf_kpiachievmentbreakdowns` for real
+      figures instead of the seeded catalogue.
 - [ ] `fetchSetups()` in `dataverse.js` is a literal stub
       (`return notWiredYet('fetchSetups')`) — confirm nothing still calls it, or
       implement it.
@@ -1476,7 +1998,7 @@ quorum definition, Decision↔Meeting/Report linking (§7.7, deferred on purpose
 
 ## 10. Reference
 
-Three working documents were produced alongside an earlier version of this file:
+Four working documents were produced alongside an earlier version of this file:
 
 - **BRD Conformance Ledger** — 29 divergences between the build and the BRD, each
   showing whether the prototype spec pointed the same way
@@ -1484,12 +2006,25 @@ Three working documents were produced alongside an earlier version of this file:
 - **Build-Out Checklist** — 63 tickable items across tables, columns, services,
   screens, integrations and decisions
   <https://claude.ai/code/artifact/59f13ef0-773f-438e-b172-c24820fe0e66>
-- **Meeting Occurrence Generator** — **rebuilt 08 Sep, same URL.** The weekly
-  Thursday flow, restructured to match the Report generator, with a 12-step build
-  guide. One occurrence **per unit** — NOT per department, which is the rule that
-  changed: 2 BUs covering 10 departments produce 2 occurrences, not 20. Carries the
-  124330000-vs-1 option-set trap, the reversed weekend roll-forward, and the five
-  frequencies that cannot fire.
+- **Report Occurrence Generator** — the weekly Report flow: **14 numbered steps
+  plus two loop stages** (Loop D over units, Loop E over departments), covering all
+  nine frequencies, the `lm_month` Annual branch, and the rule that a Report due on
+  a weekend day is created on that day and rescheduled by its owner.
+  <https://claude.ai/code/artifact/db1d9a44-8e51-401e-8054-a819c2eefe57>
+- **Meeting Occurrence Generator** — **version 5, revised 13 Sep, same URL.** The
+  weekly flow, now a **12-step** build guide. One occurrence **per unit**, NOT per
+  department: 2 BUs covering 10 departments produce 2 occurrences, not 20. Read
+  the page rather than any earlier build: the step count has changed three times
+  (12 → 11 → 12), and the 13 Sep pass fixed three defects that each produce a
+  `400` on the first run plus one that fails silently — see §5 and §8.
+  **Step 12 is new**: the group-wide Stage 3/4 branch, without which those Setups
+  generate nothing. ⚠️ The **weekend rule is reversed from the 08 Sep version**: a
+  meeting due on a Friday or Saturday is **created on that day** and rescheduled
+  later by its owner, so the `BookedDate` roll-forward step is gone — but
+  `DueDate`, a different Compose, is still required. Carries the 124330000-vs-1
+  option-set trap in both its forms (see §6 — the two day-of-week columns on this
+  table do not use the same numbering) and the two frequencies that still cannot
+  fire.
   <https://claude.ai/code/artifact/6d7fefca-78cf-4172-a967-ce99bab2dbd1>
 
 Three more were produced this session:

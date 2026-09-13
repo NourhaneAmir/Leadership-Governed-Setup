@@ -15,8 +15,8 @@
    ========================================================================= */
 import React from 'react';
 import { use } from './store.jsx';
-import { Btn, Tag } from '../../shared/ui.jsx';
-import { fmtD, pct } from '../../shared/format.js';
+import { Btn, Tag, Bar } from '../../shared/ui.jsx';
+import { fmtD, fmtDS, fmtP, pct, TODAY } from '../../shared/format.js';
 
 export const PEOPLE = [
   /* The demo signs in as one person holding every role, so the whole cycle can be walked in one sitting.
@@ -339,5 +339,117 @@ export function CiteCard({cite,scope,onRemove}){
   return <div className={'cite '+citeCls(cite)}>
     {onRemove && <button className="cite-x" title="Remove this citation" onClick={onRemove}>×</button>}
     {body}
+  </div>;
+}
+
+/* =========================================================================
+   Catalogues a citation can point at, beyond KPIs and Processes.
+
+   These moved here with `CiteCard` (12 Sep): the card renders a Strategy,
+   Planning & Monitoring or Issue reference directly, so leaving them in
+   LeadershipApp.jsx left `ST`/`PME`/`ISS` free in this module -- which is a
+   ReferenceError at render, not a build error. LeadershipApp imports them
+   back and its own call sites are unchanged.
+   ========================================================================= */
+/* ---- Strategy chain: Objective → Tactic → POC → Project ---------------- */
+export const STRAT = [
+  {id:'OBJ-01', k:'Objective', n:'Improve patient safety and clinical outcomes', own:'u7', st:'Published'},
+  {id:'OBJ-05', k:'Objective', n:'Strengthen workforce capability',              own:'u7', st:'Published'},
+  {id:'OBJ-06', k:'Objective', n:'Improve operating margin',                     own:'u7', st:'Published'},
+
+  {id:'TAC-11', k:'Tactic', n:'Sepsis screening at every admission point', par:'OBJ-01',
+   kpi:'KPI-QLT-011', proc:'PRC-QLT-02', own:'u5', st:'78% → 90%', pct:62},
+  {id:'TAC-12', k:'Tactic', n:'Close corrective actions within the agreed window', par:'OBJ-01',
+   kpi:'KPI-QLT-014', proc:'PRC-QLT-02', own:'u5', st:'69% → 85%', pct:41},
+  {id:'TAC-21', k:'Tactic', n:'Reduce nursing vacancy through pipeline hiring', par:'OBJ-05',
+   kpi:'KPI-NUR-003', proc:'PRC-NUR-01', own:'u10', st:'13.4% → 8%', pct:28},
+  {id:'TAC-31', k:'Tactic', n:'Recover evening theatre lists', par:'OBJ-06',
+   kpi:'KPI-OPS-004', proc:'PRC-OPS-01', own:'u1', st:'82% → 85%', pct:55},
+
+  {id:'POC-04', k:'POC', n:'Electronic sepsis alert in the ED triage form', par:'TAC-11',
+   proc:'PRC-QLT-02', own:'u2', st:'Pre-implementation', pct:35},
+  {id:'POC-09', k:'POC', n:'Pooled evening theatre lists across specialties', par:'TAC-31',
+   proc:'PRC-OPS-01', own:'u1', st:'Design', pct:15},
+  {id:'POC-12', k:'POC', n:'Imaging maintenance contract moved to the OEM', par:'TAC-31',
+   proc:'PRC-BME-01', own:'u6', st:'Under evaluation', pct:20},
+
+  {id:'PRJ-07', k:'Project', n:'Sepsis alert rollout — Phase 1 ED', par:'POC-04',
+   proc:'PRC-QLT-02', own:'u2', st:'Pilot', pct:45,
+   budget:340000, start:'2026-05-01', end:'2026-11-30', scope:'AHJ Emergency Department'},
+  {id:'PRJ-14', k:'Project', n:'Nursing pipeline recruitment programme', par:'TAC-21',
+   proc:'PRC-NUR-01', own:'u10', st:'In delivery', pct:30,
+   budget:1250000, start:'2026-03-01', end:'2027-02-28', scope:'AHJ · ADC nursing establishment'},
+];
+export const ST = id => STRAT.find(s=>s.id===id);
+export const stratKids  = pid => STRAT.filter(s=>s.par===pid);
+export const tacticsFor = kpiId => STRAT.filter(s=>s.k==='Tactic' && s.kpi===kpiId);
+
+/* ---- Planning & Monitoring entries ------------------------------------- */
+export const PM_ENTRIES = [
+  {id:'TVP-11', k:'Target',   n:'Sepsis screens completed',   tg:4200, ac:3276, u:' screens',
+   proc:'PRC-QLT-02', tac:'TAC-11', own:'u5'},
+  {id:'TVP-14', k:'Target',   n:'Theatre cases delivered',    tg:1860, ac:1712, u:' cases',
+   proc:'PRC-OPS-01', tac:'TAC-31', own:'u1'},
+  {id:'SEP-21', k:'Supply',   n:'Two additional evening lists per week', vol:96,
+   win:'01 Sep – 31 Dec', st:'Committed',    proc:'PRC-OPS-01', tac:'TAC-31', own:'u1'},
+  {id:'SEP-24', k:'Supply',   n:'Agency nursing cover for ICU', vol:14,
+   win:'01 Aug – 31 Oct', st:'Under-covers', proc:'PRC-NUR-01', tac:'TAC-21', own:'u10'},
+  {id:'DEP-08', k:'Demand',   n:'Orthopaedic referral campaign', vol:340,
+   win:'01 Sep – 31 Dec', st:'Committed',    proc:'PRC-OPS-01', tac:'TAC-31', own:'u1'},
+  {id:'CNF-03', k:'Conflict', n:'Evening theatre capacity over-subscribed by three lists',
+   gap:'3 lists per week', st:'Open',        proc:'PRC-OPS-01', tac:'TAC-31', own:'u1'},
+];
+export const PME = id => PM_ENTRIES.find(p=>p.id===id);
+
+/* ---- Issues raised in other systems, citable as evidence --------------- */
+export const ISSUES = [
+  {id:'ISS-2201', n:'Anaesthesia machine 3 out of service', sys:'Biomedical Maintenance System',
+   st:'Open', sev:'High', own:'Biomedical Engineering', when:'2026-07-22', proc:'PRC-BME-01'},
+  {id:'ISS-1847', n:'Theatre scheduling module sync failures', sys:'IT Service Desk',
+   st:'In progress', sev:'Medium', own:'IT Applications', when:'2026-07-20', proc:'PRC-OPS-01'},
+  {id:'ISS-3390', n:'Sepsis alert not firing on transferred admissions', sys:'IT Service Desk',
+   st:'Open', sev:'High', own:'IT Applications', when:'2026-07-18', proc:'PRC-QLT-02'},
+  {id:'ISS-4102', n:'CT scanner PM overdue past contractual window', sys:'Biomedical Maintenance System',
+   st:'Open', sev:'Medium', own:'Biomedical Engineering', when:'2026-07-11', proc:'PRC-BME-01'},
+];
+export const ISS = id => ISSUES.find(i=>i.id===id);
+
+/* the display name of a Report -- its Setup's name, or the custom one */
+export const rptName = r => r.setup ? RS(r.setup).name : r.custom.name;
+
+/* the embedded Power BI preview behind a KPI — opened in place, not a link
+   away. Styled as a foreign embed so it never reads as native chrome. */
+export function BIEmbed({k,rec}){
+  const [open,setOpen] = useState(false);
+  const b = BIR(k.bi); if(!b) return null;
+  const pct = achPct(rec,k.dir);
+  const bars = [58,64,60,71,66,75,70, rec?Math.max(18,Math.min(96,pct||60)):60];
+  return <div style={{marginTop:8,paddingTop:8,borderTop:'1px dashed var(--border)'}}>
+    <Btn k="sm" onClick={()=>setOpen(o=>!o)}>
+      {open?'Close dashboard':'Open “'+b.n+'” inside this Report'}</Btn>
+    {open && <div className="pbi">
+      <div className="pbi-h">
+        <div className="m"><span className="p">P</span>
+          <span className="n">{b.n}</span><span className="e">EMBEDDED</span></div>
+        <a href={b.link} target="_blank" rel="noopener">Open in Power BI ↗</a>
+      </div>
+      <div className="pbi-b">
+        <div className="pbi-tile">
+          <div className="t">{k.n}</div>
+          <div className="s">{rec?'Target '+rec.target+k.unit:'No target set'}</div>
+          <div className="v">{rec?rec.actual+k.unit:'—'}</div>
+          <div className="spk">{bars.map((h,i)=>
+            <i key={i} className={i===bars.length-1?'last':''} style={{height:h+'%'}}/>)}</div>
+        </div>
+        <div className="pbi-tile">
+          <div className="t">Achievement against target</div>
+          <div className="s">Same period</div>
+          <div className="v">{pct!=null?pct+'%':'—'}</div>
+          <div className="spk">{[70,64,58,66,52,60,55,Math.max(15,Math.min(96,pct||55))].map((h,i)=>
+            <i key={i} className={i===7?'last':''} style={{height:h+'%'}}/>)}</div>
+        </div>
+      </div>
+      <div className="pbi-tabs"><span className="on">Overview</span><span>Trend</span><span>Detail</span></div>
+    </div>}
   </div>;
 }

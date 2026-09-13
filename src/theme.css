@@ -261,9 +261,15 @@ fieldset:disabled{opacity:.62}
 .kv dt{color:var(--muted);font-weight:550;white-space:nowrap}
 .kv dd{margin:0;color:var(--ink)}
 .kv-block{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px 22px}
-.kv-i label{display:block;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);
+.kv-i label,.kvr label{display:block;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);
   font-weight:700;margin-bottom:2px}
 .kv-i div{font-size:13px}
+/* A key/value row down a narrow side rail (.wa-side is 300px). It stacks
+   because a label column leaves the value no room -- and the value breaks on
+   word boundaries, so a long URL folds but `Scheduled` stays one word. */
+.kvr{padding:7px 0;border-bottom:1px solid var(--border)}
+.kvr:last-child{border-bottom:none}
+.kvr .v{font-size:12.5px;line-height:1.45;color:var(--ink);overflow-wrap:break-word}
 
 /* ---------- notes ---------- */
 .note{border-radius:8px;padding:10px 13px;font-size:12.5px;display:flex;gap:9px;align-items:flex-start;
@@ -432,9 +438,18 @@ fieldset:disabled{opacity:.62}
 .wa-up-t .n{font-size:12.5px;font-weight:640}
 .wa-up-t .m{font-size:11px;color:var(--muted);margin-top:1px}
 .wa-up-time{font-size:11px;color:var(--muted);font-family:var(--mono);white-space:nowrap}
-.wa-mo-r{display:flex;align-items:center;justify-content:space-between;padding:6px 0;font-size:12.5px}
-.wa-mo-r label{color:var(--ink-2)}
-.wa-mo-r .v{font-weight:650;font-family:var(--mono);font-variant-numeric:tabular-nums}
+.wa-mo-r{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 0;font-size:12.5px}
+.wa-mo-r label{color:var(--ink-2);min-width:0}
+.wa-mo-r .v{font-weight:650;font-family:var(--mono);font-variant-numeric:tabular-nums;
+  min-width:0;text-align:right;overflow-wrap:break-word}
+/* A row whose value is text, not a figure. Side by side, a name squeezed into
+   the right half of a 300px rail wraps a word per line, so this variant puts
+   the value on its own full-width line. It also carries the proportional font
+   that 32 of these rows used to set inline. */
+.wa-mo-r.txt{display:block}
+.wa-mo-r.txt label{display:block;margin-bottom:1px}
+.wa-mo-r.txt .v{display:block;text-align:left;font-family:inherit;
+  font-variant-numeric:normal;line-height:1.45}
 .wa-icon{width:34px;height:34px;flex:0 0 34px;border-radius:9px;display:flex;align-items:center;
   justify-content:center;font-size:15px}
 .wa-icon.gold{background:var(--teal-l);color:var(--teal-d)}
@@ -1111,15 +1126,60 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 }
 
 /* ---------- reporting hierarchy tree ---------- */
-.hier-node{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
-  padding:7px 9px;border-radius:8px;margin:3px 0;background:var(--surface);
-  border:1px solid var(--border)}
-.hier-node:hover{border-color:var(--border-d)}
-.hier-dot{width:8px;height:8px;flex:0 0 8px;border-radius:50%;background:var(--teal)}
-.hier-dot.leaf{background:var(--border-d)}
-.hier-name{background:none;border:none;padding:0;font-family:inherit;font-size:13px;
-  font-weight:650;color:var(--ink);cursor:pointer;text-align:left}
-.hier-name:hover{color:var(--teal-d);text-decoration:underline}
+/* ---------- Reporting hierarchy (Artifact) ----------
+   A top-down org chart, ported from the prototype. The connectors are drawn
+   with ::before/::after borders on each <li> rather than with SVG, so the
+   tree reflows with the boxes and needs no measuring pass. */
+.org-tree{display:flex;justify-content:center;min-width:max-content;margin:0 auto}
+.org-tree ul{display:flex;position:relative;margin:0;padding:28px 0 0;list-style:none}
+.org-tree li{display:flex;flex-direction:column;align-items:center;list-style:none;
+  padding:28px 10px 0;position:relative}
+/* the elbow above a node: half a horizontal rule on each side, plus the
+   vertical drop on one of them */
+.org-tree li::before,.org-tree li::after{content:'';position:absolute;top:0;right:50%;
+  border-top:2px solid var(--border-d);width:50%;height:28px}
+.org-tree li::after{right:auto;left:50%;border-left:2px solid var(--border-d)}
+.org-tree li:only-child{padding-top:0}
+.org-tree li:only-child::before,.org-tree li:only-child::after{display:none}
+.org-tree li:first-child::before{border:none}
+.org-tree li:last-child::after{border:none}
+.org-tree li:first-child::after{border-radius:6px 0 0 0}
+.org-tree li:last-child::before{border-radius:0 6px 0 0}
+/* the stem from a parent down to its children's rule */
+.org-tree ul ul::before{content:'';position:absolute;top:0;left:50%;
+  border-left:2px solid var(--border-d);width:0;height:28px}
+.org-tree>ul{padding-top:0}
+.org-tree>ul>li{padding-top:0}
+.org-tree>ul>li::before,.org-tree>ul>li::after{display:none}
+.org-tree>ul>li>ul::before{height:28px;top:0}
+
+.tnodebox{display:block;text-align:left;font-family:inherit;background:#fff;
+  border:1px solid var(--border-d);border-radius:8px;padding:10px 14px;cursor:pointer;
+  min-width:170px;max-width:230px;transition:box-shadow .12s,border-color .12s,opacity .12s}
+.tnodebox:hover{box-shadow:0 2px 8px rgba(0,0,0,.12)}
+.tnodebox.dim{opacity:.28}
+.tnodebox.focused{border-color:var(--teal);box-shadow:0 0 0 2px var(--teal-l)}
+.tnodebox.repeat{cursor:default;border-style:dashed}
+.tnodebox .tn-t{display:block;font-size:12px;font-weight:600;color:var(--ink);line-height:1.3}
+.tnodebox .tn-m{display:block;font-size:10px;color:var(--muted);margin-top:4px}
+
+/* The chart is as wide as the widest generation and must not be squeezed —
+   it scrolls sideways instead, which is also how the prototype carries it. */
+.hier-canvas{padding:34px 14px;overflow-x:auto}
+.hier-f{display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px}
+.hier-f input,.hier-f select{width:100%;min-width:0;border:1px solid var(--border-d);
+  border-radius:7px;padding:6px 9px;font-size:12.5px;background:#fff;font-family:inherit}
+.hier-f input:focus,.hier-f select:focus{outline:none;border-color:var(--teal);
+  box-shadow:0 0 0 3px var(--teal-ll)}
+@media(max-width:640px){.hier-f{grid-template-columns:1fr}}
+.hier-sec{border:1px solid var(--border);border-radius:8px;padding:9px 11px;margin-bottom:6px}
+.hier-sec .h{display:flex;align-items:center;gap:7px;font-size:12.5px;margin-bottom:3px}
+
+/* the prototype's small field label and closing note, used by the Artifact
+   screens */
+.flbl{font-size:9px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--faint);margin-bottom:8px}
+.cnote{padding:13px 15px;font-size:11px;line-height:1.7;color:var(--ink-2)}
 
 /* ---------- Artifact · Reports / Plans ----------
    The prototype's shape: a rail of reports on the left, one report open on the
