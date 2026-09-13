@@ -131,6 +131,13 @@ export const dataSourcesInfo = {
     "dataSourceType": "Dataverse",
     "apis": {}
   },
+  "lm_meetingoccurrencedepartmentfunctions": {
+    "tableId": "",
+    "version": "",
+    "primaryKey": "lm_meetingoccurrencedepartmentfunctionid",
+    "dataSourceType": "Dataverse",
+    "apis": {}
+  },
   "lm_meetingoccurrences": {
     "tableId": "",
     "version": "",

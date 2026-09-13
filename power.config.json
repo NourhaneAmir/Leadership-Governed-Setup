@@ -260,6 +260,10 @@
         "setupactivities": {
           "entitySetName": "lm_setupactivities",
           "logicalName": "lm_setupactivity"
+        },
+        "meetingoccurrencedepartment_functions": {
+          "entitySetName": "lm_meetingoccurrencedepartmentfunctions",
+          "logicalName": "lm_meetingoccurrencedepartmentfunction"
         }
       },
       "environmentVariableName": ""

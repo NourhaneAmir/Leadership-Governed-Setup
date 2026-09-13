@@ -23,6 +23,7 @@ export * as Lm_meetingattendeeslistsModel from './models/Lm_meetingattendeeslist
 export * as Lm_meetingminutesesModel from './models/Lm_meetingminutesesModel';
 export * as Lm_meetingoccurrenceagendasModel from './models/Lm_meetingoccurrenceagendasModel';
 export * as Lm_meetingoccurrenceattendeesesModel from './models/Lm_meetingoccurrenceattendeesesModel';
+export * as Lm_meetingoccurrencedepartmentfunctionsModel from './models/Lm_meetingoccurrencedepartmentfunctionsModel';
 export * as Lm_meetingoccurrencesModel from './models/Lm_meetingoccurrencesModel';
 export * as Lm_meetingtemplateagendaitemsModel from './models/Lm_meetingtemplateagendaitemsModel';
 export * as Lm_meetingtemplatebusinessunitsesModel from './models/Lm_meetingtemplatebusinessunitsesModel';
@@ -74,6 +75,7 @@ export * from './services/Lm_meetingattendeeslistsService';
 export * from './services/Lm_meetingminutesesService';
 export * from './services/Lm_meetingoccurrenceagendasService';
 export * from './services/Lm_meetingoccurrenceattendeesesService';
+export * from './services/Lm_meetingoccurrencedepartmentfunctionsService';
 export * from './services/Lm_meetingoccurrencesService';
 export * from './services/Lm_meetingtemplateagendaitemsService';
 export * from './services/Lm_meetingtemplatebusinessunitsesService';

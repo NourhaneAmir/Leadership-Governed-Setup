@@ -24,7 +24,7 @@ Meeting Minutes (MOM) → Audit Grid scoring → Decisions → TMS Tasks.
 | Environment | `https://org319b4ea9.crm4.dynamics.com/` |
 | Solution | `LeadershipPractice` |
 | Branch | `leadership-practice` |
-| Dataverse tables | 44 schema files in `.power/schemas/dataverse/`, plus `wlog_decisions`/`lm_reportoccurrencedepartmentfunctions` under `commondataservice` and the two KPI tables — see §6. Includes Minutes, MOM Notes, Audit Grid instances/answers, Approval Cycles/Steps, Authority Matrix rows, `pm_kpiachievments`/`stf_kpiachievmentbreakdowns`, (04 Sep) the four Report/Plan Composition tables, (06 Sep) `lm_reportoccurrencedepartmentfunctions`, and (10 Sep) `lm_setupactivity` |
+| Dataverse tables | 45 schema files in `.power/schemas/dataverse/`, plus `wlog_decisions`/`lm_reportoccurrencedepartmentfunctions` under `commondataservice` and the two KPI tables — see §6. Includes Minutes, MOM Notes, Audit Grid instances/answers, Approval Cycles/Steps, Authority Matrix rows, `pm_kpiachievments`/`stf_kpiachievmentbreakdowns`, (04 Sep) the four Report/Plan Composition tables, (06 Sep) `lm_reportoccurrencedepartmentfunctions`, (10 Sep) `lm_setupactivity` and (13 Sep) `lm_meetingoccurrencedepartmentfunction` |
 | Two modules | `src/modules/leadership/LeadershipApp.jsx` (execution), `src/modules/governance/GovernanceApp.jsx` (setup) |
 | Shared layer (08 Sep) | `src/shared/format.js` (dates, working calendar, formatting) and `src/shared/ui.jsx` (presentational primitives) — pure, importable by either module. `src/modules/leadership/store.jsx` holds `Ctx`/`use`. A `SCREENS` registry in `LeadershipApp.jsx` is now the single definition of each nav tab. See §5/§9. |
 | Domain + first screen files (11 Sep) | `src/modules/leadership/domain.jsx` — the report-composition domain, **26 symbols moved** out of LeadershipApp (KPI/Process/BI catalogues, achievement maths, citation vocabulary, `CiteCard`, `P`, `rptCfg`). `src/modules/leadership/screens/` holds the first three screens in their own files (`BusinessIntelligence.jsx`, `OrgReports.jsx`, `Hierarchy.jsx`), importing only from `domain.jsx`, `store.jsx` and `shared/`. LeadershipApp is down to ~9,765 lines from 10,115. |
@@ -876,7 +876,9 @@ cannot fire. No companion `.md` was written — the artifact is the only copy.
 
 ### 09-12 Sep: responsiveness, the Meeting cadence columns, the Setup Activity trail, a version-bump bug, incremental child saves, the Artifact group — and two infrastructure incidents
 
-Long stretch. Everything below is built and green. **Nothing is committed.**
+Long stretch. Everything below is built and green, and **committed** — in
+`019d7b6` ("Add the report part") and `4d4b9c5` ("Edit the UI"), both pushed to
+`origin/leadership-practice`.
 
 **1. Whole-app responsiveness (09 Sep).** Breakpoints at 1024 / 860 / 760 / 560 on
 top of the existing ones, plus a `(hover:none) and (pointer:coarse)` block that
@@ -1070,6 +1072,43 @@ stage. It is step 12 of the guide. ⚠️ It carries **no attendees** —
 `lm_meetingattendeeslists` can only hang off a per-unit row, so there is nothing
 for an attendee to point at. Giving these meetings a roster needs a Setup-level
 lookup on that table.
+
+**19. `lm_meetingoccurrencedepartmentfunction` registered, and the departments
+finally have somewhere to go (13 Sep).** Registered with
+`pac code add-data-source -a dataverse -t lm_meetingoccurrencedepartmentfunction`
+— entity set `lm_meetingoccurrencedepartmentfunctions`. Columns: `lm_name`
+(**required**, 850), `lm_Department`, `lm_Function`, `lm_MeetingOccurrence`, plus
+read-only `lm_departmentname` / `lm_functionname` / `lm_meetingoccurrencename`.
+
+This settles a question the Meeting flow plan had been answering with "nowhere".
+`lm_meetingoccurrences` has a single `lm_Department` lookup, which can hold one
+department but not ten, so the plan said to leave it empty and keep the
+Department/Function lines on the Setup. Now they are copied onto the occurrence
+as **child rows** — ten departments means one occurrence and ten rows.
+
+⚠️ **This does not reintroduce the fan-out, and the distinction matters.** The
+rule is unchanged: **one occurrence per unit**, never one per department. Two BUs
+covering ten departments still produce **two** occurrences, each now carrying ten
+Department/Function rows. The child rows *describe* who is in the room; they do
+not multiply the meeting. The Report side has the same table shape
+(`lm_reportoccurrencedepartmentfunctions`) for the opposite reason — there each
+department really does file its own report, so there it drives a fan-out.
+
+The flow guide gained **Loop F**, a third sibling of D and E, plus a `DeptLines`
+List rows in step 6 (the lines hang off the Setup, not a unit, so they are listed
+once and reused by every branch — including the group-wide one).
+
+⚠️ Two traps recorded while writing it: the **Function lookup binds to
+`hr_functions`**, not an `lm_` table — I wrote `/lm_functions(...)` first and
+caught it by checking `power.config.json` — and a line may carry a Department, a
+Function, or both, so each lookup needs its own non-empty Condition while
+`lm_name` (required) has to be built from whichever names are present.
+
+⚠️ **The app does not read these rows yet.** Meeting Detail still shows the single
+`lm_Department` lookup, which this flow deliberately leaves empty — so a
+generated meeting currently displays no department at all. Same state as
+`lm_reportoccurrencedepartmentfunctions`, registered 06 Sep and also never wired.
+See §9.
 
 **17. Reporting hierarchy rebuilt to the prototype's layout (12 Sep).** It was
 an indented list; it is now the prototype's centred top-down org chart -- the
@@ -1505,6 +1544,30 @@ stable natural key and nothing references their ids.
   through a plain PATCH value (it needs the `/$ref` DELETE form). The old
   delete-and-recreate path cleared lookups as a side effect of deleting the row,
   so reconcile makes this limitation *visible*, not new.
+
+### `lm_meetingoccurrencedepartmentfunction` — the departments on an occurrence (13 Sep)
+Entity set `lm_meetingoccurrencedepartmentfunctions`, logical name singular. One
+row per Department/Function line, all hanging off one Meeting Occurrence.
+
+| Column | Note |
+|---|---|
+| `lm_name` | **required**, 850 — must be built; there is no default |
+| `lm_Department` | → `cr603_chklst_departmentses` |
+| `lm_Function` | → **`hr_functions`** — HR's table, not an `lm_` one |
+| `lm_MeetingOccurrence` | → `lm_meetingoccurrences` |
+| `lm_departmentname` / `lm_functionname` | read-only denormalised names |
+
+⚠️ **The Function lookup is the trap.** Every other lookup in this area is `lm_`
+or `cr603_`; Functions are `hr_functions` / `hr_function`. Pattern-matching from
+the neighbouring bindings produces a name that does not exist.
+
+⚠️ **A line can carry a Department, a Function, or both.** Bind only the lookups
+that have a value — a null GUID binding errors — while `lm_name` is required and
+therefore cannot be skipped the same way.
+
+Note this table **records** scope; it does not drive a fan-out. Its Report
+namesake `lm_reportoccurrencedepartmentfunctions` looks identical but means the
+opposite: there, one row per department is one *report* per department.
 
 ### A lookup's display name is already on the row — no `$expand` needed
 Both Meeting per-unit tables carry a **read-only denormalised name column**, kept
@@ -1942,18 +2005,20 @@ quorum definition, Decision↔Meeting/Report linking (§7.7, deferred on purpose
       equivalent) — see §7.6. Don't pick this up without asking first.
 
 ### Smaller, self-contained gaps
-- [ ] **Commit the working tree.** Nothing from 09–12 Sep is committed — branch
-      `leadership-practice`, HEAD `e71b66f`. Twelve modified files plus
-      `domain.jsx`, `screens/`, `store.jsx`, `shared/` and the
-      `lm_setupactivity` generated files are all untracked or unstaged. Given
-      the OneDrive corruption in §8, this is the highest-value five minutes
-      available.
 - [ ] **Move the repo out of OneDrive** — four separate failures now traced to
       it (§8), one of which destroyed two source files.
 - [ ] **`src/modules/leadership/LeadershipApp-Nourhane.jsx` is a stray copy** —
       untracked, imported by nothing, and a pre-move snapshot (it still defines
       `BIEmbed`). Almost certainly a OneDrive conflict copy. Confirm and delete;
       leaving it there means a future grep finds two answers for every symbol.
+- [ ] **Neither occurrence Department/Function table is read by the app.**
+      `lm_reportoccurrencedepartmentfunctions` (06 Sep) and
+      `lm_meetingoccurrencedepartmentfunction` (13 Sep) are both registered, and
+      the Meeting flow now writes the second — but no screen reads either.
+      Meeting Detail shows the single `lm_Department` lookup, which the generator
+      deliberately leaves empty, so a generated meeting displays **no department
+      at all**. Wiring the read is a `fetch…` in `dataverse.js` plus a row on the
+      Occurrence rail.
 - [ ] **A group-wide (Stage 3/4) meeting has no attendees.**
       `lm_meetingattendeeslists` links only to a per-unit row
       (`_lm_meetingtemplateperbusinessunit_value` /
@@ -2011,8 +2076,9 @@ Four working documents were produced alongside an earlier version of this file:
   nine frequencies, the `lm_month` Annual branch, and the rule that a Report due on
   a weekend day is created on that day and rescheduled by its owner.
   <https://claude.ai/code/artifact/db1d9a44-8e51-401e-8054-a819c2eefe57>
-- **Meeting Occurrence Generator** — **version 5, revised 13 Sep, same URL.** The
-  weekly flow, now a **12-step** build guide. One occurrence **per unit**, NOT per
+- **Meeting Occurrence Generator** — **version 6, revised 13 Sep, same URL.** The
+  weekly flow, a **12-step** build guide writing **4 tables** (the fourth is the
+  Department/Function child rows added in version 6 — Loop F). One occurrence **per unit**, NOT per
   department: 2 BUs covering 10 departments produce 2 occurrences, not 20. Read
   the page rather than any earlier build: the step count has changed three times
   (12 → 11 → 12), and the 13 Sep pass fixed three defects that each produce a
