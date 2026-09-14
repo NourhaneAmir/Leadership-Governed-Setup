@@ -19,6 +19,13 @@ export const dataSourcesInfo = {
     "dataSourceType": "Connector",
     "apis": {}
   },
+  "lm_meetingoccurrencelinkedreportses": {
+    "tableId": "lm_meetingoccurrencelinkedreportses",
+    "version": "",
+    "primaryKey": "lm_meetingoccurrencelinkedreportsid",
+    "dataSourceType": "Connector",
+    "apis": {}
+  },
   "lm_reportoccurrencedepartmentfunctions": {
     "tableId": "lm_reportoccurrencedepartmentfunctions",
     "version": "",

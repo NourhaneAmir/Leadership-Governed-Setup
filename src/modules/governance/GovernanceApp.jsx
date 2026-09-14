@@ -581,6 +581,12 @@ const BLANK_MEETING={
   mode:null,
   supportive:[], quorum:null,
   torLink:'', agenda:[], linkedTemplates:[], confidentiality:null,
+  /* Per-Setup completion-period overrides -- same three deadlines as the
+     execution module's global Governance Settings defaults (momWriteupHours/
+     momApprovalHours/gridSubmitHours in LeadershipApp.jsx's DEFAULT_SETTINGS),
+     named identically on purpose. UI only for now -- no Dataverse column
+     exists yet, see the note above WizStep 5's Completion periods card. */
+  momWriteupHours:null, momApprovalHours:null, gridSubmitHours:null,
   status:'Draft', version:0, updated:TODAY};
 
 const BLANK_REPORT={
@@ -2160,7 +2166,8 @@ function MeetingWizard({rec,onClose}){
         </div>}
 />;
 
-      if(step===5) return <div className="card">
+      if(step===5) return <>
+      <div className="card">
         <h2>Mandate and agenda</h2>
         <div className="csub">The standing agenda, the quorum and the supporting functions are the same
           wherever this Setup runs.</div>
@@ -2195,7 +2202,38 @@ function MeetingWizard({rec,onClose}){
             </div>}/>
         </Field>
 
-      </div>;
+      </div>
+
+      <div className="card">
+        <h2>Completion periods</h2>
+        <div className="csub">Enter elapsed hours for this Meeting Setup. Blank means no deadline.
+          Saved with the Setup, not applied yet — see the note below.</div>
+        <Note k="info" ic="i"><b>UI only, for now.</b> No Dataverse column exists for these three values
+          yet — they save with the rest of the Setup in this session only, the same as every other field
+          here, but there is nowhere live for them to land until the schema exists. Governance Settings'
+          global <code>momWriteupHours</code>/<code>momApprovalHours</code>/<code>gridSubmitHours</code>
+          keep driving AG-16/AG-05 scoring until then.</Note>
+        <Field id="f-momWriteupHours" label="MOM Write-up Period" hint="Meeting ends → Facilitator submits the MOM.">
+          <div className="unit-in">
+            <input id="f-momWriteupHours" type="number" min="0" placeholder="Enter hours"
+              value={s.momWriteupHours??''}
+              onChange={e=>set({momWriteupHours:e.target.value===''?null:+e.target.value})}/>
+            <span>hours</span></div></Field>
+        <Field id="f-momApprovalHours" label="MOM Approval Period" hint="MOM submitted → Meeting Chair approves the MOM.">
+          <div className="unit-in">
+            <input id="f-momApprovalHours" type="number" min="0" placeholder="Enter hours"
+              value={s.momApprovalHours??''}
+              onChange={e=>set({momApprovalHours:e.target.value===''?null:+e.target.value})}/>
+            <span>hours</span></div></Field>
+        <Field id="f-gridSubmitHours" label="Audit Grid Completion / Submission Period"
+          hint="Audit Grid created after MOM closure → Facilitator submits it to the Chair.">
+          <div className="unit-in">
+            <input id="f-gridSubmitHours" type="number" min="0" placeholder="Enter hours"
+              value={s.gridSubmitHours??''}
+              onChange={e=>set({gridSubmitHours:e.target.value===''?null:+e.target.value})}/>
+            <span>hours</span></div></Field>
+      </div>
+      </>;
 
       /* step 6 */
       const templates=dvReports||[];

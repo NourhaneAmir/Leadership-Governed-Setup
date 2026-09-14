@@ -4,7 +4,8 @@
 > Written 30 Aug 2026, updated 01 Sep 2026, updated 02 Sep 2026 (twice),
 > updated 04 Sep 2026, updated 05 Sep 2026, updated 06 Sep 2026,
 > updated 07 Sep 2026 (twice), updated 08 Sep 2026, updated 12 Sep 2026
-> (covering 09-12 Sep), updated 13 Sep 2026, against branch `leadership-practice`.
+> (covering 09-12 Sep), updated 13 Sep 2026, updated 14 Sep 2026, against
+> branch `leadership-practice`.
 >
 > This file records **decisions, hard-won schema facts and open questions** —
 > the things that are expensive to rediscover. It is not a substitute for the
@@ -1102,6 +1103,47 @@ side-by-side shape, which suits them. The 32 inline style objects are gone.
 OneDrive destroying two source files. Both in §8; the second one cost a
 recovery and is the strongest argument yet for moving the repo out of OneDrive.
 
+### This session (14 Sep): Governance Settings screen removed from the execution module
+
+Per an explicit ask, with the scope deliberately narrowed after a clarifying
+question: remove the nav tab and the screen's own editing UI, but **leave
+`DEFAULT_SETTINGS`/`OD_NOTES` and every place that reads them untouched**, so
+AG-05/AG-16 Audit Grid scoring keeps working exactly as before — the nine
+values just become fixed at whatever they last held, with no UI left to
+change them.
+
+**Removed as one contiguous block** (`LeadershipApp.jsx`, the whole
+"8 · GOVERNANCE SETTINGS" section): `AuthorityMatrixPanel`, `GOV_SETTINGS`,
+`UNIT_WORD`, `GovSettingCard`, `ScreenSettings` — none had a caller outside
+that section. Also removed: the `set` entry in the `SCREENS` registry (which
+alone drove the nav item, the router, and the wide-screen list, per the
+registry's own design — see §5's 08 Sep entry), the now-unused `Settings2`
+icon import, the `A.setSetting` action (its only callers were inside the
+deleted `GovSettingCard`), and the "Governance Settings" row in the My
+Workspace "Where things live" shortcut table (with its subtitle corrected
+from "Six places" to "Five").
+
+⚠️ **This also removed the live Authority Matrix / Approval Cycles read-only
+viewer**, since `AuthorityMatrixPanel` was embedded only on this screen (per
+§4's own description: "embedded in Governance Settings") and had no other
+caller. That is more than pure "settings editing," flagged to the user before
+proceeding; the call was to go ahead. If Authority Matrix visibility turns
+out to still be wanted somewhere, it needs a new home — the component itself
+is gone, not just its placement.
+
+One dangling reference was caught and fixed, not just the obvious ones:
+`ScreenMeetings`' attendance panel had a note reading "…unresolved — change
+the treatment in Governance Settings," pointing at a screen that no longer
+exists. Reworded to drop the dead pointer; the OD-20 reference itself stays,
+since `OD`/`OD_NOTES` are untouched.
+
+**Verified clean, not just build-clean** — per §8's own warning that a
+removed symbol is a runtime `ReferenceError`, not a build failure, in an ES
+module: grepped the whole `src/` tree for every removed symbol name after the
+build passed. The only hits left are in `LeadershipApp-Nourhane.jsx`, the
+stray untracked OneDrive-conflict copy already flagged as dead in §9 — no
+reference survives in the file that actually ships.
+
 ---
 
 ## 6. Schema facts that are expensive to rediscover
@@ -1849,6 +1891,8 @@ something, except the one item below that's now live at a base level.
       the rest. Two known limits recorded in §6.
 - [x] **Governance Settings merged into nine cards** — each setting appears
       exactly once. Still simulation-only; persistence is blocked below.
+      ⚠️ **The whole screen was removed 14 Sep** — see §5. Kept here as the
+      historical record of what was built, not as current state.
 - [x] **Approved-only Ad Hoc pickers, with search** — both Meeting and Report.
 - [x] **Search on the Meetings and Reports registers.**
 - [x] **`Artifact` nav group** — Business intelligence, Reports / Plans,
@@ -1896,11 +1940,14 @@ something, except the one item below that's now live at a base level.
       Minutes). Until a screen is in its own file, moving a tab to Governance is
       still a copy job out of a ~10k-line file.
 - [ ] **`gridSubmitHours` is stored but unconsumed** (08 Sep) — the Audit Grid has no
-      submission timer reading it. Either wire it into the Grid lifecycle or drop the
-      third timing card.
-- [ ] **Two settings are edited in two places** (08 Sep) — `momWriteupHours` and
-      `momApprovalHours` appear as timing cards *and* as value cards on Governance
-      Settings. They cannot disagree; decide whether to remove them from the grid.
+      submission timer reading it. Still open: the value lives on in
+      `DEFAULT_SETTINGS` (14 Sep, §5) even though its editing UI is gone. Either
+      wire it into the Grid lifecycle or drop the setting entirely.
+- [x] **Two settings edited in two places — resolved by removal, not by choosing
+      one place.** (08 Sep, moot 14 Sep) `momWriteupHours`/`momApprovalHours` used
+      to appear as timing cards *and* value cards on Governance Settings. That
+      whole screen is gone (§5), so there is now zero places to edit them from the
+      UI, not one — the underlying duplication question no longer applies.
 - [ ] **`qualifier` still does not survive an edit** — the last of the four audit
       gaps. The name is recomputed on every save and includes it, so a Template
       can silently rename itself. Needs somewhere to store it, or a decision that

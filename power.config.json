@@ -34,7 +34,8 @@
         "worklogdecisions",
         "kpiachievements",
         "kpiachievementbreakdowns",
-        "reportoccurrencedepartment_functions"
+        "reportoccurrencedepartment_functions",
+        "meetingoccurrencelinkedreports"
       ],
       "dataSets": {
         "default.cds": {
@@ -50,6 +51,9 @@
             },
             "reportoccurrencedepartment_functions": {
               "tableName": "lm_reportoccurrencedepartmentfunctions"
+            },
+            "meetingoccurrencelinkedreports": {
+              "tableName": "lm_meetingoccurrencelinkedreportses"
             }
           }
         }
