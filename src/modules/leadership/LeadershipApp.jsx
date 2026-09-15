@@ -2666,7 +2666,10 @@ function App({onSwitch}){
 /* =========================================================================
    1 · MY WORKSPACE
    ========================================================================= */
-const AREA_C = {'Report':'blue','Meeting':'teal','Minutes':'teal',
+/* Each Area gets its own colour so the type reads at a glance, without having
+   to read the label -- Report/Meeting match the same gold/green split the
+   Calendar screen already uses for those two kinds. */
+const AREA_C = {'Report':'teal','Meeting':'green','Minutes':'blue',
                 'Audit Grid':'purple','Decision':'amber','Task':'grey'};
 
 function ItemTable({rows,dateLabel}){
