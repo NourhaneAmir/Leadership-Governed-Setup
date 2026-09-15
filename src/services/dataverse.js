@@ -1263,6 +1263,9 @@ export const MEETING_MONTH_IN_QUARTER = {
  * @param {string} [payload.mode] one of MEETING_MODE_KEY's keys
  * @param {string} [payload.confidentiality] one of MEETING_CONFIDENTIALITY_KEY's keys
  * @param {number} [payload.quorum]
+ * @param {number} [payload.momWriteupHours] elapsed hours, Meeting ends -> MOM submitted
+ * @param {number} [payload.momApprovalHours] elapsed hours, MOM submitted -> Chair approves
+ * @param {number} [payload.gridSubmitHours] elapsed hours, Audit Grid created -> submitted to Chair
  * @param {string} [payload.torLink]
  * @param {string} [payload.stageLevel] 'bu'|'region'|'group' -- only 'bu' and 'region' currently create per-unit child rows
  * @param {{key:string,name:string,businessUnitId?:string,regionId?:string,chairmanId?:string,coChairmanId?:string,facilitatorId?:string,attendeePositionIds?:string[]}[]} [payload.units] one entry per configured unit, each with its own Attendees list
@@ -1301,6 +1304,9 @@ function meetingTemplateParentPayload(payload){
     lm_defaultmeetingmode: payload.mode ? MEETING_MODE_KEY[payload.mode] : null,
     lm_meetingconfidentiality: payload.confidentiality ? MEETING_CONFIDENTIALITY_KEY[payload.confidentiality] : null,
     lm_quorumthreshold: typeof payload.quorum === 'number' ? payload.quorum : null,
+    lm_momwriteuphours: typeof payload.momWriteupHours === 'number' ? payload.momWriteupHours : null,
+    lm_momapprovalhours: typeof payload.momApprovalHours === 'number' ? payload.momApprovalHours : null,
+    lm_gridsubmithours: typeof payload.gridSubmitHours === 'number' ? payload.gridSubmitHours : null,
     lm_torpolicylink: payload.torLink || null,
     lm_meetingstatus: payload.status ? TEMPLATE_STATUS_KEY[payload.status] : null,
     lm_version: typeof payload.version === 'number' ? payload.version : null,
@@ -1598,6 +1604,9 @@ async function fetchMeetingTemplateChildIds(dvId){
  * @param {string} [payload.mode] one of MEETING_MODE_KEY's keys
  * @param {string} [payload.confidentiality] one of MEETING_CONFIDENTIALITY_KEY's keys
  * @param {number} [payload.quorum]
+ * @param {number} [payload.momWriteupHours] elapsed hours, Meeting ends -> MOM submitted
+ * @param {number} [payload.momApprovalHours] elapsed hours, MOM submitted -> Chair approves
+ * @param {number} [payload.gridSubmitHours] elapsed hours, Audit Grid created -> submitted to Chair
  * @param {string} [payload.torLink]
  * @param {string} [payload.stageLevel] 'bu'|'region'|'group' -- only 'bu' and 'region' currently create per-unit child rows
  * @param {{key:string,name:string,businessUnitId?:string,regionId?:string,chairmanId?:string,coChairmanId?:string,facilitatorId?:string,attendeePositionIds?:string[]}[]} [payload.units] one entry per configured unit, each with its own Attendees list
@@ -1881,6 +1890,7 @@ export async function fetchMeetingTemplateDetail(id){
       'lm_frequency','lm_daysoftheweek','lm_dayofthemonth','lm_monthofthequarter',
       'lm_seconddayoftheweek','lm_seconddayofthemonth','lm_monthofthesemesterseme','lm_defaultmeetingmode',
       'lm_meetingconfidentiality','lm_quorumthreshold','lm_torpolicylink','lm_meetingstatus','lm_version','modifiedon','createdon',
+      'lm_momwriteuphours','lm_momapprovalhours','lm_gridsubmithours',
       // Group-wide (Stage 3/4) Chairman/Co-Chairman/Facilitator -- see
       // meetingTemplateParentPayload()'s comment for why these live here
       // instead of on a per-unit child row.

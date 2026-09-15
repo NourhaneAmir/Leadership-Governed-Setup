@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { ArrowUpRight, BarChart3, CalendarDays, CheckSquare, ClipboardList,
+import { ArrowUpRight, BarChart3, CalendarDays, CheckSquare, ClipboardCheck, ClipboardList,
          Gauge, Layers, LineChart, Menu, Network, UsersRound, X } from 'lucide-react';
 /* Dates, the working calendar and number formatting now live in src/shared so
    a screen lifted out of this file keeps working without it. */
@@ -1525,16 +1525,21 @@ function CalendarWebpart({items,title,kinds,emptyText}){
    calendar now shows only what the occurrence tables hold. */
 const CAL_KINDS = [
   {id:'All',     label:'All',      colour:null},
-  {id:'Meeting', label:'Meetings', colour:'blue'},
-  {id:'Report',  label:'Reports',  colour:'ink'},
+  {id:'Meeting', label:'Meetings', colour:'green'},
+  {id:'Report',  label:'Reports',  colour:'teal'},
 ];
 /* Icon/colour treatment for a calendar item's kind — MOM Due borrows the Minutes styling,
    since a MOM write-up deadline is, functionally, a Minutes item. */
 const calIconKind = k => k==='MOM' ? 'Minutes' : k;
-const calTagColour = k => k==='Report'?'ink' : k==='MOM'?'purple' : 'blue';
+const calTagColour = k => k==='Report'?'teal' : k==='MOM'?'purple' : 'green';
 const calGridCls = i => i.status==='Cancelled' ? 'k-canc'
   : i.kind==='Report' ? 'k-rpt' : i.kind==='MOM' ? 'k-mom' : 'k-mtg';
-const CAL_DOT = {blue:'var(--blue)', ink:'var(--ink)', purple:'var(--purple)'};
+const CAL_DOT = {green:'var(--green)', teal:'var(--teal)', purple:'var(--purple)'};
+const CAL_CHIP_STYLE = {
+  green: {border:'var(--green)', bg:'var(--green-bg)', text:'var(--green)'},
+  teal:  {border:'var(--teal)',  bg:'var(--teal-l)',    text:'var(--teal-d)'},
+  purple:{border:'var(--purple)',bg:'var(--purple-bg)', text:'var(--purple)'},
+};
 
 /* A live Dataverse occurrence, shown read-only. The seeded Meeting screen is
    built around demo records and their synthetic ids, so it cannot render one
@@ -1611,7 +1616,7 @@ function DvOccurrenceModal({item,onClose}){
 }
 
 function ScreenCalendar(){
-  const {cal,go,openMeeting,dvLoading,dvError,dvMeetingOccs,dvReportOccs,openDvRec} = use();
+  const {cal,go,openMeeting,dvError,openDvRec} = use();
   const [view,setView] = useState('month');   /* month | week | list */
   const [kind,setKind] = useState('All');
   const [ym,setYm]     = useState(TODAY.slice(0,7));
@@ -1621,7 +1626,6 @@ function ScreenCalendar(){
      read-only panel rather than an execution screen that could not render it. */
   const open = i => i._dv ? openDvRec(i.kind, i._rec)
     : i.screen==='mtg' ? openMeeting(i.id,i.tab||'detail') : go(i.screen,i.id);
-  const liveCount = dvMeetingOccs.length + dvReportOccs.length;
 
   const [y,m]=ym.split('-').map(Number);
   const first=new Date(y,m-1,1), start=new Date(first); start.setDate(1-first.getDay());
@@ -1640,7 +1644,9 @@ function ScreenCalendar(){
   /* -------- This Week's Meetings -------- */
   const wk = rangeBounds('week'), nextWk = [addDays(wk[1],1),addDays(wk[1],7)];
   const byDateTime = (a,b)=>(a.date+(a.time||'')).localeCompare(b.date+(b.time||''));
-  const thisWeekMtgs = cal.filter(i=>i.kind==='Meeting' && i.date>=wk[0] && i.date<=wk[1]
+  /* From today onward, not from Sunday -- a day already past this week
+     shouldn't still show up under "This Week's Meetings". */
+  const thisWeekMtgs = cal.filter(i=>i.kind==='Meeting' && i.date>=TODAY && i.date<=wk[1]
     && i.status!=='Cancelled').sort(byDateTime);
   const nextWeekMtgs = cal.filter(i=>i.kind==='Meeting' && i.date>=nextWk[0] && i.date<=nextWk[1]
     && i.status!=='Cancelled').sort(byDateTime);
@@ -1650,7 +1656,8 @@ function ScreenCalendar(){
     const meta = [i._rec.location||i._rec.mode,
       i._rec.attendees?.length ? i._rec.attendees.length+' attendees' : null].filter(Boolean);
     return <div className="wa-up-r" onClick={()=>open(i)}>
-      <div className="wa-date"><span className="dd">{i.date.slice(8)}</span>
+      <div className="wa-date plain" style={{color:i.date===TODAY?'var(--green)':'var(--ink)'}}>
+        <span className="dd">{i.date.slice(8)}</span>
         <span className="mo">{MONTHS[+i.date.slice(5,7)-1]}</span></div>
       <div className="wa-up-t"><div className="n">{i.title}
           {i.date===TODAY && <Tag c="amber">Today</Tag>}
@@ -1669,19 +1676,14 @@ function ScreenCalendar(){
     <div className="ph ph-row">
       <div style={{flex:1}}><h1>Calendar</h1>
         <div className="sub">Every Meeting Occurrence and Report Occurrence, on one timeline.</div></div>
-      <div className="seg">
+      <div className="seg seg-gold">
         {['month','week','list'].map(v=>
           <button key={v} className={view===v?'on':''} onClick={()=>setView(v)}>
             {v[0].toUpperCase()+v.slice(1)}</button>)}
       </div>
     </div>
 
-    {dvError
-      ? <Note k="warn" ic="⚠">{dvError}</Note>
-      : dvLoading
-        ? <Note k="info" ic="i">Reading live Meeting and Report Occurrences from Dataverse…</Note>
-        : <Note k="info" ic="i"><b>{liveCount} occurrence{liveCount===1?'':'s'}</b> read from lm_meetingoccurrences and
-            lm_reportoccurrences. Open one to see the row as it stands in the table.</Note>}
+    {dvError && <Note k="warn" ic="⚠">{dvError}</Note>}
 
     <div className="fltr" style={{justifyContent:'space-between'}}>
       <div style={{display:'flex',gap:8,alignItems:'center'}}>
@@ -1692,10 +1694,9 @@ function ScreenCalendar(){
       </div>
       <div className="chip-row" style={{margin:0}}>
         {CAL_KINDS.map(k=>{
-          const on = kind===k.id;
-          const style = k.colour ? {borderColor:CAL_DOT[k.colour],
-            background:on?`var(--${k.colour==='ink'?'grey':k.colour}-bg)`:'#fff',
-            color:k.colour==='ink'?'var(--ink)':`var(--${k.colour})`} : {borderColor:'var(--border-d)',color:'var(--ink-2)'};
+          const on = kind===k.id, cs = k.colour && CAL_CHIP_STYLE[k.colour];
+          const style = cs ? {borderColor:cs.border, background:on?cs.bg:'#fff', color:cs.text}
+            : {borderColor:'var(--border-d)',color:'var(--ink-2)'};
           return <button key={k.id} className={'cal-fchip'+(on?' on':'')} style={style} onClick={()=>setKind(k.id)}>
             {k.colour && <span className="dot" style={{background:CAL_DOT[k.colour]}}/>}
             {k.label}</button>;})}
@@ -1709,7 +1710,7 @@ function ScreenCalendar(){
           const out=d.slice(0,7)!==ym, evs=vis.filter(i=>i.date===d);
           return <div key={d} className={'cal-d'+(out?' out':'')+(d===TODAY?' today':'')+
                         (isNonWorking(d)&&!out?' nonwork':'')}>
-            <div className="cal-n"><span>{+d.slice(8)}</span>
+            <div className="cal-n"><span className={d===TODAY?'cal-today-num':''}>{+d.slice(8)}</span>
               {isNonWorking(d)&&!out && <span className="nw">NON-WORKING</span>}</div>
             {evs.map((i,n)=><div key={i.kind+i.id+n} className={'cal-e '+calGridCls(i)} onClick={()=>open(i)}
                 title={i.title+' · '+i.sub}>
@@ -1717,8 +1718,8 @@ function ScreenCalendar(){
           </div>;})}
       </div>
       <div style={{display:'flex',gap:15,flexWrap:'wrap',marginTop:11,fontSize:11.5,color:'var(--muted)'}}>
-        <span><span className="tag blue" style={{padding:'1px 7px'}}>&nbsp;</span> Meetings</span>
-        <span><span className="tag ink" style={{padding:'1px 7px'}}>&nbsp;</span> Reports</span>
+        <span><span className="tag green" style={{padding:'1px 7px'}}>&nbsp;</span> Meetings</span>
+        <span><span className="tag teal" style={{padding:'1px 7px'}}>&nbsp;</span> Reports</span>
         <span><span className="tag grey" style={{padding:'1px 7px'}}>&nbsp;</span> Cancelled</span>
       </div>
     </div>}
@@ -1741,7 +1742,7 @@ function ScreenCalendar(){
     <div className="wa-grid" style={{marginTop:16,gridTemplateColumns:'1fr 1fr'}}>
       <div className="card">
         <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:2}}>
-          <div className="wa-icon gold">🗓</div><h2 style={{flex:1}}>This Week's Meetings</h2>
+          <div className="wa-icon green">🗓</div><h2 style={{flex:1}}>This Week's Meetings</h2>
         </div>
         {thisWeekMtgs.length===0 ? <Empty ic="🗓">No Meetings this week.</Empty>
         : thisWeekMtgs.map((i,n)=><MtgRow key={'tw'+i.id+n} i={i}/>)}
@@ -1759,7 +1760,8 @@ function ScreenCalendar(){
         {deadlines.length===0 ? <Empty ic="✓">Nothing due.</Empty>
         : deadlines.map((i,n)=>
           <div key={'dl'+i.id+i.kind+n} className="wa-up-r" onClick={()=>open(i)}>
-            <div className="wa-date"><span className="dd">{i.date.slice(8)}</span>
+            <div className="wa-date plain" style={{color:i.kind==='MOM'?'var(--purple)':'var(--teal-d)'}}>
+              <span className="dd">{i.date.slice(8)}</span>
               <span className="mo">{MONTHS[+i.date.slice(5,7)-1]}</span></div>
             <div className="wa-up-t"><div className="n">{i.title}</div>
               <div className="m">{i.sub}</div></div>
@@ -2782,13 +2784,13 @@ function ScreenWorkspace(){
       <Stat label="Pending Actions" v={work.due.length+work.finish.length}
         d="requiring your attention" c={(work.due.length+work.finish.length)?'teal':'muted'}/>
       <Stat label="Meetings This Week" v={meetingsThisWeek.length}
-        d={meetingsThisWeek.filter(m=>m.status==='Held').length+' held'}/>
+        d={meetingsThisWeek.filter(m=>m.status==='Held').length+' held'} c="green"/>
       <Stat label="Overdue Items" v={overdue.length}
         d={overdue.length? overdueReports+' report'+(overdueReports===1?'':'s')+' + '+
            (overdue.length-overdueReports)+' other' : 'none outstanding'}
-        c={overdue.length?'red':'muted'}/>
+        c={overdue.length?'amber':'muted'}/>
       <Stat label="Pending Approvals" v={work.review.length} d="with a reviewer or approver"
-        c={work.review.length?'amber':'muted'}/>
+        c={work.review.length?'red':'muted'}/>
     </div>
 
     <div className="chip-row" style={{alignItems:'center'}}>
@@ -2802,7 +2804,7 @@ function ScreenWorkspace(){
     <div className="wa-grid">
       <div className="card flush">
         <div className="card-hd" style={{display:'flex',alignItems:'flex-start',gap:12}}>
-          <div className="wa-icon gold">📋</div>
+          <div className="wa-icon gold"><ClipboardCheck size={16} color="#fff" strokeWidth={2.25}/></div>
           <div style={{flex:1}}><h2>Work Queue</h2>
             <div className="csub">Everything open right now — open a record to act on it.</div></div>
           <Btn k="sm" onClick={()=>{setTab('All');setQuick('all');}}>View All</Btn>
@@ -2810,14 +2812,16 @@ function ScreenWorkspace(){
         {rows.length===0 ? <div style={{padding:'8px 17px 17px'}}>
             <Empty ic="✓">Nothing matches these filters.</Empty></div>
         : <div className="t-wrap"><table className="data">
-            <thead><tr><th>Area</th><th>Item</th><th>Accountable</th><th>Status</th>
+            <thead><tr><th style={{width:4}}></th><th>Area</th><th>Item</th><th>Accountable</th><th>Status</th>
               <th>Due</th><th>Action</th></tr></thead>
             <tbody>{rows.map((w,i)=>{
               const st = statusOf(w);
+              const priCls = w.urgent ? 'p-high' : w.bucket==='review' ? 'p-med' : 'p-low';
               const openRow = ()=> w._dv
                 ? openDvRec(w.area==='Report'?'Report':'Meeting', w._rec)
                 : w.screen==='mtg' ? openMeeting(w.rid,w.tab||'detail') : go(w.screen,w.rid);
               return <tr key={w.bucket+w.area+w.rid+i} className="click" onClick={openRow}>
+                <td><div className={'wq-priority '+priCls}/></td>
                 <td><Tag c={AREA_C[w.area]}>{w.area}</Tag></td>
                 <td><div className="t-main">{w.title}</div><div className="t-sub">{w.sub}</div></td>
                 <td className="dim">{w.owner?P(w.owner).name:'—'}
@@ -2846,7 +2850,7 @@ function ScreenWorkspace(){
                   onClick={()=> i._dv
                     ? openDvRec(i.kind==='Report'?'Report':'Meeting', i._rec)
                     : i.screen==='mtg' ? openMeeting(i.id,i.tab||'detail') : go(i.screen,i.id)}>
-                <div className="wa-date"><span className="dd">{i.date.slice(8)}</span>
+                <div className="wa-date plain"><span className="dd">{i.date.slice(8)}</span>
                   <span className="mo">{MONTHS[+i.date.slice(5,7)-1]}</span></div>
                 <div className="wa-up-t">
                   <div className="n">{i.restricted&&'🔒 '}{i.title}</div>
@@ -2862,13 +2866,13 @@ function ScreenWorkspace(){
             <h2 style={{flex:1}}>This Month</h2>
           </div>
           <div className="csub" style={{marginBottom:2}}>Read from the Meeting and Report Occurrence tables.</div>
-          <div className="wa-mo-r"><label>Meetings Held</label>
+          <div className="wa-mo-r divider"><label>Meetings Held</label>
             <span className="v">{meetingsHeld} / {meetingsTotal}</span></div>
-          <div className="wa-mo-r"><label>Agenda Fully Recorded</label>
+          <div className="wa-mo-r divider"><label>Agenda Fully Recorded</label>
             <span className="v">{agendaRecorded} / {meetingsHeld}</span></div>
-          <div className="wa-mo-r"><label>Reports Submitted</label>
+          <div className="wa-mo-r divider"><label>Reports Submitted</label>
             <span className="v">{reportsSubmitted} / {dvReportOccs.length}</span></div>
-          <div className="wa-mo-r"><label>Reports Approved</label>
+          <div className="wa-mo-r divider"><label>Reports Approved</label>
             <span className="v">{reportsApproved} / {dvReportOccs.length}</span></div>
         </div>
       </div>
