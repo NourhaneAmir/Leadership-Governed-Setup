@@ -581,6 +581,12 @@ const BLANK_MEETING={
   mode:null,
   supportive:[], quorum:null,
   torLink:'', agenda:[], linkedTemplates:[], confidentiality:null,
+  /* Per-Setup completion-period overrides -- same three deadlines as the
+     execution module's global Governance Settings defaults (momWriteupHours/
+     momApprovalHours/gridSubmitHours in LeadershipApp.jsx's DEFAULT_SETTINGS),
+     named identically on purpose. UI only for now -- no Dataverse column
+     exists yet, see the note above WizStep 5's Completion periods card. */
+  momWriteupHours:null, momApprovalHours:null, gridSubmitHours:null,
   status:'Draft', version:0, updated:TODAY};
 
 const BLANK_REPORT={
@@ -1702,16 +1708,11 @@ function ScopeFields({s,set,stepNo}){
         </Field>
       : null}
 
-    {lv==='group'
-      ? <Note k="info" ic="i">A Stage 3 or Stage 4 Setup covers the whole group. It does not multiply —
-          there is one section, held once for the group.</Note>
-      : null}
     {!s.stage ? <Note k="warn" ic="⚠">Choose the Stage first. Stage decides what this Setup multiplies
         by — Business Unit at Stage 1, Region at Stage 2, nothing at Stage 3 and 4.</Note> : null}
 
     {exec
-      ? <Note k="info" ic="i"><b>No Department at Stage 4.</b> Top Management and the Executive Committee
-          sit above the department structure, so nothing is chosen here — the Setup covers the group.</Note>
+      ? null
       : <Field id="f-lines" label={tot?'Department':'Departments and Functions'} req govern
           hint={tot
             ? 'A Team of Teams belongs to one Department. Leave the Function empty and it covers the '+
@@ -2098,9 +2099,6 @@ function MeetingWizard({rec,onClose}){
         return <div className="card">
           <h2>Type and identity</h2>
           <div className="csub">Setup Type decides everything downstream. It locks once published.</div>
-          <Note k="lock" ic="—">Every Setup here repeats on a cadence. A one-off meeting is raised by the
-            organiser on the meeting screen when it is needed — it is not set up in advance and does not
-            appear in this register.</Note>
           <Field id="f-setupType" label="Setup Type" req
             hint={accred?'An Accreditation Committee is governance-scored, and needs a TOR link and a quorum threshold.'
                         :'A Business Meeting covers everything else, including the Team of Teams.'}>
@@ -2143,12 +2141,6 @@ function MeetingWizard({rec,onClose}){
         <Field id="f-mode" label="Default Meeting Mode" req
           hint="A default only. Each occurrence may be held differently.">
           <Seg id="f-mode" opts={MODES} val={s.mode} onChange={v=>set({mode:v})}/></Field>
-        <Note k="info" ic="i"><b>No clock time, no venue here.</b> The Setup fixes the rhythm — the day of
-          the week or the day of the month. The start time, the duration, the room and the joining link
-          belong to the occurrence: one Setup runs in {scopeKeys(s).length>1
-            ? <>{scopeKeys(s).length} units</> : 'more than one unit'} across two time zones, each of which
-          meets at its own hour and in its own room. The organiser fills those in when the invitation goes
-          out.</Note>
       </div>;
 
       if(step===4) return <UnitSetup s={s} set={set} issues={issues}
@@ -2160,7 +2152,8 @@ function MeetingWizard({rec,onClose}){
         </div>}
 />;
 
-      if(step===5) return <div className="card">
+      if(step===5) return <>
+      <div className="card">
         <h2>Mandate and agenda</h2>
         <div className="csub">The standing agenda, the quorum and the supporting functions are the same
           wherever this Setup runs.</div>
@@ -2195,7 +2188,34 @@ function MeetingWizard({rec,onClose}){
             </div>}/>
         </Field>
 
-      </div>;
+      </div>
+
+      <div className="card">
+        <h2>Completion periods</h2>
+        <div className="csub">Enter elapsed hours for this Meeting Setup. Blank means no deadline.
+          Saved with the Setup. Governance Settings' global defaults still drive AG-16/AG-05 scoring
+          for every Setup until this per-Setup value is wired into that scoring too.</div>
+        <Field id="f-momWriteupHours" label="MOM Write-up Period" hint="Meeting ends → Facilitator submits the MOM.">
+          <div className="unit-in">
+            <input id="f-momWriteupHours" type="number" min="0" placeholder="Enter hours"
+              value={s.momWriteupHours??''}
+              onChange={e=>set({momWriteupHours:e.target.value===''?null:+e.target.value})}/>
+            <span>hours</span></div></Field>
+        <Field id="f-momApprovalHours" label="MOM Approval Period" hint="MOM submitted → Meeting Chair approves the MOM.">
+          <div className="unit-in">
+            <input id="f-momApprovalHours" type="number" min="0" placeholder="Enter hours"
+              value={s.momApprovalHours??''}
+              onChange={e=>set({momApprovalHours:e.target.value===''?null:+e.target.value})}/>
+            <span>hours</span></div></Field>
+        <Field id="f-gridSubmitHours" label="Audit Grid Completion / Submission Period"
+          hint="Audit Grid created after MOM closure → Facilitator submits it to the Chair.">
+          <div className="unit-in">
+            <input id="f-gridSubmitHours" type="number" min="0" placeholder="Enter hours"
+              value={s.gridSubmitHours??''}
+              onChange={e=>set({gridSubmitHours:e.target.value===''?null:+e.target.value})}/>
+            <span>hours</span></div></Field>
+      </div>
+      </>;
 
       /* step 6 */
       const templates=dvReports||[];
@@ -2581,6 +2601,9 @@ function buildMeetingTemplatePayload(f){
     mode: f.mode,
     confidentiality: f.confidentiality,
     quorum: f.quorum,
+    momWriteupHours: f.momWriteupHours,
+    momApprovalHours: f.momApprovalHours,
+    gridSubmitHours: f.gridSubmitHours,
     torLink: f.torLink || undefined,
     // Business Unit/Chairman/Co-Chairman/Facilitator/Team-Channel no
     // longer live on the parent record -- they're per-unit now. Attendees
@@ -2690,6 +2713,10 @@ function buildPublishSummary(original, edited){
     addField('Type / Classification', original.category, edited.category);
     addField('Default Meeting Mode', original.mode, edited.mode);
     addField('Quorum Threshold %', original.quorum, edited.quorum, v=>(v==null||v===''?'—':`${v}%`));
+    const hoursOrDash = v=>(v==null||v===''?'—':`${v} hours`);
+    addField('MOM Write-up Period', original.momWriteupHours, edited.momWriteupHours, hoursOrDash);
+    addField('MOM Approval Period', original.momApprovalHours, edited.momApprovalHours, hoursOrDash);
+    addField('Audit Grid Completion / Submission Period', original.gridSubmitHours, edited.gridSubmitHours, hoursOrDash);
     addField('TOR / Policy link', original.torLink, edited.torLink);
   }
 
@@ -2997,6 +3024,9 @@ function dataverseMeetingToSetup(detail){
     mode:DV_MEETING_MODE[p.lm_defaultmeetingmode]||null,
     confidentiality:DV_MEETING_CONFIDENTIALITY[p.lm_meetingconfidentiality]||null,
     quorum:p.lm_quorumthreshold ?? null,
+    momWriteupHours:p.lm_momwriteuphours ?? null,
+    momApprovalHours:p.lm_momapprovalhours ?? null,
+    gridSubmitHours:p.lm_gridsubmithours ?? null,
     torLink:p.lm_torpolicylink||'',
     agenda:(detail.agenda||[]).slice().sort((a,b)=>(a.lm_step||0)-(b.lm_step||0)).map(a=>({
       id:uid('ag'), text:a.lm_agendaitemname||'', owner:a._lm_agendaitemowner_value||null,
@@ -3992,7 +4022,9 @@ function App({onSwitch}){
     ['stage','Stage'],['function','Function'],['frequency','Frequency'],
     ['quorum','Quorum Threshold %'],['torLink','TOR / Policy link'],
     ['confidentiality','Confidentiality'],['delivery','Report Delivery'],
-    ['reportType','Report Type'],['mode','Default Meeting Mode']];
+    ['reportType','Report Type'],['mode','Default Meeting Mode'],
+    ['momWriteupHours','MOM Write-up Period'],['momApprovalHours','MOM Approval Period'],
+    ['gridSubmitHours','Audit Grid Completion / Submission Period']];
   const showVal=(k,v)=>{
     if(v==null||v==='') return '—';
     return String(v);

@@ -4,7 +4,8 @@
 > Written 30 Aug 2026, updated 01 Sep 2026, updated 02 Sep 2026 (twice),
 > updated 04 Sep 2026, updated 05 Sep 2026, updated 06 Sep 2026,
 > updated 07 Sep 2026 (twice), updated 08 Sep 2026, updated 12 Sep 2026
-> (covering 09-12 Sep), updated 13 Sep 2026, against branch `leadership-practice`.
+> (covering 09-12 Sep), updated 13 Sep 2026, updated 14 Sep 2026, against
+> branch `leadership-practice`.
 >
 > This file records **decisions, hard-won schema facts and open questions** —
 > the things that are expensive to rediscover. It is not a substitute for the
@@ -103,6 +104,8 @@ The BRD **contradicts itself** in three places, and the code picked a side:
 | **Setup Activity trail** — the Activity tab on a Report/Meeting Setup | ✅ **live** (10 Sep) — `lm_setupactivity` is written on create, edit, publish, approve and expire, and the tab reads the real rows back for any Setup that has a `_dataverseId`. A Setup that has never been saved still shows the seeded sample trail. |
 | **Artifact group** — Business intelligence, Reports / Plans, Reporting hierarchy | 🟡 **mixed** (11 Sep) — all three run on the app's own data rather than the prototype's parallel seed model, but that data is itself seeded: BI reports from `BI_REPORTS`, reports from `db.reports`, hierarchy edges derived from real `RPT:` paragraph citations. The Power BI report itself **cannot be embedded** — see §8. |
 | Tasks, Comments, Governance Settings (persisted values) | ❌ **seeded demo data only** |
+| **Meeting Setup "Completion Periods"** (MOM Write-up / MOM Approval / Audit Grid Completion-Submission, each an hours field) | ✅ **live** (15 Sep) — three plain columns on `lm_meetingtemplates` (`lm_momwriteuphours`, `lm_momapprovalhours`, `lm_gridsubmithours`), written/read alongside `quorum`/`torLink` in `dataverse.js` and `GovernanceApp.jsx`. **Persistence only — not yet consumed.** AG-16/AG-05 scoring still reads the global `DEFAULT_SETTINGS` values (§9), not this per-Setup one; the UI says so. |
+| **`lm_meetingoccurrencelinkedreports`** | 🔴 **registered, not wired to any screen** (15 Sep) — table + generated models exist (`lm_reportname`, lookups to `lm_meetingoccurrences`, `lm_reportoccurrences`, `lm_report_templates`); no app code reads or writes it yet. |
 
 **`scoreGrid()` (seeded) and `liveScoreGrid()` (live) are two separate functions**,
 not one shared implementation — the live version reads a Dataverse occurrence/
@@ -1141,6 +1144,153 @@ side-by-side shape, which suits them. The 32 inline style objects are gone.
 OneDrive destroying two source files. Both in §8; the second one cost a
 recovery and is the strongest argument yet for moving the repo out of OneDrive.
 
+### This session (14 Sep): Governance Settings screen removed from the execution module
+
+Per an explicit ask, with the scope deliberately narrowed after a clarifying
+question: remove the nav tab and the screen's own editing UI, but **leave
+`DEFAULT_SETTINGS`/`OD_NOTES` and every place that reads them untouched**, so
+AG-05/AG-16 Audit Grid scoring keeps working exactly as before — the nine
+values just become fixed at whatever they last held, with no UI left to
+change them.
+
+**Removed as one contiguous block** (`LeadershipApp.jsx`, the whole
+"8 · GOVERNANCE SETTINGS" section): `AuthorityMatrixPanel`, `GOV_SETTINGS`,
+`UNIT_WORD`, `GovSettingCard`, `ScreenSettings` — none had a caller outside
+that section. Also removed: the `set` entry in the `SCREENS` registry (which
+alone drove the nav item, the router, and the wide-screen list, per the
+registry's own design — see §5's 08 Sep entry), the now-unused `Settings2`
+icon import, the `A.setSetting` action (its only callers were inside the
+deleted `GovSettingCard`), and the "Governance Settings" row in the My
+Workspace "Where things live" shortcut table (with its subtitle corrected
+from "Six places" to "Five").
+
+⚠️ **This also removed the live Authority Matrix / Approval Cycles read-only
+viewer**, since `AuthorityMatrixPanel` was embedded only on this screen (per
+§4's own description: "embedded in Governance Settings") and had no other
+caller. That is more than pure "settings editing," flagged to the user before
+proceeding; the call was to go ahead. If Authority Matrix visibility turns
+out to still be wanted somewhere, it needs a new home — the component itself
+is gone, not just its placement.
+
+One dangling reference was caught and fixed, not just the obvious ones:
+`ScreenMeetings`' attendance panel had a note reading "…unresolved — change
+the treatment in Governance Settings," pointing at a screen that no longer
+exists. Reworded to drop the dead pointer; the OD-20 reference itself stays,
+since `OD`/`OD_NOTES` are untouched.
+
+**Verified clean, not just build-clean** — per §8's own warning that a
+removed symbol is a runtime `ReferenceError`, not a build failure, in an ES
+module: grepped the whole `src/` tree for every removed symbol name after the
+build passed. The only hits left are in `LeadershipApp-Nourhane.jsx`, the
+stray untracked OneDrive-conflict copy already flagged as dead in §9 — no
+reference survives in the file that actually ships.
+
+### This session (15 Sep): sidebar reorg, new table registered, Completion
+### Periods wired end to end, Calendar/Workspace restyled to match the
+### prototype, git repository repaired and pushed
+
+Six distinct pieces of work, in the order they happened. `64af9cc` on
+`leadership-practice` carries the first three; everything after Completion
+Periods is uncommitted as of this entry.
+
+**1. `lm_meetingoccurrencelinkedreports` registered.** New table (see §4);
+plural entity set (`lm_meetingoccurrencelinkedreportses`) worked on the first
+try where the singular form 404'd — same "guess singular then plural"
+convention as every other table here. Registered and inspected only; nothing
+in the app reads it yet.
+
+**2. Sidebar reorganised.** `SCREENS` in `LeadershipApp.jsx` regrouped into
+**Start here** (My Workspace, Calendar), **Meetings** (Meeting & Committees,
+Meeting Minutes, Committee Score), **Governance** (Decisions, on its own), and
+**Artifact** (Reports/Plan, Business intelligence, Reporting hierarchy) — per
+an explicit ask to match the sidebar shape in `Leadership Practice
+Extension.html`. The old "Reports & Plans" (Execution) composer entry was
+removed from the visible nav, but **not deleted** — 14+ call sites still do
+`go('rpt', id)` and the destination screen (`ScreenOrgReports`) cannot accept
+an externally-supplied selection, so it stays registered with a new
+`hidden:true` flag. `SCREENS` remains the single source of truth for routing
+(`SCREEN_BY_ID`, built from the full array); a new `VISIBLE_SCREENS` filter
+(drops `hidden` entries) feeds `NAV`, which is what the sidebar actually
+renders. **Retrofitting `OrgReports.jsx` to accept a selection so the hidden
+entry can be retired properly is still open — not done, only made possible.**
+
+**3. Power BI viewer button relabelled.** Per a repeated ask to "connect
+Power BI" — already fully solved and shipped (§8: iframe embedding is
+CSP-blocked, `window.open` is the only working path, and `BusinessIntelligence.jsx`
+already did exactly that). The only real gap was the button's own wording;
+renamed "Open report viewer" → **"Open full report ↗"** in the three places
+it appears (the button itself and two explanatory notes naming it).
+
+**4. Completion Periods wired to Dataverse.** The Meeting Setup wizard's
+"Completion Periods" card (MOM Write-up / MOM Approval / Audit Grid
+Completion-Submission, three "Enter hours" fields) already existed as
+UI-only. Given the exact column names by the user (`pac` cannot refresh an
+already-registered table's schema — confirmed dead end again on this table
+too, both connectors, see §6), wired end to end: `dataverse.js`
+(`meetingTemplateParentPayload()`, `fetchMeetingTemplateDetail()` select,
+JSDoc) and `GovernanceApp.jsx` (`dataverseMeetingToSetup()` hydrate,
+`buildMeetingTemplatePayload()`, the publish-confirmation diff, the `TRACKED`
+audit-log array). The card's "UI only, for now" disclaimer was removed and
+replaced with an accurate one: values persist now, but AG-16/AG-05 scoring
+still reads the global Governance Settings defaults until that's wired
+separately (§9) — deliberately left open, since whether a per-Setup value
+should *override* or *replace* the global default is still an unanswered
+design question.
+
+**5. Calendar and My Workspace restyled to match `leadership-practice
+(2).html`**, screen by screen, per several separate asks comparing screenshots
+against that file. Calendar: today's cell is now a soft gold tint with a
+circular gold-gradient day-number badge (was a teal inset ring); the
+Month/Week/List toggle's active pill is gold-filled (new `.seg-gold`
+modifier, scoped to this screen); Meeting/Report event colours across the
+grid, filter chips, legend and list/week tags switched from blue/dark-grey to
+**green (Meetings) / gold (Reports)** — `CAL_KINDS`, `calTagColour`,
+`CAL_DOT`, and a new `CAL_CHIP_STYLE` lookup replaced a fragile
+`` `var(--${colour}-bg)` `` string-interpolation that only worked for
+variable names following one naming pattern; the "This Week's Meetings" /
+"Upcoming Deadlines" rail switched from filled date tiles to flat ones (new
+`.wa-date.plain` modifier) with the day number itself carrying colour
+(green if today / gold for a Report deadline / purple for a MOM deadline).
+"This Week's Meetings" was also changed to filter from **today**, not from
+Sunday — it no longer shows a day already past earlier in the same week.
+My Workspace: each stat card's top accent bar now matches its own semantic
+colour (new `--stat-accent` CSS variable on the shared `Stat` component,
+falling back to the gold gradient when no colour is set — this reaches every
+other screen's stat row too, not just Workspace, since they share the same
+component) instead of a fixed gold bar on all four; Work Queue rows gained a
+left priority-colour bar (new `.wq-priority` classes, red/amber/green); the
+Work Queue's Area tag now gives **every area its own colour**
+(`AREA_C`: Report=gold, Meeting=green, Minutes=blue, Audit Grid=purple,
+Decision=amber, Task=grey — Report/Meeting deliberately match the Calendar's
+new gold/green split) instead of Meeting and Minutes sharing one colour by
+accident; the Upcoming card's date tiles went flat (same `.wa-date.plain`)
+with a gold time pill; the This Month list gained row dividers (new
+`.wa-mo-r.divider` modifier — **not** applied to the base `.wa-mo-r` class,
+which is reused across a few dozen record-detail rails elsewhere and was
+deliberately left alone). The Work Queue icon changed from a 📋 emoji to a
+real `ClipboardCheck` icon (lucide-react, already a project dependency) to
+match the reference's icon treatment; other unrelated 📋 usages elsewhere in
+the file were left as emoji. Several purely-decorative `<Note k="info">`
+call-outs were removed at the user's request across both Calendar and the
+Meeting Setup wizard (Completion Periods disclaimer, "No clock time, no venue
+here," "A Stage 3 or Stage 4 Setup covers the whole group," "No Department at
+Stage 4," "Every Setup here repeats on a cadence," and the Calendar's
+"N occurrences read from…" banner) — genuine warnings (`dvError`) were kept.
+
+⚠️ **Deliberately not replicated from the reference file**, since both would
+be new features, not styling: the reference's "Executive Calendar —
+Multi-Committee Overlay" checkbox panel (no committee-overlay concept exists
+in this app's data model), and its "Decisions" / "MOM Due" calendar filter
+chips (the Calendar's own data feed only ever produces Meeting/Report items —
+MOM Due was deliberately removed from it before this session, per the
+comment already in the code; re-adding it means sourcing Decision deadlines
+and MOM due-dates into the calendar feed, which nobody has asked for).
+
+**6. Git repository repaired** — see §8 for the incident. Once fixed, the
+work backing items 1–3 above was committed as `64af9cc "Register
+lm_meetingoccurrencelinkedreports, sidebar reorg, BI viewer label"` and
+pushed to `origin/leadership-practice`.
+
 ---
 
 ## 6. Schema facts that are expensive to rediscover
@@ -1810,6 +1960,33 @@ denormalised column is also the shortcut past the trap.
   scripts**, then verify by grepping for the expected content — *not* by a green
   build, which only proves the file parses. This is the fourth OneDrive-caused
   failure recorded in this section. **Move the repo off OneDrive.**
+- **⚠️ `.git` itself got corrupted — a missing packfile, not just a missing
+  source file** (15 Sep, the fifth and worst OneDrive-caused failure recorded
+  here). First symptom: VS Code's Source Control panel reported `Git: invalid
+  object 100644 <hash> for '.power/schemas/dataverse/businessunits.Schema.json'`.
+  `git fsck --full` found the real damage: one pack's `.idx`/`.rev` survived
+  with **no matching `.pack` file**, plus roughly 50 leftover `tmp_pack_*`
+  files (~2.5 GB) from failed transfers — consistent with OneDrive
+  interrupting a `git gc`/fetch mid-write, the same failure mode as the
+  dehydrated-file incidents above, just landing on `.git/objects` instead of a
+  source file this time. **Recovery, without moving or renaming the working
+  folder** (the top-level directory and `.git` were locked by a live process,
+  almost certainly VS Code, so a folder swap wasn't an option): clone the
+  same branch fresh to a short path outside OneDrive (a long path under this
+  repo's own `OneDrive - Andalusia Group\...\scratchpad\` failed with
+  `Filename too long` on Windows — use something like `/c/tmp/`; a dropped TLS
+  connection mid-clone needed `-c http.postBuffer=524288000 -c
+  http.version=HTTP/1.1` to retry through), remove the orphaned `.idx`/`.rev`,
+  the stale `multi-pack-index`, and every `tmp_pack_*` file from the broken
+  repo's `.git/objects/pack/`, then copy the complete pack triplet
+  (`.pack`/`.idx`/`.rev`) from the verified fresh clone into that same
+  directory. `git fsck --full` came back clean (one harmless dangling commit)
+  with no folder rename, no `git clone --mirror` replace, and no lost commit
+  history. **`git commit` and `git diff --cached` still worked throughout**,
+  even with the pack missing, because they didn't need to read that
+  particular object — so "the commit command still runs" is not proof the
+  repository is intact; run `git fsck --full` when anything git-related
+  throws an unfamiliar error, not just when a push fails outright.
 - **`pac`/`power-apps push` times out on `generateResourceStorage`** (12 Sep) —
   `Network request failed for POST …/powerapps/generateResourceStorage?api-version=1.
   Connection timed out`. Authentication is fine (the CLI reports the connected
@@ -1912,6 +2089,8 @@ something, except the one item below that's now live at a base level.
       the rest. Two known limits recorded in §6.
 - [x] **Governance Settings merged into nine cards** — each setting appears
       exactly once. Still simulation-only; persistence is blocked below.
+      ⚠️ **The whole screen was removed 14 Sep** — see §5. Kept here as the
+      historical record of what was built, not as current state.
 - [x] **Approved-only Ad Hoc pickers, with search** — both Meeting and Report.
 - [x] **Search on the Meetings and Reports registers.**
 - [x] **`Artifact` nav group** — Business intelligence, Reports / Plans,
@@ -1959,11 +2138,21 @@ something, except the one item below that's now live at a base level.
       Minutes). Until a screen is in its own file, moving a tab to Governance is
       still a copy job out of a ~10k-line file.
 - [ ] **`gridSubmitHours` is stored but unconsumed** (08 Sep) — the Audit Grid has no
-      submission timer reading it. Either wire it into the Grid lifecycle or drop the
-      third timing card.
-- [ ] **Two settings are edited in two places** (08 Sep) — `momWriteupHours` and
-      `momApprovalHours` appear as timing cards *and* as value cards on Governance
-      Settings. They cannot disagree; decide whether to remove them from the grid.
+      submission timer reading it. Still open: the value lives on in
+      `DEFAULT_SETTINGS` (14 Sep, §5) even though its editing UI is gone. Either
+      wire it into the Grid lifecycle or drop the setting entirely.
+      ⚠️ **Do not confuse this with the per-Setup `gridSubmitHours` added 15 Sep**
+      (§4, §5) — that one is a real Dataverse column (`lm_gridsubmithours`) on
+      an individual Meeting Setup, persists correctly, and is a completely
+      separate value from this global `DEFAULT_SETTINGS` one. Both are
+      unconsumed by AG-16/AG-05 scoring today; fixing one does not fix the
+      other, and which of the two (if either) should actually drive scoring
+      is still an open design question.
+- [x] **Two settings edited in two places — resolved by removal, not by choosing
+      one place.** (08 Sep, moot 14 Sep) `momWriteupHours`/`momApprovalHours` used
+      to appear as timing cards *and* value cards on Governance Settings. That
+      whole screen is gone (§5), so there is now zero places to edit them from the
+      UI, not one — the underlying duplication question no longer applies.
 - [ ] **`qualifier` still does not survive an edit** — the last of the four audit
       gaps. The name is recomputed on every save and includes it, so a Template
       can silently rename itself. Needs somewhere to store it, or a decision that
@@ -2005,8 +2194,15 @@ quorum definition, Decision↔Meeting/Report linking (§7.7, deferred on purpose
       equivalent) — see §7.6. Don't pick this up without asking first.
 
 ### Smaller, self-contained gaps
-- [ ] **Move the repo out of OneDrive** — four separate failures now traced to
-      it (§8), one of which destroyed two source files.
+- [x] **Commit the working tree.** Resolved — branch `leadership-practice`,
+      HEAD `36b5e05` as of 15 Sep, with `64af9cc` and `36b5e05` both pushed to
+      `origin/leadership-practice`. (The commit at `36b5e05` was made outside
+      this file's own session narrative — worth noticing if `git log` and this
+      file ever seem to disagree about what's committed; trust `git log`.)
+- [ ] **Move the repo out of OneDrive** — **five** separate failures now traced
+      to it (§8), one of which destroyed two source files and one of which
+      corrupted `.git` itself (a missing packfile, 15 Sep) badly enough to need
+      a manual repair from a fresh clone.
 - [ ] **`src/modules/leadership/LeadershipApp-Nourhane.jsx` is a stray copy** —
       untracked, imported by nothing, and a pre-move snapshot (it still defines
       `BIEmbed`). Almost certainly a OneDrive conflict copy. Confirm and delete;
@@ -2029,9 +2225,13 @@ quorum definition, Decision↔Meeting/Report linking (§7.7, deferred on purpose
       Stage 3/4 occurrences are generated as of 13 Sep (§5).
 - [ ] **Attendee type is not reconciled** — switching Core → Supportive on an
       existing attendee does not persist (§6).
-- [ ] `gridSubmitHours` is stored in `DEFAULT_SETTINGS` and surfaced in
-      Governance Settings, but **nothing reads it**. Either wire it into the
-      Audit Grid submission window or drop it.
+- [ ] `gridSubmitHours` is stored in `DEFAULT_SETTINGS`, but **nothing reads
+      it** — see the fuller, up-to-date version of this item a few entries
+      below, under "Smaller, self-contained gaps" (it now also has to be told
+      apart from the *other*, per-Setup `gridSubmitHours` added 15 Sep). Its
+      editing UI was Governance Settings, which was removed 14 Sep — the
+      value is now frozen at whatever it last held, with no UI anywhere left
+      to change it.
 - [ ] `reviewTimeoutDays` still has **no UI control** on the merged Governance
       Settings list.
 - [ ] The Effect-on-Grids card in Governance Settings still reads seeded

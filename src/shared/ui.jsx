@@ -31,7 +31,8 @@ export const Field = ({label,req,hint,err,children}) =>
 export const Empty = ({ic='—',children}) => <div className="empty"><div className="ic">{ic}</div>{children}</div>;
 
 export const Stat = ({label,v,d,c,on,onClick}) =>
-  <div className={'stat'+(onClick?' click':'')+(on?' on':'')} onClick={onClick}>
+  <div className={'stat'+(onClick?' click':'')+(on?' on':'')} onClick={onClick}
+    style={c?{'--stat-accent':`var(--${c})`}:null}>
     <label>{label}</label>
     <div className="v" style={c?{color:`var(--${c})`}:null}>{v}</div>
     {d && <div className="d">{d}</div>}

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { ArrowUpRight, BarChart3, CalendarDays, CheckSquare, ClipboardList, FileText,
-         Gauge, Layers, LineChart, Menu, Network, Settings2, UsersRound, X } from 'lucide-react';
+import { ArrowUpRight, BarChart3, CalendarDays, CheckSquare, ClipboardCheck, ClipboardList,
+         Gauge, Layers, LineChart, Menu, Network, UsersRound, X } from 'lucide-react';
 /* Dates, the working calendar and number formatting now live in src/shared so
    a screen lifted out of this file keeps working without it. */
 import { ymd, TODAY, PERIOD, HOLIDAYS, isNonWorking, isWeekend,
@@ -1363,38 +1363,44 @@ const SCREENS = [
   {id:'cal',  group:'Start here',    label:'Calendar',               Icon:CalendarDays,   wide:true,
    Screen:ScreenCalendar,
    hint:'Every Meeting, Committee and Report due date, in one full calendar.'},
-  {id:'rpt',  group:'Execution',     label:'Reports & Plans',        Icon:FileText,       wide:true,
-   Screen:ScreenReports,
-   hint:'Every Report and Plan: due to submit, in review, approved.'},
-  {id:'mtg',  group:'Execution',     label:'Meetings & Committees',  Icon:UsersRound,     wide:true,
+  {id:'mtg',  group:'Meetings',      label:'Meetings & Committees',  Icon:UsersRound,     wide:true,
    Screen:ScreenMeetings,
    hint:'Every Meeting and Committee — and inside each one its Agenda, Attendance and follow-up.'},
-  {id:'mom',  group:'Execution',     label:'Meeting Minutes',        Icon:ClipboardList,  wide:true,
+  {id:'mom',  group:'Meetings',      label:'Meeting Minutes',        Icon:ClipboardList,  wide:true,
    Screen:ScreenMinutes,
    hint:'Every set of Meeting Minutes: Draft, Pending Approval, Approved, Closed.'},
+  {id:'grid', group:'Meetings',      label:'Committee Scores',       Icon:BarChart3,
+   Screen:ScreenGrid,
+   hint:'Committee governance scores across occurrences.'},
   {id:'dec',  group:'Governance',    label:'Decisions',              Icon:CheckSquare,
    Screen:ScreenDecisions,
    hint:'The Decision register: every Decision and Decision Request whatever raised it.'},
-  {id:'grid', group:'Governance',    label:'Committee Scores',       Icon:BarChart3,
-   Screen:ScreenGrid,
-   hint:'Committee governance scores across occurrences.'},
-  {id:'bi',   group:'Artifact',      label:'Business intelligence',  Icon:LineChart,      wide:true,
-   Screen:ScreenBI,
-   hint:'The BI report behind each measure — find it by Process, owning department or report.'},
   {id:'orpt', group:'Artifact',      label:'Reports / Plans',        Icon:Layers,         wide:true,
    Screen:ScreenOrgReports,
    hint:'Organizational reports and plans, in and out, with their authors and citations.'},
+  {id:'bi',   group:'Artifact',      label:'Business intelligence',  Icon:LineChart,      wide:true,
+   Screen:ScreenBI,
+   hint:'The BI report behind each measure — find it by Process, owning department or report.'},
   {id:'hier', group:'Artifact',      label:'Reporting hierarchy',    Icon:Network,        wide:true,
    Screen:ScreenHierarchy,
    hint:'Every report/plan and every child it references, as one tree.'},
-  {id:'set',  group:'Configuration', label:'Governance Settings',    Icon:Settings2,      wide:true,
-   Screen:ScreenSettings,
-   hint:'The values that are not yet approved, and what each one switches on.'},
+  /* Hidden from the sidebar on purpose -- NOT dead code. `go('rpt', id)` is
+     still called from over a dozen places (My Workspace's "+ New Report",
+     Decision/Task/Follow-up links back to their source Report, report rows
+     elsewhere), and ScreenOrgReports ('orpt', above) has no mechanism to
+     receive an externally-selected report the way every other screen reads
+     sel[screenId] -- it manages its own internal openId state instead.
+     Redirecting those call sites to 'orpt' would need that screen retrofitted
+     first. Until then, this stays reachable by id, just not listed as a tab. */
+  {id:'rpt',  group:'Execution',     label:'Reports & Plans',        Icon:null,           wide:true,
+   Screen:ScreenReports,           hidden:true,
+   hint:'Every Report and Plan: due to submit, in review, approved.'},
 ];
 
 /* everything below is derived — nothing else in the file lists screens */
-const NAV = [...new Set(SCREENS.map(s=>s.group))].map(g=>({
-  g, items: SCREENS.filter(s=>s.group===g),
+const VISIBLE_SCREENS = SCREENS.filter(s=>!s.hidden);
+const NAV = [...new Set(VISIBLE_SCREENS.map(s=>s.group))].map(g=>({
+  g, items: VISIBLE_SCREENS.filter(s=>s.group===g),
 }));
 const SCREEN_BY_ID = Object.fromEntries(SCREENS.map(s=>[s.id,s.Screen]));
 const WIDE_SCREENS = new Set(SCREENS.filter(s=>s.wide).map(s=>s.id));
@@ -1519,16 +1525,21 @@ function CalendarWebpart({items,title,kinds,emptyText}){
    calendar now shows only what the occurrence tables hold. */
 const CAL_KINDS = [
   {id:'All',     label:'All',      colour:null},
-  {id:'Meeting', label:'Meetings', colour:'blue'},
-  {id:'Report',  label:'Reports',  colour:'ink'},
+  {id:'Meeting', label:'Meetings', colour:'green'},
+  {id:'Report',  label:'Reports',  colour:'teal'},
 ];
 /* Icon/colour treatment for a calendar item's kind — MOM Due borrows the Minutes styling,
    since a MOM write-up deadline is, functionally, a Minutes item. */
 const calIconKind = k => k==='MOM' ? 'Minutes' : k;
-const calTagColour = k => k==='Report'?'ink' : k==='MOM'?'purple' : 'blue';
+const calTagColour = k => k==='Report'?'teal' : k==='MOM'?'purple' : 'green';
 const calGridCls = i => i.status==='Cancelled' ? 'k-canc'
   : i.kind==='Report' ? 'k-rpt' : i.kind==='MOM' ? 'k-mom' : 'k-mtg';
-const CAL_DOT = {blue:'var(--blue)', ink:'var(--ink)', purple:'var(--purple)'};
+const CAL_DOT = {green:'var(--green)', teal:'var(--teal)', purple:'var(--purple)'};
+const CAL_CHIP_STYLE = {
+  green: {border:'var(--green)', bg:'var(--green-bg)', text:'var(--green)'},
+  teal:  {border:'var(--teal)',  bg:'var(--teal-l)',    text:'var(--teal-d)'},
+  purple:{border:'var(--purple)',bg:'var(--purple-bg)', text:'var(--purple)'},
+};
 
 /* A live Dataverse occurrence, shown read-only. The seeded Meeting screen is
    built around demo records and their synthetic ids, so it cannot render one
@@ -1605,7 +1616,7 @@ function DvOccurrenceModal({item,onClose}){
 }
 
 function ScreenCalendar(){
-  const {cal,go,openMeeting,dvLoading,dvError,dvMeetingOccs,dvReportOccs,openDvRec} = use();
+  const {cal,go,openMeeting,dvError,openDvRec} = use();
   const [view,setView] = useState('month');   /* month | week | list */
   const [kind,setKind] = useState('All');
   const [ym,setYm]     = useState(TODAY.slice(0,7));
@@ -1615,7 +1626,6 @@ function ScreenCalendar(){
      read-only panel rather than an execution screen that could not render it. */
   const open = i => i._dv ? openDvRec(i.kind, i._rec)
     : i.screen==='mtg' ? openMeeting(i.id,i.tab||'detail') : go(i.screen,i.id);
-  const liveCount = dvMeetingOccs.length + dvReportOccs.length;
 
   const [y,m]=ym.split('-').map(Number);
   const first=new Date(y,m-1,1), start=new Date(first); start.setDate(1-first.getDay());
@@ -1634,7 +1644,9 @@ function ScreenCalendar(){
   /* -------- This Week's Meetings -------- */
   const wk = rangeBounds('week'), nextWk = [addDays(wk[1],1),addDays(wk[1],7)];
   const byDateTime = (a,b)=>(a.date+(a.time||'')).localeCompare(b.date+(b.time||''));
-  const thisWeekMtgs = cal.filter(i=>i.kind==='Meeting' && i.date>=wk[0] && i.date<=wk[1]
+  /* From today onward, not from Sunday -- a day already past this week
+     shouldn't still show up under "This Week's Meetings". */
+  const thisWeekMtgs = cal.filter(i=>i.kind==='Meeting' && i.date>=TODAY && i.date<=wk[1]
     && i.status!=='Cancelled').sort(byDateTime);
   const nextWeekMtgs = cal.filter(i=>i.kind==='Meeting' && i.date>=nextWk[0] && i.date<=nextWk[1]
     && i.status!=='Cancelled').sort(byDateTime);
@@ -1644,7 +1656,8 @@ function ScreenCalendar(){
     const meta = [i._rec.location||i._rec.mode,
       i._rec.attendees?.length ? i._rec.attendees.length+' attendees' : null].filter(Boolean);
     return <div className="wa-up-r" onClick={()=>open(i)}>
-      <div className="wa-date"><span className="dd">{i.date.slice(8)}</span>
+      <div className="wa-date plain" style={{color:i.date===TODAY?'var(--green)':'var(--ink)'}}>
+        <span className="dd">{i.date.slice(8)}</span>
         <span className="mo">{MONTHS[+i.date.slice(5,7)-1]}</span></div>
       <div className="wa-up-t"><div className="n">{i.title}
           {i.date===TODAY && <Tag c="amber">Today</Tag>}
@@ -1663,19 +1676,14 @@ function ScreenCalendar(){
     <div className="ph ph-row">
       <div style={{flex:1}}><h1>Calendar</h1>
         <div className="sub">Every Meeting Occurrence and Report Occurrence, on one timeline.</div></div>
-      <div className="seg">
+      <div className="seg seg-gold">
         {['month','week','list'].map(v=>
           <button key={v} className={view===v?'on':''} onClick={()=>setView(v)}>
             {v[0].toUpperCase()+v.slice(1)}</button>)}
       </div>
     </div>
 
-    {dvError
-      ? <Note k="warn" ic="⚠">{dvError}</Note>
-      : dvLoading
-        ? <Note k="info" ic="i">Reading live Meeting and Report Occurrences from Dataverse…</Note>
-        : <Note k="info" ic="i"><b>{liveCount} occurrence{liveCount===1?'':'s'}</b> read from lm_meetingoccurrences and
-            lm_reportoccurrences. Open one to see the row as it stands in the table.</Note>}
+    {dvError && <Note k="warn" ic="⚠">{dvError}</Note>}
 
     <div className="fltr" style={{justifyContent:'space-between'}}>
       <div style={{display:'flex',gap:8,alignItems:'center'}}>
@@ -1686,10 +1694,9 @@ function ScreenCalendar(){
       </div>
       <div className="chip-row" style={{margin:0}}>
         {CAL_KINDS.map(k=>{
-          const on = kind===k.id;
-          const style = k.colour ? {borderColor:CAL_DOT[k.colour],
-            background:on?`var(--${k.colour==='ink'?'grey':k.colour}-bg)`:'#fff',
-            color:k.colour==='ink'?'var(--ink)':`var(--${k.colour})`} : {borderColor:'var(--border-d)',color:'var(--ink-2)'};
+          const on = kind===k.id, cs = k.colour && CAL_CHIP_STYLE[k.colour];
+          const style = cs ? {borderColor:cs.border, background:on?cs.bg:'#fff', color:cs.text}
+            : {borderColor:'var(--border-d)',color:'var(--ink-2)'};
           return <button key={k.id} className={'cal-fchip'+(on?' on':'')} style={style} onClick={()=>setKind(k.id)}>
             {k.colour && <span className="dot" style={{background:CAL_DOT[k.colour]}}/>}
             {k.label}</button>;})}
@@ -1703,7 +1710,7 @@ function ScreenCalendar(){
           const out=d.slice(0,7)!==ym, evs=vis.filter(i=>i.date===d);
           return <div key={d} className={'cal-d'+(out?' out':'')+(d===TODAY?' today':'')+
                         (isNonWorking(d)&&!out?' nonwork':'')}>
-            <div className="cal-n"><span>{+d.slice(8)}</span>
+            <div className="cal-n"><span className={d===TODAY?'cal-today-num':''}>{+d.slice(8)}</span>
               {isNonWorking(d)&&!out && <span className="nw">NON-WORKING</span>}</div>
             {evs.map((i,n)=><div key={i.kind+i.id+n} className={'cal-e '+calGridCls(i)} onClick={()=>open(i)}
                 title={i.title+' · '+i.sub}>
@@ -1711,8 +1718,8 @@ function ScreenCalendar(){
           </div>;})}
       </div>
       <div style={{display:'flex',gap:15,flexWrap:'wrap',marginTop:11,fontSize:11.5,color:'var(--muted)'}}>
-        <span><span className="tag blue" style={{padding:'1px 7px'}}>&nbsp;</span> Meetings</span>
-        <span><span className="tag ink" style={{padding:'1px 7px'}}>&nbsp;</span> Reports</span>
+        <span><span className="tag green" style={{padding:'1px 7px'}}>&nbsp;</span> Meetings</span>
+        <span><span className="tag teal" style={{padding:'1px 7px'}}>&nbsp;</span> Reports</span>
         <span><span className="tag grey" style={{padding:'1px 7px'}}>&nbsp;</span> Cancelled</span>
       </div>
     </div>}
@@ -1735,7 +1742,7 @@ function ScreenCalendar(){
     <div className="wa-grid" style={{marginTop:16,gridTemplateColumns:'1fr 1fr'}}>
       <div className="card">
         <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:2}}>
-          <div className="wa-icon gold">🗓</div><h2 style={{flex:1}}>This Week's Meetings</h2>
+          <div className="wa-icon green">🗓</div><h2 style={{flex:1}}>This Week's Meetings</h2>
         </div>
         {thisWeekMtgs.length===0 ? <Empty ic="🗓">No Meetings this week.</Empty>
         : thisWeekMtgs.map((i,n)=><MtgRow key={'tw'+i.id+n} i={i}/>)}
@@ -1753,7 +1760,8 @@ function ScreenCalendar(){
         {deadlines.length===0 ? <Empty ic="✓">Nothing due.</Empty>
         : deadlines.map((i,n)=>
           <div key={'dl'+i.id+i.kind+n} className="wa-up-r" onClick={()=>open(i)}>
-            <div className="wa-date"><span className="dd">{i.date.slice(8)}</span>
+            <div className="wa-date plain" style={{color:i.kind==='MOM'?'var(--purple)':'var(--teal-d)'}}>
+              <span className="dd">{i.date.slice(8)}</span>
               <span className="mo">{MONTHS[+i.date.slice(5,7)-1]}</span></div>
             <div className="wa-up-t"><div className="n">{i.title}</div>
               <div className="m">{i.sub}</div></div>
@@ -2516,12 +2524,6 @@ function App({onSwitch}){
     });
     toast('Mapping created','The Authority Matrix Owner added the missing mapping. Blocked Decisions were rechecked and released.','ok'); }),
 
-  /* ---------------- settings --------------------------------------------- */
-  setSetting:(k,v)=>mut(n=>{ n.settings[k]=v;
-    const note=OD_NOTES[k];
-    toast(note.label+' updated',
-      v==null?'Cleared. '+note.effect
-             :'Set to '+v+'. Grids that are not yet approved will re-score. Approved Grids are never recomputed.','ok'); }),
   addComment:(rec,text)=>mut(n=>{ n.comments.push({id:uid('c'),rec,who:me,at:nowStamp(),text}); }),
   };
 
@@ -2664,7 +2666,10 @@ function App({onSwitch}){
 /* =========================================================================
    1 · MY WORKSPACE
    ========================================================================= */
-const AREA_C = {'Report':'blue','Meeting':'teal','Minutes':'teal',
+/* Each Area gets its own colour so the type reads at a glance, without having
+   to read the label -- Report/Meeting match the same gold/green split the
+   Calendar screen already uses for those two kinds. */
+const AREA_C = {'Report':'teal','Meeting':'green','Minutes':'blue',
                 'Audit Grid':'purple','Decision':'amber','Task':'grey'};
 
 function ItemTable({rows,dateLabel}){
@@ -2782,13 +2787,13 @@ function ScreenWorkspace(){
       <Stat label="Pending Actions" v={work.due.length+work.finish.length}
         d="requiring your attention" c={(work.due.length+work.finish.length)?'teal':'muted'}/>
       <Stat label="Meetings This Week" v={meetingsThisWeek.length}
-        d={meetingsThisWeek.filter(m=>m.status==='Held').length+' held'}/>
+        d={meetingsThisWeek.filter(m=>m.status==='Held').length+' held'} c="green"/>
       <Stat label="Overdue Items" v={overdue.length}
         d={overdue.length? overdueReports+' report'+(overdueReports===1?'':'s')+' + '+
            (overdue.length-overdueReports)+' other' : 'none outstanding'}
-        c={overdue.length?'red':'muted'}/>
+        c={overdue.length?'amber':'muted'}/>
       <Stat label="Pending Approvals" v={work.review.length} d="with a reviewer or approver"
-        c={work.review.length?'amber':'muted'}/>
+        c={work.review.length?'red':'muted'}/>
     </div>
 
     <div className="chip-row" style={{alignItems:'center'}}>
@@ -2802,7 +2807,7 @@ function ScreenWorkspace(){
     <div className="wa-grid">
       <div className="card flush">
         <div className="card-hd" style={{display:'flex',alignItems:'flex-start',gap:12}}>
-          <div className="wa-icon gold">📋</div>
+          <div className="wa-icon gold"><ClipboardCheck size={16} color="#fff" strokeWidth={2.25}/></div>
           <div style={{flex:1}}><h2>Work Queue</h2>
             <div className="csub">Everything open right now — open a record to act on it.</div></div>
           <Btn k="sm" onClick={()=>{setTab('All');setQuick('all');}}>View All</Btn>
@@ -2810,14 +2815,16 @@ function ScreenWorkspace(){
         {rows.length===0 ? <div style={{padding:'8px 17px 17px'}}>
             <Empty ic="✓">Nothing matches these filters.</Empty></div>
         : <div className="t-wrap"><table className="data">
-            <thead><tr><th>Area</th><th>Item</th><th>Accountable</th><th>Status</th>
+            <thead><tr><th style={{width:4}}></th><th>Area</th><th>Item</th><th>Accountable</th><th>Status</th>
               <th>Due</th><th>Action</th></tr></thead>
             <tbody>{rows.map((w,i)=>{
               const st = statusOf(w);
+              const priCls = w.urgent ? 'p-high' : w.bucket==='review' ? 'p-med' : 'p-low';
               const openRow = ()=> w._dv
                 ? openDvRec(w.area==='Report'?'Report':'Meeting', w._rec)
                 : w.screen==='mtg' ? openMeeting(w.rid,w.tab||'detail') : go(w.screen,w.rid);
               return <tr key={w.bucket+w.area+w.rid+i} className="click" onClick={openRow}>
+                <td><div className={'wq-priority '+priCls}/></td>
                 <td><Tag c={AREA_C[w.area]}>{w.area}</Tag></td>
                 <td><div className="t-main">{w.title}</div><div className="t-sub">{w.sub}</div></td>
                 <td className="dim">{w.owner?P(w.owner).name:'—'}
@@ -2846,7 +2853,7 @@ function ScreenWorkspace(){
                   onClick={()=> i._dv
                     ? openDvRec(i.kind==='Report'?'Report':'Meeting', i._rec)
                     : i.screen==='mtg' ? openMeeting(i.id,i.tab||'detail') : go(i.screen,i.id)}>
-                <div className="wa-date"><span className="dd">{i.date.slice(8)}</span>
+                <div className="wa-date plain"><span className="dd">{i.date.slice(8)}</span>
                   <span className="mo">{MONTHS[+i.date.slice(5,7)-1]}</span></div>
                 <div className="wa-up-t">
                   <div className="n">{i.restricted&&'🔒 '}{i.title}</div>
@@ -2862,13 +2869,13 @@ function ScreenWorkspace(){
             <h2 style={{flex:1}}>This Month</h2>
           </div>
           <div className="csub" style={{marginBottom:2}}>Read from the Meeting and Report Occurrence tables.</div>
-          <div className="wa-mo-r"><label>Meetings Held</label>
+          <div className="wa-mo-r divider"><label>Meetings Held</label>
             <span className="v">{meetingsHeld} / {meetingsTotal}</span></div>
-          <div className="wa-mo-r"><label>Agenda Fully Recorded</label>
+          <div className="wa-mo-r divider"><label>Agenda Fully Recorded</label>
             <span className="v">{agendaRecorded} / {meetingsHeld}</span></div>
-          <div className="wa-mo-r"><label>Reports Submitted</label>
+          <div className="wa-mo-r divider"><label>Reports Submitted</label>
             <span className="v">{reportsSubmitted} / {dvReportOccs.length}</span></div>
-          <div className="wa-mo-r"><label>Reports Approved</label>
+          <div className="wa-mo-r divider"><label>Reports Approved</label>
             <span className="v">{reportsApproved} / {dvReportOccs.length}</span></div>
         </div>
       </div>
@@ -2876,7 +2883,7 @@ function ScreenWorkspace(){
 
     <div className="card" style={{marginTop:16}}>
       <h2>Where things live</h2>
-      <div className="csub">Six places, and nothing is hidden behind a seventh.</div>
+      <div className="csub">Five places, and nothing is hidden behind a sixth.</div>
       <div className="t-wrap"><table className="data">
         <thead><tr><th>I want to…</th><th>Go to</th></tr></thead>
         <tbody>
@@ -2888,7 +2895,6 @@ function ScreenWorkspace(){
             ['See Tasks and Decisions a Meeting produced','Open the Meeting → Follow-up tab','mtg'],
             ['Log a Decision, or see every Decision raised','Decisions','dec'],
             ['Compare Committee scores over time','Committee Scores','grid'],
-            ['Change an unapproved value and see what it switches on','Governance Settings','set'],
           ].map(([q,where,sc])=>
             <tr key={q} className="click" onClick={()=>go(sc)}>
               <td>{q}</td><td className="t-main">{where} →</td></tr>)}
@@ -7157,7 +7163,7 @@ function MeetingDetail({rec,back}){
           <Btn onClick={()=>setPeople(true)}>+ Add an Attendee</Btn></div>}
         {a.delegated>0 && <div style={{padding:'0 17px 17px'}}><Note k="warn">
           <b>{a.delegated} delegated attendance recorded.</b> How a delegated attendance counts is unresolved
-          {' '}<OD id="OD-20"/> — change the treatment in Governance Settings.</Note></div>}
+          {' '}<OD id="OD-20"/>.</Note></div>}
       </div>
 
       <div className="wa-side">
@@ -9302,363 +9308,6 @@ function DecisionDetail({rec,back}){
           <Hist items={rec.history}/>
         </div>
       </div>
-    </div>
-  </>;
-}
-/* =========================================================================
-   8 · GOVERNANCE SETTINGS
-   ========================================================================= */
-/* The live Authority Matrix, read from lm_authoritymatrixrows and its Approval
-   Cycles. Read-only by design, not by staging: this module sends criteria and
-   applies the route it gets back, so there is deliberately no edit affordance
-   here and no create/update function behind it. A Decision Type with no row is
-   shown as such, because that gap is what blocks submission rather than
-   producing a fallback route. */
-function AuthorityMatrixPanel(){
-  const [matrix,setMatrix]=useState(null);
-  const [loading,setLoading]=useState(true);
-  const [failed,setFailed]=useState(false);
-
-  useEffect(()=>{
-    let cancelled=false;
-    fetchAuthorityMatrix()
-      .then(m=>{ if(!cancelled) setMatrix(m); })
-      .catch(e=>{ console.warn('[dataverse] fetchAuthorityMatrix() failed:', e);
-                  if(!cancelled) setFailed(true); })
-      .finally(()=>{ if(!cancelled) setLoading(false); });
-    return ()=>{cancelled=true;};
-  },[]);
-
-  const rows = matrix?.rows || [];
-  /* Ordered the way the check itself orders them -- by type, then by ceiling --
-     so what is read here is the order a Decision is actually evaluated against. */
-  const ordered = rows.slice().sort((a,b)=>
-    (a.type||'').localeCompare(b.type||'') ||
-    ((a.max==null?Infinity:a.max)-(b.max==null?Infinity:b.max)));
-  const mapped = new Set(rows.map(r=>r.type).filter(Boolean));
-  const unmapped = DECISION_TYPES.filter(t=>!mapped.has(t));
-
-  return <div className="card">
-    <h2>Authority Matrix — owned outside Leadership Practice</h2>
-    <div className="csub">Read live from lm_authoritymatrixrows. This module sends the criteria and
-      applies the result and route unmodified — it never authors or substitutes an authority rule.</div>
-
-    {loading && <Empty>Reading lm_authoritymatrixrows…</Empty>}
-    {failed && <Note k="err">The Authority Matrix could not be read. Decision routing cannot be
-      previewed until it loads — check the console for details.</Note>}
-
-    {!loading && !failed && <>
-      {ordered.length===0
-        ? <Empty ic="▦">No Authority Matrix row exists yet.</Empty>
-        : <div className="t-wrap"><table className="data">
-            <thead><tr><th>Decision Type</th><th>Up to</th><th>Required level</th>
-              <th>Approval Cycle</th></tr></thead>
-            <tbody>{ordered.map(r=><tr key={r.id}>
-              <td className="t-main">{r.type||'—'}</td>
-              <td className="dim">{r.max==null?'No ceiling':r.max.toLocaleString('en-US')+' SAR'}</td>
-              <td className="num">{r.reqLvl??'—'}
-                {r.reqLvl!=null && AUTH_LEVELS[r.reqLvl]
-                  ? <div className="t-sub">{AUTH_LEVELS[r.reqLvl]}</div> : null}</td>
-              <td>{r.cycle
-                ? <><b>{r.cycle}</b>{r.cycleName?<div className="t-sub">{r.cycleName}</div>:null}</>
-                : <span className="dim">Authority confirmed at this level</span>}</td>
-            </tr>)}
-            </tbody></table></div>}
-
-      {unmapped.length>0 &&
-        <Note k="warn"><b>{unmapped.length} Decision Type
-          {unmapped.length>1?'s have':' has'} no mapping:</b> {unmapped.join(' · ')}. A Decision of
-          that type is logged and its submission blocked — no substitute route is created. The fix is
-          owned by the Authority Matrix Owner, not here.</Note>}
-
-      {(matrix?.cycles?.list||[]).length>0 && <>
-        <div className="sep"/>
-        <h2 style={{marginBottom:4}}>Approval Cycles</h2>
-        <div className="csub">Ordered position chains. A Decision Request routes through these steps in
-          sequence.</div>
-        {matrix.cycles.list.map(c=>
-          <div key={c.id} style={{marginBottom:12}}>
-            <div style={{display:'flex',alignItems:'baseline',gap:9,marginBottom:4}}>
-              <b style={{fontSize:13}}>{c.code||'—'}</b>
-              <span style={{fontSize:12.5,color:'var(--muted)'}}>{c.name}</span>
-            </div>
-            {c.steps.length===0
-              ? <div className="dim" style={{fontSize:12}}>No step configured on this cycle.</div>
-              : <Rail steps={c.steps.map(s=>s.position||'(unnamed position)')} now={null} done={[]}/>}
-          </div>)}
-      </>}
-    </>}
-  </div>;
-}
-
-/* Governance Settings — laid out to match the Governance Settings tab of
-   leadership-practice.html: a gold lede, one full-width column of cards, the
-   settings table carrying name/AG/help/OD in its first cell and pill values in
-   its last, and label/value blocks for the two read-only reference sections.
-   Behaviour is unchanged; only the presentation follows the prototype. */
-/* Every governance setting, as one list of cards.
-
-   These used to be two sections: three "timing period" cards at the top and a
-   separate "Values awaiting a business decision" grid below. MOM write-up and
-   MOM approval appeared in BOTH — the same setting, two controls, on one
-   screen. They are merged here into a single ordered list, each setting
-   appearing exactly once.
-
-   The card carries whichever parts a given setting has:
-     · the from → to strip, for the three that measure an elapsed period
-     · the open question, for the ones still awaiting a decision
-     · a free numeric input, or a set of choice pills
-   Everything shares one frame, so the screen reads as one thing. */
-const GOV_SETTINGS = [
-  {n:'01', k:'momWriteupHours',  kind:'hours',   scores:'AG-16',
-   from:'Meeting ends',       to:'MOM submitted',
-   desc:'Time allowed for the Facilitator to complete and submit the Minutes.'},
-  {n:'02', k:'momApprovalHours', kind:'hours',   scores:'AG-05',
-   from:'MOM submitted',      to:'MOM approved',
-   desc:'Time allowed for the Meeting Chair to review and approve the submitted Minutes.'},
-  {n:'03', k:'gridSubmitHours',  kind:'hours',
-   from:'Audit Grid created', to:'Submitted to Chair',
-   desc:'Time allowed to complete all required Grid questions and submit the Grid for Chair approval.'},
-  {n:'04', k:'agendaLeadDays',   kind:'days',    scores:'AG-03',
-   desc:'Days before the Meeting by which the Agenda must be distributed.'},
-  {n:'05', k:'inviteLeadDays',   kind:'days',    scores:'AG-15',
-   desc:'Days before the Meeting by which the invitation must be sent.'},
-  {n:'06', k:'passThreshold',    kind:'percent', max:100,
-   desc:'Score at or above which an occurrence passes.'},
-  {n:'07', k:'delegatedAttend',  kind:'choice',
-   opts:[['exclude','Exclude from the rate'],['half','Count at half weight'],
-         ['present','Count as present']]},
-  {n:'08', k:'momClosure',       kind:'choice',
-   opts:[['auto','Automatic on approval and Output activation'],
-         ['manual','An explicit act by the Meeting Chair']]},
-  {n:'09', k:'inputReadiness',   kind:'choice',
-   opts:[['submitted','Submitted is sufficient'],['approved','Must be Approved']]},
-];
-
-const UNIT_WORD = {hours:'hours', days:'days', percent:'%'};
-
-function GovSettingCard({c,S,A}){
-  const note = OD_NOTES[c.k];
-  const cur  = S[c.k];
-  const isChoice = c.kind === 'choice';
-  const unit = UNIT_WORD[c.kind] || '';
-
-  const [draft,setDraft] = useState(cur==null?'':String(cur));
-  /* Re-sync if the value changes anywhere else. */
-  useEffect(()=>{ setDraft(cur==null?'':String(cur)); },[cur]);
-
-  const num   = Number(draft);
-  const valid = !isChoice && draft.trim()!=='' && Number.isFinite(num) && num>0
-                && (!c.max || num<=c.max);
-  const dirty = valid ? num!==cur : draft.trim()!=='';
-  const chosen = isChoice ? (c.opts.find(o=>o[0]===cur) || null) : null;
-
-  return <div className="tset-c">
-    <div className="tset-hd">
-      <span className="tset-n">{c.n}</span>
-      <div>
-        {c.scores ? <div className="vset-tag">{c.scores}</div> : null}
-        <div className="tset-t">{note.label}</div>
-        <div className="tset-w">
-          Owner {note.owner}{note.accountable?' · Accountable: '+note.accountable:''}</div>
-      </div>
-    </div>
-
-    {/* Only the three elapsed-period settings name two events. */}
-    {c.from ? <div className="tset-flow">
-      <span className="e">{c.from}</span>
-      <span className="a" aria-hidden="true">→</span>
-      <span className="e">{c.to}</span>
-    </div> : null}
-
-    <div className="vset-q">
-      <span className="l">Open question</span>
-      <span className="t">{note.q}</span>
-    </div>
-
-    <div className="tset-d">{note.effect}</div>
-    {c.desc ? <div className="vset-help">{c.desc}</div> : null}
-
-    <div>
-      <label className="tset-lbl" htmlFor={'g-'+c.k}>
-        {c.kind==='hours' ? 'Allowed elapsed time' : 'Value'}</label>
-      {isChoice
-        ? <div className="gset-vals col" style={{marginTop:6}}>
-            {c.opts.map(([v,l])=>
-              <button type="button" key={v} aria-pressed={cur===v}
-                className={'gset-chip word'+(cur===v?' on':'')}
-                onClick={()=>A.setSetting(c.k,v)}>{l}</button>)}
-          </div>
-        : <div className="tset-in" style={{marginTop:6}}>
-            <div className="tset-box">
-              <input id={'g-'+c.k} type="number" min="1" max={c.max||undefined} step="1"
-                inputMode="numeric" value={draft}
-                placeholder={c.kind==='percent'?'Enter a percentage':'Enter '+unit}
-                onChange={e=>setDraft(e.target.value)}
-                onKeyDown={e=>{ if(e.key==='Enter' && valid && dirty) A.setSetting(c.k,num); }}/>
-              <span className="u">{unit}</span>
-            </div>
-            <Btn k={'sm'+(valid&&dirty?' pri':'')} disabled={!valid||!dirty}
-              onClick={()=>A.setSetting(c.k,num)}>Save</Btn>
-            <Btn k="sm" disabled={cur==null&&draft.trim()===''}
-              onClick={()=>{ setDraft(''); if(cur!=null) A.setSetting(c.k,null); }}>Clear</Btn>
-          </div>}
-    </div>
-
-    <div className="tset-ft">
-      {isChoice
-        ? <><Tag c="teal">{chosen?chosen[1]:'—'}</Tag>
-            <span className="vset-note">recommendation, not a decision</span></>
-        : cur!=null
-          ? <Tag c="green">{cur} {unit}</Tag>
-          : <><Tag c="tbd">Not set</Tag>
-              <span className="vset-note">behaviour switched off</span></>}
-      {note.od ? <OD id={note.od} closed={note.closed}/> : null}
-    </div>
-  </div>;
-}
-
-function ScreenSettings(){
-  const {db,S,A,go,me}=use();
-  const live=db.grids.filter(g=>!g.frozen);
-  const frozen=db.grids.filter(g=>g.frozen);
-
-  return <>
-    <div className="ph"><h1>Governance Settings</h1>
-      <div className="sub">Nine settings in one list — six periods and thresholds, and three
-        behaviours. Each is switched off or set to its stated default rather than guessed. Change one
-        and the effect on every Grid that is not yet approved is immediate; an approved Grid is never
-        recomputed.</div></div>
-
-    <div className="gset-lede">
-      <span className="ic" aria-hidden="true">⚠</span>
-      <div>
-        <div className="t">Nothing on this screen is an approved value.</div>
-        <div className="s">Each carries the open item that owns it. Setting a value here shows the sponsor
-          what the behaviour would look like; it does not close the decision. A period is measured from
-          the completed event on the left to the event on the right, and applies to open records only —
-          completed history is never recalculated.</div>
-      </div>
-    </div>
-
-    <div className="tset">
-      {GOV_SETTINGS.map(c=><GovSettingCard key={c.k} c={c} S={S} A={A}/>)}
-    </div>
-
-    <div className="card">
-      <h2>Effect on Grids that are not yet approved</h2>
-      <div className="csub">Recomputed live from the settings above.</div>
-      {live.length===0?<Empty>No open Grids.</Empty>:
-      <div className="t-wrap"><table className="data">
-        <thead><tr><th>Committee occurrence</th><th>State</th><th>Applicable</th><th>Not Applicable</th>
-          <th>Coverage</th><th>Score if approved now</th></tr></thead>
-        <tbody>{live.map(g=>{
-          const o=db.occs.find(x=>x.id===g.occ);
-          const rows=scoreGrid(g,db,S), t=gridTotals(rows);
-          return <tr key={g.id} className="click" onClick={()=>go('grid',g.id)}>
-            <td><div className="t-main">{occName(o)}</div><div className="t-sub">{fmtD(o.date)}</div></td>
-            <td><Tag c="amber">{g.state}</Tag></td>
-            <td className="num">{t.applicable} of {t.total}</td>
-            <td className="num">{t.na}</td>
-            <td><div style={{display:'flex',alignItems:'center',gap:8}}>
-              <span style={{minWidth:38}}>{t.coverage}%</span><Bar v={t.coverage} c={pctColour(t.coverage)}/></div></td>
-            <td>{t.blanks>0?<Tag c="amber">{t.blanks} still blank</Tag>
-              :<b style={{color:`var(--${pctColour(t.score)})`}}>{t.score}%</b>}</td>
-          </tr>;})}
-        </tbody></table></div>}
-      {frozen.length>0 && <Note k="lock"><b>{frozen.length} approved Grid
-        {frozen.length>1?'s are':' is'} unaffected.</b> An approved Grid keeps the score published at
-        approval and the Template version applied at creation. Changing a setting here can never rewrite
-        history.</Note>}
-    </div>
-
-    <div className="card">
-      <h2>Owned by Taxonomy — read-only here</h2>
-      <div className="csub">Leadership Practice retrieves this configuration and never creates or
-        modifies it.</div>
-      {[['Audit Grid Template', AG_TEMPLATE_VERSION+' · Active · applies to Setup Type Committee'],
-        ['Audit Grid questions', AG_ACTIVE.length+' active, '+
-          AG_ACTIVE.filter(q=>q.src==='Auto').length+' automatic and '+
-          AG_ACTIVE.filter(q=>q.src==='Manual').length+' manual · AG-07 retired'],
-        ['Question weights', 'All weights are 1, so question count is the effective weighting'],
-        ['Topic Nature option set', TOPIC_NATURES.join(' · ')],
-        ['Topic Category option set', TOPIC_CATEGORIES.length+' values including a mandatory free text on Other'],
-        ['Confidentiality classifications', 'Applied to the execution record from the Taxonomy policy reference'],
-        ['Controlled Meeting and Committee names', MTG_SETUPS.length+' Setups retrieved at runtime'],
-      ].map(([k,v],i)=><div className="gset-kv" key={i}>
-        <span className="k">{k}</span><span className="v">{v}</span></div>)}
-      <Note k="warn">Audit Grid weight calibration is unresolved <OD id="OD-21"/>. Until weights are
-        deliberately calibrated or flat weighting is formally accepted, question count is the weighting
-        by default rather than by decision.</Note>
-    </div>
-
-    <div className="card">
-      <h2>Working calendar</h2>
-      <div className="csub">A Meeting Occurrence falling on a non-working day is rescheduled for that
-        occurrence only — the series never moves.</div>
-      <div className="gset-cal">
-        <div><div className="k">Working week</div><div className="v">Sunday to Thursday</div></div>
-        <div><div className="k">Weekend</div><div className="v">Friday and Saturday</div></div>
-        <div><div className="k">Configured holidays</div>
-          <div className="v mono">{HOLIDAYS.map(fmtD).join(' · ')}</div></div>
-        <div><div className="k">Time zone</div><div className="v">Arabia Standard Time</div></div>
-      </div>
-      <Note k="warn">One reference calendar per Region and business unit is still to be published
-        <OD id="OD-30"/>. The values above stand in for it.</Note>
-    </div>
-
-    <AuthorityMatrixPanel/>
-
-    <div className="card flush">
-      <div className="card-hd"><h2>Decisions already closed by the latest stakeholder review</h2>
-        <div className="csub">Recorded so the questions stay closed in writing.</div></div>
-      <div className="t-wrap"><table className="data">
-        <thead><tr><th style={{width:'22%'}}>Item</th><th>How it was closed</th>
-          <th>What changed here</th></tr></thead>
-        <tbody>
-          <tr><td><div className="gset-od closed"><OD id="OD-06" closed/></div>
-            <div className="gset-name">MOM signature method</div></td>
-            <td className="dim">The Meeting Chair’s approval of the Minutes <b>is</b> the signature. Name, date and time
-              are captured on approval, and the block renders on every extract, export and printed report.</td>
-            <td className="dim">No signature setting exists. AG-07 was retired, because a question that can only ever
-              return five measures nothing and inflates the score.</td></tr>
-          <tr><td><div className="gset-od closed"><OD id="OD-34" closed/></div>
-            <div className="gset-name">Pre-Meeting Submission</div></td>
-            <td className="dim">Satisfied by the Report Submissions linked as Meeting inputs, which must be submitted and
-              reviewed before the Meeting.</td>
-            <td className="dim">No separate pre-meeting artefact. The Meeting record carries input readiness instead.</td></tr>
-          <tr><td><div className="gset-od closed"><OD id="OD-02" closed/></div>
-            <div className="gset-name">Position of FPTTRRR</div></td>
-            <td className="dim">FPTTRRR is a Topic Category, not a Decision Criterion in the Authority Matrix.</td>
-            <td className="dim">It appears in the Topic Category list on the Decision intake. Its definition is still
-              open <OD id="OD-01"/>.</td></tr>
-        </tbody></table></div>
-    </div>
-
-    <div className="card flush">
-      <div className="card-hd"><h2>Reference — the boundary this module holds</h2>
-        <div className="csub">What Leadership Practice does, and what it deliberately does not.</div></div>
-      <div className="t-wrap"><table className="data">
-        <thead><tr><th style={{width:'18%'}}>Area</th><th>Leadership Practice</th>
-          <th>Owned elsewhere</th></tr></thead>
-        <tbody>{[
-          ['Approved Setup','Retrieves and executes against approved Report and Meeting Setups.',
-           'Taxonomy owns Setups, controlled names, Templates and classifications. A review proposal to move Setup ownership here was considered and not accepted — two sources of approved configuration would be worse than one.'],
-          ['Decision authority','Sends the criteria, applies the returned result and route without modification.',
-           'The Authority Matrix owns authority rules, Decision Criteria and Approval Cycles, including creating missing mappings.'],
-          ['Files','Stores the file URL and metadata in Dataverse.',
-           'The actual file stays in the Taxonomy-managed file location.'],
-          ['Task execution','Creates Tasks with a source reference and back-links, and reads their status.',
-           'TMS owns assignment, progress and closure.'],
-          ['People','Resolves employees, positions, managers and Microsoft 365 Groups at the point of use.',
-           'Employee Data Management owns the master data.'],
-          ['Enterprise reporting structure','None.',
-           'The connection between business intelligence and the Report Setup held in Taxonomy is a Taxonomy-to-reporting exchange. Leadership Practice is not a party to it.'],
-          ['Calendar','Creates and synchronizes governed occurrences.',
-           'Outlook and Teams own calendar services, invitations and online sessions.'],
-        ].map(([a,b,c],i)=><tr key={i}><td className="gset-name">{a}</td><td className="dim">{b}</td>
-          <td className="dim">{c}</td></tr>)}
-        </tbody></table></div>
     </div>
   </>;
 }

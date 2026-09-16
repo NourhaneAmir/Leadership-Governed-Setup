@@ -196,6 +196,10 @@ a:hover{text-decoration:underline}
 .btn.lnk{border-color:transparent;background:transparent;color:var(--teal-d);padding:4px 6px}
 .btn.lnk:hover:not(:disabled){background:var(--teal-ll);border-color:transparent}
 .btn-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.wq-priority{width:4px;border-radius:2px;min-height:30px}
+.wq-priority.p-high{background:var(--red)}
+.wq-priority.p-med{background:var(--amber)}
+.wq-priority.p-low{background:var(--green)}
 
 /* ---------- tags ---------- */
 .tag{display:inline-flex;align-items:center;gap:4px;border-radius:20px;padding:2px 9px;font-size:11px;
@@ -287,7 +291,7 @@ fieldset:disabled{opacity:.62}
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(146px,1fr));gap:11px;margin-bottom:14px}
 .stat{background:var(--grad-card);border:1px solid var(--border);border-radius:12px;padding:12px 14px;
   box-shadow:var(--sh);position:relative;overflow:hidden}
-.stat::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--grad-gold)}
+.stat::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--stat-accent,var(--grad-gold))}
 .stat label{display:block;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);
   font-weight:700;margin-bottom:5px}
 .stat .v{font-size:22px;font-weight:680;letter-spacing:-.02em;line-height:1.1;font-variant-numeric:tabular-nums;font-family:var(--mono)}
@@ -361,10 +365,13 @@ fieldset:disabled{opacity:.62}
   border:1px solid var(--border);border-radius:8px;overflow:hidden}
 .cal-h{background:var(--surface);padding:7px 9px;font-size:10px;letter-spacing:.07em;text-transform:uppercase;
   color:var(--muted);font-weight:700;text-align:center}
-.cal-d{background:#fff;min-height:92px;padding:5px 6px}
+.cal-d{background:#fff;min-height:92px;padding:5px 6px;transition:background .15s}
 .cal-d.out{background:var(--surface)}
-.cal-d.today{background:var(--teal-ll);box-shadow:inset 0 0 0 1.5px var(--teal)}
+.cal-d:not(.out):not(.today):hover{background:rgba(165,132,91,.035)}
+.cal-d.today{background:rgba(165,132,91,.07)}
 .cal-d.nonwork{background:var(--surface)}
+.cal-today-num{background:var(--grad-gold);color:#fff!important;border-radius:50%;width:19px;height:19px;
+  display:inline-flex;align-items:center;justify-content:center;font:700 10.5px var(--mono)}
 .cal-n{font-size:11px;font-weight:650;color:var(--ink-2);margin-bottom:3px;display:flex;
   justify-content:space-between;align-items:center}
 .cal-d.out .cal-n{color:var(--faint);font-weight:500}
@@ -379,9 +386,9 @@ fieldset:disabled{opacity:.62}
 .cal-e.restr{background:var(--purple-bg);color:var(--purple);border-left-color:var(--purple)}
 .cal-e.mom{background:var(--purple-bg);color:var(--purple);border-left-color:var(--purple)}
 .cal-e.rpt{background:var(--blue-bg);color:#12406f;border-left-color:var(--blue)}
-/* kind-based palette, matching the filter bar: Meetings blue, Reports dark, MOM Due purple */
-.cal-e.k-mtg{background:var(--blue-bg);color:#12406f;border-left-color:var(--blue)}
-.cal-e.k-rpt{background:var(--grey-bg);color:var(--ink);border-left-color:var(--ink-2)}
+/* kind-based palette, matching the filter bar: Meetings green, Reports gold, MOM Due purple */
+.cal-e.k-mtg{background:var(--green-bg);color:#0a5537;border-left-color:var(--green)}
+.cal-e.k-rpt{background:var(--teal-l);color:var(--teal-d);border-left-color:var(--teal)}
 .cal-e.k-mom{background:var(--purple-bg);color:var(--purple);border-left-color:var(--purple)}
 .cal-e.k-canc{background:var(--grey-bg);color:var(--faint);border-left-color:var(--grey-bd);
   text-decoration:line-through}
@@ -398,6 +405,7 @@ fieldset:disabled{opacity:.62}
   font-weight:600;color:var(--muted)}
 .seg button:hover{color:var(--ink)}
 .seg button.on{background:#fff;color:var(--ink);box-shadow:var(--sh)}
+.seg-gold button.on{background:var(--grad-gold);color:#fff;box-shadow:none}
 .sched-r{display:flex;align-items:center;gap:11px;padding:9px 0;border-bottom:1px solid var(--border);
   cursor:pointer}
 .sched-r:last-child{border-bottom:none}
@@ -434,10 +442,16 @@ fieldset:disabled{opacity:.62}
   color:var(--teal-d)}
 .wa-date .dd{display:block;font-size:14px;font-weight:700;line-height:1.05;font-family:var(--mono)}
 .wa-date .mo{display:block;font-size:8.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:650}
+/* flat variant: no filled tile, the day number itself carries the colour */
+.wa-date.plain{background:transparent;padding:0;color:var(--ink)}
+.wa-date.plain .mo{color:var(--dim)}
 .wa-up-t{flex:1;min-width:0}
 .wa-up-t .n{font-size:12.5px;font-weight:640}
 .wa-up-t .m{font-size:11px;color:var(--muted);margin-top:1px}
-.wa-up-time{font-size:11px;color:var(--muted);font-family:var(--mono);white-space:nowrap}
+.wa-up-time{font:500 10.5px var(--mono);color:var(--teal-d);background:var(--teal-l);
+  padding:2.5px 7px;border-radius:6px;white-space:nowrap;align-self:center}
+.wa-mo-r.divider{border-bottom:1px solid var(--border)}
+.wa-mo-r.divider:last-child{border-bottom:none}
 .wa-mo-r{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 0;font-size:12.5px}
 .wa-mo-r label{color:var(--ink-2);min-width:0}
 .wa-mo-r .v{font-weight:650;font-family:var(--mono);font-variant-numeric:tabular-nums;

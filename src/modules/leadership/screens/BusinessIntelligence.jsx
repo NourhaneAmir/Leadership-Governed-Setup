@@ -199,7 +199,7 @@ function BiFrame({bi}){
       <a href={bi.link} target="_blank" rel="noopener noreferrer"
          style={{fontSize:11.5,color:'var(--teal-d)'}}>Open in Power BI ↗</a>
       <div style={{flex:1}}/>
-      <Btn k="sm pri" onClick={()=>openViewer(embed)}>Open report viewer</Btn>
+      <Btn k="sm pri" onClick={()=>openViewer(embed)}>Open full report ↗</Btn>
       {violation
         ? null
         : <Btn k="sm" onClick={()=>{ setLoaded(false); setAttempt(a=>a+1); }}>
@@ -222,7 +222,7 @@ function BiFrame({bi}){
           <b>The host blocks this frame — <code>{violation}</code>.</b> The Power Apps player's
           content-security policy refuses <code>app.powerbi.com</code>, so no in-page embed can
           work here: not this iframe, not the Power BI JavaScript SDK, which uses one too.
-          <b> Open report viewer</b> is the way in — a top-level window is not subject to the
+          <b> Open full report ↗</b> is the way in — a top-level window is not subject to the
           policy. Signing in inside the frame is not an option either: the browser refuses the
           navigation before anything from Power BI loads, including its sign-in page, so there
           is no document there to sign into. Lifting this would mean getting
@@ -235,7 +235,7 @@ function BiFrame({bi}){
           frame itself was allowed and Power BI declined it — the viewer is not signed in, the
           report is not shared with them, or the browser is partitioning third-party cookies
           (the default in Safari and in Chrome incognito), which stops silent auth inside a
-          frame. Use <b>Open report viewer</b>: it authenticates normally, and once a session
+          frame. Use <b>Open full report ↗</b>: it authenticates normally, and once a session
           exists <b>Retry in page</b> may then work.
         </div>}
     {converted
