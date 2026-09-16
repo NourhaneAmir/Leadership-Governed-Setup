@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useEffect, useRef, createContext, useContext } from 'react';
+import React, { useState, useMemo, useEffect, useLayoutEffect, useRef, createContext, useContext } from 'react';
+import { createPortal } from 'react-dom';
 import { ClipboardList, ListChecks, ArrowUpRight, FileText, CalendarDays, Check, MoreHorizontal } from 'lucide-react';
 import { fetchRegions, fetchBusinessUnits, fetchDepartments, fetchFunctions, fetchProcesses, fetchKpis, fetchSections, fetchPositions, departmentBuIndex, fetchTeamsChannels, fetchCurrentUser, saveReportTemplateToDataverse, saveMeetingTemplateToDataverse, updateReportTemplateToDataverse, updateMeetingTemplateToDataverse, updateReportTemplateStatus, updateMeetingTemplateStatus, fetchReportTemplatesList, fetchMeetingTemplatesList, fetchReportTemplateDetail, fetchMeetingTemplateDetail, fetchMeetingOccurrencesByTemplate, fetchReportOccurrencesByTemplate, TEMPLATE_STATUS_LABEL,
   logSetupActivity, logSetupActivityBatch, fetchSetupActivity } from '../../services/dataverse.js';
@@ -1116,13 +1117,75 @@ const Sel=({id,val,onChange,opts,placeholder='Select…',disabled})=>
 const posInitials = t =>
   (t||'').trim().split(/\s+/).filter(Boolean).map(w=>w[0]).slice(0,2).join('').toUpperCase();
 
+/* A dropdown list that overlays the whole page.
+
+   Rendered through a portal into <body>, so no panel drawn later can cover
+   it and no ancestor with overflow set can clip it -- the two failures an
+   absolutely-positioned list inside the field is exposed to. It is placed
+   `fixed` from the anchor's on-screen rectangle and re-placed on every scroll
+   (captured, so a scrolling panel counts too) and resize.
+
+   The wrapper carries `gov-root` so the module's scoped `.gov-root .combo-*`
+   styles still apply outside the app shell; `.gov-root` itself only defines
+   CSS variables, so it adds no layout.
+
+   Because the list is no longer inside the field in the DOM, a caller's
+   outside-click check has to test `listRef` as well as its own ref. */
+const FLOAT_MIN_W = 280;   // a narrow field (e.g. a review chain row) still gets a readable list
+const FLOAT_MAX_H = 360;   // was 220 -- roughly three rows of a Position list
+const FLOAT_GAP   = 4;
+function FloatingList({anchorRef,listRef,open,className,role,children}){
+  const [pos,setPos]=useState(null);
+  useLayoutEffect(()=>{
+    if(!open){ setPos(null); return; }
+    const place=()=>{
+      const a=anchorRef.current; if(!a) return;
+      const r=a.getBoundingClientRect();
+      const vw=window.innerWidth, vh=window.innerHeight;
+      const below=vh-r.bottom-FLOAT_GAP-8, above=r.top-FLOAT_GAP-8;
+      /* open upward only when below is genuinely short and above is roomier */
+      const up=below<Math.min(FLOAT_MAX_H,200) && above>below;
+      const width=Math.min(Math.max(r.width,FLOAT_MIN_W), vw-16);
+      setPos({
+        left:Math.max(8, Math.min(r.left, vw-width-8)),
+        width,
+        maxHeight:Math.max(120, Math.min(FLOAT_MAX_H, up?above:below)),
+        top:up?'auto':r.bottom+FLOAT_GAP,
+        bottom:up?vh-r.top+FLOAT_GAP:'auto',
+      });
+    };
+    place();
+    window.addEventListener('scroll',place,true);
+    window.addEventListener('resize',place);
+    return ()=>{
+      window.removeEventListener('scroll',place,true);
+      window.removeEventListener('resize',place);
+    };
+  },[open,anchorRef]);
+
+  if(!open || !pos) return null;
+  return createPortal(
+    <div className="gov-root gov-float">
+      <div ref={listRef} className={className+' is-floating'} role={role}
+        style={{position:'fixed', right:'auto', zIndex:150, ...pos}}>
+        {children}
+      </div>
+    </div>,
+    document.body);
+}
+
 function PosSel({id,val,onChange,opts,placeholder='Select…',disabled}){
   const [q,setQ]=useState('');
   const [open,setOpen]=useState(false);
   const ref=useRef(null);
+  const listRef=useRef(null);
   useEffect(()=>{
     if(!open) return;
-    const onDoc=e=>{ if(ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    /* the list lives in a portal, outside `ref` in the DOM -- test both */
+    const onDoc=e=>{
+      if(ref.current?.contains(e.target) || listRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
     const onEsc=e=>{ if(e.key==='Escape') setOpen(false); };
     document.addEventListener('mousedown',onDoc); document.addEventListener('keydown',onEsc);
     return ()=>{ document.removeEventListener('mousedown',onDoc); document.removeEventListener('keydown',onEsc); };
@@ -1152,7 +1215,8 @@ function PosSel({id,val,onChange,opts,placeholder='Select…',disabled}){
           </>}
       <span className="pos-sel-cv">▾</span>
     </button>
-    {open && !disabled && <div className="combo-list pos-sel-list">
+    <FloatingList anchorRef={ref} listRef={listRef} open={open && !disabled}
+      className="combo-list pos-sel-list">
       <input autoFocus type="search" className="pos-sel-q" value={q}
         onChange={e=>setQ(e.target.value)}
         placeholder="Search a Position or the person holding it…"/>
@@ -1170,7 +1234,7 @@ function PosSel({id,val,onChange,opts,placeholder='Select…',disabled}){
                 <span className="pos-sel-v"><b>{o.name}</b>{o.holder?<i>{o.holder}</i>:null}</span>
               </button>)}
           </>}
-    </div>}
+    </FloatingList>
   </div>;
 }
 
@@ -1202,11 +1266,16 @@ function ComboMulti({id,opts,val,onChange,placeholder}){
   const [q,setQ]=useState('');
   const [open,setOpen]=useState(false);
   const wrapRef=useRef(null);
+  const listRef=useRef(null);
   const selected=val||[];
   const filtered=opts.filter(o=>!selected.includes(o) && o.toLowerCase().includes(q.toLowerCase()));
 
   useEffect(()=>{
-    const onDoc=e=>{ if(wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
+    /* the list lives in a portal, outside `wrapRef` in the DOM -- test both */
+    const onDoc=e=>{
+      if(wrapRef.current?.contains(e.target) || listRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
     document.addEventListener('mousedown',onDoc);
     return ()=>document.removeEventListener('mousedown',onDoc);
   },[]);
@@ -1228,12 +1297,13 @@ function ComboMulti({id,opts,val,onChange,placeholder}){
           else if(e.key==='Escape') setOpen(false);
         }}/>
     </div>
-    {open ? <div className="combo-list" role="listbox">
+    <FloatingList anchorRef={wrapRef} listRef={listRef} open={open}
+      className="combo-list" role="listbox">
       {filtered.length
         ? filtered.map(o=><button type="button" key={o} className="combo-opt" role="option"
             onClick={()=>add(o)}>{o}</button>)
         : <div className="combo-empty">{q?'No matches':'All options selected'}</div>}
-    </div> : null}
+    </FloatingList>
   </div>;
 }
 
@@ -4510,11 +4580,16 @@ function App({onSwitch}){
               : null}
           </React.Fragment>)}
           <div className="gov-side-sp"/>
-          <div className="gov-side-grp">Modules</div>
-          <button type="button" className="nav-i gov-nav-i gov-switch-nav" title={navOpen?undefined:'Leadership Execution'}
-            onClick={onSwitch}>
-            <span className="nav-n gov-nav-n gov-switch-ic"><ArrowUpRight size={16} strokeWidth={2.25}/></span>
-            <span className="gov-nav-label">Leadership Execution</span></button>
+          {/* Only when a handler is given. The two modules ship as separate
+              Code Apps, so this app has nothing to switch to in-process --
+              pass onSwitch from main.jsx to link to the other app's URL. */}
+          {onSwitch ? <>
+            <div className="gov-side-grp">Modules</div>
+            <button type="button" className="nav-i gov-nav-i gov-switch-nav" title={navOpen?undefined:'Leadership Execution'}
+              onClick={onSwitch}>
+              <span className="nav-n gov-nav-n gov-switch-ic"><ArrowUpRight size={16} strokeWidth={2.25}/></span>
+              <span className="gov-nav-label">Leadership Execution</span></button>
+          </> : null}
         </nav>
         <main className="main full gov-main">{body}</main>
       </div>

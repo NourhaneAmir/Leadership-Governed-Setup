@@ -4,8 +4,8 @@
 > Written 30 Aug 2026, updated 01 Sep 2026, updated 02 Sep 2026 (twice),
 > updated 04 Sep 2026, updated 05 Sep 2026, updated 06 Sep 2026,
 > updated 07 Sep 2026 (twice), updated 08 Sep 2026, updated 12 Sep 2026
-> (covering 09-12 Sep), updated 13 Sep 2026, updated 14 Sep 2026, against
-> branch `leadership-practice`.
+> (covering 09-12 Sep), updated 13 Sep 2026, updated 14 Sep 2026,
+> updated 16 Sep 2026, against branch `leadership-practice`.
 >
 > This file records **decisions, hard-won schema facts and open questions** —
 > the things that are expensive to rediscover. It is not a substitute for the
@@ -27,6 +27,8 @@ Meeting Minutes (MOM) → Audit Grid scoring → Decisions → TMS Tasks.
 | Branch | `leadership-practice` |
 | Dataverse tables | 45 schema files in `.power/schemas/dataverse/`, plus `wlog_decisions`/`lm_reportoccurrencedepartmentfunctions` under `commondataservice` and the two KPI tables — see §6. Includes Minutes, MOM Notes, Audit Grid instances/answers, Approval Cycles/Steps, Authority Matrix rows, `pm_kpiachievments`/`stf_kpiachievmentbreakdowns`, (04 Sep) the four Report/Plan Composition tables, (06 Sep) `lm_reportoccurrencedepartmentfunctions`, (10 Sep) `lm_setupactivity` and (13 Sep) `lm_meetingoccurrencedepartmentfunction` |
 | Two modules | `src/modules/leadership/LeadershipApp.jsx` (execution), `src/modules/governance/GovernanceApp.jsx` (setup) |
+| **Two Code Apps (16 Sep)** | `apps/governance/` and `apps/leadership/` are each a real Code App root — own `power.config.json`, `index.html`, `vite.config.js`, `dist/`, `.power/` and `src/generated/`. **`src/` did not move**: it stays the shared source tree both apps build from. Build with `npm run build:governance` / `build:leadership`; push from inside the app directory, because `power-apps push` has no `--config` flag and reads `./power.config.json` from the working directory. See §5. |
+| **Data comes from one environment (16 Sep)** | `src/services/xenv.js` routes every table through the Dataverse connector at a **named** target org (`DATA_ORG`), not through the per-table generated services, which can only ever reach the environment the app is deployed to. This is what lets an app hosted anywhere read and write DT New. See §6. |
 | Shared layer (08 Sep) | `src/shared/format.js` (dates, working calendar, formatting) and `src/shared/ui.jsx` (presentational primitives) — pure, importable by either module. `src/modules/leadership/store.jsx` holds `Ctx`/`use`. A `SCREENS` registry in `LeadershipApp.jsx` is now the single definition of each nav tab. See §5/§9. |
 | Domain + first screen files (11 Sep) | `src/modules/leadership/domain.jsx` — the report-composition domain, **26 symbols moved** out of LeadershipApp (KPI/Process/BI catalogues, achievement maths, citation vocabulary, `CiteCard`, `P`, `rptCfg`). `src/modules/leadership/screens/` holds the first three screens in their own files (`BusinessIntelligence.jsx`, `OrgReports.jsx`, `Hierarchy.jsx`), importing only from `domain.jsx`, `store.jsx` and `shared/`. LeadershipApp is down to ~9,765 lines from 10,115. |
 
@@ -103,6 +105,7 @@ The BRD **contradicts itself** in three places, and the code picked a side:
 | **Committee Scores (nav screen)** | ✅ **live** (01 Sep) — `ScreenGrid` now reads `fetchAuditGridInstances()` joined against `dvMeetingOccs`, instead of seeded `db.grids`. See §5 for the join details and the Approved-only Coverage/Score rule. |
 | **Setup Activity trail** — the Activity tab on a Report/Meeting Setup | ✅ **live** (10 Sep) — `lm_setupactivity` is written on create, edit, publish, approve and expire, and the tab reads the real rows back for any Setup that has a `_dataverseId`. A Setup that has never been saved still shows the seeded sample trail. |
 | **Artifact group** — Business intelligence, Reports / Plans, Reporting hierarchy | 🟡 **mixed** (11 Sep) — all three run on the app's own data rather than the prototype's parallel seed model, but that data is itself seeded: BI reports from `BI_REPORTS`, reports from `db.reports`, hierarchy edges derived from real `RPT:` paragraph citations. The Power BI report itself **cannot be embedded** — see §8. |
+| **How every table is reached** | 🟡 **changed 16 Sep** — all 42 tables now go through `dvTable()` in `src/services/xenv.js`, which calls the Dataverse connector against `DATA_ORG` (currently DT New). The generated per-table services are no longer imported anywhere. Behaviour is identical while an app is hosted in DT New; the point is that it stays identical when it is not. ⚠️ **Creates are unproven** — see §6 on `CreateRecordWithOrganization` returning `void`. |
 | Tasks, Comments, Governance Settings (persisted values) | ❌ **seeded demo data only** |
 | **Meeting Setup "Completion Periods"** (MOM Write-up / MOM Approval / Audit Grid Completion-Submission, each an hours field) | ✅ **live** (15 Sep) — three plain columns on `lm_meetingtemplates` (`lm_momwriteuphours`, `lm_momapprovalhours`, `lm_gridsubmithours`), written/read alongside `quorum`/`torLink` in `dataverse.js` and `GovernanceApp.jsx`. **Persistence only — not yet consumed.** AG-16/AG-05 scoring still reads the global `DEFAULT_SETTINGS` values (§9), not this per-Setup one; the UI says so. |
 | **`lm_meetingoccurrencelinkedreports`** | 🔴 **registered, not wired to any screen** (15 Sep) — table + generated models exist (`lm_reportname`, lookups to `lm_meetingoccurrences`, `lm_reportoccurrences`, `lm_report_templates`); no app code reads or writes it yet. |
@@ -1293,6 +1296,79 @@ pushed to `origin/leadership-practice`.
 
 ---
 
+### This session (16 Sep): split into two Code Apps, then unpinned from their environment
+
+**1. The repo now builds two separate Code Apps.** Asked for so Governance
+Setup and Leadership Execution can be uploaded and used independently. The
+modules turned out to have **zero cross-imports** — `src/App.jsx` was a ten-line
+switcher and the only thing joining them — so this was a build-and-deploy job,
+not an untangling one.
+
+Only `dataverse.js` actually imported `src/generated`; the two app modules
+merely mentioned the word in prose. So **nothing in `src/` had to move**: 19k
+lines of module code, every screen file, `domain.jsx` and `shared/` kept their
+import paths. Each app got a thin root instead. The 157 renames in that commit
+are `.power/` and `src/generated/` relocating into `apps/governance/`.
+
+Three edits were needed: `dataverse.js`'s 42 imports moved to a `@generated`
+alias (each app's `vite.config.js` points it at that app's own SDK copy); both
+sidebars' "Modules" switch button now renders only when an `onSwitch` handler
+is passed, so it is absent in the split apps; and the root `App.jsx`,
+`main.jsx`, `index.html` and `vite.config.js` were deleted.
+
+Verified by grepping the built bundles, not assumed: "Reporting hierarchy",
+"Work Queue" and "Committee Score" appear **0 times** in the governance bundle,
+"Expected Content Checklist" 0 times in the execution one. The split shows in
+the size — 817 kB combined became **426 kB** and **615 kB** (the latter carries
+`xlsx`).
+
+⚠️ One self-inflicted bug worth the warning: an explanatory comment I wrote in
+`dataverse.js` contained `apps/*/vite.config.js`, and the `*/` **closed the
+block comment early**. The build caught it, but it is an easy one to repeat
+when documenting paths inside a comment.
+
+**2. Cross-environment Dataverse — the app no longer has to live where its data
+lives.** The real requirement behind the split: host the apps in a different
+environment while reading and writing **DT New**. This is not possible with the
+generated per-table services, and §6 now records the whole mechanism. What
+matters at this level:
+
+- The method came from a Digital Transformation developer reference
+  ("Writing to Dataverse Tables in a Different Environment from a Power Apps
+  Code App") plus its cheat sheet.
+- `src/services/xenv.js` wraps the connector's `*WithOrganization` operations
+  in the **same five-method shape** the per-table services expose, so
+  `dataverse.js`'s 42 services became `dvTable('<entity set>')` and **all ~132
+  call sites are unchanged** — 75 `getAll`, 29 `create`, 26 `update`, 2 `get`,
+  plus two delete helpers that pass a service around as a value.
+- The entity set names were read out of each generated service's own
+  `dataSourceName` constant rather than hand-typed. The imports sit in **five
+  groups** next to the code that uses them, so each was replaced in place.
+
+⚠️ **Still unproven at the time of writing: whether `create` returns the new
+row's id.** See §6 — this is the one thing that could force a rethink, and
+`window.__xenvSmokeTest()` exists to answer it.
+
+**3. Deployment state.** The Execution app was pushed to DT New and carries
+appId `0f077a0a-fd52-4e57-900c-b7607ea30505`. Governance keeps the original
+`7caa2fb2…`. A **trial** Governance app was pushed to the *Amr Space*
+environment (`ce6c79ed…`, appId `e78a0887…`) to test cross-environment data —
+its config drops the 45 `databaseReferences` entirely, since nothing reads them
+once everything goes through the connector, and in Amr Space they would name
+tables that do not exist.
+
+⚠️ That trial is **blocked on a connection**: the one created in Amr Space is
+`shared_commondataservice` (legacy), and the generated service binds to
+`shared_commondataserviceforapps`. See §8.
+
+⚠️ **The originally requested environment, "Code App Development"
+(`cd78a59b-e16f-e4aa-b0a1-8e450a70ed56`), is not reachable** from this account —
+`pac env select` reports "No Dataverse organization was found matching the
+specified criteria", and it is absent from `pac env list`'s 12 rows. Either a
+different tenant, a missing role, or a mistyped id.
+
+---
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### NEW this session: group-wide (Stage 3/4) roles now live on the parent row
@@ -1630,12 +1706,81 @@ live data. Figures: `stf_value` (actual), `comp_breakdowntarget` (target).
 nested/hierarchical breakdown structure beyond a flat dimension·member
 shape — also unconfirmed.
 
+### Reading and writing a DIFFERENT environment's Dataverse (16 Sep)
+A Code App's generated per-table services (`Lm_meetingtemplatesService` and the
+41 others) **always** read and write the environment the app is deployed to.
+Nothing changes that — not a different connection id, not an `--org-url` flag,
+not switching `pac auth` profiles, not an identically-named table in both
+environments. Do not spend time on those.
+
+What does work: add the Dataverse connector **without** a `--table` flag —
+
+    pac code add-data-source -a shared_commondataserviceforapps -c <connection-id>
+
+— which generates a single `src/generated/services/MicrosoftDataverseService.ts`
+(~1,578 lines) whose operations take the target environment as an explicit
+argument. `src/services/xenv.js` wraps them.
+
+⚠️ **This corrects an earlier entry in this file.** §6 previously recorded
+`shared_commondataserviceforapps` as a dead end that "produced the same empty,
+untyped connector entry (`dataSets: {}`)". That conclusion came from adding it
+**with** `-t <table>`. Adding it without a table is the entire trick — the two
+produce completely different files. The per-table form is the dead end, not the
+connector.
+
+**Verified signatures, read from the generated file — the order is not uniform:**
+
+| Method | Parameter order |
+|---|---|
+| `CreateRecordWithOrganization` | prefer, accept, **organization**, entityName, item |
+| `UpdateRecordWithOrganization` | prefer, accept, **organization**, entityName, recordId, item |
+| `GetItemWithOrganization` | prefer, accept, **organization**, entityName, recordId, …, $select |
+| `ListRecordsWithOrganization` | **organization first**, entityName, prefer, accept, …, $select, $filter, $orderby, $expand, fetchXml, $top, $skiptoken |
+| `DeleteRecordWithOrganization` | **organization first**, entityName, recordId, partitionId |
+
+The source guide listed `DeleteRecordWithOrganization` as unexercised and told
+the reader to confirm it. Confirmed above: it groups with `ListRecords`, **not**
+with the write methods — passing the write order sends
+`'return=representation'` as the org URL.
+
+Other facts worth keeping:
+- `organization` is the **full `https://` URL**, not the org name and not the
+  environment GUID.
+- `entityName` is the table's **entity set (plural)** name, e.g.
+  `lm_setupactivities`. `power.config.json`'s `entitySetName` has all of them.
+- ⚠️ **Pagination.** Dataverse caps a response at 5000 rows. Setting `$top`
+  suppresses `@odata.nextLink` entirely, so the loop stops after one page and
+  looks exactly like "the table only has 5000 rows". Ask for the cap through
+  `prefer` (`odata.maxpagesize=5000`) and leave `$top` unset. The connector's
+  `nextLink` is **not** a plain Dataverse URL either — the real continuation
+  query is URL-encoded inside a `next` parameter, so reading `$skiptoken` off
+  the outer query returns null every time. `xenv.js` handles both.
+- ⚠️ **`CreateRecordWithOrganization` is typed `IOperationResult<void>`** — it
+  declares no response body — while the source guide's own example reads
+  `result.data` for the created record. Only a live call settles which is
+  right, and it matters here more than in most apps: `dataverse.js` binds child
+  rows to the id a create returns (`idOrThrow(created, 'lm_…id')`) for agenda
+  items, attendees, review chain steps, section items and the activity queue.
+  If no id comes back, the fix is contained to one function in `xenv.js` —
+  most likely generating the GUID client-side and passing it in the payload, so
+  the id is known without being returned. Run `window.__xenvSmokeTest()` from
+  the app's browser console before trusting creates.
+- The signed-in user needs a Dataverse security role with **Create/Write on the
+  target tables inside the TARGET environment**. A working connection is not a
+  substitute, and the failure reads as a bug rather than a permission.
+- Verify a write by opening the target environment and looking at
+  Tables → (table) → Data. A success message can still mean the row landed in
+  the wrong environment.
+
 ### `lm_setupactivity` — the audit trail for Setup templates (10 Sep)
 One table serving **both** Report and Meeting templates, registered as
 `lm_setupactivity` (singular logical name, entity set `lm_setupactivities`). It is
-a **flat, denormalised log** by design — it carries the Setup's Dataverse id as a
-plain text column rather than two optional lookups, so one query returns the trail
-for either kind.
+a flat log serving both kinds. ⚠️ **Corrected 16 Sep:** this entry used to say it
+carries the Setup's id "as a plain text column rather than two optional lookups".
+That is wrong. The table has **two real optional lookups**, `lm_MeetingTemplate`
+and `lm_ReportTemplate`, and `logSetupActivity()` binds whichever matches the
+kind — exactly the either/or shape used elsewhere in this schema. It also has
+`lm_ActorUser` → `systemusers`.
 
 Facts worth knowing before touching it:
 - The **before/after text columns are 2000 characters**, and Dataverse **rejects
@@ -1916,6 +2061,33 @@ denormalised column is also the shortcut past the trap.
   the hits by eye. The script is committed at **`scripts/undef-scan.py`** — run
   `python scripts/undef-scan.py`; it lists the files it covers at the top, so
   add any new extracted module to that list.
+- **⚠️ There are TWO Dataverse connectors and only one of them can cross
+  environments** (16 Sep). `shared_commondataserviceforapps` ("Microsoft
+  Dataverse") is the one that generates `MicrosoftDataverseService` with the
+  `*WithOrganization` operations. `shared_commondataservice` ("Microsoft
+  Dataverse (legacy)", formerly Common Data Service) is a **different API** and
+  has none of them — this repo already uses it for 5 tables, which makes the
+  names easy to confuse. When creating the connection in the maker portal, pick
+  **"Microsoft Dataverse"**, *not* "Microsoft Dataverse (legacy)"; the first
+  connection created for the Amr Space trial was the legacy one and could not
+  be used. `pac connection list` shows the API id, which is the only reliable
+  way to tell them apart. Note also that **`pac connection create` cannot make
+  a user connection** — it requires `--application-id` and `--client-secret`,
+  i.e. a service principal — so a user connection has to be made in the portal.
+- **⚠️ `pac code add-data-source` can fail for EVERY table at once, with an
+  empty error body** (16 Sep). Symptom:
+  `Failed to get entity definition for table 'x' from organization '…': {}`.
+  It ran successfully earlier the same day, then failed on a known-good table,
+  in a known-good project, against the right org, on three consecutive
+  attempts and again an hour later. **Do not conclude from this that a table is
+  missing** — that is exactly the wrong inference, and it was drawn once in
+  this session before a control test against a table that certainly exists
+  showed the same failure. Adding a *connector* (no `-t`) is unaffected, because
+  it needs no table metadata; only table registration is blocked.
+- **`power-apps push` fails on `generateResourceStorage` roughly half the
+  time** (16 Sep, sharpening the 12 Sep note). Three pushes this session needed
+  1, 2 and 2 attempts. The push is idempotent — just run it again; a failure
+  followed by a success means the app is pushed once, not twice.
 - **⚠️ Power Automate: `0x80060888 — Error in query syntax` never names the
   column** (13 Sep). It means Dataverse could not *parse* the text in a
   `Filter rows`, `Select columns` or `Order By` box — not that a column is wrong.
@@ -2199,6 +2371,25 @@ quorum definition, Decision↔Meeting/Report linking (§7.7, deferred on purpose
       `origin/leadership-practice`. (The commit at `36b5e05` was made outside
       this file's own session narrative — worth noticing if `git log` and this
       file ever seem to disagree about what's committed; trust `git log`.)
+- [ ] **Run `window.__xenvSmokeTest()` and settle whether `create` returns an
+      id.** The single open question on the cross-environment work (§6). Until
+      it is answered, every create in both apps is unproven — and creates are
+      how all child rows get their parent. One console call from a running app.
+- [ ] **Create a `shared_commondataserviceforapps` connection in any
+      environment that will HOST an app.** The Amr Space trial
+      (appId `e78a0887…`) is blocked on this; the connection that exists there
+      is the legacy connector. See §8.
+- [ ] **Grant Create/Write on the `lm_` tables in DT New to anyone who will use
+      a remotely-hosted app.** The connection is not the permission, and the
+      failure looks like a bug rather than a denial (§6).
+- [ ] **Decide whether the two apps keep all 45 `databaseReferences`.** Nothing
+      reads them now that everything routes through the connector. The Amr Space
+      trial config drops them entirely and is the proof of that; the two real
+      app configs still carry them.
+- [ ] **Retire the `--table` registrations, or keep them deliberately.** The 42
+      generated per-table services are still on disk in both apps and are no
+      longer imported by anything. They are harmless (tree-shaken out) but they
+      are now a second, misleading answer to "how does this app reach table X".
 - [ ] **Move the repo out of OneDrive** — **five** separate failures now traced
       to it (§8), one of which destroyed two source files and one of which
       corrupted `.git` itself (a missing packfile, 15 Sep) badly enough to need

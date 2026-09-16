@@ -58,6 +58,15 @@
           }
         }
       }
+    },
+    "a0a9090b-e1c1-4fad-98df-a640c8cc10dd": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+      "displayName": "Microsoft Dataverse",
+      "dataSources": [
+        "commondataserviceforapps"
+      ],
+      "authenticationType": "Oauth",
+      "dataSets": {}
     }
   },
   "databaseReferences": {

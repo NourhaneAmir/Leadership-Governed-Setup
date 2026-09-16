@@ -1421,10 +1421,13 @@ function Side(){
         </button>)}
     </div>)}
     <div className="lp-side-sp"/>
-    <div className="side-grp">Modules</div>
-    <button type="button" className="nav-i lp-switch-nav" onClick={onSwitch}>
-      <span className="nav-n lp-switch-ic"><ArrowUpRight size={16} strokeWidth={2.25}/></span>
-      <span className="lp-nav-label">Governance Setup</span></button>
+    {/* Only when a handler is given -- see the note in GovernanceApp.jsx. */}
+    {onSwitch ? <>
+      <div className="side-grp">Modules</div>
+      <button type="button" className="nav-i lp-switch-nav" onClick={onSwitch}>
+        <span className="nav-n lp-switch-ic"><ArrowUpRight size={16} strokeWidth={2.25}/></span>
+        <span className="lp-nav-label">Governance Setup</span></button>
+    </> : null}
   </nav>;
 }
 

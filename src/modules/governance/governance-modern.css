@@ -395,6 +395,12 @@
   background:#fff; border:1px solid var(--border); border-radius:10px;
   box-shadow:0 12px 28px -12px rgba(33,28,30,.35); padding:4px;
 }
+/* A list rendered through FloatingList sits over unrelated content rather than
+   just below its own field, so it gets a firmer edge. Position, width and
+   max-height come from inline style and override the rule above. */
+.gov-root .combo-list.is-floating{
+  box-shadow:0 18px 40px -14px rgba(33,28,30,.42), 0 0 0 1px rgba(33,28,30,.04);
+}
 .gov-root .combo-opt{
   display:block; width:100%; text-align:left; border:none; background:transparent;
   padding:8px 10px; font-size:12.5px; border-radius:7px; cursor:pointer;

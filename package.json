@@ -1,13 +1,15 @@
 {
-  "name": "leadership-practice",
+  "name": "andalusia-pulse-leadership",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "lint": "oxlint",
-    "preview": "vite preview"
+    "dev:governance": "vite --config apps/governance/vite.config.js",
+    "dev:leadership": "vite --config apps/leadership/vite.config.js",
+    "build:governance": "vite build --config apps/governance/vite.config.js",
+    "build:leadership": "vite build --config apps/leadership/vite.config.js",
+    "build": "npm run build:governance && npm run build:leadership",
+    "lint": "oxlint"
   },
   "dependencies": {
     "@fontsource/inter": "^5.3.0",

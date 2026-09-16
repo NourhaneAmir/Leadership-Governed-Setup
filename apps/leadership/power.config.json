@@ -1,0 +1,285 @@
+{
+  "version": "1.0",
+  "appId": "0f077a0a-fd52-4e57-900c-b7607ea30505",
+  "appDisplayName": "Andalusia Pulse - Leadership Practice - Execution",
+  "region": "prod",
+  "appType": "CodeApp",
+  "environmentId": "9ce6fb09-5b63-e9f4-9185-b707b4b3425e",
+  "description": "Leadership execution: meetings, minutes, audit grid, decisions, reports",
+  "buildPath": "./dist",
+  "buildEntryPoint": "index.html",
+  "localAppUrl": "http://localhost:3001",
+  "logoPath": "Default",
+  "connectionReferences": {
+    "06859f41-412e-450f-b52c-485f65bed72b": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+      "displayName": "SharePoint",
+      "dataSources": [
+        "documents"
+      ],
+      "dataSets": {
+        "https://andalusiagroupegypt.sharepoint.com/sites/SMO-AndalusialeadershipPractice": {
+          "dataSources": {
+            "documents": {
+              "tableName": "20a0173f-dfd6-4537-84ca-ff60b9a09c79"
+            }
+          }
+        }
+      }
+    },
+    "f39edab8-f2a7-407e-bbf6-2ce98b2ee21d": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_commondataservice",
+      "displayName": "Microsoft Dataverse",
+      "dataSources": [
+        "worklogdecisions",
+        "kpiachievements",
+        "kpiachievementbreakdowns",
+        "reportoccurrencedepartment_functions",
+        "meetingoccurrencelinkedreports"
+      ],
+      "dataSets": {
+        "default.cds": {
+          "dataSources": {
+            "worklogdecisions": {
+              "tableName": "wlog_decisions"
+            },
+            "kpiachievements": {
+              "tableName": "pm_kpiachievments"
+            },
+            "kpiachievementbreakdowns": {
+              "tableName": "stf_kpiachievmentbreakdowns"
+            },
+            "reportoccurrencedepartment_functions": {
+              "tableName": "lm_reportoccurrencedepartmentfunctions"
+            },
+            "meetingoccurrencelinkedreports": {
+              "tableName": "lm_meetingoccurrencelinkedreportses"
+            }
+          }
+        }
+      }
+    },
+    "e4a56710-361b-4138-adde-35aafe8c53d4": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+      "displayName": "Microsoft Dataverse",
+      "dataSources": [
+        "commondataserviceforapps"
+      ],
+      "authenticationType": "Oauth",
+      "dataSets": {}
+    }
+  },
+  "databaseReferences": {
+    "default.cds": {
+      "dataSources": {
+        "businessunits": {
+          "entitySetName": "businessunits",
+          "logicalName": "businessunit"
+        },
+        "regionses": {
+          "entitySetName": "crd04_regionses",
+          "logicalName": "crd04_regions",
+          "isHidden": false
+        },
+        "processes": {
+          "entitySetName": "strategy_processes",
+          "logicalName": "strategy_process",
+          "isHidden": false
+        },
+        "kpis": {
+          "entitySetName": "strategy_kpises",
+          "logicalName": "strategy_kpis",
+          "isHidden": false
+        },
+        "functions": {
+          "entitySetName": "hr_functions",
+          "logicalName": "hr_function",
+          "isHidden": false
+        },
+        "departments": {
+          "entitySetName": "cr603_chklst_departmentses",
+          "logicalName": "cr603_chklst_departments",
+          "isHidden": false
+        },
+        "specialtyksa_service_hubs": {
+          "entitySetName": "cr301_specialtyksa_service_hubs",
+          "logicalName": "cr301_specialtyksa_service_hub",
+          "isHidden": false
+        },
+        "teamschannels": {
+          "entitySetName": "and_teamschannels",
+          "logicalName": "and_teamschannel",
+          "isHidden": false
+        },
+        "reporttemplatecontentchecklists": {
+          "entitySetName": "lm_reporttemplatecontentchecklists",
+          "logicalName": "lm_reporttemplatecontentchecklist"
+        },
+        "reporttemplatedepartment_functions": {
+          "entitySetName": "lm_reporttemplatedepartmentfunctions",
+          "logicalName": "lm_reporttemplatedepartmentfunction",
+          "isHidden": false
+        },
+        "reporttemplaterelatedkpis": {
+          "entitySetName": "lm_reporttemplaterelatedkpises",
+          "logicalName": "lm_reporttemplaterelatedkpis",
+          "isHidden": false
+        },
+        "reporttemplaterelatedprocesses": {
+          "entitySetName": "lm_reporttemplaterelatedprocesseses",
+          "logicalName": "lm_reporttemplaterelatedprocesses",
+          "isHidden": false
+        },
+        "reporttemplatereviewchains": {
+          "entitySetName": "lm_reporttemplatereviewchains",
+          "logicalName": "lm_reporttemplatereviewchain"
+        },
+        "report_templates": {
+          "entitySetName": "lm_report_templates",
+          "logicalName": "lm_report_template"
+        },
+        "organizationstructures": {
+          "entitySetName": "cr603_organizationstructures",
+          "logicalName": "cr603_organizationstructure",
+          "isHidden": false
+        },
+        "meetingattendeeslists": {
+          "entitySetName": "lm_meetingattendeeslists",
+          "logicalName": "lm_meetingattendeeslist",
+          "isHidden": false
+        },
+        "meetingtemplates": {
+          "entitySetName": "lm_meetingtemplates",
+          "logicalName": "lm_meetingtemplate"
+        },
+        "meetingtemplateagendaitems": {
+          "entitySetName": "lm_meetingtemplateagendaitems",
+          "logicalName": "lm_meetingtemplateagendaitem",
+          "isHidden": false
+        },
+        "meetingtemplatedepartment_functions": {
+          "entitySetName": "lm_meetingtemplatedepartmentfunctions",
+          "logicalName": "lm_meetingtemplatedepartmentfunction",
+          "isHidden": false
+        },
+        "meetingtemplatelinkedreports": {
+          "entitySetName": "lm_meetingtemplatelinkedreportses",
+          "logicalName": "lm_meetingtemplatelinkedreports",
+          "isHidden": false
+        },
+        "meetingtemplatesupportivefunctions": {
+          "entitySetName": "lm_meetingtemplatesupportivefunctionses",
+          "logicalName": "lm_meetingtemplatesupportivefunctions",
+          "isHidden": false
+        },
+        "users": {
+          "entitySetName": "systemusers",
+          "logicalName": "systemuser",
+          "isHidden": false
+        },
+        "employees": {
+          "entitySetName": "hr_employees",
+          "logicalName": "hr_employee",
+          "isHidden": false
+        },
+        "meetingtemplatebusinessunits": {
+          "entitySetName": "lm_meetingtemplatebusinessunitses",
+          "logicalName": "lm_meetingtemplatebusinessunits",
+          "isHidden": false
+        },
+        "reporttemplatebusinessunits": {
+          "entitySetName": "lm_reporttemplatebusinessunitses",
+          "logicalName": "lm_reporttemplatebusinessunits",
+          "isHidden": false
+        },
+        "reporttemplateregions": {
+          "entitySetName": "lm_reporttemplateregions",
+          "logicalName": "lm_reporttemplateregion",
+          "isHidden": false
+        },
+        "meetingtemplateregions": {
+          "entitySetName": "lm_meetingtemplateregions",
+          "logicalName": "lm_meetingtemplateregion",
+          "isHidden": false
+        },
+        "reportoccurrences": {
+          "entitySetName": "lm_reportoccurrences",
+          "logicalName": "lm_reportoccurrence"
+        },
+        "reportoccurrencehistories": {
+          "entitySetName": "lm_reportoccurrencehistories",
+          "logicalName": "lm_reportoccurrencehistory",
+          "isHidden": false
+        },
+        "meetingoccurrences": {
+          "entitySetName": "lm_meetingoccurrences",
+          "logicalName": "lm_meetingoccurrence",
+          "isHidden": false
+        },
+        "meetingoccurrenceagenda": {
+          "entitySetName": "lm_meetingoccurrenceagendas",
+          "logicalName": "lm_meetingoccurrenceagenda",
+          "isHidden": false
+        },
+        "meetingoccurrenceattendees": {
+          "entitySetName": "lm_meetingoccurrenceattendeeses",
+          "logicalName": "lm_meetingoccurrenceattendees",
+          "isHidden": false
+        },
+        "meetingminutes": {
+          "entitySetName": "lm_meetingminuteses",
+          "logicalName": "lm_meetingminutes"
+        },
+        "auditgridinstances": {
+          "entitySetName": "lm_auditgridinstances",
+          "logicalName": "lm_auditgridinstance"
+        },
+        "auditgridanswers": {
+          "entitySetName": "lm_auditgridanswers",
+          "logicalName": "lm_auditgridanswer"
+        },
+        "momnotes": {
+          "entitySetName": "lm_momnoteses",
+          "logicalName": "lm_momnotes"
+        },
+        "approvalcycles": {
+          "entitySetName": "lm_approvalcycles",
+          "logicalName": "lm_approvalcycle"
+        },
+        "approvalcyclesteps": {
+          "entitySetName": "lm_approvalcyclesteps",
+          "logicalName": "lm_approvalcyclestep"
+        },
+        "authoritymatrixrows": {
+          "entitySetName": "lm_authoritymatrixrows",
+          "logicalName": "lm_authoritymatrixrow"
+        },
+        "reportoccurrencesections": {
+          "entitySetName": "lm_reportoccurrencesectionses",
+          "logicalName": "lm_reportoccurrencesections"
+        },
+        "reporttemplatesectionitems": {
+          "entitySetName": "lm_reporttemplatesectionitemses",
+          "logicalName": "lm_reporttemplatesectionitems"
+        },
+        "reportsectioncitations": {
+          "entitySetName": "lm_reportsectioncitationses",
+          "logicalName": "lm_reportsectioncitations"
+        },
+        "reportoccurrenceshares": {
+          "entitySetName": "lm_reportoccurrenceshares",
+          "logicalName": "lm_reportoccurrenceshare"
+        },
+        "setupactivities": {
+          "entitySetName": "lm_setupactivities",
+          "logicalName": "lm_setupactivity"
+        },
+        "meetingoccurrencedepartment_functions": {
+          "entitySetName": "lm_meetingoccurrencedepartmentfunctions",
+          "logicalName": "lm_meetingoccurrencedepartmentfunction"
+        }
+      },
+      "environmentVariableName": ""
+    }
+  }
+}

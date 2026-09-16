@@ -45,17 +45,39 @@ function assertSuccess(result){
    record array directly on .data (IOperationResult<T[]> -- .data IS the
    T[]), not nested under .data.value like a raw Dataverse Web API/OData
    response. Every fetch* function below reads res.data accordingly. */
-import { BusinessunitsService } from '../generated/services/BusinessunitsService';
-import { Crd04_regionsesService } from '../generated/services/Crd04_regionsesService';
-import { Cr603_chklst_departmentsesService } from '../generated/services/Cr603_chklst_departmentsesService';
-import { Hr_functionsService } from '../generated/services/Hr_functionsService';
-import { Strategy_kpisesService } from '../generated/services/Strategy_kpisesService';
-import { Strategy_processesService } from '../generated/services/Strategy_processesService';
-import { Cr301_specialtyksa_service_hubsService } from '../generated/services/Cr301_specialtyksa_service_hubsService';
-import { Cr603_organizationstructuresService } from '../generated/services/Cr603_organizationstructuresService';
-import { SystemusersService } from '../generated/services/SystemusersService';
-import { Hr_employeesService } from '../generated/services/Hr_employeesService';
-import { And_teamschannelsService } from '../generated/services/And_teamschannelsService';
+/* The generated Dataverse SDK is imported through the @generated alias, not a
+   relative path. This file is shared by both Code Apps in this repo, but the
+   SDK is not: `pac code add-data-source` writes one per app root, beside that
+   app's own power.config.json. Each app's vite.config.js maps @generated to
+   its own copy. See each app's vite.config.js under apps/. */
+/* ---------------------------------------------------------------------
+   Every table in this file is resolved against DATA_ORG in xenv.js -- the
+   environment the DATA lives in -- not the environment this app happens to
+   be deployed to. The generated per-table services (Lm_xxxService.getAll
+   and friends) can only ever reach the app's own environment, which is why
+   they are no longer imported; the header of xenv.js explains why in full.
+
+   Each dvTable(...) below keeps the exact shape of the service it replaced
+   -- getAll / get / create / update / delete -- so every call site in this
+   file is unchanged. Restoring the generated imports reverts to
+   home-environment-only behaviour and needs no other edit.
+
+   The entity set (plural) names come from each generated service's own
+   dataSourceName constant, not from guesswork.
+   --------------------------------------------------------------------- */
+import { dvTable } from './xenv.js';
+
+const BusinessunitsService = dvTable('businessunits');
+const Crd04_regionsesService = dvTable('crd04_regionses');
+const Cr603_chklst_departmentsesService = dvTable('cr603_chklst_departmentses');
+const Hr_functionsService = dvTable('hr_functions');
+const Strategy_kpisesService = dvTable('strategy_kpises');
+const Strategy_processesService = dvTable('strategy_processes');
+const Cr301_specialtyksa_service_hubsService = dvTable('cr301_specialtyksa_service_hubs');
+const Cr603_organizationstructuresService = dvTable('cr603_organizationstructures');
+const SystemusersService = dvTable('systemusers');
+const Hr_employeesService = dvTable('hr_employees');
+const And_teamschannelsService = dvTable('and_teamschannels');
 
 /** Regions -- table crd04_regions (generated as Crd04_regionsesService).
  *  Primary key crd04_regionsid; crd04_id holds the display name. */
@@ -500,11 +522,11 @@ export async function fetchCurrentUser(){
    the Department/Function scope lines, and the linked Processes/KPIs --
    is fully resolved against real ids and written correctly. */
 
-import { Lm_report_templatesService } from '../generated/services/Lm_report_templatesService';
-import { Lm_reporttemplatebusinessunitsesService } from '../generated/services/Lm_reporttemplatebusinessunitsesService';
-import { Lm_reporttemplateregionsService } from '../generated/services/Lm_reporttemplateregionsService';
-import { Lm_reporttemplatecontentchecklistsService } from '../generated/services/Lm_reporttemplatecontentchecklistsService';
-import { Lm_reporttemplatesectionitemsesService } from '../generated/services/Lm_reporttemplatesectionitemsesService';
+const Lm_report_templatesService = dvTable('lm_report_templates');
+const Lm_reporttemplatebusinessunitsesService = dvTable('lm_reporttemplatebusinessunitses');
+const Lm_reporttemplateregionsService = dvTable('lm_reporttemplateregions');
+const Lm_reporttemplatecontentchecklistsService = dvTable('lm_reporttemplatecontentchecklists');
+const Lm_reporttemplatesectionitemsesService = dvTable('lm_reporttemplatesectionitemses');
 
 /* Report Template Section (Expected Content Checklist item) option sets.
    Mapped by CODE, not by label -- 'Physician ' carries a trailing space in the
@@ -555,10 +577,10 @@ async function createSectionItems(checklistId, items, errors){
     }catch(e){ errors.push({ table:'lm_reporttemplatesectionitemses', error:e }); }
   }
 }
-import { Lm_reporttemplatedepartmentfunctionsService } from '../generated/services/Lm_reporttemplatedepartmentfunctionsService';
-import { Lm_reporttemplaterelatedkpisesService } from '../generated/services/Lm_reporttemplaterelatedkpisesService';
-import { Lm_reporttemplaterelatedprocessesesService } from '../generated/services/Lm_reporttemplaterelatedprocessesesService';
-import { Lm_reporttemplatereviewchainsService } from '../generated/services/Lm_reporttemplatereviewchainsService';
+const Lm_reporttemplatedepartmentfunctionsService = dvTable('lm_reporttemplatedepartmentfunctions');
+const Lm_reporttemplaterelatedkpisesService = dvTable('lm_reporttemplaterelatedkpises');
+const Lm_reporttemplaterelatedprocessesesService = dvTable('lm_reporttemplaterelatedprocesseses');
+const Lm_reporttemplatereviewchainsService = dvTable('lm_reporttemplatereviewchains');
 
 // Dataverse choice fields take the numeric key, not the label, on write.
 // These map the app's exact label strings to the real keys from the
@@ -1165,14 +1187,14 @@ export async function updateReportTemplateToDataverse(dvId, payload){
    reports, attendees).
    ========================================================================= */
 
-import { Lm_meetingtemplatesService } from '../generated/services/Lm_meetingtemplatesService';
-import { Lm_meetingtemplatebusinessunitsesService } from '../generated/services/Lm_meetingtemplatebusinessunitsesService';
-import { Lm_meetingtemplateregionsService } from '../generated/services/Lm_meetingtemplateregionsService';
-import { Lm_meetingtemplateagendaitemsService } from '../generated/services/Lm_meetingtemplateagendaitemsService';
-import { Lm_meetingtemplatesupportivefunctionsesService } from '../generated/services/Lm_meetingtemplatesupportivefunctionsesService';
-import { Lm_meetingtemplatedepartmentfunctionsService } from '../generated/services/Lm_meetingtemplatedepartmentfunctionsService';
-import { Lm_meetingtemplatelinkedreportsesService } from '../generated/services/Lm_meetingtemplatelinkedreportsesService';
-import { Lm_meetingattendeeslistsService } from '../generated/services/Lm_meetingattendeeslistsService';
+const Lm_meetingtemplatesService = dvTable('lm_meetingtemplates');
+const Lm_meetingtemplatebusinessunitsesService = dvTable('lm_meetingtemplatebusinessunitses');
+const Lm_meetingtemplateregionsService = dvTable('lm_meetingtemplateregions');
+const Lm_meetingtemplateagendaitemsService = dvTable('lm_meetingtemplateagendaitems');
+const Lm_meetingtemplatesupportivefunctionsesService = dvTable('lm_meetingtemplatesupportivefunctionses');
+const Lm_meetingtemplatedepartmentfunctionsService = dvTable('lm_meetingtemplatedepartmentfunctions');
+const Lm_meetingtemplatelinkedreportsesService = dvTable('lm_meetingtemplatelinkedreportses');
+const Lm_meetingattendeeslistsService = dvTable('lm_meetingattendeeslists');
 
 // Same reasoning as the Report Template maps above: explicit, not
 // auto-matched, since Dataverse's labels differ slightly (trailing
@@ -1949,19 +1971,19 @@ export async function fetchMeetingTemplateDetail(id){
    (lm_meetingoccurrenceattendees, entity set lm_meetingoccurrenceattendeeses)
    -- same quirk as lm_meetingtemplatesupportivefunctions. Kept as generated. */
 
-import { Lm_meetingoccurrencesService } from '../generated/services/Lm_meetingoccurrencesService';
-import { Lm_meetingoccurrenceagendasService } from '../generated/services/Lm_meetingoccurrenceagendasService';
-import { Lm_meetingoccurrenceattendeesesService } from '../generated/services/Lm_meetingoccurrenceattendeesesService';
-import { Lm_reportoccurrencesService } from '../generated/services/Lm_reportoccurrencesService';
-import { Lm_meetingminutesesService } from '../generated/services/Lm_meetingminutesesService';
-import { Lm_momnotesesService } from '../generated/services/Lm_momnotesesService';
-import { Lm_auditgridinstancesService } from '../generated/services/Lm_auditgridinstancesService';
-import { Lm_auditgridanswersService } from '../generated/services/Lm_auditgridanswersService';
-import { Lm_approvalcyclesService } from '../generated/services/Lm_approvalcyclesService';
-import { Lm_approvalcyclestepsService } from '../generated/services/Lm_approvalcyclestepsService';
-import { Lm_authoritymatrixrowsService } from '../generated/services/Lm_authoritymatrixrowsService';
-import { Lm_reportoccurrencehistoriesService } from '../generated/services/Lm_reportoccurrencehistoriesService';
-import { Wlog_decisionsService } from '../generated/services/Wlog_decisionsService';
+const Lm_meetingoccurrencesService = dvTable('lm_meetingoccurrences');
+const Lm_meetingoccurrenceagendasService = dvTable('lm_meetingoccurrenceagendas');
+const Lm_meetingoccurrenceattendeesesService = dvTable('lm_meetingoccurrenceattendeeses');
+const Lm_reportoccurrencesService = dvTable('lm_reportoccurrences');
+const Lm_meetingminutesesService = dvTable('lm_meetingminuteses');
+const Lm_momnotesesService = dvTable('lm_momnoteses');
+const Lm_auditgridinstancesService = dvTable('lm_auditgridinstances');
+const Lm_auditgridanswersService = dvTable('lm_auditgridanswers');
+const Lm_approvalcyclesService = dvTable('lm_approvalcycles');
+const Lm_approvalcyclestepsService = dvTable('lm_approvalcyclesteps');
+const Lm_authoritymatrixrowsService = dvTable('lm_authoritymatrixrows');
+const Lm_reportoccurrencehistoriesService = dvTable('lm_reportoccurrencehistories');
+const Wlog_decisionsService = dvTable('wlog_decisions');
 
 export const MEETING_OCC_STATUS = { 1:'Scheduled', 2:'Held', 3:'Cancelled' };
 export const MEETING_OCC_STATUS_KEY = { 'Scheduled':1, 'Held':2, 'Cancelled':3 };
@@ -3403,7 +3425,7 @@ export async function createWorkLogDecision({ name, decisionTaken, expectedOutpu
    `createdon` is the timestamp; there is deliberately no lm_occurredon column
    to keep in sync with it.
    ========================================================================= */
-import { Lm_setupactivitiesService } from '../generated/services/Lm_setupactivitiesService';
+const Lm_setupactivitiesService = dvTable('lm_setupactivities');
 
 /* Dataverse renders option 3 as "Editopened" with no space -- the label was
    typed without one. Both directions go through these maps rather than the
