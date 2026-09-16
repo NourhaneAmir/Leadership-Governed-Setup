@@ -80,12 +80,25 @@ function skipTokenFrom(nextLink) {
    top, expand } -- the same shape IGetAllOptions used. */
 const selectOf = o => (Array.isArray(o?.select) ? o.select.join(',') : o?.select) || undefined;
 
+/* A GUID for a new row's primary key. crypto.randomUUID needs a secure
+   context, which the Power Apps player always is; the fallback only exists so
+   a plain http dev server does not crash. */
+const newGuid = () =>
+  (globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function')
+    ? globalThis.crypto.randomUUID()
+    : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = (Math.random() * 16) | 0;
+        return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+      });
+
 /**
  * One table in the DATA_ORG environment, exposing the same five methods the
  * generated per-table services do.
  * @param {string} entitySet the table's plural entity set name
+ * @param {string} [pkField] the primary key column, e.g. `lm_report_templateid`.
+ *   When given, create() supplies the new row's GUID itself -- see create().
  */
-export function dvTable(entitySet) {
+export function dvTable(entitySet, pkField) {
   return {
     /** Every matching row, following pagination to the end. */
     async getAll(options) {
@@ -135,21 +148,40 @@ export function dvTable(entitySet) {
     /**
      * Create a row.
      *
-     * NOTE the generated signature types this `IOperationResult<void>` -- it
-     * declares no response body -- while the developer guide's own example
-     * reads result.data for the created record. `return=representation` is
-     * sent, so the connector should return the row; the TypeScript type is
-     * most likely just incomplete. Until a live call settles it, this is the
-     * single riskiest call in this module: dataverse.js binds child rows to
-     * the id a create returns. Run smokeTestCreate() below before trusting it.
+     * The generated signature types this `IOperationResult<void>` -- no
+     * response body declared -- so the new row's id is not taken on trust
+     * from the response. For any table given a pkField, the id is generated
+     * here and sent with the row; see the note inside. smokeTestCreate()
+     * below reads the row back under that id to prove it landed.
      */
     async create(record) {
+      /* The id is chosen HERE, not read back from the response. The connector
+         types this operation's result as void, and dataverse.js cannot work
+         without the new row's id: every child row -- units, attendees, review
+         chain steps, agenda items, the activity trail -- binds to it, and
+         Approve/Expire only write to a Setup that has one. Dataverse accepts a
+         client-supplied primary key on create, so supplying it makes the id
+         certain whatever the response body carries. */
+      const id = pkField ? (record?.[pkField] || newGuid()) : undefined;
+      const body = pkField ? { ...record, [pkField]: id } : record;
+
       const res = await DV.CreateRecordWithOrganization(
-        PREFER_REPRESENTATION, JSON_ACCEPT, DATA_ORG, entitySet, record, undefined
+        PREFER_REPRESENTATION, JSON_ACCEPT, DATA_ORG, entitySet, body, undefined
       );
-      return res?.success
-        ? { success: true, data: res.data, error: undefined }
-        : fail('create', entitySet, res?.error);
+      if (!res?.success) return fail('create', entitySet, res?.error);
+
+      const returned = res.data && typeof res.data === 'object' ? res.data : null;
+      if (!pkField) return { success: true, data: returned ?? undefined, error: undefined };
+
+      /* Prefer what Dataverse sent back; fill the id in only if it did not.
+         _idSource records which happened, for the smoke test. */
+      const fromServer = returned && returned[pkField];
+      return {
+        success: true,
+        data: { ...body, ...(returned || {}), [pkField]: fromServer || id,
+                _idSource: fromServer ? 'response' : 'client' },
+        error: undefined,
+      };
     },
 
     /** Patch a row. */
@@ -194,7 +226,7 @@ export function dvTable(entitySet) {
    whatever the outcome.
    ========================================================================= */
 export async function smokeTestCreate() {
-  const table = dvTable('lm_setupactivities');
+  const table = dvTable('lm_setupactivities', 'lm_setupactivityid');
   const stamp = new Date().toISOString();
   const out = { org: DATA_ORG, table: 'lm_setupactivities', createdId: null };
 
@@ -210,14 +242,21 @@ export async function smokeTestCreate() {
     return out;
   }
 
-  /* The question this whole test exists for. */
+  /* create() now always yields an id -- supplied by the app if the
+     response lacked one -- so "an id came back" proves nothing by itself.
+     The real test is reading the row back under that id. */
   const data = created.data;
-  out.returnedBody = data ?? null;
-  const id = data && (data.lm_setupactivityid || data.lm_setupactivityId);
+  const id = data && data.lm_setupactivityid;
   out.createdId = id ?? null;
-  out.verdict = id
-    ? 'ID RETURNED -- safe to convert dataverse.js'
-    : 'NO ID RETURNED -- parent/child saves will break; do not convert yet';
+  out.idSource = data && data._idSource;   // 'response' or 'client'
+
+  const readBack = id
+    ? await table.get(id, { select: ['lm_setupactivityid', 'lm_name'] })
+    : { success: false };
+  out.rowFoundUnderThatId = !!(readBack.success && readBack.data);
+  out.verdict = out.rowFoundUnderThatId
+    ? `OK -- row exists in ${DATA_ORG} under id ${id} (id came from the ${out.idSource})`
+    : 'FAILED -- no row found under the id; creates cannot be trusted';
 
   /* Tidy up. If no id came back, find the row by name so the test leaves
      nothing behind either way. */

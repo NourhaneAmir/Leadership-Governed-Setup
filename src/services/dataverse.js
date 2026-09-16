@@ -63,7 +63,10 @@ function assertSuccess(result){
    home-environment-only behaviour and needs no other edit.
 
    The entity set (plural) names come from each generated service's own
-   dataSourceName constant, not from guesswork.
+   dataSourceName constant, not from guesswork. The second argument, on
+   the 28 tables this file creates rows in, is the primary key column --
+   read from each generated service's create() signature -- which lets
+   create() supply the new row's GUID itself; see xenv.js.
    --------------------------------------------------------------------- */
 import { dvTable } from './xenv.js';
 
@@ -522,11 +525,11 @@ export async function fetchCurrentUser(){
    the Department/Function scope lines, and the linked Processes/KPIs --
    is fully resolved against real ids and written correctly. */
 
-const Lm_report_templatesService = dvTable('lm_report_templates');
-const Lm_reporttemplatebusinessunitsesService = dvTable('lm_reporttemplatebusinessunitses');
-const Lm_reporttemplateregionsService = dvTable('lm_reporttemplateregions');
-const Lm_reporttemplatecontentchecklistsService = dvTable('lm_reporttemplatecontentchecklists');
-const Lm_reporttemplatesectionitemsesService = dvTable('lm_reporttemplatesectionitemses');
+const Lm_report_templatesService = dvTable('lm_report_templates', 'lm_report_templateid');
+const Lm_reporttemplatebusinessunitsesService = dvTable('lm_reporttemplatebusinessunitses', 'lm_reporttemplatebusinessunitsid');
+const Lm_reporttemplateregionsService = dvTable('lm_reporttemplateregions', 'lm_reporttemplateregionid');
+const Lm_reporttemplatecontentchecklistsService = dvTable('lm_reporttemplatecontentchecklists', 'lm_reporttemplatecontentchecklistid');
+const Lm_reporttemplatesectionitemsesService = dvTable('lm_reporttemplatesectionitemses', 'lm_reporttemplatesectionitemsid');
 
 /* Report Template Section (Expected Content Checklist item) option sets.
    Mapped by CODE, not by label -- 'Physician ' carries a trailing space in the
@@ -577,10 +580,10 @@ async function createSectionItems(checklistId, items, errors){
     }catch(e){ errors.push({ table:'lm_reporttemplatesectionitemses', error:e }); }
   }
 }
-const Lm_reporttemplatedepartmentfunctionsService = dvTable('lm_reporttemplatedepartmentfunctions');
-const Lm_reporttemplaterelatedkpisesService = dvTable('lm_reporttemplaterelatedkpises');
-const Lm_reporttemplaterelatedprocessesesService = dvTable('lm_reporttemplaterelatedprocesseses');
-const Lm_reporttemplatereviewchainsService = dvTable('lm_reporttemplatereviewchains');
+const Lm_reporttemplatedepartmentfunctionsService = dvTable('lm_reporttemplatedepartmentfunctions', 'lm_reporttemplatedepartmentfunctionid');
+const Lm_reporttemplaterelatedkpisesService = dvTable('lm_reporttemplaterelatedkpises', 'lm_reporttemplaterelatedkpisid');
+const Lm_reporttemplaterelatedprocessesesService = dvTable('lm_reporttemplaterelatedprocesseses', 'lm_reporttemplaterelatedprocessesid');
+const Lm_reporttemplatereviewchainsService = dvTable('lm_reporttemplatereviewchains', 'lm_reporttemplatereviewchainid');
 
 // Dataverse choice fields take the numeric key, not the label, on write.
 // These map the app's exact label strings to the real keys from the
@@ -1187,14 +1190,14 @@ export async function updateReportTemplateToDataverse(dvId, payload){
    reports, attendees).
    ========================================================================= */
 
-const Lm_meetingtemplatesService = dvTable('lm_meetingtemplates');
-const Lm_meetingtemplatebusinessunitsesService = dvTable('lm_meetingtemplatebusinessunitses');
-const Lm_meetingtemplateregionsService = dvTable('lm_meetingtemplateregions');
-const Lm_meetingtemplateagendaitemsService = dvTable('lm_meetingtemplateagendaitems');
-const Lm_meetingtemplatesupportivefunctionsesService = dvTable('lm_meetingtemplatesupportivefunctionses');
-const Lm_meetingtemplatedepartmentfunctionsService = dvTable('lm_meetingtemplatedepartmentfunctions');
-const Lm_meetingtemplatelinkedreportsesService = dvTable('lm_meetingtemplatelinkedreportses');
-const Lm_meetingattendeeslistsService = dvTable('lm_meetingattendeeslists');
+const Lm_meetingtemplatesService = dvTable('lm_meetingtemplates', 'lm_meetingtemplateid');
+const Lm_meetingtemplatebusinessunitsesService = dvTable('lm_meetingtemplatebusinessunitses', 'lm_meetingtemplatebusinessunitsid');
+const Lm_meetingtemplateregionsService = dvTable('lm_meetingtemplateregions', 'lm_meetingtemplateregionid');
+const Lm_meetingtemplateagendaitemsService = dvTable('lm_meetingtemplateagendaitems', 'lm_meetingtemplateagendaitemid');
+const Lm_meetingtemplatesupportivefunctionsesService = dvTable('lm_meetingtemplatesupportivefunctionses', 'lm_meetingtemplatesupportivefunctionsid');
+const Lm_meetingtemplatedepartmentfunctionsService = dvTable('lm_meetingtemplatedepartmentfunctions', 'lm_meetingtemplatedepartmentfunctionid');
+const Lm_meetingtemplatelinkedreportsesService = dvTable('lm_meetingtemplatelinkedreportses', 'lm_meetingtemplatelinkedreportsid');
+const Lm_meetingattendeeslistsService = dvTable('lm_meetingattendeeslists', 'lm_meetingattendeeslistid');
 
 // Same reasoning as the Report Template maps above: explicit, not
 // auto-matched, since Dataverse's labels differ slightly (trailing
@@ -1971,19 +1974,19 @@ export async function fetchMeetingTemplateDetail(id){
    (lm_meetingoccurrenceattendees, entity set lm_meetingoccurrenceattendeeses)
    -- same quirk as lm_meetingtemplatesupportivefunctions. Kept as generated. */
 
-const Lm_meetingoccurrencesService = dvTable('lm_meetingoccurrences');
-const Lm_meetingoccurrenceagendasService = dvTable('lm_meetingoccurrenceagendas');
-const Lm_meetingoccurrenceattendeesesService = dvTable('lm_meetingoccurrenceattendeeses');
-const Lm_reportoccurrencesService = dvTable('lm_reportoccurrences');
-const Lm_meetingminutesesService = dvTable('lm_meetingminuteses');
-const Lm_momnotesesService = dvTable('lm_momnoteses');
-const Lm_auditgridinstancesService = dvTable('lm_auditgridinstances');
-const Lm_auditgridanswersService = dvTable('lm_auditgridanswers');
+const Lm_meetingoccurrencesService = dvTable('lm_meetingoccurrences', 'lm_meetingoccurrenceid');
+const Lm_meetingoccurrenceagendasService = dvTable('lm_meetingoccurrenceagendas', 'lm_meetingoccurrenceagendaid');
+const Lm_meetingoccurrenceattendeesesService = dvTable('lm_meetingoccurrenceattendeeses', 'lm_meetingoccurrenceattendeesid');
+const Lm_reportoccurrencesService = dvTable('lm_reportoccurrences', 'lm_reportoccurrenceid');
+const Lm_meetingminutesesService = dvTable('lm_meetingminuteses', 'lm_meetingminutesid');
+const Lm_momnotesesService = dvTable('lm_momnoteses', 'lm_momnotesid');
+const Lm_auditgridinstancesService = dvTable('lm_auditgridinstances', 'lm_auditgridinstanceid');
+const Lm_auditgridanswersService = dvTable('lm_auditgridanswers', 'lm_auditgridanswerid');
 const Lm_approvalcyclesService = dvTable('lm_approvalcycles');
 const Lm_approvalcyclestepsService = dvTable('lm_approvalcyclesteps');
 const Lm_authoritymatrixrowsService = dvTable('lm_authoritymatrixrows');
-const Lm_reportoccurrencehistoriesService = dvTable('lm_reportoccurrencehistories');
-const Wlog_decisionsService = dvTable('wlog_decisions');
+const Lm_reportoccurrencehistoriesService = dvTable('lm_reportoccurrencehistories', 'lm_reportoccurrencehistoryid');
+const Wlog_decisionsService = dvTable('wlog_decisions', 'wlog_decisionid');
 
 export const MEETING_OCC_STATUS = { 1:'Scheduled', 2:'Held', 3:'Cancelled' };
 export const MEETING_OCC_STATUS_KEY = { 'Scheduled':1, 'Held':2, 'Cancelled':3 };
@@ -3425,7 +3428,7 @@ export async function createWorkLogDecision({ name, decisionTaken, expectedOutpu
    `createdon` is the timestamp; there is deliberately no lm_occurredon column
    to keep in sync with it.
    ========================================================================= */
-const Lm_setupactivitiesService = dvTable('lm_setupactivities');
+const Lm_setupactivitiesService = dvTable('lm_setupactivities', 'lm_setupactivityid');
 
 /* Dataverse renders option 3 as "Editopened" with no space -- the label was
    typed without one. Both directions go through these maps rather than the

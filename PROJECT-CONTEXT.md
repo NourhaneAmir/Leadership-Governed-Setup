@@ -5,7 +5,7 @@
 > updated 04 Sep 2026, updated 05 Sep 2026, updated 06 Sep 2026,
 > updated 07 Sep 2026 (twice), updated 08 Sep 2026, updated 12 Sep 2026
 > (covering 09-12 Sep), updated 13 Sep 2026, updated 14 Sep 2026,
-> updated 16 Sep 2026, against branch `leadership-practice`.
+> updated 16 Sep 2026, updated 17 Sep 2026, against branch `leadership-practice`.
 >
 > This file records **decisions, hard-won schema facts and open questions** —
 > the things that are expensive to rediscover. It is not a substitute for the
@@ -1357,15 +1357,83 @@ its config drops the 45 `databaseReferences` entirely, since nothing reads them
 once everything goes through the connector, and in Amr Space they would name
 tables that do not exist.
 
-⚠️ That trial is **blocked on a connection**: the one created in Amr Space is
-`shared_commondataservice` (legacy), and the generated service binds to
-`shared_commondataserviceforapps`. See §8.
+⚠️ That trial went out bound to the wrong connection — see the 17 Sep entry
+below; it is superseded, not fixed.
 
-⚠️ **The originally requested environment, "Code App Development"
-(`cd78a59b-e16f-e4aa-b0a1-8e450a70ed56`), is not reachable** from this account —
-`pac env select` reports "No Dataverse organization was found matching the
-specified criteria", and it is absent from `pac env list`'s 12 rows. Either a
-different tenant, a missing role, or a mistyped id.
+~~The originally requested environment, "Code App Development", is not reachable
+from this account.~~ **Wrong — corrected 17 Sep, see below.** It was reachable all
+along; it is only missing from the environment *lists*, and selecting it by ID
+searches those lists.
+
+### This session (16-17 Sep): both apps deployed to Code App Development, reading DT New
+
+**1. Both apps are live in Code App Development, with DT New as their data.**
+This is the arrangement the cross-environment work was for.
+
+| App | Hosted in | appId | Data |
+|---|---|---|---|
+| Governance Setup | Code App Development (`cd78a59b…`) | `4912152c-b5c8-4beb-bb74-c9f43550405b` | DT New |
+| Leadership Execution | Code App Development (`cd78a59b…`) | `83db0ef8-4c62-4eef-84ac-dadab326b704` | DT New |
+
+Each is bound to the `shared_commondataserviceforapps` connection **that belongs
+to Code App Development** (`c83ec8ccf8a74ee1b8be81f4dfcb3ecf`), declares **no
+`databaseReferences` at all**, and was verified before pushing to (a) look up the
+data source name its bundle expects, `commondataserviceforapps`, and (b) carry
+`https://org319b4ea9.crm4.dynamics.com` as its only data target. Both were built
+from the current source, so Governance includes the floating-dropdown fix below.
+
+⚠️ **Nothing has been confirmed from the running apps yet** — screens reading DT
+New data, or `window.__xenvSmokeTest()` returning an id. Until the smoke test says
+`ID RETURNED`, treat any record created from these deployments as needing a
+check in DT New itself (§6).
+
+**2. Code App Development was reachable all along.** The 16 Sep entry above said
+it was not, and guessed at a different tenant, a missing role or a mistyped id.
+None of those were true. The account is **Admin** there and exists as a Dataverse
+user in it, and the id given was correct. What actually happens:
+
+- `pac env list` **and** `pac admin list` both omit it — the admin list omits it
+  even while listing the account's other Developer environments beside it.
+- `pac env select --environment <ID>` resolves the id **by searching those same
+  lists**, so it fails with "No Dataverse organization was found".
+- `pac env select --environment https://org998df960.crm4.dynamics.com/` connects
+  **directly** and succeeds; `pac org who` then reports the expected
+  environment id.
+
+Most likely a recently created environment that the listing services have not
+picked up; that could not be proven from here. **Use the URL, never the id, for
+this environment** until it appears in `pac env list`. See §8.
+
+**3. Leadership Execution also went to Amr Space, correctly this time.** Once a
+`shared_commondataserviceforapps` connection existed in Amr Space
+(`9787e3c968c04f9ca5768a785e64bf0b`), the Execution app was pushed there bound to
+it — appId `936f78d8-c3b2-4bb4-b8c0-450e71553a07`. The earlier Governance trial
+in Amr Space (`e78a0887…`) is still bound to a **DT New** connection and was never
+re-pushed. With both apps now in Code App Development, **both Amr Space copies are
+redundant** and can be deleted.
+
+**4. Governance Setup's dropdown lists now overlay the page.** The Position
+picker and the searchable multi-select (Related KPIs / Processes) drew their list
+`position:absolute; z-index:20` inside the field. A later panel with its own
+stacking context painted over it, and any ancestor with `overflow` set clipped it
+— including the phone rule that puts `overflow-x:auto` on every card, which no
+z-index can beat. A new shared `FloatingList` renders the list through a portal
+into `<body>`, `position:fixed` from the field's on-screen rectangle, re-placed on
+any scroll (captured) or resize. It opens upward when there is more room above,
+is at least 280px wide and at most 360px tall (was 220px), stays inside the
+viewport, and sits at `z-index:150` — above modals (100), below toasts (200).
+Because the list is no longer inside the field in the DOM, each picker's
+outside-click check now tests the list's own ref too. The portal wrapper carries
+`gov-root`, which only defines CSS variables, so the scoped `.gov-root .combo-*`
+styles still apply. The register's "⋯" `RowMenu` still uses the old pattern and
+would need the same change if it is ever clipped.
+
+**5. The auth profile changed underneath this session.** The named `andalusiaEnv`
+profile was replaced by a single unnamed profile of type **OperatingSystem**
+(Windows sign-in) — not by anything run here. It works; a device-code sign-in
+started as a fallback expired unused and created nothing. That fresh profile
+still listed the same 12 environments, which is how token staleness was ruled out
+as the reason Code App Development was missing.
 
 ---
 
@@ -2084,10 +2152,41 @@ denormalised column is also the shortcut past the trap.
   this session before a control test against a table that certainly exists
   showed the same failure. Adding a *connector* (no `-t`) is unaffected, because
   it needs no table metadata; only table registration is blocked.
-- **`power-apps push` fails on `generateResourceStorage` roughly half the
-  time** (16 Sep, sharpening the 12 Sep note). Three pushes this session needed
-  1, 2 and 2 attempts. The push is idempotent — just run it again; a failure
-  followed by a success means the app is pushed once, not twice.
+- **`power-apps push` fails on a timeout roughly half the time** (16 Sep,
+  sharpening the 12 Sep note; 17 Sep confirmed it is not one endpoint). It has
+  failed on `POST …/generateResourceStorage` and, on 17 Sep, on
+  `GET …/powerapps/environment?$filter=name eq '…'`. Pushes this week needed 1,
+  2, 2, 1, 3 and 1 attempts. The push is idempotent — run it again; a failure
+  followed by a success means the app is pushed once, not twice. A retry loop
+  that stops on `pushed successfully` is the practical form.
+- **⚠️ An environment can be reachable but missing from every CLI list — select
+  it by URL** (17 Sep). Code App Development is absent from both `pac env list`
+  and `pac admin list`, although the account is Admin there and it shows in the
+  maker portal. `pac env select --environment <GUID>` searches those lists and
+  fails with "No Dataverse organization was found matching the specified
+  criteria"; `--environment https://<org>.crm4.dynamics.com/` connects directly and
+  works. **That error does not mean you lack access** — try the URL before
+  concluding anything, and confirm with `pac org who`.
+- **Deploying an app to an environment other than DT New — the working recipe**
+  (17 Sep). Use a staging folder so `apps/*/power.config.json` stays bound to DT
+  New:
+  1. `npm run build` in the repo.
+  2. `pac env select --environment <target URL>` — the connector must be added
+     while the target is the active environment.
+  3. In an empty folder: `power-apps init --non-interactive --environment-id
+     <target GUID> --app-type CodeApp --display-name "…" --build-path ./dist
+     --file-entry-point index.html --app-url http://localhost:300x`.
+  4. `pac code add-data-source -a shared_commondataserviceforapps -c <a
+     connection that belongs to the TARGET environment>` — find it with
+     `pac connection list --environment <target URL>`, API id must end
+     `forapps`.
+  5. Check `src/generated/services/MicrosoftDataverseService.ts` declares
+     `dataSourceName = 'commondataserviceforapps'`, matching the bundle.
+  6. Copy `apps/<app>/dist` into the folder and `power-apps push`, retrying on
+     timeout. The first push writes the new appId into that folder's config.
+  7. `pac env select` back to DT New.
+  The staging config has **no `databaseReferences`**; nothing needs them, and in
+  the target they would name tables that do not exist.
 - **⚠️ Power Automate: `0x80060888 — Error in query syntax` never names the
   column** (13 Sep). It means Dataverse could not *parse* the text in a
   `Filter rows`, `Select columns` or `Order By` box — not that a column is wrong.
@@ -2375,10 +2474,23 @@ quorum definition, Decision↔Meeting/Report linking (§7.7, deferred on purpose
       id.** The single open question on the cross-environment work (§6). Until
       it is answered, every create in both apps is unproven — and creates are
       how all child rows get their parent. One console call from a running app.
-- [ ] **Create a `shared_commondataserviceforapps` connection in any
-      environment that will HOST an app.** The Amr Space trial
-      (appId `e78a0887…`) is blocked on this; the connection that exists there
-      is the legacy connector. See §8.
+- [ ] **Confirm the Code App Development deployments against DT New** (17 Sep).
+      Governance `4912152c…`: the Setup Register lists real templates.
+      Leadership `83db0ef8…`: Workspace / Meetings / Minutes show real records.
+      Nothing has been checked from the running apps yet.
+- [x] ~~Create a `shared_commondataserviceforapps` connection in any environment
+      that will host an app.~~ Done for both hosts used: Code App Development
+      (`c83ec8cc…`) and Amr Space (`9787e3c9…`). Any *new* host still needs one —
+      see the recipe in §8.
+- [ ] **Delete the Amr Space copies** once Code App Development is confirmed:
+      Governance `e78a0887…` (also bound to the wrong connection) and Leadership
+      `936f78d8…`.
+- [ ] **Keep the two staging folders' appIds somewhere durable.** The Code App
+      Development configs were pushed from `C:\tmp\cad-gov` and
+      `C:\tmp\cad-exec`, outside the repo. Their appIds are recorded in §5; if
+      those folders are lost, a push from a fresh folder without the appId
+      creates a *second* app instead of updating the first. Worth deciding whether
+      these become real app roots under `apps/`.
 - [ ] **Grant Create/Write on the `lm_` tables in DT New to anyone who will use
       a remotely-hosted app.** The connection is not the permission, and the
       failure looks like a bug rather than a denial (§6).

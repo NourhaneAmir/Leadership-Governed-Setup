@@ -4415,13 +4415,22 @@ function App({onSwitch}){
               console.warn(`[dataverse] Approve status update failed for ${rec._dataverseId}:`, errors);
               toast('Dataverse status update failed',
                 `${displayName(rec)} is Approved locally, but updating its status in Dataverse failed. Check the console for details.`,'err');
+              return;
             }
+            /* re-read, or the register keeps showing the status it had before */
+            refreshDvLists();
           })
           .catch(e=>{
             console.warn(`[dataverse] Approve status update threw unexpectedly for ${rec._dataverseId}:`, e);
             toast('Dataverse status update failed',
               `${displayName(rec)} is Approved locally, but updating its status in Dataverse failed. Check the console for details.`,'err');
           });
+      }else{
+        /* Used to be silent: approved on screen, nothing written, no message.
+           A Setup has no Dataverse id when its publish never finished saving. */
+        console.warn(`[dataverse] Approve skipped for ${rec.id}: this Setup has no Dataverse record.`);
+        toast('Not saved to Dataverse',
+          `${displayName(rec)} is Approved in this session only. It has no Dataverse record yet, usually because its publish did not finish saving. Publish it again, then approve.`,'err');
       }},
 
     duplicate: async id=>{
@@ -4485,8 +4494,24 @@ function App({onSwitch}){
           ? updateReportTemplateStatus(rec._dataverseId,'Expired')
           : updateMeetingTemplateStatus(rec._dataverseId,'Expired');
         writer
-          .then(()=>refreshDvLists())
-          .catch(e=>console.warn(`[dataverse] Expire status update threw unexpectedly for ${rec._dataverseId}:`, e));
+          .then(({id:wid,errors})=>{
+            if(!wid||errors.length){
+              console.warn(`[dataverse] Expire status update failed for ${rec._dataverseId}:`, errors);
+              toast('Dataverse status update failed',
+                `${displayName(rec)} is Expired locally, but updating its status in Dataverse failed. Check the console for details.`,'err');
+              return;
+            }
+            refreshDvLists();
+          })
+          .catch(e=>{
+            console.warn(`[dataverse] Expire status update threw unexpectedly for ${rec._dataverseId}:`, e);
+            toast('Dataverse status update failed',
+              `${displayName(rec)} is Expired locally, but updating its status in Dataverse failed. Check the console for details.`,'err');
+          });
+      }else{
+        console.warn(`[dataverse] Expire skipped for ${rec.id}: this Setup has no Dataverse record.`);
+        toast('Not saved to Dataverse',
+          `${displayName(rec)} is Expired in this session only. It has no Dataverse record yet, so nothing was changed there.`,'err');
       }},
   };
 
