@@ -5,7 +5,7 @@
 > updated 04 Sep 2026, updated 05 Sep 2026, updated 06 Sep 2026,
 > updated 07 Sep 2026 (twice), updated 08 Sep 2026, updated 12 Sep 2026
 > (covering 09-12 Sep), updated 13 Sep 2026, updated 14 Sep 2026,
-> updated 16 Sep 2026, updated 17 Sep 2026, against branch `leadership-practice`.
+> updated 16 Sep 2026, updated 17 Sep 2026 (twice), against branch `leadership-practice`.
 >
 > This file records **decisions, hard-won schema facts and open questions** —
 > the things that are expensive to rediscover. It is not a substitute for the
@@ -97,7 +97,8 @@ The BRD **contradicts itself** in three places, and the code picked a side:
 | Meeting Occurrences — create, edit, **cancel**, **reschedule**, mark Held, **Agenda add/remove/reorder/record-distribution**, attendance | ✅ live (Attendance/Held/Edit from an earlier session; Cancel/Reschedule/Agenda edit **this session**) |
 | Report Occurrences — create (Template **and** Custom), file URL, review chain (submit / approve / RMI) + history | ⚠️ **built, but disconnected from the nav as of 02 Sep** — `NewReportModal`/`DvReportDetail`/`dvReportOccs` still exist and still work end to end against `lm_reportoccurrences`, but nothing currently opens them (see the row below and §5's 02 Sep entry) |
 | **Meeting Minutes tab** (nav screen) — reads `lm_meetingminuteses` directly | ✅ **live** (01 Sep — the write path itself, `DvMinutesBody`, was already live from an earlier session; only the top-level list screen was still seeded until now) |
-| **Reports & Plans tab** (nav screen) | 🔴 **reverted from live to seeded, on purpose, 02 Sep** — was reading `lm_reportoccurrences` directly as of 01 Sep; rebuilt this session as the citation-based composer from `prototype.html` (sections that cite live KPIs/tactics/PM entries/issues/tasks/other reports), which has no Dataverse equivalent yet, so it now runs on seeded `db.reports`/`db.paragraphs`/`db.templates` instead. This was an explicit product-owner instruction, not a regression found by accident — see §5. |
+| **Reports / Plans tab** (Artifact group, `ScreenOrgReports`) | ✅ **live** (17 Sep) — reads `lm_reportoccurrences`, `lm_reportoccurrencesections` and `lm_reportsectioncitations`. See §5. |
+| **Reports & Plans composer** (hidden `rpt` screen, not the visible tab above) | 🔴 **reverted from live to seeded, on purpose, 02 Sep** — was reading `lm_reportoccurrences` directly as of 01 Sep; rebuilt this session as the citation-based composer from `prototype.html` (sections that cite live KPIs/tactics/PM entries/issues/tasks/other reports), which has no Dataverse equivalent yet, so it now runs on seeded `db.reports`/`db.paragraphs`/`db.templates` instead. This was an explicit product-owner instruction, not a regression found by accident — see §5. |
 | Authority Matrix + Approval Cycles | ✅ live, read-only by design (`AuthorityMatrixPanel`, embedded in Governance Settings) |
 | **Audit Grid scoring** — Meeting Occurrence's own Grid tab | ✅ **live** (this session) — `liveScoreGrid()` computes all 16 questions from the live occurrence/Minutes/Template; full Facilitator→Chair lifecycle (score, evidence, submit, approve+publish, return, open a correction version) writes through the backend functions that were already built |
 | **My Workspace (nav screen)** | ✅ **live** — reads its Work Queue, Upcoming panel and This Month stats directly off the full `dvMeetingOccs`/`dvReportOccs` arrays via `dvWorkItems()`. Two silent-data-loss bugs fixed here 01 Sep — see §5: an overdue Meeting with partial attendance recording used to vanish from Work Queue, and a blank/unrecognized status code used to vanish a row from every screen at once. Its Decisions filter tab still shows 0 because Decisions (below) only just went live. |
@@ -105,7 +106,7 @@ The BRD **contradicts itself** in three places, and the code picked a side:
 | **Committee Scores (nav screen)** | ✅ **live** (01 Sep) — `ScreenGrid` now reads `fetchAuditGridInstances()` joined against `dvMeetingOccs`, instead of seeded `db.grids`. See §5 for the join details and the Approved-only Coverage/Score rule. |
 | **Setup Activity trail** — the Activity tab on a Report/Meeting Setup | ✅ **live** (10 Sep) — `lm_setupactivity` is written on create, edit, publish, approve and expire, and the tab reads the real rows back for any Setup that has a `_dataverseId`. A Setup that has never been saved still shows the seeded sample trail. |
 | **Artifact group** — Business intelligence, Reports / Plans, Reporting hierarchy | 🟡 **mixed** (11 Sep) — all three run on the app's own data rather than the prototype's parallel seed model, but that data is itself seeded: BI reports from `BI_REPORTS`, reports from `db.reports`, hierarchy edges derived from real `RPT:` paragraph citations. The Power BI report itself **cannot be embedded** — see §8. |
-| **How every table is reached** | 🟡 **changed 16 Sep** — all 42 tables now go through `dvTable()` in `src/services/xenv.js`, which calls the Dataverse connector against `DATA_ORG` (currently DT New). The generated per-table services are no longer imported anywhere. Behaviour is identical while an app is hosted in DT New; the point is that it stays identical when it is not. ⚠️ **Creates are unproven** — see §6 on `CreateRecordWithOrganization` returning `void`. |
+| **How every table is reached** | 🟡 **changed 16 Sep** — all 42 tables now go through `dvTable()` in `src/services/xenv.js`, which calls the Dataverse connector against `DATA_ORG` (currently DT New). The generated per-table services are no longer imported anywhere. Behaviour is identical while an app is hosted in DT New; the point is that it stays identical when it is not. Creates supply their own primary key since 17 Sep, so a new row's id no longer depends on the response — see §6. |
 | Tasks, Comments, Governance Settings (persisted values) | ❌ **seeded demo data only** |
 | **Meeting Setup "Completion Periods"** (MOM Write-up / MOM Approval / Audit Grid Completion-Submission, each an hours field) | ✅ **live** (15 Sep) — three plain columns on `lm_meetingtemplates` (`lm_momwriteuphours`, `lm_momapprovalhours`, `lm_gridsubmithours`), written/read alongside `quorum`/`torLink` in `dataverse.js` and `GovernanceApp.jsx`. **Persistence only — not yet consumed.** AG-16/AG-05 scoring still reads the global `DEFAULT_SETTINGS` values (§9), not this per-Setup one; the UI says so. |
 | **`lm_meetingoccurrencelinkedreports`** | 🔴 **registered, not wired to any screen** (15 Sep) — table + generated models exist (`lm_reportname`, lookups to `lm_meetingoccurrences`, `lm_reportoccurrences`, `lm_report_templates`); no app code reads or writes it yet. |
@@ -1435,6 +1436,125 @@ started as a fallback expired unused and created nothing. That fresh profile
 still listed the same 12 environments, which is how token staleness was ruled out
 as the reason Code App Development was missing.
 
+### This session (17 Sep, continued): approvals that did not save, two save races, and Reports / Plans on live data
+
+**1. "Approving a report doesn't save to the database" — three defects together.**
+- **The Setup never got its Dataverse id.** Through the connector,
+  `CreateRecordWithOrganization` is typed `void`, so `idOrThrow()` had nothing to
+  read, and a published Setup never received `_dataverseId`.
+- **Approve skipped silently without one.** `approve` wrote only
+  `if (rec._dataverseId)`, with no `else` and no message. Local **expire** had the
+  same gap and also refreshed the register on failure without reporting it.
+- **Approve never re-read the register**, so even a successful write kept showing
+  "Under Review".
+
+Fixed: `dvTable(entitySet, pkField)` now **generates the primary key GUID in the
+app and sends it with the row** (Dataverse accepts a client-supplied key on
+create), for the **28 tables `dataverse.js` creates rows in**. Each key was read
+from that table's generated `create()` signature. The id is therefore known
+whatever the response carries; `_idSource` records which it was. Approve and
+Expire now say when they cannot save, and refresh the register when they can.
+`smokeTestCreate()` now **reads the row back under that id**, because "an id came
+back" proves nothing once the app supplies it.
+
+**2. Save/approve timing — fixed, and tested outside the app.** Saving a Setup to
+Dataverse runs in the background, and its id arrives only after the parent row
+**and every child row** are written. Found and fixed:
+- **Approving before a new Setup's create finished** wrote nothing.
+- **Approving while an edit's update was in flight** let the update write "Under
+  Review" back over the approval.
+- **Save as Draft, then Publish, in quick succession** created a *second*
+  template: Publish saw no id yet. That left an orphan Draft, and Approve updated
+  only the copy.
+- **`flushActivity()` drained the activity queue before checking it had an id**,
+  so an early approve silently threw away the queued trail, publish entries
+  included.
+
+A module-level `PENDING_DV_WRITE` map tracks every template write per **local**
+Setup id, chaining writes for the same Setup (`trackWrite`, `settledDataverseId`).
+One shared `writeStatusToDataverse()` makes Approve and Expire wait for every
+pending write, then write against the id it produced. `writeTemplateToDataverse()`
+waits for an in-flight create before choosing between create and update. An
+`afterWait` flag stops a failed create's retry from waiting on itself, which
+would otherwise deadlock.
+
+Verified by running the **real** registry and create-vs-update code from the
+file in Node against a fake Dataverse with 200–300ms delays:
+
+| Sequence | Result |
+|---|---|
+| Publish, approve 50ms later | approve waits, status lands on the new row |
+| Save Draft → Publish → Approve, 60ms apart | **one** row; Publish updates it; approval last |
+| Draft create **fails** → Publish → Approve | Publish creates cleanly, no hang; approval lands |
+| Edit an approved Setup, approve 20ms later | approval lands **after** the edit |
+
+⚠️ Not yet confirmed against real Dataverse latency from a running app.
+
+**3. The Report Occurrence flow's citation step failed with `BadRequest`.**
+Every empty lookup still sent a bind path with nothing inside the brackets
+(`/lm_processes()`, `/lm_report_templates()`), which Dataverse rejects. The
+fix is one Compose per lookup, returning `null` when the id is empty, so the
+field is left out of the request:
+`if(empty(<id>), null, concat('/<entity set>(', <id>, ')'))`. If a connector
+version rejects `null` in a lookup, `''` is the fallback.
+
+⚠️ **The flow plan names three entity sets wrongly**, and they fail even with
+a valid id:
+
+| Lookup | Plan says | Correct |
+|---|---|---|
+| `lm_KPI` | `/lm_kpis(…)` | **`/strategy_kpises(…)`** |
+| `lm_Process` | `/lm_processes(…)` | **`/strategy_processes(…)`** |
+| `lm_CitedSection` | `/lm_reportoccurrencesections(…)` | **`/lm_reportoccurrencesectionses(…)`** |
+
+The first two are confirmed by the app's own working writes (`dataverse.js`
+binds `strategy_kpises` / `strategy_processes`), the third by `power.config.json`.
+**`REPORT-OCCURRENCE-FLOW-PLAN.md` and its artifact still carry the wrong names** —
+see §9. The run that surfaced this also had **Cited Section empty**, which is not
+an optional field: it means the step that creates the section isn't named
+exactly `NewSec`. Silencing it with a Compose would save citations attached to no
+section.
+
+**4. All 42 adapter table names checked against real entity sets.** A generated
+service's `dataSourceName` is the entity set name, and 41 of 42 appear in
+`power.config.json`'s `entitySetName`. The 42nd, `wlog_decisions`, is registered
+through the legacy connector and genuinely is its entity set.
+
+**5. The visible Reports / Plans tab reads live data.** `ScreenOrgReports`
+(`screens/OrgReports.jsx`) previously read seeded `db.reports`/`db.paragraphs`.
+It now reads `dvReportOccs` from context, and on opening the tab calls a new
+`fetchReportOccurrenceContent()`, which reads all Sections and all Citations
+together. Details:
+- **Grouping.** Sections are grouped by `_lm_reportoccurrence_value`. Citations
+  are grouped by `_lm_citedsection_value`, following the flow's convention that
+  it holds the **parent** section (the table has no other link; see §6).
+- **Names.** Display names come from **formatted-value annotations**
+  (`_lm_kpi_value@OData.Community.Display.V1.FormattedValue` and so on), which
+  the adapter already requests on every list read. No catalogue is needed and
+  no second query.
+- **Lookups.** Name lookups and the signed-in user's Position ids reach the
+  screen through a new context value, `dvLookup` (`bu`, `region`, `pos`, `dept`,
+  `rptTpl`, `myPositionIds`). A screen in its own file can't import
+  `LeadershipApp`'s module-level tables without a circular import.
+- **Tabs** are **All / Received / Issued by you**. "Issued by you" means the Creator
+  Position is one the user holds, matched by name as the sidebar does. All is
+  the default, because a report whose Creator Position isn't linked to anyone
+  would otherwise show only under Received.
+- **Child reports.** A citation with a cited report occurrence gets an "Open
+  cited report" button.
+- `lm_ChildReportTemplate` is **not** selected. Its logical name is unconfirmed,
+  and one unknown column in `$select` fails the whole read.
+
+Still on seeded data: **Reporting hierarchy**, and the hidden `rpt` composer that
+other screens link into.
+
+**6. Deploys.** Both apps were rebuilt and re-pushed to Code App Development after
+each change above. Governance's push then failed **13 times in a row** on
+`generateResourceStorage`, while Leadership succeeded between those attempts.
+The two staging folders were identical in size, file count and config, so the
+problem was service-side and specific to that app. A background loop retrying
+once a minute got it through a few minutes later. See §8.
+
 ---
 
 ## 6. Schema facts that are expensive to rediscover
@@ -1823,22 +1943,51 @@ Other facts worth keeping:
   `nextLink` is **not** a plain Dataverse URL either — the real continuation
   query is URL-encoded inside a `next` parameter, so reading `$skiptoken` off
   the outer query returns null every time. `xenv.js` handles both.
-- ⚠️ **`CreateRecordWithOrganization` is typed `IOperationResult<void>`** — it
-  declares no response body — while the source guide's own example reads
-  `result.data` for the created record. Only a live call settles which is
-  right, and it matters here more than in most apps: `dataverse.js` binds child
-  rows to the id a create returns (`idOrThrow(created, 'lm_…id')`) for agenda
-  items, attendees, review chain steps, section items and the activity queue.
-  If no id comes back, the fix is contained to one function in `xenv.js` —
-  most likely generating the GUID client-side and passing it in the payload, so
-  the id is known without being returned. Run `window.__xenvSmokeTest()` from
-  the app's browser console before trusting creates.
+- **`CreateRecordWithOrganization` is typed `IOperationResult<void>`** — it
+  declares no response body. `dataverse.js` cannot work without a new row's id
+  (`idOrThrow(created, 'lm_…id')` binds agenda items, attendees, review chain
+  steps, section items and the activity queue to it), so **since 17 Sep the
+  adapter does not rely on the response**: `dvTable(entitySet, pkField)`
+  generates the primary key GUID and sends it with the row, for the 28 tables
+  the app creates. Dataverse accepts a client-supplied key on create. The
+  returned data prefers the server's id and falls back to the supplied one;
+  `_idSource` says which. `window.__xenvSmokeTest()` reads the row back under
+  that id — the actual proof that a create landed.
 - The signed-in user needs a Dataverse security role with **Create/Write on the
   target tables inside the TARGET environment**. A working connection is not a
   substitute, and the failure reads as a bug rather than a permission.
 - Verify a write by opening the target environment and looking at
   Tables → (table) → Data. A success message can still mean the row landed in
   the wrong environment.
+
+### Report Occurrence content: Sections and Citations (17 Sep)
+**Entity sets are double-plural**, because the logical names are already plural:
+`lm_reportoccurrencesectionses`, `lm_reportsectioncitationses`. The generated
+service names say so too. This bites flows especially, where a bind path needs
+the entity set (`/lm_reportoccurrencesectionses(…)`).
+
+`lm_reportoccurrencesections` — key `lm_reportoccurrencesectionsid`;
+`lm_heading` (850), `lm_body` (4000), `lm_diagnosticangle` (1 Untyped …
+5 Prescriptive, same codes as the Template side), `lm_sequence`, `lm_source`
+(Migrated from Template / Added), `lm_reportoccurrence` → the report,
+`lm_sourcesectionchecklistitem` → the Template section it came from.
+
+`lm_reportsectioncitations` — key `lm_reportsectioncitationsid`; `lm_name` (the
+flow's "Label Text"), `lm_kind` (1 KPI, 2 Breakdown, 3 Process, 4 POC, 5 Project,
+6 Strategy, 7 BI Report, 8 Paragraph, 9 Issue, 10 Task, 11 Child Report),
+`lm_breakdowndimension`, and lookups `lm_KPI` → **`strategy_kpises`**,
+`lm_Process` → **`strategy_processes`**, `lm_CitedSection` →
+`lm_reportoccurrencesectionses`, `lm_CitedReportOccurrence` →
+`lm_reportoccurrences`. ⚠️ **No lookup to the report itself**, so a citation
+reaches its report only through its section. `lm_ChildReportTemplate` exists in
+DT New (the flow designer shows it) but not in this repo's cached schema, and
+its logical name is unconfirmed.
+
+**Reading lookup names and choice labels:** list reads through the adapter carry
+`<field>@OData.Community.Display.V1.FormattedValue` annotations, e.g.
+`_lm_kpi_value@…FormattedValue` for the KPI's name and
+`lm_kind@…FormattedValue` for the kind label. Don't `$select` the schema's
+read-only `lm_kpiname`-style columns; use the annotation instead.
 
 ### `lm_setupactivity` — the audit trail for Setup templates (10 Sep)
 One table serving **both** Report and Meeting templates, registered as
@@ -2159,6 +2308,13 @@ denormalised column is also the shortcut past the trap.
   2, 2, 1, 3 and 1 attempts. The push is idempotent — run it again; a failure
   followed by a success means the app is pushed once, not twice. A retry loop
   that stops on `pushed successfully` is the practical form.
+  ⚠️ **A run of failures can be specific to one app** (17 Sep): Governance
+  failed on `generateResourceStorage` 13 times straight while Leadership, pushed
+  between those attempts, went through first time — identical staging folders,
+  so nothing in the upload was at fault. Rapid retries did not help. **Spacing
+  them a minute apart did**: it succeeded on the second spaced attempt. When
+  immediate retries keep failing for one app only, wait between attempts rather
+  than retrying harder.
 - **⚠️ An environment can be reachable but missing from every CLI list — select
   it by URL** (17 Sep). Code App Development is absent from both `pac env list`
   and `pac admin list`, although the account is Admin there and it shows in the
@@ -2470,10 +2626,24 @@ quorum definition, Decision↔Meeting/Report linking (§7.7, deferred on purpose
       `origin/leadership-practice`. (The commit at `36b5e05` was made outside
       this file's own session narrative — worth noticing if `git log` and this
       file ever seem to disagree about what's committed; trust `git log`.)
-- [ ] **Run `window.__xenvSmokeTest()` and settle whether `create` returns an
-      id.** The single open question on the cross-environment work (§6). Until
-      it is answered, every create in both apps is unproven — and creates are
-      how all child rows get their parent. One console call from a running app.
+- [x] ~~Settle whether `create` returns an id.~~ **Made moot 17 Sep**: the adapter
+      supplies the primary key itself (§6). Still worth one
+      `window.__xenvSmokeTest()` from the running app — it now reads the row
+      back, which is the real proof a create landed in DT New.
+- [ ] **Confirm Approve saves, against real latency** (17 Sep). Create a Meeting,
+      publish, approve at once, then check DT New → `lm_meetingtemplates` →
+      Data: **one** row, status Active / Approved. The timing fixes are verified
+      only against a simulated Dataverse (§5).
+- [ ] **Correct the entity set names in `REPORT-OCCURRENCE-FLOW-PLAN.md` and the
+      Report Occurrence Generator artifact** — `strategy_kpises`,
+      `strategy_processes`, `lm_reportoccurrencesectionses` — and add the
+      empty-lookup Compose pattern (§5). Anyone building from the plan hits
+      `BadRequest`.
+- [ ] **Reporting hierarchy is still seeded.** It derives parent/child from seeded
+      `RPT:` paragraph citations; the live equivalent is `lm_reportsectioncitations`
+      of kind Child Report with `lm_CitedReportOccurrence` set.
+- [ ] **The DT New-hosted apps lack every 16–17 Sep fix** (Governance `7caa2fb2…`,
+      Execution `0f077a0a…`). Only the Code App Development copies are current.
 - [ ] **Confirm the Code App Development deployments against DT New** (17 Sep).
       Governance `4912152c…`: the Setup Register lists real templates.
       Leadership `83db0ef8…`: Workspace / Meetings / Minutes show real records.

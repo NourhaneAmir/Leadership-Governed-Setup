@@ -2648,10 +2648,18 @@ function App({onSwitch}){
     return c;
   },[work]);
 
+  /* Name lookups, and which Positions the signed-in user holds, for screens
+     that live in their own files and so cannot reach the module-level DV_*
+     tables above. A Position is "mine" when its holder's name matches the
+     signed-in user's -- the same match the sidebar's user card already uses. */
+  const myPositionIds = currentUser?.fullName
+    ? DV_POS_LIST.filter(p => p.holder && p.holder.toLowerCase() === currentUser.fullName.toLowerCase()).map(p => p.id)
+    : [];
+  const dvLookup = { bu:dvBu, region:dvRegion, pos:dvPos, dept:dvDept, rptTpl:dvRptTpl, myPositionIds };
   const ctx = {db,setDb,mut,me,bu,setBu,businessUnits,navOpen,setNavOpen,currentUser,screen,go,openMeeting,openWork,sel,setSel,
                toast,toasts,reset,S,A,work,cal,counts,onSwitch,
                dvMeetingOccs,dvReportOccs,dvMinutes,dvGridInstances,dvDecisions,dvLoading,dvError,refreshOccurrences,
-               dvOpen,setDvOpen,openDvRec};
+               dvOpen,setDvOpen,openDvRec,dvLookup};
   const Screen = SCREEN_BY_ID[screen] || SCREEN_BY_ID.work;
 
   return <Ctx.Provider value={ctx}>

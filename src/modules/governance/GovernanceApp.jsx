@@ -3497,6 +3497,31 @@ function Modal({title,sub,onClose,footer,children,wide}){
    object back on save, so a marker stored on the record could be dropped
    silently on the round-trip.
    ========================================================================= */
+/* Dataverse template writes still in flight, keyed by LOCAL Setup id.
+
+   A save resolves its Dataverse id only after the parent row and every child
+   row are written, which takes seconds. Approve and Expire read this and wait,
+   so a status change can neither run ahead of the create that gives the Setup
+   its id, nor land before an in-flight update that would overwrite it.
+
+   Writes for the same Setup are chained, so waiting covers all of them; the
+   resolved value is the newest non-null Dataverse id. A write never rejects
+   here -- failure resolves to null. */
+const PENDING_DV_WRITE = new Map();
+const trackWrite = (localId, writer) => {
+  const mine = writer.then(r => (r && r.id) || null, () => null);
+  const prev = PENDING_DV_WRITE.get(localId);
+  const chained = prev ? Promise.all([prev, mine]).then(([a, b]) => b || a) : mine;
+  PENDING_DV_WRITE.set(localId, chained);
+  chained.then(() => { if(PENDING_DV_WRITE.get(localId) === chained) PENDING_DV_WRITE.delete(localId); });
+};
+/* The Setup's Dataverse id once every pending write for it has settled. */
+const settledDataverseId = async (localId, knownId) => {
+  const pending = PENDING_DV_WRITE.get(localId);
+  const fresh = pending ? await pending : null;
+  return fresh || knownId || null;
+};
+
 const REVISING = new Map();
 const markRevising   = (id, fromVersion) => REVISING.set(id, fromVersion || 1);
 const revisingFrom   = id => REVISING.get(id);
@@ -3541,8 +3566,12 @@ const drainActivity = localId => {
    save that has already succeeded, so a failed trail row must never surface as
    a failed save. It goes to the console instead. */
 const flushActivity = (localId, dvId, kind, version) => {
+  /* Check for an id BEFORE draining. Draining first threw the queued entries
+     away whenever this ran ahead of the create -- e.g. approving a Setup whose
+     save was still running lost its whole trail, publish entries included. */
+  if(!dvId) return;
   const entries = drainActivity(localId);
-  if(!dvId || entries.length === 0) return;
+  if(entries.length === 0) return;
   logSetupActivityBatch(kind, dvId, entries.map(e => ({...e, version})))
     .then(({count, errors}) => {
       if(errors.length) console.warn(`[dataverse] Setup activity: ${errors.length} row(s) failed`, errors);
@@ -4119,12 +4148,56 @@ function App({onSwitch}){
      prior save that created one) is UPDATED in place -- its old child rows
      are deleted and rows matching the edited Setup are recreated. A
      brand-new Setup is created fresh. */
-  const writeTemplateToDataverse=(f, actionLabel)=>{
+  /* The Dataverse half of Approve and Expire. Waits for any save still running
+     for this Setup (see PENDING_DV_WRITE), then writes the status against the
+     id that save produced. Every outcome says so -- no silent path. */
+  const writeStatusToDataverse=async(rec, status, verb)=>{
+    let dvId=null;
+    try{ dvId=await settledDataverseId(rec.id, rec._dataverseId); }
+    catch{ dvId=rec._dataverseId||null; }
+
+    if(!dvId){
+      console.warn(`[dataverse] ${verb} skipped for ${rec.id}: this Setup has no Dataverse record.`);
+      toast('Not saved to Dataverse',
+        `${displayName(rec)} is ${verb} in this session only. It has no Dataverse record because saving it to Dataverse did not complete. Publish it again, then ${verb==='Approved'?'approve':'expire'} it.`,'err');
+      return;
+    }
+    flushActivity(rec.id, dvId, rec.kind, rec.version);
+
+    const failed=detail=>{
+      console.warn(`[dataverse] ${verb} status update failed for ${dvId}:`, detail);
+      toast('Dataverse status update failed',
+        `${displayName(rec)} is ${verb} locally, but updating its status in Dataverse failed. Check the console for details.`,'err');
+    };
+    try{
+      const {id:wid,errors}=rec.kind==='Report Template'
+        ? await updateReportTemplateStatus(dvId,status)
+        : await updateMeetingTemplateStatus(dvId,status);
+      if(!wid||errors.length){ failed(errors); return; }
+      /* re-read, or the register keeps showing the status it had before */
+      refreshDvLists();
+    }catch(e){ failed(e); }
+  };
+
+  const writeTemplateToDataverse=(f, actionLabel, afterWait)=>{
+    /* A write for this Setup is still running and no id is known yet -- a
+       Save as Draft whose create has not come back. Choosing now would CREATE
+       a second template. Wait for it, then write against the id it produced. */
+    if(!afterWait && !f._dataverseId && PENDING_DV_WRITE.has(f.id)){
+      const deferred = PENDING_DV_WRITE.get(f.id).then(id =>
+        /* afterWait: if that create failed (id null), write fresh -- do not
+           wait again, the pending entry now includes this very call */
+        writeTemplateToDataverse(id ? {...f, _dataverseId:id} : f, actionLabel, true)
+          || {id:null, errors:[]});
+      trackWrite(f.id, deferred);
+      return deferred;
+    }
     const isUpdate = !!f._dataverseId;
     if(f.kind==='Report Template'){
       const writer = isUpdate
         ? updateReportTemplateToDataverse(f._dataverseId, buildReportTemplatePayload(f))
         : saveReportTemplateToDataverse(buildReportTemplatePayload(f));
+      trackWrite(f.id, writer);
       writer
         .then(({id,errors})=>{
           if(!id){
@@ -4155,11 +4228,13 @@ function App({onSwitch}){
           toast('Dataverse save failed',
             `${displayName(f)} was ${actionLabel} locally, but the Dataverse ${isUpdate?'update':'write'} failed. Check the console for details.`,'err');
         });
+      return writer;
     }
     if(f.kind==='Committee / Meeting'){
       const writer = isUpdate
         ? updateMeetingTemplateToDataverse(f._dataverseId, buildMeetingTemplatePayload(f))
         : saveMeetingTemplateToDataverse(buildMeetingTemplatePayload(f));
+      trackWrite(f.id, writer);
       writer
         .then(({id,errors})=>{
           if(!id){
@@ -4189,6 +4264,7 @@ function App({onSwitch}){
           toast('Dataverse save failed',
             `${displayName(f)} was ${actionLabel} locally, but the Dataverse ${isUpdate?'update':'write'} failed. Check the console for details.`,'err');
         });
+      return writer;
     }
   };
 
@@ -4404,34 +4480,8 @@ function App({onSwitch}){
         rec={...s};});
       toast('Setup approved',
         `${displayName(rec)} is now Active / Approved at version ${rec.version||1}.`,'ok');
-      flushActivity(rec.id, rec._dataverseId, rec.kind, rec.version);
-      if(rec._dataverseId){
-        const writer = rec.kind==='Report Template'
-          ? updateReportTemplateStatus(rec._dataverseId,'Active / Approved')
-          : updateMeetingTemplateStatus(rec._dataverseId,'Active / Approved');
-        writer
-          .then(({id:wid,errors})=>{
-            if(!wid||errors.length){
-              console.warn(`[dataverse] Approve status update failed for ${rec._dataverseId}:`, errors);
-              toast('Dataverse status update failed',
-                `${displayName(rec)} is Approved locally, but updating its status in Dataverse failed. Check the console for details.`,'err');
-              return;
-            }
-            /* re-read, or the register keeps showing the status it had before */
-            refreshDvLists();
-          })
-          .catch(e=>{
-            console.warn(`[dataverse] Approve status update threw unexpectedly for ${rec._dataverseId}:`, e);
-            toast('Dataverse status update failed',
-              `${displayName(rec)} is Approved locally, but updating its status in Dataverse failed. Check the console for details.`,'err');
-          });
-      }else{
-        /* Used to be silent: approved on screen, nothing written, no message.
-           A Setup has no Dataverse id when its publish never finished saving. */
-        console.warn(`[dataverse] Approve skipped for ${rec.id}: this Setup has no Dataverse record.`);
-        toast('Not saved to Dataverse',
-          `${displayName(rec)} is Approved in this session only. It has no Dataverse record yet, usually because its publish did not finish saving. Publish it again, then approve.`,'err');
-      }},
+      writeStatusToDataverse(rec,'Active / Approved','Approved');
+    },
 
     duplicate: async id=>{
       const src=db.setups.find(s=>s.id===id);
@@ -4488,31 +4538,8 @@ function App({onSwitch}){
         s.status='Expired'; s.updated=nowStamp();
         rec={...s};});
       toast('Setup expired','It creates no new occurrences and stays readable.','warn');
-      flushActivity(rec.id, rec._dataverseId, rec.kind, rec.version);
-      if(rec._dataverseId){
-        const writer = rec.kind==='Report Template'
-          ? updateReportTemplateStatus(rec._dataverseId,'Expired')
-          : updateMeetingTemplateStatus(rec._dataverseId,'Expired');
-        writer
-          .then(({id:wid,errors})=>{
-            if(!wid||errors.length){
-              console.warn(`[dataverse] Expire status update failed for ${rec._dataverseId}:`, errors);
-              toast('Dataverse status update failed',
-                `${displayName(rec)} is Expired locally, but updating its status in Dataverse failed. Check the console for details.`,'err');
-              return;
-            }
-            refreshDvLists();
-          })
-          .catch(e=>{
-            console.warn(`[dataverse] Expire status update threw unexpectedly for ${rec._dataverseId}:`, e);
-            toast('Dataverse status update failed',
-              `${displayName(rec)} is Expired locally, but updating its status in Dataverse failed. Check the console for details.`,'err');
-          });
-      }else{
-        console.warn(`[dataverse] Expire skipped for ${rec.id}: this Setup has no Dataverse record.`);
-        toast('Not saved to Dataverse',
-          `${displayName(rec)} is Expired in this session only. It has no Dataverse record yet, so nothing was changed there.`,'err');
-      }},
+      writeStatusToDataverse(rec,'Expired','Expired');
+    },
   };
 
   // A not-yet-promoted new Setup lives only in `pendingNew`, not db.setups --

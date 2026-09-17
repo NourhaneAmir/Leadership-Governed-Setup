@@ -1,5 +1,15 @@
 # Report Occurrence Generator — Flow Plan
 
+> **Corrected 17 Sep.** Six names in this plan were wrong and failed at runtime:
+> `/positions(` → `/cr603_organizationstructures(`, `/lm_regions(` → `/crd04_regionses(`,
+> `/lm_kpis(` → `/strategy_kpises(`, `/lm_processes(` → `/strategy_processes(`,
+> `/lm_reportoccurrencesections(` → `/lm_reportoccurrencesectionses(` (entity sets are
+> double-plural where the logical name is already plural), and the new section's id
+> field `lm_reportoccurrencesectionid` → **`lm_reportoccurrencesectionsid`**. Every
+> bind path and id field was checked against `power.config.json` and the table
+> schemas. An **empty** lookup must also be omitted, not bound as `/<set>()` — use
+> `if(empty(<id>), null, concat('/<set>(', <id>, ')'))` in a Compose.
+
 > A weekly Power Automate flow that creates next week's **Report Occurrences**
 > from approved Report Template Setups — **one per Business Unit/Region AND
 > per Department/Function line**, not one per unit — with each occurrence's
@@ -569,7 +579,7 @@ field list is §6, with these expressions:
 | `lm_BusinessUnit` | `/businessunits(@{outputs('UnitId')})` |
 | `lm_Department` | `/cr603_chklst_departmentses(@{outputs('DeptId')})` |
 | `lm_Function` | `/hr_functions(@{outputs('FnId')})` — only when `FnId` is not empty |
-| `lm_CreatorPosition` | `/positions(@{outputs('SubmitPos')})` |
+| `lm_CreatorPosition` | `/cr603_organizationstructures(@{outputs('SubmitPos')})` |
 
 Confirm each lookup's entity-set name in the Add-a-row form — the shapes above
 are the pattern, not a guarantee of the set name in your environment. The
@@ -592,7 +602,7 @@ Copy **all of Steps 10–12 as one block** — Loop C, its nested Loop CD, and t
 guard/create inside that. Iterate `Units_Region` instead of `Units_BU`;
 `UnitId` = `item()?['_lm_region_value']`; the guard's third clause becomes
 `_lm_region_value eq …` (the department clause stays as it is); and on the
-create action set `lm_Region` = `/lm_regions(@{outputs('UnitId')})` with
+create action set `lm_Region` = `/crd04_regionses(@{outputs('UnitId')})` with
 `lm_BusinessUnit` left empty. `DeptFn`, `DeptId` and `FnId` are unchanged —
 the department loop does not care which unit table it sits under.
 
@@ -624,10 +634,10 @@ each over its `value`, renamed `Loop_E`. One **Add a new row** on
 | Column | Value |
 |---|---|
 | `lm_kind` | `if(equals(item()?['lm_itemtype'],4), 11, item()?['lm_itemtype'])` |
-| `lm_KPI` | `/lm_kpis(@{item()?['_lm_kpi_value']})` — item types 1 and 2 |
+| `lm_KPI` | `/strategy_kpises(@{item()?['_lm_kpi_value']})` — item types 1 and 2 |
 | `lm_breakdowndimension` | `item()?['lm_breakdowndimension']` — type 2 only |
-| `lm_Process` | `/lm_processes(@{item()?['_lm_process_value']})` — type 3 |
-| `lm_CitedSection` | `/lm_reportoccurrencesections(@{outputs('NewSec')?['body/lm_reportoccurrencesectionid']})` |
+| `lm_Process` | `/strategy_processes(@{item()?['_lm_process_value']})` — type 3 |
+| `lm_CitedSection` | `/lm_reportoccurrencesectionses(@{outputs('NewSec')?['body/lm_reportoccurrencesectionsid']})` |
 | `lm_ChildReportTemplate` | `/lm_report_templates(@{item()?['_lm_childreporttemplate_value']})` — type 4 only |
 
 An empty lookup is fine; a null GUID is not. Guard each with a Condition on the

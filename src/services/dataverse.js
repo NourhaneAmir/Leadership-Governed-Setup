@@ -1986,6 +1986,10 @@ const Lm_approvalcyclesService = dvTable('lm_approvalcycles');
 const Lm_approvalcyclestepsService = dvTable('lm_approvalcyclesteps');
 const Lm_authoritymatrixrowsService = dvTable('lm_authoritymatrixrows');
 const Lm_reportoccurrencehistoriesService = dvTable('lm_reportoccurrencehistories', 'lm_reportoccurrencehistoryid');
+/* A Report Occurrence's content: its Sections, and the Citations inside them.
+   Entity sets are double-plural -- the logical names are already plural. */
+const Lm_reportoccurrencesectionsesService = dvTable('lm_reportoccurrencesectionses', 'lm_reportoccurrencesectionsid');
+const Lm_reportsectioncitationsesService   = dvTable('lm_reportsectioncitationses', 'lm_reportsectioncitationsid');
 const Wlog_decisionsService = dvTable('wlog_decisions', 'wlog_decisionid');
 
 export const MEETING_OCC_STATUS = { 1:'Scheduled', 2:'Held', 3:'Cancelled' };
@@ -2170,6 +2174,77 @@ export async function fetchReportOccurrences(){
     creatorPositionId: r._lm_creatorposition_value || null,
     updated: r.modifiedon || r.createdon || null,
   }));
+}
+
+/* lm_kind on lm_reportsectioncitations, in the column's own option order. The
+   Report Occurrence flow writes 11 for a child report, which pins the numbering. */
+export const REPORT_CITATION_KIND = {
+  1:'KPI', 2:'Breakdown', 3:'Process', 4:'POC', 5:'Project', 6:'Strategy',
+  7:'BI Report', 8:'Paragraph', 9:'Issue', 10:'Task', 11:'Child Report',
+};
+
+/* Formatted-value annotation suffix. The adapter asks Dataverse for these on
+   every list read, so a lookup's display name and a choice's label arrive
+   beside the raw value -- no second query, no catalogue to resolve against. */
+const FV = '@OData.Community.Display.V1.FormattedValue';
+
+/**
+ * Every Section and every Citation on every Report Occurrence, for the
+ * Reports / Plans screen. Two reads, run together; the screen groups them.
+ *
+ * Sections hang off their report through lm_reportoccurrence. Citations carry
+ * NO lookup to the report and no explicit parent-section column -- only
+ * lm_citedsection. The Report Occurrence flow writes the citation's parent
+ * section there, so that is how they are grouped here. See PROJECT-CONTEXT
+ * section 6, "lm_reportsectioncitations has no explicit parent-section lookup".
+ *
+ * lm_ChildReportTemplate is deliberately not selected: the cached schema for
+ * this table predates it and its exact logical name is unconfirmed, and an
+ * unknown column in $select fails the WHOLE read, not just that field.
+ *
+ * Throws when either read fails, so the screen can say so rather than render
+ * a report that silently has no content.
+ */
+export async function fetchReportOccurrenceContent(){
+  const [secRes, citeRes] = await Promise.all([
+    Lm_reportoccurrencesectionsesService.getAll({
+      select: ['lm_reportoccurrencesectionsid','lm_heading','lm_body','lm_diagnosticangle',
+               'lm_sequence','lm_source','_lm_reportoccurrence_value','_createdby_value','createdon'],
+    }),
+    Lm_reportsectioncitationsesService.getAll({
+      select: ['lm_reportsectioncitationsid','lm_name','lm_kind','lm_breakdowndimension',
+               '_lm_citedsection_value','_lm_kpi_value','_lm_process_value',
+               '_lm_citedreportoccurrence_value'],
+    }),
+  ]);
+  assertSuccess(secRes);
+  assertSuccess(citeRes);
+
+  const sections = (secRes.data ?? []).map(s => ({
+    id: s.lm_reportoccurrencesectionsid,
+    reportId: s._lm_reportoccurrence_value || null,
+    heading: s.lm_heading || '(untitled section)',
+    body: s.lm_body || '',
+    angle: SECTION_ANGLE[s.lm_diagnosticangle] || 'Untyped',
+    sequence: s.lm_sequence ?? null,
+    source: s['lm_source' + FV] || null,
+    author: s['_createdby_value' + FV] || null,
+    created: s.createdon || null,
+  }));
+
+  const citations = (citeRes.data ?? []).map(c => ({
+    id: c.lm_reportsectioncitationsid,
+    sectionId: c._lm_citedsection_value || null,
+    kind: c['lm_kind' + FV] || REPORT_CITATION_KIND[c.lm_kind] || 'Citation',
+    label: c.lm_name || null,
+    breakdown: c['lm_breakdowndimension' + FV] || SECTION_BREAKDOWN_DIM[c.lm_breakdowndimension] || null,
+    kpiName: c['_lm_kpi_value' + FV] || null,
+    processName: c['_lm_process_value' + FV] || null,
+    citedReportId: c._lm_citedreportoccurrence_value || null,
+    citedReportName: c['_lm_citedreportoccurrence_value' + FV] || null,
+  }));
+
+  return { sections, citations };
 }
 
 /** Every Meeting Occurrence created from one Meeting Template -- filtered
