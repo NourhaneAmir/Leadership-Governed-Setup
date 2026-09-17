@@ -11,8 +11,9 @@ import React, { useState, useEffect } from 'react';
 import { use } from '../store.jsx';
 import { Btn, Tag, Note, Empty, Field, Bar } from '../../../shared/ui.jsx';
 import { PERIOD, fmtP } from '../../../shared/format.js';
-import { PROC_REG, PR, BI_REPORTS, BIR, KPI_CAT, achFor, achPct, achCls, bdDims,
+import { BI_REPORTS, BIR, achFor, achPct, achCls, bdDims,
          matchesQuery } from '../domain.jsx';
+import { fetchKpis, fetchProcesses } from '../../../services/dataverse.js';
 
 /* The Power BI embed.
 
@@ -247,23 +248,58 @@ function BiFrame({bi}){
   </div>;
 }
 
+/* A plain <select>, paired with its own search box that narrows the option
+   list -- for a live catalogue that can run to dozens or hundreds of rows,
+   unlike the small seeded lists this replaced. The currently chosen option
+   always stays in the list even if the search text no longer matches it, so
+   picking one and then typing something else doesn't silently blank the
+   control. */
+function SearchSelect({ label, value, onChange, options, allLabel, searchPlaceholder }){
+  const [q,setQ] = useState('');
+  const visible = options.filter(o=>matchesQuery(q,[o.name]) || o.id===value);
+  return <Field label={label}>
+    <input type="search" value={q} placeholder={searchPlaceholder}
+      onChange={e=>setQ(e.target.value)}
+      style={{width:'100%',border:'1px solid var(--border-d)',borderRadius:8,
+              padding:'6px 9px',fontSize:12.5,marginBottom:5}}/>
+    <select value={value} onChange={e=>onChange(e.target.value)}>
+      <option value="">{allLabel}</option>
+      {visible.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}
+    </select>
+  </Field>;
+}
+
 /* ---- 1. Business intelligence ------------------------------------------ */
 export function ScreenBI(){
-  const {bu} = use();
+  const {bu, dvLookup} = use();
+  const deptList = dvLookup?.deptList || [];
   const [fProc,setFProc]   = useState('');
   const [fOwner,setFOwner] = useState('');
   const [fBi,setFBi]       = useState('');
   const [q,setQ]           = useState('');
   const [open,setOpen]     = useState(null);
 
-  const ownerOf = k => (PR(k.proc)||{}).own || null;
-  const owners  = [...new Set(PROC_REG.map(p=>p.own))].sort();
+  /* KPIs and Processes, read live from strategy_kpises / strategy_processes --
+     each carries its own Department AND its own Process directly (see
+     dataverse.js), so no seeded catalogue or derived "owner of its Process"
+     step is needed any more. */
+  const [procs,setProcs] = useState(null);   // null while reading
+  const [kpis,setKpis]   = useState(null);
+  useEffect(()=>{
+    let live = true;
+    Promise.all([fetchProcesses(), fetchKpis()])
+      .then(([p,k])=>{ if(live){ setProcs(p); setKpis(k); } })
+      .catch(e=>{ console.warn('[dataverse] Reading KPIs/Processes for Business intelligence failed:', e);
+        if(live){ setProcs([]); setKpis([]); } });
+    return ()=>{ live = false; };
+  },[]);
+  const loading = procs===null || kpis===null;
 
-  const matches = KPI_CAT.filter(k=>
-       (!fProc  || k.proc===fProc)
-    && (!fOwner || ownerOf(k)===fOwner)
+  const matches = loading ? [] : kpis.filter(k=>
+       (!fProc  || k.processId===fProc)
+    && (!fOwner || k.dept===fOwner)
     && (!fBi    || k.bi===fBi)
-    && matchesQuery(q,[k.n, k.id, (PR(k.proc)||{}).n, ownerOf(k), (BIR(k.bi)||{}).n]));
+    && matchesQuery(q,[k.name, k.id, k.processName, k.deptName]));
 
   const anyFilter = fProc||fOwner||fBi||q.trim();
 
@@ -274,19 +310,13 @@ export function ScreenBI(){
 
     <div className="card">
       <h2>Find the report behind a measure</h2>
-      <div className="csub">Filters combine. A KPI carries no Department of its own, so the
-        department shown is the one that owns its Process.</div>
+      <div className="csub">Filters combine. Process and Department come straight from the KPI's
+        own record in strategy_kpises — search either list if it runs long.</div>
       <div className="f-row3">
-        <Field label="Process">
-          <select value={fProc} onChange={e=>{setFProc(e.target.value);}}>
-            <option value="">Any Process</option>
-            {PROC_REG.map(p=><option key={p.id} value={p.id}>{p.n}</option>)}
-          </select></Field>
-        <Field label="Owning department">
-          <select value={fOwner} onChange={e=>setFOwner(e.target.value)}>
-            <option value="">Any department</option>
-            {owners.map(o=><option key={o} value={o}>{o}</option>)}
-          </select></Field>
+        <SearchSelect label="Process" value={fProc} onChange={setFProc}
+          options={loading ? [] : procs} allLabel="Any Process" searchPlaceholder="Search processes…"/>
+        <SearchSelect label="Owning department" value={fOwner} onChange={setFOwner}
+          options={deptList} allLabel="Any department" searchPlaceholder="Search departments…"/>
         <Field label="BI report">
           <select value={fBi} onChange={e=>setFBi(e.target.value)}>
             <option value="">Any BI report</option>
@@ -302,27 +332,35 @@ export function ScreenBI(){
           ? <Btn k="sm" onClick={()=>{setFProc('');setFOwner('');setFBi('');setQ('');}}>Clear</Btn>
           : null}
       </div>
+      {/* No live table links a KPI to a BI report yet -- BI_REPORTS is still
+          the seeded catalogue, so this filter (and every "Open the BI
+          report" button below) only ever matches when nothing does. Kept
+          rather than removed: it stops looking broken once that link exists,
+          and until then every live KPI correctly falls into the "no BI
+          report linked" branch below instead of silently matching nothing. */}
     </div>
 
     <div className="card flush">
       <div className="card-hd" style={{display:'flex',alignItems:'center',gap:12}}>
         <div className="wa-icon gold">📊</div>
-        <h2 style={{flex:1}}>{matches.length} of {KPI_CAT.length} measures</h2>
+        <h2 style={{flex:1}}>{loading ? 'Reading KPIs…' : `${matches.length} of ${kpis.length} measures`}</h2>
       </div>
-      {matches.length===0
+      {loading
+        ? <div style={{padding:'8px 17px 17px'}}><Empty ic="…">Reading strategy_kpises and strategy_processes from Dataverse.</Empty></div>
+        : matches.length===0
         ? <div style={{padding:'8px 17px 17px'}}><Empty>No KPI matches this combination.</Empty></div>
         : <div style={{padding:'4px 17px 17px'}}>
             {matches.map(k=>{
-              const bi = BIR(k.bi), proc = PR(k.proc);
+              const bi = BIR(k.bi);
               const a  = achFor(k, bu, PERIOD);
               const pct2 = a ? achPct(k,a) : null;
               const isOpen = open===k.id;
               return <div key={k.id} className="card" style={{marginBottom:10}}>
                 <div className="ph-row" style={{gap:10,alignItems:'flex-start'}}>
                   <div style={{flex:1,minWidth:0}}>
-                    <div className="t-main">{k.n}</div>
+                    <div className="t-main">{k.name}</div>
                     <div className="t-sub">
-                      {[proc?proc.n:null, ownerOf(k), k.id].filter(Boolean).join(' · ')}</div>
+                      {[k.processName, k.deptName].filter(Boolean).join(' · ')}</div>
                   </div>
                   {pct2!=null
                     ? <Tag c={achCls(pct2)}>{pct2}% of target</Tag>
@@ -336,7 +374,7 @@ export function ScreenBI(){
                   {bi
                     ? <Btn k="sm" onClick={()=>setOpen(isOpen?null:k.id)}>
                         {isOpen?'Hide the report':'Open the BI report'}</Btn>
-                    : <span className="holder">Link a BI report to this KPI in the catalogue first.</span>}
+                    : <span className="holder">No BI report is linked to this KPI yet.</span>}
                   {(k.breakdowns||[]).length
                     ? <Tag c="grey">{k.breakdowns.length} breakdown{k.breakdowns.length>1?'s':''} ·
                         {' '}{bdDims(k).join(', ')}</Tag>

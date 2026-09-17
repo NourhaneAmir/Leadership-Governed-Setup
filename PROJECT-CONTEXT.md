@@ -785,7 +785,12 @@ try to be smarter about picking one:
   generic stub already documented as a dead end) confirmed **there is
   currently no way to refresh an existing native table's schema in this CLI
   version** — worth remembering next time a column needs confirming on an
-  already-registered table, not just a brand-new one. The plan assumes
+  already-registered table, not just a brand-new one. ⚠️ **Corrected 17 Sep
+  (later)** — there is a way; see "`pac modelbuilder build` reads an
+  already-registered table's real choice values" further down in this
+  section. This note's own conclusion was wrong, just not for the columns it
+  was checking that day (a lookup's target table, not a choice column's
+  values — modelbuilder answers the second, not the first). The plan assumes
   `lm_ChildReportTemplate`, matching the existing column of that exact name
   on `lm_reporttemplatesectionitems` — flagged as Open item 7 in the plan,
   not yet closed.
@@ -1639,6 +1644,284 @@ integrity-safe order above:
 **Deploys.** Both apps rebuilt and pushed to Code App Development, each on the
 first attempt: Governance `4912152c…`, Leadership `83db0ef8…`.
 
+### This session (17 Sep, later): both Code App Development apps re-registered from scratch — the originals are now orphaned, not updated
+
+**Root cause, worth remembering:** the two staging folders backing the 16-17 Sep
+deployment above (`C:\tmp\cad-gov`, `C:\tmp\cad-exec`) were lost — deleted at
+some point outside this repo, since they were never inside it on purpose (§9
+had already flagged this exact risk). `power-apps push` reads which app to
+update from a local `power.config.json` that only `init` writes; there is
+**no CLI flag on `push` or `init` to target an existing app id**, and no
+"reconnect to an existing code app" command at all in this CLI version. The
+maker portal was checked for a download/export option on the existing apps
+first — none was found. Per explicit instruction, two **new** app
+registrations were created instead, rather than guessing at reconstructing
+the lost `power.config.json` by hand: its `connectionReferences` keys are
+not arbitrary, they map to real Dataverse connection-reference records
+created server-side by the original `add-data-source` call, and a hand-typed
+wrong entry risks leaving a *live* app pointed at a broken data connection.
+
+**New apps, same environment, distinct display names** (the platform
+rejects a duplicate display name outright — `ApplicationDisplayNameIsInUse`,
+naming the existing app's id in its own error — first attempt used the
+original names unchanged and hit this):
+
+| App | Old (now orphaned) | New | Staging folder |
+|---|---|---|---|
+| Governance Setup | `4912152c-b5c8-4beb-bb74-c9f43550405b` | `786c1b14-bf09-4dd7-a0a2-5730e87744fe` ("...Setup (2)") | `C:\tmp\cad-gov-new` |
+| Leadership Execution | `83db0ef8-4c62-4eef-84ac-dadab326b704` | `d61c6237-fec1-45c7-80e0-a9c63dd1e662` ("...Execution (2)") | `C:\tmp\cad-exec-new` |
+
+Same recipe as §8's "Deploying an app to an environment other than DT New,"
+run against the current source (which now includes everything through this
+session's Meeting Documents tab and the Completion Periods wiring): rebuilt
+from the repo root, `pac auth create --deviceCode`/`power-apps login
+--device-code` (the cached `pac` token had been revoked — password reset —
+and `power-apps`'s separate cache had also gone stale), `power-apps init` +
+`add-data-source -a shared_commondataserviceforapps -c
+c83ec8ccf8a74ee1b8be81f4dfcb3ecf` (the same Code App Development connection
+as before, confirmed still live via `pac connection list`) in each fresh
+folder, `dist/` copied in, `power-apps push`. Both pushed successfully on
+the **first** attempt — no `generateResourceStorage` timeout this time.
+
+⚠️ **The three old apps (`4912152c…`, `83db0ef8…`, and the unrelated
+`2ffd8322…` "Andalusia Pulse" seen in the same `list-codeapps` output) are
+now stale duplicates sitting in Code App Development, not deleted** — this
+CLI has no delete-app command, so removing them is a maker-portal action,
+still not done. **These two staging folders are, once again, the only
+record of the new appIds outside this file** (same exact risk §9 already
+flagged for the ones just lost) — back them up somewhere durable, or the
+next push repeats this whole entry with two more orphans.
+
+⚠️ **Nothing has been confirmed from the newly running apps either** — same
+open item as the 16-17 Sep entry above, now doubled: neither pair has had a
+screen checked against real DT New data or `window.__xenvSmokeTest()` run.
+
+### This session (17 Sep, later still): Report Category/Type choice lists corrected, Report Template naming reworked, Meeting Setup wording
+
+**1. `lm_reportcategory`/`lm_reporttype` were both fully replaced in
+Dataverse, not extended** — the app's own `REPORT_CATEGORY_KEY`/
+`REPORT_TYPE_KEY` were stale (still the old 4-value/3-value lists) and
+silently wrote/read the wrong codes. Settled by discovering `pac
+modelbuilder build` (§6, new entry), which is the first route this project
+has found that actually returns an already-registered table's live choice
+values. Real values (Dataverse's own labels): **Report Category** 1=Executive,
+2=Core, 3=ADHOC; **Report Type** 1=Plan, 2=Dashboard, 3=Report Conclusion —
+**this app displays code 3 as plain "Report"** (later the same session, on
+explicit instruction; §6/§9 for where that rename touched). Updated in both
+`dataverse.js` (`REPORT_CATEGORY_KEY`/`REPORT_TYPE_KEY` for writes,
+`REPORT_CATEGORY`/`REPORT_TYPE` for reads) and `GovernanceApp.jsx`
+(`REPORT_CATEGORIES`, `REPORT_TYPES`, `REPORT_TYPE_HELP`,
+`REPORT_TYPE_TAG_COLOR`, `DV_REPORT_CATEGORY`, `DV_REPORT_TYPE`), plus the
+two seeded demo Report Template Setups (`su-7`, `su-8`) that still carried
+the old label strings and would otherwise have shown as unmatched.
+`REPORT_TYPE_HELP`'s copy for Dashboard/Report is a best-effort description,
+not confirmed business meaning — exact intended semantics weren't given,
+only the labels and codes.
+
+**2. Ad Hoc Report Category has no cadence.** When Report Category is ADHOC
+(matched normalised — case/space/hyphen-insensitive, since the exact
+Dataverse spelling wasn't separately confirmed beyond the enum name), the
+Report Template wizard's Cadence step shows a plain note instead of
+`CadenceFields`, and `validateReport()` skips `cadenceRules()` entirely — no
+Frequency, Day, or Month is required or written for that Setup.
+
+**3. Report Template naming reworked to an underscore token convention**,
+per a naming-reference document: `{Region-or-BusinessUnit}_{Department}_
+{ReportCategory}_{Frequency}`, e.g. `EGY_Quality_Core_Quarterly`, replacing
+the old space-joined English phrase (`derivedName()`'s Report Template
+branch in `GovernanceApp.jsx`). Two decisions taken with the user rather
+than guessed: no new "Report Name" field was added — `{ReportName}` maps
+onto the existing Report Category field instead; `{Region}` is the Setup's
+own Region when Region-scoped or its Business Unit when BU-scoped, dropped
+entirely (same as `{Department}`) when the Setup spans more than one and
+there's no single token to name it after. Meeting naming is untouched.
+
+**4. Two small Meeting Setup wizard fixes**, on explicit ask: step 3 renamed
+from "Cadence" to **"Frequency"** (step label, in-step heading, and the
+review-step summary title all updated — Report Template's own "Cadence and
+review" step is untouched, this was Meeting-only); a new Meeting Setup's
+**Quorum Threshold now defaults to 90%**, still a plain editable number
+input, not a fixed/locked value.
+
+**5. Setup Activity gap found and fixed while checking the wiring was
+correct**, per an explicit ask to verify: `TRACKED` (the field list driving
+`lm_setupactivity` audit-log writes on save) was missing `reportCategory`
+entirely, so editing a Report Template's Category left no audit trail even
+though the separate publish-preview diff already showed it correctly. Fixed
+by adding `['reportCategory','Report Category']` to `TRACKED`. Confirmed,
+not just fixed: `logIt`/`TRACKED`/`logSetupActivityBatch` is one shared
+reducer path already firing identically for Report Template and Meeting
+create/edit/publish/approve/expire — no Meeting-specific gap existed.
+
+**6. Re-verified end to end, on a repeat ask — no further gap found.** Traced
+every lifecycle action (`create`→`promoteDraft`, `saveDraft`, `publish`,
+`approve`, `expire`, `expireDataverse`) for both kinds, plus the actual write
+(`logSetupActivity` in `dataverse.js`, which correctly binds
+`lm_ReportTemplate@odata.bind` vs `lm_MeetingTemplate@odata.bind` on `kind`)
+and the timing (every `flushActivity` call site fires only once the parent
+row's real Dataverse id is known). Nothing beyond item 5's fix needed
+changing.
+
+**7. Child report/plan citation picker (Governance Setup's
+`SectionRowEditor`) gained a Stage filter.** Previously always offered a
+bare Business Unit filter for this one citation kind, regardless of what
+Stage a candidate Template actually ran at. Now: choosing **Stage 1** shows
+a Business Unit filter and narrows candidates to Stage-1 (BU-scoped)
+Templates; **Stage 2** shows a Region filter instead, narrowed to Stage-2
+(Region-scoped) Templates; **Stage 3/4** narrows to group-wide Templates
+(no Business Unit or Region at all) with no sub-filter, since those stages
+carry neither. Uses `t.businessUnitIds`/`t.regionIds`, both already present
+on `DV_REPORTS.current` register rows (already used elsewhere for the same
+BU-vs-Region distinction) — no new fetch needed. The KPI/Process pickers'
+own `ScopeFilter` (Business Unit → Department cascade) is untouched.
+
+**8. A live/fallback KPI-list gap found from a screenshot, not a bug
+report.** The Expected Content Checklist's "Add KPI" picker was showing
+`KPI-QLT-001 Sepsis bundle compliance` and three other names — traced to the
+exact built-in seed array in `GovernanceApp.jsx` (`let
+KPIS=['KPI-QLT-001 Sepsis bundle compliance', ...]`), not live
+`strategy_kpises` data. `fetchKpis()` itself is correctly wired (confirmed
+against the real schema pulled earlier this session) and does replace
+`KPIS` once it resolves — the seed only shows when that fetch never
+succeeds, most likely because this was opened via plain `npm run dev`
+(§8: no Dataverse connection at all in that mode) rather than the deployed
+Power Apps play URL. Rather than leave that ambiguous again, added a new
+module-level `KPIS_LIVE` flag (set `true` only inside the
+`fetchKpis().then` success branch) and a visible amber warning in the
+picker whenever it's still `false`, naming the likely cause.
+
+**9. "Report Conclusion" (Report Type code 3) now displays as plain
+"Report,"** on explicit instruction — the underlying code (3) and
+Dataverse's own label are unchanged; only this app's display string
+changed, in `REPORT_TYPES`, `REPORT_TYPE_HELP`, `REPORT_TYPE_TAG_COLOR`,
+`DV_REPORT_TYPE` (`GovernanceApp.jsx`) and `REPORT_TYPE_KEY`/`REPORT_TYPE`
+(`dataverse.js`), plus the `su-7` seeded demo Setup.
+
+**10. Both apps rebuilt and pushed to Code App Development twice more this
+session** (after item 5's fix, and again after items 7–9), each time to the
+same two 17-Sep-registered apps (`786c1b14…` Governance, `d61c6237…`
+Leadership) — no new registrations, no orphans added.
+
+**11. `lm_fileattachement` — a new column found on BOTH `lm_report_templates`
+and `lm_reporttemplatecontentchecklists`, wired end to end.** Found via a
+full `pac modelbuilder build -enf "lm_report_template;lm_reporttemplatecontentchecklist"`
+sweep (§6) run because the user asked to "update the report template table
+and the report template content checklist table" with no further specifics
+— rather than ask what changed, the whole current property list was pulled
+and diffed against what `dataverse.js` already reads/writes. Everything else
+on both tables was already accounted for; this one column, on both tables,
+was not. Plain text, Dataverse's own label "File Attachement" (its spelling,
+not a typo introduced here), max length 2000 (confirmed via a legacy-connector
+schema pull, reverted immediately after reading it — see §6's modelbuilder
+entry for why that revert matters). Wired as a plain link/URL field, same
+convention as `torLink`/`lm_destinationsharepointlink` elsewhere in this
+schema — never actual file upload:
+- `dataverse.js`: added to `reportTemplateParentPayload()`'s write, the
+  checklist row create, `fetchReportTemplateDetail()`'s parent and checklist
+  selects (the checklist row's raw fields already flow through via `...c`,
+  so no extra read-side mapping was needed there), and both JSDoc blocks.
+- `GovernanceApp.jsx`: new `fileAttachment` field on `BLANK_REPORT` (parent)
+  and on each new checklist Section; a plain text input in the wizard's
+  "Destination and content" step (parent-level) and in `SectionRowEditor`'s
+  header (per-Section); hydrated both ways in `dataverseReportToSetup()`/the
+  wizard's outgoing payload builder; added to `TRACKED` and to the
+  publish-confirmation diff summary.
+
+**12. An Author could edit an already-Approved Setup — the role model never
+actually checked the Setup's own status.** `ROLES.author.write` and
+`ROLES.admin.write` were both `true` unconditionally; the single Edit button
+(`ScreenDetail`, one control point — confirmed no other path into edit mode
+exists, `ScreenRegister` only ever calls `open()`, never `A.edit()`
+directly) gated on that flag alone. Per explicit instruction: an Author may
+now only edit a Draft or an Under Review Setup; an Administrator can still
+edit an Active/Approved one, and doing so still flips it back to Under
+Review exactly as before (`A.edit()`'s own status flip was already correct
+— this only changes who is allowed to click the button that reaches it).
+New `canEdit = w && status!=='Expired' && (status!=='Active / Approved' ||
+canApprove)` in `ScreenDetail`, plus a `Note` explaining why the button is
+missing when an Author views an approved one (Expired already had its own
+note; Under Review already had one).
+
+**13. `lm_ActorUser` (a real `systemusers` lookup on `lm_setupactivity`) was
+never actually being bound, for any action, ever** — found while checking
+"activities are recorded correctly with the user." The write side
+(`logSetupActivity` in `dataverse.js`) already had the right code,
+`if(entry.actorUserId) row['lm_ActorUser@odata.bind']=...` — but nothing
+ever set `actorUserId` on the entry object being queued. Every activity row
+ever written carries the actor's name as free text in `lm_actor` (via
+`actorName()`, correct and unaffected), but never linked the row to an
+actual Dataverse user record. Fixed at both entry points — the shared
+`logIt()` queue (used for every create/edit/publish/approve entry) and the
+one direct `logSetupActivity()` call in `expireDataverse` — both now pass
+`actorUserId: currentUser?.systemUserId || undefined`. Only takes effect
+when the signed-in account is actually linked to a Dataverse user (see the
+top-bar's own "Linked to Dataverse user…" tooltip) — an unlinked session
+still logs the name-only text as before, same as it always has.
+
+**14. Investigated real file upload for `lm_fileattachement` (item 11 above)
+— confirmed not achievable through this app's current tooling, nothing
+built.** Per an explicit ask for a real "upload a file" control saving its
+storage path, not just a pasted link. Full account in §6's new "SharePoint
+file upload" entry; the short version: a `shared_sharepointonline` data
+source (`documents`, targeting the `SMO-AndalusialeadershipPractice` site's
+document library — genuinely the right destination, its own columns
+reference Process/KPI/Period/Document Status) was already registered in an
+earlier session and never used. Regenerating its SDK to inspect it found
+every field that could carry a file's name, path or content
+(`{Name}`/`{Path}`/`{FullPath}`/`{Link}`) is **read-only** — the generated
+service can update metadata on a file that already exists there, never
+create one with content. `pac code add-data-source` only ever generates
+table-style CRUD for a connector; SharePoint's real "Create file" is a
+separate, dedicated connector action this CLI has no path to expose for a
+Code App (`add-dataverse-api`/`find-dataverse-api` are Dataverse-only).
+**Decision, given that: kept as a plain path/text field, no upload control
+built.** `lm_fileattachement` stays exactly as item 11 left it — a text
+input on both the Report Template and each Content Checklist Section.
+
+**15. `and_microsoftgroupmembers` registered and wired into the Meeting
+Setup wizard, right after Attendees.** Discovered via `pac modelbuilder
+build -enf and_microsoftgroupmember` (the exact name given worked first
+try): a flat table, one row per (group, member) pair — `and_groupname` and
+`and_member` are both **plain text**, no lookups, no separate "groups"
+table, so the same group name repeats once per member. `fetchMicrosoftGroupMembers()`
+(`dataverse.js`) returns every row as-is; `GovernanceApp.jsx` derives the
+deduplicated group list itself (`MICROSOFT_GROUPS`), per explicit
+instruction not to offer the same group more than once. New
+`GroupMembersLookup` component — a Group picker + a read-only member list —
+sits inside each unit card, right after `AttendeeList`, **only in the
+Meeting branch** (Report Templates have no Attendees section to follow).
+**Deliberately not a Setup field**: picking a group writes nothing to the
+Setup and adds nobody to Attendees — it only answers "who is in this
+group" for whoever is filling Attendees in to check against, matching what
+was actually asked (display, not import). Own local `useState` per unit
+card, since `UnitSetup` renders unit cards inline via `.map()` — a hook
+can't live directly in that loop, but a child component instantiated
+inside it can hold its own.
+
+**16. The KPI-picker live-data warning (item 8) turned out to be firing in
+the deployed Code App Development app itself, not local `npm run dev` as
+first suspected** — a materially different, and more concerning, finding.
+Both Code App Development apps (`786c1b14…` Governance, `d61c6237…`
+Leadership) were rebuilt and re-pushed from current source to rule out a
+stale deployment as the cause. **`xenv.js`'s cross-environment wiring was
+re-confirmed correct**: `DATA_ORG` is hardcoded to DT New's URL
+(`https://org319b4ea9.crm4.dynamics.com`), and every table read/write —
+`strategy_kpises` included — routes through it regardless of which
+environment hosts the app. So the code is not the suspect.
+
+**Leading theory, still unconfirmed: a Dataverse permissions gap, not a
+wiring bug.** This is the exact risk §9's own checklist already named and
+never verified either way — "Grant Create/Write on the `lm_` tables in DT
+New to anyone who will use a remotely-hosted app... the failure looks like
+a bug rather than a denial." A working `shared_commondataserviceforapps`
+connection to Code App Development is not the same thing as the
+*signed-in user* having a Dataverse security role granting Read/Write on
+DT New's tables — and this is genuinely the **first real signal** that gap
+might be biting, not just a theoretical item on a list. The user was
+pointed at the existing `window.__xenvSmokeTest()` diagnostic (already
+built into `xenv.js`, documented there) to get a definitive verdict plus
+the real underlying error — **not yet run, result still pending.**
+
 ---
 
 ## 6. Schema facts that are expensive to rediscover
@@ -2213,6 +2496,111 @@ denormalised column is also the shortcut past the trap.
   Deleting it silently strips the position label off every Review Chain step.
 - **`DATAVERSE_CONFIG.publisherPrefix` is `'lp'`** but every table is `lm_`.
 
+### ⚠️ `pac modelbuilder build` reads an already-registered table's real choice values — this overturns a repeated "dead end" conclusion (17 Sep, later)
+
+Every earlier attempt in this file to "refresh an already-registered table's
+schema" used `pac code add-data-source` (legacy or modern connector, with or
+without `-t`) or `power-apps add-data-source` — all confirmed dead ends,
+repeatedly, across many tables. None of those attempts ever return a
+choice column's actual option values even when they otherwise succeed: the
+cached schema file only ever records `"x-ms-dynamic-values": {"operationId":
+"GetOptionSetMetadata", ...}` — a pointer to resolve the values live, never
+the values themselves (already known for `wlog_decisions`'s three choice
+columns, §6 above; it turns out to be true of every choice column on every
+table, not particular to that one).
+
+**`pac modelbuilder build` is a different tool entirely and does not have
+this limitation.** It talks to Dataverse's real metadata service directly,
+not through a Power Apps connector, and generates a genuine C#/VB entity
+class per table with a real enum per choice column, values included:
+
+    pac modelbuilder build -enf <singular LOGICAL name> -o <scratch folder>
+
+Then read `<scratch folder>/Entities/<name>.cs` for `public enum
+<table>_<column> { Label = N, ... }` blocks.
+
+⚠️ **`-enf` (`--entitynamesfilter`) wants the singular logical name, not the
+plural entity set** — passing `lm_report_templates` (the entity set, used
+everywhere else in this app including `dvTable()`) silently matches **zero**
+entities ("Read 0 Entities", no error). Passing `lm_report_template`
+(singular — the same `logicalName` already recorded per table in every
+`power.config.json`'s `databaseReferences`) works. This is the exact same
+singular/plural trap §6 already documents for `add-data-source -t`, just
+biting a different command.
+
+Confirmed working end to end 17 Sep against `lm_report_template`, to settle
+what its `lm_reportcategory`/`lm_reporttype` choice lists actually hold
+after the user edited them in Dataverse — the app's cached assumptions
+(`REPORT_CATEGORY_KEY`, `REPORT_TYPE_KEY` in `dataverse.js`) were stale and
+this is what fixed it, see §5. Only reads metadata; nothing to undo. An
+unrelated `pac code add-data-source -a shared_commondataservice -t
+lm_report_templates` tried moments earlier in the same investigation *did*
+write real (if useless — same no-values limitation) files into the live
+`apps/governance` project and had to be reverted with `git checkout --`;
+`modelbuilder` needs no such cleanup since it writes only to `-o`'s target
+folder, never into the project itself.
+
+**Use this any time a choice column's real values are needed on a table
+that's already registered** — it should have been reached for immediately
+instead of re-confirming the `add-data-source` dead end.
+
+⚠️ **Two more things learned running this a second time (17 Sep, same day,
+finding `lm_fileattachement`):**
+- **`-enf` takes a semicolon-separated list**, and reads every table in one
+  call: `-enf "lm_report_template;lm_reporttemplatecontentchecklist"` reads
+  both at once, no need to run it per table.
+- **`modelbuilder` does not emit a text field's max length** — the generated
+  C# property is just `string`, no `[StringLengthAttribute]` or similar. For
+  that, the `add-data-source` route is still the only one that answers it
+  (the connector schema's cached JSON has a real `"maxLength"` key on string
+  columns) — worth the one-time write-and-revert into the live project when
+  a cap genuinely matters (e.g. before writing to a new text column for the
+  first time), but not needed just to confirm a column exists or read a
+  choice list, where `modelbuilder` alone is faster and touches nothing.
+
+### ⚠️ SharePoint file upload is not achievable through `pac code add-data-source` — confirmed, not assumed (17 Sep)
+
+A `shared_sharepointonline` data source named `documents` was already
+registered in an earlier session (`power.config.json`'s connectionReferences
+already listed it), targeting the `SMO-AndalusialeadershipPractice` site's
+document library (`20a0173f-dfd6-4537-84ca-ff60b9a09c79`) — but the
+generated SDK had never actually been inspected or used by any app code.
+
+**Re-running the same registration reproduced byte-identical files** (only
+line-ending noise), confirming this wasn't new — just dormant. Reading the
+generated `DocumentsService`/`DocumentsModel` and the raw connector schema
+(`.power/schemas/sharepointonline/documents.Schema.json`) settled the
+question of whether it could upload a file:
+
+- The generated service is a plain CRUD shape — `create`/`update`/`delete`/
+  `get`/`getAll` — treating the library like any other table, exactly like
+  every other `pac code add-data-source` table this project has ever
+  registered (Dataverse or otherwise).
+- **Every field that could carry a file's identity is read-only**:
+  `{Name}`, `{Path}`, `{FullPath}`, `{Link}`, `{FilenameWithExtension}` all
+  show `"x-ms-permission": "read-only"` in the raw schema. `Title` and the
+  library's own custom columns (Week/Month/Year/PDCA/Document Status/
+  Related Process/Related KPI's) are writable — metadata only.
+- **There is no content/body/media field anywhere** in the schema at all.
+
+**Conclusion: this connector data source can update metadata on a file that
+already exists in the library, but cannot create a new one with content.**
+SharePoint's real upload operation ("Create file") is a distinct, dedicated
+connector action in Power Automate/Power Apps terms — separate from the
+generic list-item CRUD that table registration generates. Nothing in this
+CLI exposes an arbitrary connector *action* (as opposed to a *table*) to a
+Code App's generated SDK — `add-dataverse-api`/`find-dataverse-api` exist,
+but are Dataverse-specific (native SDK messages), not connector actions in
+general, and SharePoint's file-upload action isn't reachable through them.
+
+**This is a tooling ceiling, not a permissions or configuration problem** —
+confirmed by reading the schema's own field-level `x-ms-permission` flags,
+not by a failed call or a guess. Don't re-attempt file upload through a
+`pac code add-data-source`-registered connector without a different
+mechanism in hand (e.g. a Power Automate flow that does the actual upload
+and hands this app back a link) — the same wall applies to any other
+connector's "create with content" action, not just this one.
+
 ---
 
 ## 7. Open decisions — these block work
@@ -2739,10 +3127,16 @@ quorum definition, Decision↔Meeting/Report linking (§7.7, deferred on purpose
       of kind Child Report with `lm_CitedReportOccurrence` set.
 - [ ] **The DT New-hosted apps lack every 16–17 Sep fix** (Governance `7caa2fb2…`,
       Execution `0f077a0a…`). Only the Code App Development copies are current.
-- [ ] **Confirm the Code App Development deployments against DT New** (17 Sep).
-      Governance `4912152c…`: the Setup Register lists real templates.
-      Leadership `83db0ef8…`: Workspace / Meetings / Minutes show real records.
-      Nothing has been checked from the running apps yet.
+- [ ] **Confirm the Code App Development deployments against DT New** — now
+      the current apps, `786c1b14…` Governance and `d61c6237…` Leadership
+      (the 17 Sep ones above, `4912152c…`/`83db0ef8…`, are orphaned — see
+      §5's "re-registered from scratch" entry). Sharpened by a real signal,
+      not just a standing gap: the Governance app's KPI picker showed
+      built-in sample data instead of live `strategy_kpises` rows when
+      actually run there (§5/§6, "KPI-picker live-data warning"). Run
+      `await window.__xenvSmokeTest()` from that app's browser console —
+      result still pending — before assuming this is fixed by anything done
+      so far.
 - [x] ~~Create a `shared_commondataserviceforapps` connection in any environment
       that will host an app.~~ Done for both hosts used: Code App Development
       (`c83ec8cc…`) and Amr Space (`9787e3c9…`). Any *new* host still needs one —
@@ -2750,15 +3144,30 @@ quorum definition, Decision↔Meeting/Report linking (§7.7, deferred on purpose
 - [ ] **Delete the Amr Space copies** once Code App Development is confirmed:
       Governance `e78a0887…` (also bound to the wrong connection) and Leadership
       `936f78d8…`.
-- [ ] **Keep the two staging folders' appIds somewhere durable.** The Code App
-      Development configs were pushed from `C:\tmp\cad-gov` and
-      `C:\tmp\cad-exec`, outside the repo. Their appIds are recorded in §5; if
-      those folders are lost, a push from a fresh folder without the appId
-      creates a *second* app instead of updating the first. Worth deciding whether
-      these become real app roots under `apps/`.
+- [ ] **Keep the two staging folders' appIds somewhere durable — this already
+      happened once.** `C:\tmp\cad-gov`/`C:\tmp\cad-exec` were lost, which is
+      exactly why Code App Development now has two orphaned apps
+      (`4912152c…`, `83db0ef8…`) alongside their live replacements
+      (`786c1b14…`, `d61c6237…`, staged at `C:\tmp\cad-gov-new`/
+      `C:\tmp\cad-exec-new` — see §5's 17 Sep "re-registered from scratch"
+      entry). There is still no CLI command to reconnect to an existing code
+      app without its original local folder, so losing these two again means
+      repeating the exact same thing a third time. Worth deciding whether
+      these become real app roots under `apps/`, committed to the repo,
+      instead of living in `C:\tmp`.
+- [ ] **Delete the three orphaned Code App Development apps** once the new
+      ones (`786c1b14…` Governance, `d61c6237…` Leadership) are confirmed
+      working: the old `4912152c…` and `83db0ef8…`, plus an unrelated
+      `2ffd8322…` "Andalusia Pulse" app already sitting in that environment
+      before any of this. No CLI delete-app command exists — this is a
+      maker-portal action.
 - [ ] **Grant Create/Write on the `lm_` tables in DT New to anyone who will use
       a remotely-hosted app.** The connection is not the permission, and the
-      failure looks like a bug rather than a denial (§6).
+      failure looks like a bug rather than a denial (§6). **No longer purely
+      theoretical** — this is the leading (unconfirmed) explanation for the
+      live KPI-read failure just found in the deployed Governance app, see
+      §5's "KPI-picker live-data warning" entry. `window.__xenvSmokeTest()`
+      will confirm or rule it out.
 - [ ] **Decide whether the two apps keep all 45 `databaseReferences`.** Nothing
       reads them now that everything routes through the connector. The Amr Space
       trial config drops them entirely and is the proof of that; the two real

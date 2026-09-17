@@ -20,9 +20,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { use } from '../store.jsx';
 import { Btn, Tag, Note, Empty } from '../../../shared/ui.jsx';
-import { fmtD, fmtP } from '../../../shared/format.js';
+import { fmtD, fmtP, MONTHS } from '../../../shared/format.js';
 import { DiagChip, rptTagC, matchesQuery } from '../domain.jsx';
-import { fetchReportOccurrenceContent } from '../../../services/dataverse.js';
+import { fetchReportOccurrenceContent, fetchKpiAchievements } from '../../../services/dataverse.js';
+
+const sameText = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
 
 /* Dataverse's angle labels, mapped onto the ids DiagChip already styles. */
 const DIAG_ID = { Descriptive:'d1', Diagnostic:'d2', Predictive:'d3', Prescriptive:'d4' };
@@ -115,6 +117,47 @@ export function ScreenOrgReports(){
      switching tab or filtering can never leave a stale report open. */
   const rec = list.find(r => r.id === openId) || list[0] || null;
   const secs = rec ? sectionsOf(rec) : [];
+
+  /* pm_kpiachievments, read once per Report Occurrence period's year and
+     cached -- a report has one Period, so every KPI citation in it is looked
+     up against the same year's rows. null while that year is loading. */
+  const [achByYear, setAchByYear] = useState({});
+  useEffect(() => {
+    const year = rec?.period ? String(rec.period).slice(0, 4) : null;
+    if (!year || achByYear[year] !== undefined) return;
+    let live = true;
+    setAchByYear(prev => ({ ...prev, [year]: null }));
+    fetchKpiAchievements(year)
+      .then(rows => { if (live) setAchByYear(prev => ({ ...prev, [year]: rows })); })
+      .catch(e => {
+        console.warn('[dataverse] fetchKpiAchievements() failed:', e);
+        if (live) setAchByYear(prev => ({ ...prev, [year]: [] }));
+      });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rec?.period]);
+
+  /* Actual/Target/Baseline for one KPI citation, scoped to the open report's
+     own Department, Function and Period -- the match the user asked for.
+     stf_department/stf_function are free text on the achievement row, so the
+     match is by name, not by id, and case-insensitive. Returns:
+       undefined  -- this year hasn't been read yet
+       null       -- read, but nothing matches this KPI/Department/Function/month
+       the row    -- a match */
+  const achForCitation = c => {
+    if (!rec?.period || c.kind !== 'KPI' || !c.kpiId) return undefined;
+    const year = String(rec.period).slice(0, 4);
+    const rows = achByYear[year];
+    if (rows === undefined || rows === null) return undefined;
+    const monAbbr = MONTHS[+String(rec.period).slice(5, 7) - 1];
+    const deptName = nm(L.dept, rec.departmentId);
+    const funcName = nm(L.func, rec.functionId);
+    return rows.find(r => r.kpiId === c.kpiId
+      && (!deptName || sameText(r.department, deptName))
+      && (!funcName || sameText(r.function, funcName))
+      && r.monthLabel && String(r.monthLabel).toLowerCase().startsWith(monAbbr.toLowerCase())
+    ) || null;
+  };
 
   const openReport = id => { setOpenId(id); setOpenSec(null); };
 
@@ -255,6 +298,22 @@ export function ScreenOrgReports(){
                                           </div>
                                           {c.label && c.label !== target
                                             ? <div className="cite-m">{c.label}</div> : null}
+                                          {c.kind === 'KPI' ? (() => {
+                                            const ach = achForCitation(c);
+                                            if (ach === undefined) return <div className="holder" style={{ marginTop: 6 }}>
+                                              Reading Actual / Target / Baseline…</div>;
+                                            if (ach === null) return <div className="holder" style={{ marginTop: 6 }}>
+                                              No pm_kpiachievments figure for {nm(L.dept, rec.departmentId) || 'this Department'}
+                                              {' · '}{nm(L.func, rec.functionId) || 'this Function'}{' · '}{fmtP(rec.period)}.</div>;
+                                            return <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 6 }}>
+                                              <div><span className="tset-lbl">Actual</span>
+                                                <div style={{ fontFamily: 'var(--mono)', fontWeight: 650 }}>{ach.actual ?? '—'}</div></div>
+                                              <div><span className="tset-lbl">Target</span>
+                                                <div style={{ fontFamily: 'var(--mono)', fontWeight: 650 }}>{ach.target ?? '—'}</div></div>
+                                              <div><span className="tset-lbl">Baseline</span>
+                                                <div style={{ fontFamily: 'var(--mono)', fontWeight: 650 }}>{ach.baseline ?? '—'}</div></div>
+                                            </div>;
+                                          })() : null}
                                           {c.citedReportId && reports.some(r => r.id === c.citedReportId)
                                             ? <div style={{ marginTop: 6 }}>
                                                 <Btn k="sm" onClick={() => { setDir('all'); setQ('');

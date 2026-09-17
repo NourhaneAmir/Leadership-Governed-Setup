@@ -76,7 +76,9 @@ const Cr603_chklst_departmentsesService = dvTable('cr603_chklst_departmentses');
 const Hr_functionsService = dvTable('hr_functions');
 const Strategy_kpisesService = dvTable('strategy_kpises');
 const Strategy_processesService = dvTable('strategy_processes');
+const Pm_kpiachievmentsService = dvTable('pm_kpiachievments');
 const Cr301_specialtyksa_service_hubsService = dvTable('cr301_specialtyksa_service_hubs');
+const And_microsoftgroupmembersService = dvTable('and_microsoftgroupmembers');
 const Cr603_organizationstructuresService = dvTable('cr603_organizationstructures');
 const SystemusersService = dvTable('systemusers');
 const Hr_employeesService = dvTable('hr_employees');
@@ -186,30 +188,76 @@ export async function fetchKpis(){
     // Dataverse signature of a primary name column -- likely renamed after
     // creation without updating the logical name. Confirm this is really
     // the KPI's display name; swap for the right column if not.
-    select: ['strategy_kpisid', 'strategy_newcolumn', '_strategy_department_value'],
+    select: ['strategy_kpisid', 'strategy_newcolumn', '_strategy_department_value',
+             'strategy_departmentname', '_strategy_process_value', 'strategy_processname'],
   });
   const rows = res?.data ?? [];
   // {id, name, dept} -- id is needed to write lm_RelatedKPI@odata.bind when
   // saving a Report Template; dept feeds the Governed List's BU/Department
   // filter. GovernanceApp derives the flat name list the existing
-  // Checks/ComboMulti UI expects from this same fetch.
+  // Checks/ComboMulti UI expects from this same fetch. processId/processName
+  // and deptName are additive -- a KPI carries its own Department AND its own
+  // Process directly (both denormalised names already on the row, no second
+  // lookup needed), for the Business intelligence screen's Process/Department
+  // filters.
   return rows.filter(r=>r.strategy_newcolumn).map(r => ({
     id: r.strategy_kpisid,
     name: r.strategy_newcolumn,
     dept: r._strategy_department_value ?? null,
+    deptName: r.strategy_departmentname || null,
+    processId: r._strategy_process_value ?? null,
+    processName: r.strategy_processname || null,
   }));
 }
 
 export async function fetchProcesses(){
   const res = await Strategy_processesService.getAll({
     // same strategy_newcolumn caveat as fetchKpis above.
-    select: ['strategy_processid', 'strategy_newcolumn', '_strategy_department_value'],
+    select: ['strategy_processid', 'strategy_newcolumn', '_strategy_department_value',
+             'strategy_departmentname'],
   });
   const rows = res?.data ?? [];
   return rows.filter(r=>r.strategy_newcolumn).map(r => ({
     id: r.strategy_processid,
     name: r.strategy_newcolumn,
     dept: r._strategy_department_value ?? null,
+    deptName: r.strategy_departmentname || null,
+  }));
+}
+
+/** KPI Achievements -- table pm_kpiachievments (§6: a pre-existing, shared,
+ *  multi-prefix table, not owned by this app). Actual/Target/Baseline for one
+ *  KPI, one Department, one Function, one month.
+ *
+ *  stf_department/stf_function are PLAIN TEXT columns, not lookups, so they
+ *  are matched client-side, case-insensitively, rather than filtered server
+ *  side -- exact live casing isn't guaranteed. pm_month carries a label
+ *  sibling (an option set) whose numeric codes are unconfirmed, so it is
+ *  matched the same way, against its formatted value, rather than guessing a
+ *  code. pm_year is a plain integer and IS filtered server-side.
+ *
+ *  ⚠️ _pm_kpi_value's target table is not confirmed (§6 -- over 40 tables in
+ *  this org have "KPI" in the name). This matches it against strategy_kpises'
+ *  id, the only live KPI table this app has; if that never matches a real
+ *  row, the lookup binds to a different table and this needs re-checking
+ *  against live data. */
+export async function fetchKpiAchievements(year){
+  const res = await Pm_kpiachievmentsService.getAll({
+    select: ['pm_kpiachievmentid', '_pm_kpi_value', 'stf_department', 'stf_function',
+             'pm_month', 'pm_year', 'pm_actual', 'pm_target', 'pm_baseline'],
+    filter: `pm_year eq ${Number(year)}`,
+  });
+  const rows = res?.data ?? [];
+  return rows.map(r => ({
+    id: r.pm_kpiachievmentid,
+    kpiId: r._pm_kpi_value || null,
+    department: r.stf_department || null,
+    function: r.stf_function || null,
+    monthLabel: r['pm_month' + FV] || null,
+    year: r.pm_year ?? null,
+    actual: r.pm_actual ?? null,
+    target: r.pm_target ?? null,
+    baseline: r.pm_baseline ?? null,
   }));
 }
 
@@ -376,6 +424,21 @@ export async function fetchTeamsChannels(){
     library: r.lm_documentlibrary ?? null,
     folder: r.lm_folder ?? null,
   }));
+}
+
+/** Microsoft Group membership -- and_microsoftgroupmembers, one row per
+ *  (group, member) pair. Both and_groupname and and_member are plain text,
+ *  not lookups -- there is no separate "groups" table, so the same group
+ *  name repeats across every one of its members' rows. The caller derives
+ *  the distinct group list itself; this just returns every row. */
+export async function fetchMicrosoftGroupMembers(){
+  const res = await And_microsoftgroupmembersService.getAll({
+    select: ['and_microsoftgroupmemberid','and_groupname','and_member'],
+  });
+  const rows = res?.data ?? [];
+  return rows
+    .map(r => ({ id: r.and_microsoftgroupmemberid, group: r.and_groupname || null, member: r.and_member || null }))
+    .filter(r => r.group && r.member);
 }
 
 /* =========================================================================
@@ -608,13 +671,18 @@ const MONTH_IN_SEMESTER_KEY = { '1st month':1, '2nd month':2, '3rd month':3,
 const MONTH_KEY = { 'January':1,'February':2,'March':3,'April':4,'May':5,'June':6,
                     'July':7,'August':8,'September':9,'October':10,'November':11,'December':12 };
 const CONFIDENTIALITY_KEY = { 'Public':1, 'Internal':2, 'Confidential':3, 'High Confidential':4, 'Restricted':5 };
-const REPORT_TYPE_KEY = { 'Plan':1, 'Report':2, 'Conclusion':3 };
-// Dataverse's lm_reportcategory choice list was expanded to match the
-// app's REPORT_CATEGORIES exactly (same 4 labels, same order), so this is
-// now a clean 1:1 map.
-const REPORT_CATEGORY_KEY = {
-  'Outcome Executive':1, 'Process Executive':2, 'Core Process':3, 'Custom Content':4,
-};
+// Both choice lists were REPLACED in Dataverse (15 Sep), not extended --
+// codes read straight from live metadata via `pac modelbuilder build -enf
+// lm_report_template`, the only route that actually returns an already-
+// registered table's choice values (the cached schema file never inlines
+// them; every add-data-source refresh route documented elsewhere in this
+// file is a dead end for that). The old 3/4-value lists are gone.
+// Code 3's real Dataverse label is "Report Conclusion" (the generated enum
+// name, run together); displayed here as just "Report", on explicit
+// instruction. Only the label is this app's own choice -- the code (3) is
+// what actually gets written and has to stay the same.
+const REPORT_TYPE_KEY = { 'Plan':1, 'Dashboard':2, 'Report':3 };
+const REPORT_CATEGORY_KEY = { 'Executive':1, 'Core':2, 'ADHOC':3 };
 
 // lm_reportstatus and lm_meetingstatus are both the same global option set
 // ("Template Status"), so one map covers both tables' status field and both
@@ -656,6 +724,7 @@ function reportTemplateParentPayload(payload){
     lm_month: payload.month ? MONTH_KEY[payload.month] : null,
     lm_confidentiality: payload.confidentiality ? CONFIDENTIALITY_KEY[payload.confidentiality] : null,
     lm_destinationsharepointlink: payload.destinationLink || null,
+    lm_fileattachement: payload.fileAttachment || null,
     /* Stage is now a real column. It used to be inferred on read from whether
        the Template had Business Unit or Region child rows, which could not tell
        Stage 3 from Stage 4 -- both are group-wide -- so a Stage 4 Template came
@@ -870,6 +939,7 @@ async function createReportTemplateChildren(templateId, payload, errors, opts = 
         lm_checklistitemname: item.text,
         lm_checklistitemstep: (payload.checklist.indexOf(item)+1),
         lm_diagnosticangle: SECTION_ANGLE_KEY[item.angle || 'Untyped'] ?? SECTION_ANGLE_KEY.Untyped,
+        lm_fileattachement: item.fileAttachment || null,
         'lm_ReportTemplate@odata.bind': bind,
       });
       const checklistId = idOrThrow(created, 'lm_reporttemplatecontentchecklistid');
@@ -1098,9 +1168,10 @@ async function fetchReportTemplateChildIds(dvId){
  * @param {string} [payload.monthInQuarter] one of MONTH_IN_QUARTER_KEY's keys
  * @param {string} [payload.confidentiality] one of CONFIDENTIALITY_KEY's keys
  * @param {string} [payload.destinationLink]
+ * @param {string} [payload.fileAttachment] plain text/URL, max 2000 chars (lm_fileattachement)
  * @param {string} [payload.stageLevel] 'bu'|'region'|'group' -- only 'bu' and 'region' currently create per-unit child rows
  * @param {{key:string,name:string,businessUnitId?:string,regionId?:string,specialityId?:string,ownerPositionId?:string,submittingPositionId?:string,reviewChain?:{step:number,positionId?:string,positionName:string}[]}[]} [payload.units] one entry per configured unit, each with its own Review Chain
- * @param {{text:string}[]} [payload.checklist]
+ * @param {{text:string, fileAttachment?:string}[]} [payload.checklist]
  * @param {{departmentId:string, functionId?:string}[]} [payload.lines]
  * @param {string[]} [payload.kpiIds]
  * @param {string[]} [payload.processIds]
@@ -1824,7 +1895,7 @@ export async function fetchReportTemplateDetail(id){
     select: ['lm_report_templateid','lm_newcolumn','lm_objective','lm_reporttype','lm_reportcategory',
       'lm_frequency','lm_dayoftheweek','lm_dayofthemonth','lm_monthofthequarter',
       'lm_seconddayoftheweek','lm_seconddayofthemonth','lm_monthofthesemester','lm_month','lm_confidentiality',
-      'lm_destinationsharepointlink','lm_reportstatus','lm_version','lm_stage','modifiedon','createdon',
+      'lm_destinationsharepointlink','lm_fileattachement','lm_reportstatus','lm_version','lm_stage','modifiedon','createdon',
       // Group-wide (Stage 3/4) Owner/Submitting Position, Team Channel and
       // Speciality -- see reportTemplateParentPayload()'s comment for why
       // these live here instead of on a per-unit child row.
@@ -1835,7 +1906,7 @@ export async function fetchReportTemplateDetail(id){
 
   const filter = `_lm_reporttemplate_value eq ${id}`;
   const [checklistRes, linesRes, kpisRes, procsRes, busRes, regionsRes] = await Promise.all([
-    Lm_reporttemplatecontentchecklistsService.getAll({ filter, select:['lm_reporttemplatecontentchecklistid','lm_checklistitemname','lm_checklistitemstep','lm_diagnosticangle'] }),
+    Lm_reporttemplatecontentchecklistsService.getAll({ filter, select:['lm_reporttemplatecontentchecklistid','lm_checklistitemname','lm_checklistitemstep','lm_diagnosticangle','lm_fileattachement'] }),
     Lm_reporttemplatedepartmentfunctionsService.getAll({ filter, select:['_lm_department_value','_lm_function_value'] }),
     Lm_reporttemplaterelatedkpisesService.getAll({ filter, select:['_lm_relatedkpi_value'] }),
     Lm_reporttemplaterelatedprocessesesService.getAll({ filter, select:['_lm_relatedprocess_value'] }),
@@ -1977,6 +2048,8 @@ export async function fetchMeetingTemplateDetail(id){
 const Lm_meetingoccurrencesService = dvTable('lm_meetingoccurrences', 'lm_meetingoccurrenceid');
 const Lm_meetingoccurrenceagendasService = dvTable('lm_meetingoccurrenceagendas', 'lm_meetingoccurrenceagendaid');
 const Lm_meetingoccurrenceattendeesesService = dvTable('lm_meetingoccurrenceattendeeses', 'lm_meetingoccurrenceattendeesid');
+const Lm_meetingoccurrencedepartmentfunctionsService = dvTable('lm_meetingoccurrencedepartmentfunctions', 'lm_meetingoccurrencedepartmentfunctionid');
+const Lm_meetingoccurrencelinkedreportsesService = dvTable('lm_meetingoccurrencelinkedreportses', 'lm_meetingoccurrencelinkedreportsid');
 const Lm_reportoccurrencesService = dvTable('lm_reportoccurrences', 'lm_reportoccurrenceid');
 const Lm_meetingminutesesService = dvTable('lm_meetingminuteses', 'lm_meetingminutesid');
 const Lm_momnotesesService = dvTable('lm_momnoteses', 'lm_momnotesid');
@@ -2011,10 +2084,8 @@ export const REPORT_OCC_STATUS = { 1:'Draft', 2:'In Review', 3:'Approved', 4:'Re
 // Read-side decodes for a Report Template's reportTypeCode / reportCategoryCode
 // / frequencyCode (see fetchReportTemplatesList in the section above) --
 // mirrors the MEETING_* decodes below for the meeting side.
-export const REPORT_TYPE = { 1:'Plan', 2:'Report', 3:'Conclusion' };
-export const REPORT_CATEGORY = {
-  1:'Outcome Executive', 2:'Process Executive', 3:'Core Process', 4:'Custom Content',
-};
+export const REPORT_TYPE = { 1:'Plan', 2:'Dashboard', 3:'Report' };
+export const REPORT_CATEGORY = { 1:'Executive', 2:'Core', 3:'ADHOC' };
 export const REPORT_FREQUENCY = {
   1:'Daily', 2:'Twice Weekly', 3:'Weekly', 4:'Twice Monthly', 5:'Monthly',
   6:'Quarterly', 7:'Semesterly', 8:'Annual', 9:'Custom',
@@ -2148,7 +2219,7 @@ export async function fetchReportOccurrences(){
     select: ['lm_reportoccurrenceid','lm_name','lm_period','lm_status','lm_version','lm_reviewstep',
              'lm_fileurl','lm_reportobjective','lm_locked','lm_nosetupflag','lm_reportstage',
              '_lm_reporttemplate_value','_lm_businessunit_value','_lm_department_value','_lm_region_value',
-             '_lm_creatorposition_value','modifiedon','createdon'],
+             '_lm_function_value','_lm_creatorposition_value','modifiedon','createdon'],
   });
   return (res?.data ?? []).map(r => ({
     id: r.lm_reportoccurrenceid,
@@ -2171,6 +2242,7 @@ export async function fetchReportOccurrences(){
     businessUnitId: r._lm_businessunit_value || null,
     regionId: r._lm_region_value || null,
     departmentId: r._lm_department_value || null,
+    functionId: r._lm_function_value || null,
     creatorPositionId: r._lm_creatorposition_value || null,
     updated: r.modifiedon || r.createdon || null,
   }));
@@ -2238,6 +2310,7 @@ export async function fetchReportOccurrenceContent(){
     kind: c['lm_kind' + FV] || REPORT_CITATION_KIND[c.lm_kind] || 'Citation',
     label: c.lm_name || null,
     breakdown: c['lm_breakdowndimension' + FV] || SECTION_BREAKDOWN_DIM[c.lm_breakdowndimension] || null,
+    kpiId: c._lm_kpi_value || null,
     kpiName: c['_lm_kpi_value' + FV] || null,
     processName: c['_lm_process_value' + FV] || null,
     citedReportId: c._lm_citedreportoccurrence_value || null,
@@ -3095,6 +3168,79 @@ export async function updateMeetingOccurrenceAgendaSequence(agendaItemId, sequen
     return { id: agendaItemId, errors: [] };
   }catch(e){
     return { id: null, errors: [{ table:'lm_meetingoccurrenceagendas', error:e }] };
+  }
+}
+
+/* ---- Departments/Functions integrated in a Meeting Occurrence ---------
+   lm_meetingoccurrencedepartmentfunctions -- one row per Department/Function
+   line copied onto the occurrence when it was generated (13 Sep). Describes
+   who is in the room; it does not multiply the meeting (see PROJECT-CONTEXT
+   §6). Registered since 13 Sep but never read by any screen until now. */
+export async function fetchMeetingOccurrenceDepartments(occurrenceId){
+  const res = await Lm_meetingoccurrencedepartmentfunctionsService.getAll({
+    select: ['lm_meetingoccurrencedepartmentfunctionid', 'lm_name',
+             '_lm_department_value', 'lm_departmentname', '_lm_function_value', 'lm_functionname'],
+    filter: `_lm_meetingoccurrence_value eq ${occurrenceId}`,
+  });
+  const rows = res?.data ?? [];
+  return rows.map(r => ({
+    id: r.lm_meetingoccurrencedepartmentfunctionid,
+    name: r.lm_name || null,
+    departmentId: r._lm_department_value || null,
+    departmentName: r.lm_departmentname || null,
+    functionId: r._lm_function_value || null,
+    functionName: r.lm_functionname || null,
+  }));
+}
+
+/* ---- Documents (Meeting <-> Report linking) ---------------------------
+   lm_meetingoccurrencelinkedreports -- registered 15 Sep, never wired to any
+   screen until now. One row per document linked to a Meeting Occurrence,
+   pointing at a Report Occurrence, a Report Template, or both (a Template
+   alone covers "no occurrence exists for this yet" -- the Meeting Detail
+   Documents tab's own linking flow finds a matching occurrence by Template +
+   Business Unit + Department and lets the user pick one instead of guessing). */
+export async function fetchMeetingOccurrenceLinkedReports(occurrenceId){
+  const res = await Lm_meetingoccurrencelinkedreportsesService.getAll({
+    select: ['lm_meetingoccurrencelinkedreportsid', 'lm_reportname',
+             '_lm_reportoccurrence_value', '_lm_reporttemplate_value', 'createdon'],
+    filter: `_lm_meetingoccurrence_value eq ${occurrenceId}`,
+  });
+  const rows = res?.data ?? [];
+  return rows.map(r => ({
+    id: r.lm_meetingoccurrencelinkedreportsid,
+    name: r.lm_reportname || '(untitled document)',
+    reportOccurrenceId: r._lm_reportoccurrence_value || null,
+    reportTemplateId: r._lm_reporttemplate_value || null,
+    created: r.createdon || null,
+  }));
+}
+
+/** Links one document to a Meeting Occurrence -- a Report Occurrence, a
+ *  Report Template (when no occurrence exists for it yet), or both, per the
+ *  Documents tab's own linking flow. */
+export async function linkMeetingOccurrenceReport({ meetingOccurrenceId, name, reportOccurrenceId, reportTemplateId }){
+  try{
+    const row = {
+      'lm_MeetingOccurrence@odata.bind': `/lm_meetingoccurrences(${meetingOccurrenceId})`,
+      lm_reportname: (name || 'Linked document').trim().slice(0, 850),
+    };
+    if(reportOccurrenceId) row['lm_ReportOccurrence@odata.bind'] = `/lm_reportoccurrences(${reportOccurrenceId})`;
+    if(reportTemplateId)   row['lm_ReportTemplate@odata.bind']   = `/lm_report_templates(${reportTemplateId})`;
+    const created = await Lm_meetingoccurrencelinkedreportsesService.create(row);
+    const id = idOrThrow(created, 'lm_meetingoccurrencelinkedreportsid');
+    return { id, errors: [] };
+  }catch(e){
+    return { id: null, errors: [{ table:'lm_meetingoccurrencelinkedreportses', error:e }] };
+  }
+}
+
+export async function unlinkMeetingOccurrenceReport(linkId){
+  try{
+    await Lm_meetingoccurrencelinkedreportsesService.delete(linkId);
+    return { id: linkId, errors: [] };
+  }catch(e){
+    return { id: null, errors: [{ table:'lm_meetingoccurrencelinkedreportses', error:e }] };
   }
 }
 

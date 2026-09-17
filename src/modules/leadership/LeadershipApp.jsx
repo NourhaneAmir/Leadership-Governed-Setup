@@ -25,7 +25,9 @@ import { fetchMeetingOccurrences, fetchReportOccurrences, createMeetingOccurrenc
          updateMeetingOccurrenceStatus, updateMeetingOccurrenceAttendance, updateMeetingOccurrence,
          cancelMeetingOccurrence, recordAgendaDistribution, createMeetingOccurrenceAgendaItem,
          archiveMeetingOccurrenceAgendaItem, updateMeetingOccurrenceAgendaSequence,
-         fetchBusinessUnits, fetchPositions, fetchDepartments, fetchRegions,
+         fetchMeetingOccurrenceDepartments, fetchMeetingOccurrenceLinkedReports,
+         linkMeetingOccurrenceReport, unlinkMeetingOccurrenceReport,
+         fetchBusinessUnits, fetchPositions, fetchDepartments, fetchFunctions, fetchRegions,
          fetchMeetingTemplatesList, fetchMeetingTemplateDetail,
          fetchReportTemplatesList, fetchReportTemplateDetail, fetchCurrentUser,
          TEMPLATE_STATUS_LABEL,
@@ -1865,14 +1867,14 @@ function reportDue(r){
 
 /* GUID -> display name, filled from Dataverse on mount. Plain objects rather
    than state because they are read from render paths all over this file. */
-let DV_BU_NAME={}, DV_POS_NAME={}, DV_POS_HOLDER={}, DV_DEPT_NAME={}, DV_TPL_NAME={}, DV_TPL_DETAIL={};
+let DV_BU_NAME={}, DV_POS_NAME={}, DV_POS_HOLDER={}, DV_DEPT_NAME={}, DV_FUNC_NAME={}, DV_TPL_NAME={}, DV_TPL_DETAIL={};
 /* Same shape, for Report Templates -- kept separate from DV_TPL_NAME above,
    which only ever holds Meeting Templates. */
 let DV_RPT_TPL_NAME={}, DV_RPT_TPL_DETAIL={}, DV_RPT_TPL_LIST=[];
 /* The same reference data as lists, for the pickers on the Custom Ad Hoc form
    -- a Dataverse lookup only accepts a real row id, so that form cannot offer
    the seeded PEOPLE/BUS ids the rest of this module uses. */
-let DV_BU_LIST=[], DV_POS_LIST=[], DV_TPL_LIST=[], DV_REGION_LIST=[], DV_DEPT_LIST=[];
+let DV_BU_LIST=[], DV_POS_LIST=[], DV_TPL_LIST=[], DV_REGION_LIST=[], DV_DEPT_LIST=[], DV_FUNC_LIST=[];
 let DV_REGION_NAME={};
 const dvRegion = id => (id && DV_REGION_NAME[id]) || null;
 /* The two time zones the group operates in. lm_timezone is a plain text column,
@@ -1925,6 +1927,7 @@ function positionsForScope(stage, buId, regionId){
 const dvBu    = id => (id && DV_BU_NAME[id])   || null;
 const dvPos   = id => (id && DV_POS_NAME[id])  || null;
 const dvDept  = id => (id && DV_DEPT_NAME[id]) || null;
+const dvFunc  = id => (id && DV_FUNC_NAME[id]) || null;
 const dvTpl   = id => (id && DV_TPL_NAME[id])  || null;
 const dvTplDetail = id => (id && DV_TPL_DETAIL[id]) || null;
 const dvRptTpl = id => (id && DV_RPT_TPL_NAME[id]) || null;
@@ -2607,6 +2610,9 @@ function App({onSwitch}){
         load(fetchDepartments,'fetchDepartments',rows=>{
           DV_DEPT_NAME={}; rows.forEach(r=>{ DV_DEPT_NAME[r.id]=r.name; });
           DV_DEPT_LIST=rows.slice().sort((x,y)=>(x.name||'').localeCompare(y.name||'')); }),
+        load(fetchFunctions,'fetchFunctions',rows=>{
+          DV_FUNC_NAME={}; rows.forEach(r=>{ DV_FUNC_NAME[r.id]=r.name; });
+          DV_FUNC_LIST=rows.slice().sort((x,y)=>(x.name||'').localeCompare(y.name||'')); }),
         load(fetchRegions,'fetchRegions',rows=>{
           DV_REGION_NAME={}; rows.forEach(r=>{ DV_REGION_NAME[r.id]=r.name; });
           DV_REGION_LIST=rows.slice().sort((x,y)=>(x.name||'').localeCompare(y.name||'')); }),
@@ -2659,7 +2665,7 @@ function App({onSwitch}){
   const myPositionIds = currentUser?.fullName
     ? DV_POS_LIST.filter(p => p.holder && p.holder.toLowerCase() === currentUser.fullName.toLowerCase()).map(p => p.id)
     : [];
-  const dvLookup = { bu:dvBu, region:dvRegion, pos:dvPos, dept:dvDept, rptTpl:dvRptTpl, myPositionIds,
+  const dvLookup = { bu:dvBu, region:dvRegion, pos:dvPos, dept:dvDept, func:dvFunc, rptTpl:dvRptTpl, myPositionIds,
                      deptList:DV_DEPT_LIST };
   const ctx = {db,setDb,mut,me,bu,setBu,businessUnits,navOpen,setNavOpen,currentUser,screen,go,openMeeting,openWork,sel,setSel,
                toast,toasts,reset,S,A,work,cal,counts,onSwitch,
@@ -4710,7 +4716,7 @@ const occStatusTag = (o,mom,grid) => {
    threshold on the Meeting Template, and matching it against live attendance is
    its own piece of work. */
 function ScreenMeetings(){
-  const {sel,setSel,dvMeetingOccs,dvLoading,dvError,openMeeting} = use();
+  const {sel,setSel,dvMeetingOccs,dvMinutes,S,dvLoading,dvError,openMeeting} = use();
   const [mk,setMk]=useState(null);
   const [tab,setTab]=useState('due');
   const [typeFilter,setTypeFilter]=useState('all');
@@ -4771,7 +4777,28 @@ function ScreenMeetings(){
   const rescheduledCt = list.filter(o=>o.rescheduledFromId).length;
   const noAgendaCt    = upcoming.filter(o=>!o.agenda.length).length;
   const noAttendeeCt  = upcoming.filter(o=>!o.attendees.length).length;
-  const notSentCt     = upcoming.filter(o=>o.agenda.length && !o.agendaSent).length;
+  const agendaNotSent = upcoming.filter(o=>o.agenda.length && !o.agendaSent);
+  const notSentCt     = agendaNotSent.length;
+
+  /* -------- Attention: named exceptions, not just counts -------- */
+  /* A held meeting whose Minutes are still Draft-and-unsubmitted past the
+     write-up window Governance Settings still defines (S.momWriteupHours --
+     the per-Setup Completion Period isn't consumed by scoring yet either,
+     see PROJECT-CONTEXT §9, so this reads the same global default the Audit
+     Grid does). A held meeting with no Minutes row at all counts too. */
+  const momOverdue = openAfter.filter(o=>{
+    if(S.momWriteupHours==null || !o.end) return false;
+    const m = dvMinutes.find(x=>x.occurrenceId===o.id);
+    if(m && m.status!=='Draft') return false;
+    if(m && m.submittedAt) return false;
+    return addHours(o.date+' '+o.end, S.momWriteupHours) < nowStamp();
+  });
+  const attention = [
+    ...momOverdue.map(o=>({id:o.id,k:'red',t:<>MOM overdue for <b>{o.name}</b></>,
+      open:()=>openMeeting(o.id,'minutes')})),
+    ...agendaNotSent.map(o=>({id:o.id,k:'amber',t:<>Agenda not yet distributed for <b>{o.name}</b></>,
+      open:()=>openMeeting(o.id,'agenda')})),
+  ].slice(0,5);
 
   return <>
     <div className="ph ph-row">
@@ -4790,10 +4817,10 @@ function ScreenMeetings(){
     </div>
 
     <div className="stats">
-      <Stat label="Not Yet Held" v={upcoming.length} d="scheduled" c={upcoming.length?'teal':'muted'}/>
+      <Stat label="Not Yet Held" v={upcoming.length} d="scheduled" c={upcoming.length?'green':'muted'}/>
       <Stat label="Held, Record Open" v={openAfter.length} d="agenda or attendance unrecorded"
         c={openAfter.length?'amber':'muted'}/>
-      <Stat label="Held and Closed" v={settled.length} d="fully recorded" c="green"/>
+      <Stat label="Held and Closed" v={settled.length} d="fully recorded" c="teal"/>
       <Stat label="Cancelled" v={cancelled.length} d="create no governance record"
         c={cancelled.length?'red':'muted'}/>
     </div>
@@ -4903,6 +4930,17 @@ function ScreenMeetings(){
               <b style={colour?{color:`var(--${colour})`}:null}>{val}</b>
             </div>)}
         </div>
+
+        {attention.length>0 && <div className="card">
+          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:2}}>
+            <div className="wa-icon amber">⚠</div><h2 style={{flex:1}}>Attention</h2>
+          </div>
+          <div style={{display:'flex',flexDirection:'column',gap:6,marginTop:6}}>
+            {attention.map(a=>
+              <div key={a.k+a.id} onClick={a.open} style={{cursor:'pointer',fontSize:12,
+                  padding:'7px 9px',borderRadius:8,background:`var(--${a.k}-bg)`}}>{a.t}</div>)}
+          </div>
+        </div>}
       </div>
     </div>
 
@@ -5882,7 +5920,7 @@ function DvGridBody({rec,grid,olderVersions,minutes,quorumPct,torLink,accred,S,p
 }
 
 function DvMeetingDetail({rec,back}){
-  const {sel,setSel,toast,refreshOccurrences,openMeeting,S,dvMeetingOccs}=use();
+  const {sel,setSel,toast,refreshOccurrences,openMeeting,S,dvMeetingOccs,dvReportOccs,openDvRec}=use();
   const tab = sel.mtgTab || 'detail';
   const setTab = t=>setSel(v=>({...v,mtgTab:t}));
   const [markingHeld,setMarkingHeld]=useState(false);
@@ -5930,6 +5968,81 @@ function DvMeetingDetail({rec,back}){
       .finally(()=>{ if(!cancelled) setGovLoading(false); });
     return ()=>{cancelled=true;};
   },[rec.id]);
+
+  /* Documents (lm_meetingoccurrencelinkedreports) and the Department/Function
+     rows this occurrence actually carries (lm_meetingoccurrencedepartmentfunctions)
+     -- both registered earlier but never read by any screen until now. Loaded
+     together since the linking flow below needs the department rows to scope
+     its Report Occurrence match. */
+  const [docs,setDocs]=useState(null);
+  const [deptRows,setDeptRows]=useState([]);
+  const [docsLoading,setDocsLoading]=useState(true);
+  const reloadDocs = useCallback(async ()=>{
+    const [d,dept] = await Promise.all([
+      fetchMeetingOccurrenceLinkedReports(rec.id).catch(e=>{
+        console.warn('[dataverse] fetchMeetingOccurrenceLinkedReports() failed:', e); return []; }),
+      fetchMeetingOccurrenceDepartments(rec.id).catch(e=>{
+        console.warn('[dataverse] fetchMeetingOccurrenceDepartments() failed:', e); return []; }),
+    ]);
+    setDocs(d); setDeptRows(dept);
+  },[rec.id]);
+  useEffect(()=>{
+    let cancelled=false;
+    setDocsLoading(true);
+    reloadDocs().finally(()=>{ if(!cancelled) setDocsLoading(false); });
+    return ()=>{cancelled=true;};
+  },[rec.id, reloadDocs]);
+
+  const [linkTplId,setLinkTplId]=useState('');
+  const [linking,setLinking]=useState(false);
+  const [unlinkingId,setUnlinkingId]=useState(null);
+
+  /* Every Department this occurrence is actually scoped to -- its own
+     lm_Department (a Department-scoped occurrence) plus whatever the child
+     rows above carry (a group-wide occurrence, or one the generator copied
+     several lines onto). Empty means "no Department constraint known", not
+     "no Department", so the match below falls back to Template + BU alone. */
+  const meetingDeptIds = new Set([rec.departmentId, ...deptRows.map(d=>d.departmentId)].filter(Boolean));
+  const matchingOccs = linkTplId ? dvReportOccs.filter(r=>
+       r.templateId===linkTplId
+    && (rec.businessUnitId ? r.businessUnitId===rec.businessUnitId
+        : rec.regionId ? r.regionId===rec.regionId : true)
+    && (meetingDeptIds.size===0 || meetingDeptIds.has(r.departmentId))
+  ) : [];
+
+  const onLinkDoc = async (occ) => {
+    setLinking(true);
+    try{
+      const tplName = dvRptTpl(linkTplId) || 'Report Template';
+      const {id,errors} = await linkMeetingOccurrenceReport({
+        meetingOccurrenceId: rec.id,
+        reportTemplateId: linkTplId,
+        reportOccurrenceId: occ ? occ.id : null,
+        name: occ ? occ.name : tplName,
+      });
+      if(!id){
+        console.warn('[dataverse] linkMeetingOccurrenceReport() failed:', errors);
+        toast('Not linked','Linking this document failed. Check the console for details.','err');
+        return;
+      }
+      toast('Document linked', occ ? `${occ.name} is now linked to this Meeting.`
+        : `${tplName} is linked — no occurrence yet.`, 'ok');
+      setLinkTplId('');
+      await reloadDocs();
+    }finally{ setLinking(false); }
+  };
+  const onUnlinkDoc = async (id) => {
+    setUnlinkingId(id);
+    try{
+      const {errors} = await unlinkMeetingOccurrenceReport(id);
+      if(errors.length){
+        console.warn('[dataverse] unlinkMeetingOccurrenceReport() failed:', errors);
+        toast('Not removed','Removing this document failed. Check the console for details.','err');
+        return;
+      }
+      await reloadDocs();
+    }finally{ setUnlinkingId(null); }
+  };
 
   const markHeld = async () => {
     setMarkingHeld(true);
@@ -6134,6 +6247,8 @@ function DvMeetingDetail({rec,back}){
         <span className="c">{rec.attendees.length}</span></button>
       <button className={tab==='minutes'?'on':''} onClick={()=>setTab('minutes')}>Minutes
         {minutes && <span className="c">{minutes.notes.length}</span>}</button>
+      <button className={tab==='docs'?'on':''} onClick={()=>setTab('docs')}>Documents
+        {docs && docs.length>0 && <span className="c">{docs.length}</span>}</button>
       {accred &&
         <button className={tab==='grid'?'on':''} onClick={()=>setTab('grid')}>Audit Grid
           {grids.length>0 && <span className="c">{grids.length}</span>}</button>}
@@ -6418,6 +6533,70 @@ function DvMeetingDetail({rec,back}){
           quorumPct={tpl?.quorumPct} torLink={tpl?.torLink} accred={accred} S={S} posName={posName}
           dvMeetingOccs={dvMeetingOccs} onReload={reloadGovernance}/>}
     </>}
+
+    {tab==='docs' && <div className="card flush">
+      <div className="card-hd" style={{display:'flex',alignItems:'center',gap:10}}>
+        <h2 style={{flex:1}}>Documents</h2>
+        <span className="t-sub" style={{fontWeight:400}}>lm_meetingoccurrencelinkedreports</span>
+      </div>
+      <div style={{padding:'8px 17px 17px'}}>
+        {docsLoading ? <Empty ic="…">Reading linked documents…</Empty> : <>
+          {!docs || docs.length===0
+            ? <Empty>No document is linked to this occurrence yet.</Empty>
+            : <table className="data" style={{marginBottom:16}}>
+                <thead><tr><th>Document</th><th>Report Occurrence</th><th>Report Template</th>
+                  <th>Linked</th><th></th></tr></thead>
+                <tbody>{docs.map(d=>{
+                  const occ = d.reportOccurrenceId ? dvReportOccs.find(r=>r.id===d.reportOccurrenceId) : null;
+                  return <tr key={d.id}>
+                    <td><div className="t-main">{d.name}</div></td>
+                    <td>{occ
+                      ? <a onClick={()=>openDvRec('Report',occ)}>{occ.name} · {fmtP(occ.period)}</a>
+                      : <span className="dim">— no occurrence linked —</span>}</td>
+                    <td className="dim">{dvRptTpl(d.reportTemplateId)||'—'}</td>
+                    <td className="dim">{d.created?fmtD(d.created.slice(0,10)):'—'}</td>
+                    <td style={{textAlign:'right'}}>
+                      <Btn k="sm" disabled={unlinkingId===d.id} onClick={()=>onUnlinkDoc(d.id)}>
+                        {unlinkingId===d.id?'Removing…':'Remove'}</Btn></td>
+                  </tr>;})}
+                </tbody></table>}
+
+          <div className="card">
+            <h3 style={{fontSize:13,marginBottom:2}}>Link a document</h3>
+            <div className="csub" style={{marginBottom:10}}>
+              Choose a Report Template. A live Report Occurrence for the same Template,
+              this Meeting's own {rec.businessUnitId?'Business Unit':rec.regionId?'Region':'scope'}
+              {meetingDeptIds.size>0 ? ' and Department' : ''} is offered if one exists —
+              otherwise the Template alone can be linked, and the occurrence added later.
+            </div>
+            <select value={linkTplId} onChange={e=>{setLinkTplId(e.target.value);}}>
+              <option value="">Choose a Report Template…</option>
+              {DV_RPT_TPL_LIST.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+
+            {linkTplId ? (matchingOccs.length>0
+              ? <div style={{marginTop:10}}>
+                  <div className="t-sub" style={{marginBottom:6}}>
+                    {matchingOccs.length} matching occurrence{matchingOccs.length===1?'':'s'} found.</div>
+                  {matchingOccs.map(o=>
+                    <div key={o.id} className="sched-r" style={{cursor:'default'}}>
+                      <div className="sched-t"><div className="n">{o.name}</div>
+                        <div className="m">{fmtP(o.period)} · {o.status}</div></div>
+                      <Btn k="sm pri" disabled={linking} onClick={()=>onLinkDoc(o)}>
+                        {linking?'Linking…':'Link'}</Btn>
+                    </div>)}
+                </div>
+              : <div style={{marginTop:10}}>
+                  <Note k="info" ic="i">No live Report Occurrence matches this Template for this Meeting's
+                    own scope yet.</Note>
+                  <Btn k="sm" style={{marginTop:8}} disabled={linking} onClick={()=>onLinkDoc(null)}>
+                    {linking?'Linking…':'Link the Template only — no occurrence yet'}</Btn>
+                </div>
+            ) : null}
+          </div>
+        </>}
+      </div>
+    </div>}
   </>;
 }
 

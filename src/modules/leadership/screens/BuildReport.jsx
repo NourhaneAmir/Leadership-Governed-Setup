@@ -87,7 +87,6 @@ export function ScreenBuildReport(){
   const [loadErr, setLoadErr]   = useState(null);
   const [busy, setBusy]         = useState(null);       // 'save' | 'submit' | 'template' | null
   const [reload, setReload]     = useState(0);
-  const [deptFilter, setDeptFilter] = useState(null);   // null = follow the report
   const [catalog, setCatalog]   = useState({ kpis: null, processes: null });
   const [picker, setPicker]     = useState(null);       // { key, kind, q, kpiId, dim, text }
 
@@ -111,7 +110,7 @@ export function ScreenBuildReport(){
   useEffect(() => {
     if (!recId) { setBefore([]); return; }
     let live = true;
-    setBefore(null); setLoadErr(null); setPicker(null); setDeptFilter(null);
+    setBefore(null); setLoadErr(null); setPicker(null);
     fetchReportOccurrenceForEdit(recId)
       .then(rows => {
         if (!live) return;
@@ -248,10 +247,12 @@ export function ScreenBuildReport(){
   };
 
   /* ---- derived ------------------------------------------------------- */
-  const scopeDept = deptFilter === null ? (rec?.departmentId || '') : deptFilter;
+  /* Scope always follows the report's own metadata now -- Department is no
+     longer an independent filter the author can widen, it just says what the
+     picker is limited to and why. */
+  const scopeDept = rec?.departmentId || '';
   const inScope = x => !scopeDept || x.dept === scopeDept;
   const citeCount = sections.reduce((n, s) => n + s.citations.length, 0);
-  const deptList = L.deptList || [];
 
   /* ---- render -------------------------------------------------------- */
   return <>
@@ -301,10 +302,11 @@ export function ScreenBuildReport(){
             <div className="bld-grid">
               <div className="bld-fld">
                 <label>Department</label>
-                <select value={scopeDept} onChange={e => setDeptFilter(e.target.value)}>
-                  <option value="">All departments</option>
-                  {deptList.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                </select>
+                <div className="ro">{nm(L.dept, rec.departmentId) || '—'}</div>
+              </div>
+              <div className="bld-fld">
+                <label>Function</label>
+                <div className="ro">{nm(L.func, rec.functionId) || '—'}</div>
               </div>
               <div className="bld-fld">
                 <label>Business Unit</label>
@@ -502,7 +504,7 @@ function CitePicker({ picker, setPicker, onCite, catalog, inScope, reports, take
           ? { kind: 'KPI', kpiId: x.id, kpiName: x.n, label: 'KPI: ' + x.n }
           : { kind: 'Process', processId: x.id, processName: x.n, label: 'Process: ' + x.n }))}
         <div className="holder" style={{ marginTop: 6 }}>
-          Showing {rows.length} in the selected department. Change it in Scope above to widen the list.</div>
+          Showing {rows.length} in this report's own department — the same one shown in Scope above.</div>
       </>;
     }
   } else if (k === 'Breakdown') {

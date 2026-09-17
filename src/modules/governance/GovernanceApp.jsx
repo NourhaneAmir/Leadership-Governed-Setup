@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useLayoutEffect, useRef, createContext, useContext } from 'react';
 import { createPortal } from 'react-dom';
 import { ClipboardList, ListChecks, ArrowUpRight, FileText, CalendarDays, Check, MoreHorizontal } from 'lucide-react';
-import { fetchRegions, fetchBusinessUnits, fetchDepartments, fetchFunctions, fetchProcesses, fetchKpis, fetchSections, fetchPositions, departmentBuIndex, fetchTeamsChannels, fetchCurrentUser, saveReportTemplateToDataverse, saveMeetingTemplateToDataverse, updateReportTemplateToDataverse, updateMeetingTemplateToDataverse, updateReportTemplateStatus, updateMeetingTemplateStatus, fetchReportTemplatesList, fetchMeetingTemplatesList, fetchReportTemplateDetail, fetchMeetingTemplateDetail, fetchMeetingOccurrencesByTemplate, fetchReportOccurrencesByTemplate, TEMPLATE_STATUS_LABEL,
+import { fetchRegions, fetchBusinessUnits, fetchDepartments, fetchFunctions, fetchProcesses, fetchKpis, fetchSections, fetchPositions, departmentBuIndex, fetchTeamsChannels, fetchMicrosoftGroupMembers, fetchCurrentUser, saveReportTemplateToDataverse, saveMeetingTemplateToDataverse, updateReportTemplateToDataverse, updateMeetingTemplateToDataverse, updateReportTemplateStatus, updateMeetingTemplateStatus, fetchReportTemplatesList, fetchMeetingTemplatesList, fetchReportTemplateDetail, fetchMeetingTemplateDetail, fetchMeetingOccurrencesByTemplate, fetchReportOccurrencesByTemplate, TEMPLATE_STATUS_LABEL,
   logSetupActivity, logSetupActivityBatch, fetchSetupActivity } from '../../services/dataverse.js';
 import './governance-modern.css';
 
@@ -71,15 +71,26 @@ const ATTENDEE_TYPES=['Core','Supportive'];
 const SUPPORTIVE_FUNCTIONS=['Business Analysis','HR Performance','L&D','Business Transformation',
                             'HR Reward','Recruitment','HR Assessment','Strategy Management (SMO)'];
 const AGENDA_SOURCES=['Migrated - Initial','Added'];
-const REPORT_TYPES=['Plan','Report','Conclusion'];
+/* Both lists below were replaced in Dataverse (15 Sep) -- read live from
+   lm_report_template's own metadata via `pac modelbuilder build`, the only
+   route that actually returns an already-registered table's choice values.
+   Codes: Report Type 1=Plan 2=Dashboard 3=Report Conclusion; Report Category
+   1=Executive 2=Core 3=ADHOC. Kept in step with dataverse.js's
+   REPORT_TYPE_KEY/REPORT_CATEGORY_KEY and REPORT_TYPE/REPORT_CATEGORY.
+   Code 3's own Dataverse label is "Report Conclusion" (the enum name is
+   literally that, run together) -- displayed here as just "Report", on
+   explicit instruction. The label is this app's own choice either way (see
+   the code comment on REPORT_TYPE_KEY in dataverse.js), so nothing downstream
+   needs the longer name. */
+const REPORT_TYPES=['Plan','Dashboard','Report'];
 const REPORT_TYPE_HELP={
-  'Plan':'Submitted the month before the month it covers.',
-  'Report':'Content and submission fall in the same month.',
-  'Conclusion':'Submitted the month after its content month.'};
+  'Plan':'Submitted before the period it covers.',
+  'Dashboard':'A live view of figures, not tied to one period’s submission.',
+  'Report':'Submitted after the period it covers, once the outcome is known.'};
 /* register-table tag colour, one per Report Type -- same idea as the
    purple/blue split the register already uses for Meeting Setup Type. */
-const REPORT_TYPE_TAG_COLOR={'Plan':'blue','Report':'teal','Conclusion':'purple'};
-const REPORT_CATEGORIES=['Outcome Executive','Process Executive','Core Process','Custom Content'];
+const REPORT_TYPE_TAG_COLOR={'Plan':'blue','Dashboard':'teal','Report':'purple'};
+const REPORT_CATEGORIES=['Executive','Core','ADHOC'];
 const REPORT_ROLES=['Input','Output'];
 const REPORT_DELIVERY=['File destination','Source link'];
 
@@ -316,6 +327,19 @@ let PROCESS_ID_BY_NAME={};
 let KPI_ID_BY_NAME={};
 let PROCESS_DEPT_BY_NAME={};
 let KPI_DEPT_BY_NAME={};
+/* True only once fetchKpis() has actually replaced the built-in KPIS list
+   below with live strategy_kpises rows -- lets the picker say so plainly
+   instead of silently offering sample names that look like real KPIs. */
+let KPIS_LIVE=false;
+
+/* Microsoft Group membership -- and_microsoftgroupmembers, read live only,
+   no built-in fallback (there is nothing to fall back to that would mean
+   anything). GROUP_MEMBERS is every (group, member) row as-is; MICROSOFT_GROUPS
+   is the distinct group name list the picker offers -- the same group name
+   repeats once per member in the raw table, so this is deduplicated here,
+   not left for the UI to do per render. */
+let GROUP_MEMBERS=[];
+let MICROSOFT_GROUPS=[];
 
 let PROCESSES=['PRC-QLT-01 Quality indicator management','PRC-QLT-02 Corrective action management',  'PRC-NUR-01 Nursing establishment planning','PRC-MED-01 Medication reconciliation',
   'PRC-IPC-01 Infection surveillance','PRC-OPS-01 Patient flow management',
@@ -461,15 +485,27 @@ function dropRepeats(subject,noun){
   const kept=noun.split(/\s+/).filter(w=>!have.includes(stem(w)));
   return kept.join(' ') || noun.split(/\s+/).slice(-1)[0];
 }
+/* Report Template naming — the {Region}_{Department}_{ReportName}_{Frequency}
+   convention from the naming reference doc. No new field was added for
+   {ReportName}: it maps onto Report Category, the closest thing already in
+   the wizard to a short descriptive name. {Region} is the Setup's own Region
+   when Region-scoped, or its Business Unit when BU-scoped (unitLabel already
+   picks the right one); either is dropped, same as {Department}, when the
+   Setup spans more than one and there is no single token to name it after. */
+const slug=w=>(w||'').replace(/[^a-zA-Z0-9]+/g,'');
+const scopeToken=s=>{ const keys=scopeKeys(s); return keys.length===1 ? slug(unitLabel(s,keys[0])) : ''; };
+/* An Ad Hoc Report Category has no cadence -- a submission is raised when
+   needed, not on a schedule, the same reasoning a one-off Meeting already
+   gets. Matched normalised (spaces/hyphens stripped, case-insensitive)
+   since the exact Dataverse label spelling isn't pinned down here. */
+const isAdHocCategory=s=>slug(s.reportCategory).toLowerCase()==='adhoc';
 function derivedName(s){
   const pre=STAGE_PREFIX[STAGES.indexOf(s.stage)]||'';
   const subj=subjectOf(s);
   const fallbackStageWord=FALLBACK_STAGE_WORD[STAGES.indexOf(s.stage)]||'';
   let base;
   if(s.kind==='Report Template'){
-    base = subj
-      ? [s.frequency, pre, subj, s.reportType].filter(Boolean).join(' ')
-      : [s.frequency, fallbackStageWord, s.reportType].filter(Boolean).join(' ');
+    base=[scopeToken(s),slug(subj),slug(s.reportCategory),slug(s.frequency)].filter(Boolean).join('_');
   } else if(s.category===TOT){
     /* the Team of Teams is named after the Department it serves */
     const dep=(linesOf(s)[0]||{}).department;
@@ -580,7 +616,7 @@ const BLANK_MEETING={
   stage:null, regions:[], businessUnits:[], lines:[], units:[],
   frequency:null, dayOfWeek:null, dayOfMonth:null, monthInQuarter:null,
   mode:null,
-  supportive:[], quorum:null,
+  supportive:[], quorum:90,
   torLink:'', agenda:[], linkedTemplates:[], confidentiality:null,
   /* Per-Setup completion-period overrides -- same three deadlines as the
      execution module's global Governance Settings defaults (momWriteupHours/
@@ -595,6 +631,7 @@ const BLANK_REPORT={
   qualifier:'',
   stage:null, regions:[], businessUnits:[], lines:[], units:[],
   delivery:'Source link', site:null, library:null, folder:null, sourceLink:'', sourceLinkAuto:false,
+  fileAttachment:'',
   secondDayOfWeek:null, secondDayOfMonth:null, monthInSemester:null, month:null,
   checklist:[], processes:[], kpis:[],
   frequency:null, dayOfWeek:null, dayOfMonth:null, monthInQuarter:null,
@@ -725,7 +762,7 @@ function seed(){
          in two different regions — a different submitter and chain in each. */
   mk({id:'su-7', kind:'Report Template',
     objective:'Conclude the month’s quality indicator performance and the actions taken.',
-    reportType:'Conclusion', reportCategory:'Outcome Executive',
+    reportType:'Report', reportCategory:'Executive',
     stage:STAGES[0], regions:['rg-ksa','rg-egy'],
     businessUnits:['bu-ahj','bu-ahm'],
     lines:[{id:'ln7', department:'Quality', function:null}],
@@ -745,7 +782,7 @@ function seed(){
   /* 8 — published Report Template using a source link instead of a destination */
   mk({id:'su-8', kind:'Report Template',
     objective:'Consolidate business unit performance for the executive review cycle.',
-    reportType:'Report', reportCategory:'Process Executive',
+    reportType:'Dashboard', reportCategory:'Core',
     stage:STAGES[2], regions:[], businessUnits:[],
     lines:[{id:'ln8a', department:'Quality', function:null},
            {id:'ln8b', department:'Operations', function:null}],
@@ -1017,8 +1054,8 @@ function validateReport(s, all){
   }
   /* 4 — who submits and who reviews, unit by unit */
   r.push(...unitRules(s,4));
-  /* 5 — cadence and review */
-  r.push(...cadenceRules(s,5));
+  /* 5 — cadence and review. Skipped for Ad Hoc: it has no fixed cadence. */
+  if(!isAdHocCategory(s)) r.push(...cadenceRules(s,5));
   if(!s.confidentiality) r.push({field:'f-confidentiality', step:5, msg:'Confidentiality is required.'});
   return r;
 }
@@ -1431,6 +1468,11 @@ function SectionRowEditor({sec,index,templateId,onPatch,onRemove}){
   const [buF,setBuF]=useState(null);
   const [deptF,setDeptF]=useState(null);
   const [fnF,setFnF]=useState(null);
+  // Child report/plan picker: Stage decides which sub-filter applies -- a
+  // Stage 1 Template runs per Business Unit, a Stage 2 Template per Region,
+  // Stage 3/4 are group-wide and take neither.
+  const [stageF,setStageF]=useState(null);
+  const [regionF,setRegionF]=useState(null);
   const items = sec.items||[];
 
   /* A KPI or Process is in scope when its own Department matches the filter,
@@ -1452,14 +1494,17 @@ function SectionRowEditor({sec,index,templateId,onPatch,onRemove}){
      The template being edited is excluded so it cannot cite itself. */
   const childOpts = (DV_REPORTS.current||[])
     .filter(t=>t.id && t.id!==templateId)
-    /* Only Business Unit is filterable here: the register list carries
-       businessUnitIds and regionIds, but no departments -- so a Department
-       filter would silently match everything, which is worse than not
-       offering it. A group-wide Template (no units at all) always shows. */
+    /* Stage first: it decides which of Business Unit / Region even applies
+       to a candidate, the same split stageLevel() uses everywhere else.
+       Department still isn't filterable here -- the register list carries
+       businessUnitIds/regionIds but no departments. */
     .filter(t=>{
-      if(!buF) return true;
-      const buIds=t.businessUnitIds||[];
-      return buIds.length===0 || buIds.includes(buF);
+      if(!stageF) return true;
+      const buIds=t.businessUnitIds||[], rgIds=t.regionIds||[];
+      if(stageF===STAGES[0]) return buIds.length>0 && (!buF || buIds.includes(buF));
+      if(stageF===STAGES[1]) return rgIds.length>0 && buIds.length===0 && (!regionF || rgIds.includes(regionF));
+      // Stage 3/4: group-wide -- neither a Business Unit nor a Region.
+      return buIds.length===0 && rgIds.length===0;
     })
     .map(t=>({id:t.id, name:t.name||'(unnamed template)'}));
 
@@ -1479,6 +1524,10 @@ function SectionRowEditor({sec,index,templateId,onPatch,onRemove}){
       <button type="button" className="icon-btn" title="Remove this section"
         onClick={onRemove}>✕</button>
     </div>
+
+    <input type="text" value={sec.fileAttachment||''} placeholder="File attachment link (optional)"
+      style={{marginBottom:8}}
+      onChange={e=>onPatch({fileAttachment:e.target.value})}/>
 
     {items.length>0
       ? <div className="sec-chips">
@@ -1506,21 +1555,53 @@ function SectionRowEditor({sec,index,templateId,onPatch,onRemove}){
             <span className="dot"/>{k.label}</button>)}
       </div>
 
-      <ScopeFilter bu={buF} dept={deptF} fn={fnF}
-        setBu={setBuF} setDept={setDeptF} setFn={setFnF}
-        showDepartment={picking!=='Child Template'}
-        showFunction={false}/>
-      {picking!=='Child Template' && (buF||deptF) &&
-        <div className="holder" style={{marginBottom:8}}>
-          Filtered by the Department each {picking==='Process'?'Process':'KPI'} belongs to.
-          Function does not apply — nothing links a {picking==='Process'?'Process':'KPI'} to one.</div>}
-      {picking==='Child Template' && buF &&
-        <div className="holder" style={{marginBottom:8}}>
-          Filtered by Business Unit. Group-wide Templates always show.</div>}
+      {picking!=='Child Template' && <>
+        <ScopeFilter bu={buF} dept={deptF} fn={fnF}
+          setBu={setBuF} setDept={setDeptF} setFn={setFnF}
+          showDepartment showFunction={false}/>
+        {(buF||deptF) &&
+          <div className="holder" style={{marginBottom:8}}>
+            Filtered by the Department each {picking==='Process'?'Process':'KPI'} belongs to.
+            Function does not apply — nothing links a {picking==='Process'?'Process':'KPI'} to one.</div>}
+      </>}
 
-      {picking==='KPI' &&
+      {picking==='Child Template' && <>
+        <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',marginBottom:8}}>
+          <select value={stageF||''} style={{flex:'1 1 170px',minWidth:150}}
+            onChange={e=>{const v=e.target.value||null; setStageF(v); setBuF(null); setRegionF(null);}}>
+            <option value="">Any stage</option>
+            {STAGES.map(st=><option key={st} value={st}>{st}</option>)}
+          </select>
+          {stageF===STAGES[0] &&
+            <select value={buF||''} style={{flex:'1 1 130px',minWidth:110}}
+              onChange={e=>setBuF(e.target.value||null)}>
+              <option value="">All business units</option>
+              {BUSINESS_UNITS.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>}
+          {stageF===STAGES[1] &&
+            <select value={regionF||''} style={{flex:'1 1 130px',minWidth:110}}
+              onChange={e=>setRegionF(e.target.value||null)}>
+              <option value="">All regions</option>
+              {REGIONS.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
+            </select>}
+          {(stageF||buF||regionF) && <button type="button" className="sec-dim"
+            onClick={()=>{setStageF(null);setBuF(null);setRegionF(null);}}>Clear</button>}
+        </div>
+        {stageF &&
+          <div className="holder" style={{marginBottom:8}}>
+            {stageF===STAGES[0] ? 'Stage 1 runs per Business Unit — filtered to Stage 1 Templates, narrowed by Business Unit if chosen.'
+              : stageF===STAGES[1] ? 'Stage 2 runs per Region — filtered to Stage 2 Templates, narrowed by Region if chosen.'
+              : 'Filtered to group-wide Templates at this Stage — they carry no Business Unit or Region.'}</div>}
+      </>}
+
+      {picking==='KPI' && <>
+        {!KPIS_LIVE && <div className="holder" style={{marginBottom:6,color:'var(--amber)'}}>
+          ⚠ Showing built-in sample KPIs — strategy_kpises could not be read from Dataverse (or this is
+          running under plain `npm run dev`, which has no Dataverse connection at all). Open this app
+          from its Power Apps play URL to pick real KPIs.</div>}
         <PickList opts={kpiOpts} label="KPIs" onPick={v=>addItem({type:'KPI', kpi:v})}
-          empty="No KPI matches this scope."/>}
+          empty="No KPI matches this scope."/>
+      </>}
 
       {picking==='Process' &&
         <PickList opts={processOpts} label="Processes" onPick={v=>addItem({type:'Process', process:v})}
@@ -1618,7 +1699,7 @@ function SectionEditor({sections,templateId,onChange}){
           onRemove={()=>onChange(sections.filter((_,j)=>j!==i))}/>
       </div>)}
     <button type="button" className="sec-add"
-      onClick={()=>onChange([...sections,{id:uid('ck'),text:'',angle:'Untyped',items:[]}])}>
+      onClick={()=>onChange([...sections,{id:uid('ck'),text:'',angle:'Untyped',items:[],fileAttachment:''}])}>
       + Add section</button>
   </div>;
 }
@@ -1679,6 +1760,29 @@ function AttendeeList({id,rows,opts,onChange}){
         })}
     <button type="button" className="mem-add" onClick={add}>+ Add attendee</button>
   </div>;
+}
+
+/* Reference lookup, not a Setup field -- picking a group here writes nothing
+   to the Setup and adds nobody to Attendees. It only answers "who is in this
+   group", from and_microsoftgroupmembers (§6/PROJECT-CONTEXT), for whoever
+   is filling in Attendees above to check against. Own local state per unit
+   card since UnitSetup renders these inline via .map(), not as a
+   subcomponent -- a hook can't live in that loop directly, but a child
+   component instantiated inside it can hold its own. */
+function GroupMembersLookup({id}){
+  const [group,setGroup]=useState('');
+  const members=group ? GROUP_MEMBERS.filter(r=>r.group===group).map(r=>r.member) : [];
+  return <Field id={id} label="Look up a Microsoft Group"
+    hint="Pick a Microsoft 365 group to see who's in it — for reference only; it does not add them as Attendees.">
+    <Sel id={id} val={group||null} placeholder={MICROSOFT_GROUPS.length?'Choose a group…':'No groups found'}
+      opts={MICROSOFT_GROUPS} onChange={v=>setGroup(v||'')}/>
+    {group
+      ? <div className="holder" style={{marginTop:6}}>
+          {members.length
+            ? `${members.length} member${members.length===1?'':'s'}: ${members.join(', ')}`
+            : 'No members recorded for this group.'}</div>
+      : null}
+  </Field>;
 }
 
 /* ---- the name needs no field ---------------------------------------------
@@ -2036,6 +2140,7 @@ function UnitSetup({s,set,issues,shared,intro}){
                       opts={positionsInScope(s,k)}
                       onChange={v=>setUnit(k,{coreMembers:v})}/>
                   </Field>
+                  <GroupMembersLookup id={'u-grp-'+k}/>
                 </>}
           </div>
           <div className="unit-ft">
@@ -2151,7 +2256,7 @@ function Wizard({rec,steps,renderStep,onClose}){
 const MEETING_STEPS=[
   {label:'Type and identity',        hint:'Kind, setup type, category'},
   {label:'Organisational scope',     hint:'Regions, business units'},
-  {label:'Cadence',                  hint:'Frequency and rhythm'},
+  {label:'Frequency',                hint:'Frequency and rhythm'},
   {label:'Setup per unit',           hint:'Members and chairs'},
   {label:'Mandate and agenda',       hint:'Purpose and topics'},
   {label:'Linked Templates and review', hint:'Reports and sign-off'},
@@ -2205,7 +2310,7 @@ function MeetingWizard({rec,onClose}){
       </div>;
 
       if(step===3) return <div className="card">
-        <h2>Cadence</h2>
+        <h2>Frequency</h2>
         <div className="csub">Which day it falls on — nothing more. The same rhythm applies in every unit.</div>
         <CadenceFields s={s} set={set} noMonth/>
         <Field id="f-mode" label="Default Meeting Mode" req
@@ -2378,8 +2483,8 @@ function MeetingSummary({s}){
           ['Runs in',keys.length?scopeNames(s).join(', '):'—'],
           ['Departments and Functions',
             linesOf(s).length?linesOf(s).map(lineLabel).join(' · '):'None — Stage 4 sits above them']]}/>
-        <SumBlock title="Cadence" items={[
-          ['Cadence',cad],['Default mode',s.mode],
+        <SumBlock title="Frequency" items={[
+          ['Frequency',cad],['Default mode',s.mode],
           ['Time and venue','Set on each occurrence']]}/>
         <SumBlock title="Shared by every unit" items={[
           ['Supportive functions',(s.supportive||[]).length?s.supportive.join(', '):'None'],
@@ -2458,6 +2563,10 @@ function ReportWizard({rec,onClose}){
                     <b> Setup per unit</b>, and the Channel’s SharePoint path becomes the destination.
                   </div>}
             </Field>; })()}
+          <Field id="f-fileAttachment" label="File Attachment" govern
+            hint="A link to a reference or example file for this Report Template as a whole — optional.">
+            <input id="f-fileAttachment" type="text" value={s.fileAttachment||''}
+              onChange={e=>set({fileAttachment:e.target.value})}/></Field>
           <Field id="f-checklist" label="Expected Content Checklist" req
             hint="The sections a submission must contain each period. Each section can name a
                   diagnostic angle and carry any number of KPIs, KPI breakdowns, Processes or a
@@ -2499,7 +2608,10 @@ function ReportWizard({rec,onClose}){
       return <>
         <div className="card">
           <h2>Cadence and review</h2>
-          <CadenceFields s={s} set={set}/>
+          {isAdHocCategory(s)
+            ? <Note k="info" ic="i">Ad Hoc reports have no fixed cadence — a submission is raised
+                when it's needed, not on a schedule, so there is nothing to set here.</Note>
+            : <CadenceFields s={s} set={set}/>}
           <Field id="f-confidentiality" label="Confidentiality" req govern
             hint="Inherited by every submission created from this Setup.">
             <Seg id="f-confidentiality" opts={CONFIDENTIALITY} val={s.confidentiality}
@@ -2570,6 +2682,7 @@ function buildReportTemplatePayload(f){
        cannot drift from the Channel it came from. lm_destinationsharepointlink
        is 1000 chars now, so a real path fits. */
     destinationLink: destinationOf(f) || undefined,
+    fileAttachment: f.fileAttachment || undefined,
     // Business Unit is per-unit only. Speciality/Team-Channel/Owner/Submitter
     // are per-unit too EXCEPT for a group-wide (Stage 3/4) Setup, which has
     // no per-unit child table at all -- for that case
@@ -2609,6 +2722,7 @@ function buildReportTemplatePayload(f){
     checklist: (f.checklist||[]).filter(c=>c.text).map(c=>({
       text: c.text,
       angle: c.angle || 'Untyped',
+      fileAttachment: c.fileAttachment || undefined,
       items: (c.items||[]).map(it=>{
         if(it.type==='KPI')       return { type:'KPI', label:`KPI: ${it.kpi}`,
                                            kpiId: KPI_ID_BY_NAME[it.kpi] };
@@ -2778,6 +2892,7 @@ function buildPublishSummary(original, edited){
     addField('Report Category', original.reportCategory, edited.reportCategory);
     addField('Report Delivery', original.delivery, edited.delivery);
     addField('Source link', original.sourceLink, edited.sourceLink);
+    addField('File Attachment', original.fileAttachment, edited.fileAttachment);
   }else{
     addField('Setup Type', original.setupType, edited.setupType);
     addField('Type / Classification', original.category, edited.category);
@@ -2910,8 +3025,8 @@ function PublishConfirmModal({original, edited, onConfirm, onCancel}){
      ness is inferred from having neither Business Unit nor Region rows.
    ========================================================================= */
 
-const DV_REPORT_TYPE=['Plan','Report','Conclusion'];
-const DV_REPORT_CATEGORY=['Outcome Executive','Process Executive','Core Process','Custom Content'];
+const DV_REPORT_TYPE=['Plan','Dashboard','Report'];
+const DV_REPORT_CATEGORY=['Executive','Core','ADHOC'];
 const DV_FREQUENCY=['Daily','Twice Weekly','Weekly','Twice Monthly','Monthly','Quarterly','Semesterly','Annually','Custom'];
 const DV_DAY_OF_WEEK=['Sunday','Monday','Tuesday','Wednesday','Thursday'];
 const DV_MONTH_IN_QUARTER=['1st month','2nd month','3rd month'];
@@ -2997,6 +3112,7 @@ function dataverseReportToSetup(detail){
     month:byCode1(MONTHS_OF_YEAR,p.lm_month),
     confidentiality:byCode1(DV_CONFIDENTIALITY,p.lm_confidentiality),
     delivery:'Source link', sourceLink:p.lm_destinationsharepointlink||'',
+    fileAttachment:p.lm_fileattachement||'',
     /* Sections hydrate back into the same display-name shape the editor writes,
        so an edit round-trips without the form ever seeing a GUID. */
     checklist:(detail.checklist||[]).slice().sort((a,b)=>(a.lm_checklistitemstep||0)-(b.lm_checklistitemstep||0))
@@ -3004,6 +3120,7 @@ function dataverseReportToSetup(detail){
         id:uid('ck'),
         text:c.lm_checklistitemname||'',
         angle:byCode1(DV_SECTION_ANGLE,c.lm_diagnosticangle)||'Untyped',
+        fileAttachment:c.lm_fileattachement||'',
         items:(c.items||[]).map(it=>({
           id:uid('si'),
           type:it.type,
@@ -3588,6 +3705,13 @@ function ScreenDetail({rec,onClose}){
   const [confirmApprove,setConfirmApprove]=useState(false);
   const [confirmExpire,setConfirmExpire]=useState(false);
   const w=ROLES[role].write, canApprove=ROLES[role].approve;
+  /* An Author may edit a Draft or an Under Review Setup, but not one that is
+     already Active / Approved -- only an Administrator can reopen an
+     approved Setup, and doing so is what sends it back to Under Review
+     (A.edit() itself already flips the status; this only decides who may
+     click the button in the first place). Expired stays fully locked for
+     everyone, same as before. */
+  const canEdit = w && rec.status!=='Expired' && (rec.status!=='Active / Approved' || canApprove);
   const usage=db.usage.filter(u=>u.setup===rec.id);
   const seededAudit=db.audit.filter(a=>a.setup===rec.id).slice().reverse();
   const issues=validate(rec,db.setups);
@@ -3653,7 +3777,7 @@ function ScreenDetail({rec,onClose}){
           {rec.confidentiality?<> · <Tag c="grey">{rec.confidentiality}</Tag></>:null}</div>
         <div className="sub" style={{marginTop:4}}>{scopeString(rec)}</div></div>
       {canApprove&&rec.status==='Under Review'?<Btn k="pri" onClick={()=>setConfirmApprove(true)}>Approve</Btn>:null}
-      {w&&rec.status!=='Expired'?<Btn onClick={()=>A.edit(rec.id)}>Edit</Btn>:null}
+      {canEdit?<Btn onClick={()=>A.edit(rec.id)}>Edit</Btn>:null}
       {w?<Btn onClick={()=>A.duplicate(rec.id)}
         title="Copy this Setup, and everything in it, to a new Draft">Duplicate</Btn>:null}
       {canApprove&&rec.status!=='Expired'
@@ -3672,6 +3796,11 @@ function ScreenDetail({rec,onClose}){
           created from it. {canApprove
             ? 'Use Edit to change it further, or Approve it as-is.'
             : 'Approval is an Administrator action — turn on the Administrator toggle in the top bar to approve it.'}</Note>
+      : null}
+    {rec.status==='Active / Approved' && w && !canApprove
+      ? <Note k="lock" ic="—">This Setup is Active / Approved. As a Setup Author you can edit a Draft
+          or an Under Review Setup, but not one that's already approved — only an Administrator can
+          reopen it, and doing so sends it back to Under Review for re-approval.</Note>
       : null}
     {issues.length>0 && rec.status!=='Expired'
       ? <Note k="warn" ic="⚠"><b>{issues.length} rule{issues.length>1?'s are':' is'} unmet.</b> This Setup
@@ -4021,7 +4150,7 @@ function App({onSwitch}){
         if(kpis&&kpis.length){
           KPI_ID_BY_NAME={}; KPI_DEPT_BY_NAME={};
           kpis.forEach(k=>{ KPI_ID_BY_NAME[k.name]=k.id; KPI_DEPT_BY_NAME[k.name]=k.dept??null; });
-          KPIS=kpis.map(k=>k.name); changed=true;
+          KPIS=kpis.map(k=>k.name); KPIS_LIVE=true; changed=true;
         }
       }catch(e){
         console.warn('[dataverse] fetchKpis() failed, using built-in list:', e);
@@ -4055,6 +4184,17 @@ function App({onSwitch}){
         if(tc){ setTeamsChannels(tc); changed=true; }
       }catch(e){
         console.warn('[dataverse] fetchTeamsChannels() failed -- Team/Channel pickers will be empty:', e);
+      }
+      try{
+        const gm=await fetchMicrosoftGroupMembers();
+        if(cancelled) return;
+        if(gm){
+          GROUP_MEMBERS=gm;
+          MICROSOFT_GROUPS=[...new Set(gm.map(r=>r.group))].sort((a,b)=>a.localeCompare(b));
+          changed=true;
+        }
+      }catch(e){
+        console.warn('[dataverse] fetchMicrosoftGroupMembers() failed -- Group lookup will be empty:', e);
       }
       if(changed&&!cancelled) setRefDataTick(t=>t+1);
     })();
@@ -4106,7 +4246,14 @@ function App({onSwitch}){
     ? `${currentUser.fullName} (${ROLES[role].label})`
     : ROLES[role].label;
   const logIt=(n,setupId,action,field,before,after)=>{
-    const e={ action, field, actor:actorName(),
+    /* actor is always a readable name/role label, written to the free-text
+       lm_actor column regardless of whether the signed-in account is linked
+       to a real Dataverse user. actorUserId, when known, additionally binds
+       lm_ActorUser -- a real systemusers lookup, not just a name string --
+       so the trail can be queried/reported on by actual user, not only read
+       as text. Previously never set, so lm_ActorUser was always empty even
+       for a linked account. */
+    const e={ action, field, actor:actorName(), actorUserId: currentUser?.systemUserId || undefined,
               before: before==null?'—':String(before),
               after:  after==null?'—':String(after) };
     n.audit.push({id:uid('g'),setup:setupId,at:stamp(),...e});
@@ -4121,7 +4268,8 @@ function App({onSwitch}){
     ['stage','Stage'],['function','Function'],['frequency','Frequency'],
     ['quorum','Quorum Threshold %'],['torLink','TOR / Policy link'],
     ['confidentiality','Confidentiality'],['delivery','Report Delivery'],
-    ['reportType','Report Type'],['mode','Default Meeting Mode'],
+    ['reportType','Report Type'],['reportCategory','Report Category'],['fileAttachment','File Attachment'],
+    ['mode','Default Meeting Mode'],
     ['momWriteupHours','MOM Write-up Period'],['momApprovalHours','MOM Approval Period'],
     ['gridSubmitHours','Audit Grid Completion / Submission Period']];
   const showVal=(k,v)=>{
@@ -4521,6 +4669,7 @@ function App({onSwitch}){
           logSetupActivity(kind, dvId, {
             action:'Expired', field:'Lifecycle Status',
             before:'Active / Approved', after:'Expired', actor:actorName(),
+            actorUserId: currentUser?.systemUserId || undefined,
           }).then(({errors})=>{ if(errors.length)
             console.warn('[dataverse] Setup activity (expire from register) failed:', errors); });
           await refreshDvLists();
