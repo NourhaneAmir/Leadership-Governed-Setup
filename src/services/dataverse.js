@@ -38,6 +38,19 @@ function assertSuccess(result){
   }
 }
 
+/** Same blind spot again, for getAll() reads: `res?.data ?? []` on a failed
+ *  read (permission denied, bad $select, wrong entity set...) silently
+ *  yields an empty array -- indistinguishable from "the table is really
+ *  empty" -- so the caller's try/catch never fires and the real Dataverse
+ *  error is never seen anywhere, not even in the console. Use this instead
+ *  of `res?.data ?? []` on any read whose failure needs to be diagnosable. */
+function rowsOrThrow(res){
+  if(res?.success===false || res?.error){
+    throw new Error(res?.error?.message || String(res?.error) || 'The read did not succeed.');
+  }
+  return res?.data ?? [];
+}
+
 /* ---------------------------------------------------------------------
    WIRED: Regions (crd04_regions) and Business Units (businessunit)
    ---------------------------------------------------------------------
@@ -191,7 +204,7 @@ export async function fetchKpis(){
     select: ['strategy_kpisid', 'strategy_newcolumn', '_strategy_department_value',
              'strategy_departmentname', '_strategy_process_value', 'strategy_processname'],
   });
-  const rows = res?.data ?? [];
+  const rows = rowsOrThrow(res);
   // {id, name, dept} -- id is needed to write lm_RelatedKPI@odata.bind when
   // saving a Report Template; dept feeds the Governed List's BU/Department
   // filter. GovernanceApp derives the flat name list the existing
@@ -216,7 +229,7 @@ export async function fetchProcesses(){
     select: ['strategy_processid', 'strategy_newcolumn', '_strategy_department_value',
              'strategy_departmentname'],
   });
-  const rows = res?.data ?? [];
+  const rows = rowsOrThrow(res);
   return rows.filter(r=>r.strategy_newcolumn).map(r => ({
     id: r.strategy_processid,
     name: r.strategy_newcolumn,

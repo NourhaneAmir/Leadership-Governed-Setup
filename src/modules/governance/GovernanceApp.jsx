@@ -331,6 +331,14 @@ let KPI_DEPT_BY_NAME={};
    below with live strategy_kpises rows -- lets the picker say so plainly
    instead of silently offering sample names that look like real KPIs. */
 let KPIS_LIVE=false;
+let PROCESSES_LIVE=false;
+/* The actual Dataverse error text from the last failed fetchKpis()/
+   fetchProcesses() call, once dataverse.js's rowsOrThrow() started
+   throwing on a failed read instead of silently returning []. Shown in
+   the picker banners below so a real cause (permission denied, bad
+   $select...) is visible in the app itself, not just the console. */
+let KPI_FETCH_ERROR=null;
+let PROCESS_FETCH_ERROR=null;
 
 /* Microsoft Group membership -- and_microsoftgroupmembers, read live only,
    no built-in fallback (there is nothing to fall back to that would mean
@@ -1596,16 +1604,23 @@ function SectionRowEditor({sec,index,templateId,onPatch,onRemove}){
 
       {picking==='KPI' && <>
         {!KPIS_LIVE && <div className="holder" style={{marginBottom:6,color:'var(--amber)'}}>
-          ⚠ Showing built-in sample KPIs — strategy_kpises could not be read from Dataverse (or this is
-          running under plain `npm run dev`, which has no Dataverse connection at all). Open this app
-          from its Power Apps play URL to pick real KPIs.</div>}
+          ⚠ Showing built-in sample KPIs — strategy_kpises could not be read from Dataverse
+          {KPI_FETCH_ERROR ? <> ({KPI_FETCH_ERROR})</> : <> (or this is running under plain
+          `npm run dev`, which has no Dataverse connection at all)</>}. Open this app from its
+          Power Apps play URL to pick real KPIs.</div>}
         <PickList opts={kpiOpts} label="KPIs" onPick={v=>addItem({type:'KPI', kpi:v})}
           empty="No KPI matches this scope."/>
       </>}
 
-      {picking==='Process' &&
+      {picking==='Process' && <>
+        {!PROCESSES_LIVE && <div className="holder" style={{marginBottom:6,color:'var(--amber)'}}>
+          ⚠ Showing built-in sample Processes — strategy_processes could not be read from Dataverse
+          {PROCESS_FETCH_ERROR ? <> ({PROCESS_FETCH_ERROR})</> : <> (or this is running under plain
+          `npm run dev`, which has no Dataverse connection at all)</>}. Open this app from its
+          Power Apps play URL to pick real Processes.</div>}
         <PickList opts={processOpts} label="Processes" onPick={v=>addItem({type:'Process', process:v})}
-          empty="No Process matches this scope."/>}
+          empty="No Process matches this scope."/>
+      </>}
 
       {picking==='Child Template' &&
         <PickList opts={childOpts.map(t=>t.name)} label="Report Templates"
@@ -4139,10 +4154,11 @@ function App({onSwitch}){
         if(procs&&procs.length){
           PROCESS_ID_BY_NAME={}; PROCESS_DEPT_BY_NAME={};
           procs.forEach(p=>{ PROCESS_ID_BY_NAME[p.name]=p.id; PROCESS_DEPT_BY_NAME[p.name]=p.dept??null; });
-          PROCESSES=procs.map(p=>p.name); changed=true;
+          PROCESSES=procs.map(p=>p.name); PROCESSES_LIVE=true; PROCESS_FETCH_ERROR=null; changed=true;
         }
       }catch(e){
         console.warn('[dataverse] fetchProcesses() failed, using built-in list:', e);
+        PROCESS_FETCH_ERROR=e?.message||String(e); changed=true;
       }
       try{
         const kpis=await fetchKpis();
@@ -4150,10 +4166,11 @@ function App({onSwitch}){
         if(kpis&&kpis.length){
           KPI_ID_BY_NAME={}; KPI_DEPT_BY_NAME={};
           kpis.forEach(k=>{ KPI_ID_BY_NAME[k.name]=k.id; KPI_DEPT_BY_NAME[k.name]=k.dept??null; });
-          KPIS=kpis.map(k=>k.name); KPIS_LIVE=true; changed=true;
+          KPIS=kpis.map(k=>k.name); KPIS_LIVE=true; KPI_FETCH_ERROR=null; changed=true;
         }
       }catch(e){
         console.warn('[dataverse] fetchKpis() failed, using built-in list:', e);
+        KPI_FETCH_ERROR=e?.message||String(e); changed=true;
       }
       try{
         const secs=await fetchSections();

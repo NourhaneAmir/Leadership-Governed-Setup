@@ -1922,6 +1922,51 @@ pointed at the existing `window.__xenvSmokeTest()` diagnostic (already
 built into `xenv.js`, documented there) to get a definitive verdict plus
 the real underlying error — **not yet run, result still pending.**
 
+**17. Found and fixed the actual reason item 16's real error was invisible
+— it was Process too, not just KPI, and both were being swallowed before
+they ever reached a `catch` block.** The user reported the KPI warning
+still showing after the item-16 rebuild+push, and that Processes were
+"still not working" either — with no error banner for Process at all,
+because none existed. Reading `fetchKpis()`/`fetchProcesses()` in
+`dataverse.js` found the real bug: every `fetch*` function in that file
+resolves a failed `getAll()` with `res?.data ?? []` instead of checking
+`res.success` first. A denied/failed read comes back indistinguishable
+from "the table is genuinely empty" — no exception, so the `try/catch`
+around each fetch in `GovernanceApp.jsx`'s loader `useEffect` never fires,
+and not even `console.warn` ever ran. This is why item 16's theory could
+never be confirmed from the app itself: the real Dataverse error text was
+being thrown away three layers before it could reach a banner or the
+console.
+
+Fixed narrowly (only the two tables actually reported broken, not all 15+
+`fetch*` functions — no evidence the others are affected, and widening the
+change risks new breakage for no confirmed benefit): added `rowsOrThrow()`
+next to the existing `idOrThrow()`/`assertSuccess()` helpers in
+`dataverse.js` — same pattern, but for reads — and switched `fetchKpis()`
+and `fetchProcesses()` to it. A failed read now throws with Dataverse's own
+error message. `GovernanceApp.jsx` now catches that, stores it in new
+module-level `KPI_FETCH_ERROR`/`PROCESS_FETCH_ERROR` (alongside the
+existing `KPIS_LIVE`, plus a new matching `PROCESSES_LIVE`), and both the
+KPI picker banner and a newly-added Process picker banner (there was none
+before) print the real error text inline instead of a generic "maybe this
+is npm run dev" guess. Both apps rebuilt and re-pushed to Code App
+Development (`786c1b14…` Governance, `d61c6237…` Leadership) with this fix.
+
+**Next step is now trivial and unambiguous**: open the picker in the
+deployed app and read whatever the banner says. If it's a 403/permission
+message, item 16's theory is confirmed and the fix is a Dataverse security
+role grant on `strategy_kpises`/`strategy_processes` in DT New (see §9). If
+it's something else (bad column, wrong entity set), the message will say
+so directly. `window.__xenvSmokeTest()` is no longer the only way to get a
+real error out of this app — it was only ever needed because the fetch
+helpers below it were swallowing errors too.
+
+⚠️ **If any other picker/list in the app ever shows an unexplained empty or
+stale-looking result with nothing in the console, suspect this same
+`res?.data ?? []` pattern first** — every other `fetch*` in `dataverse.js`
+still has it; only the two above were converted, and only because they were
+the ones actually reported broken.
+
 ---
 
 ## 6. Schema facts that are expensive to rediscover
