@@ -5,7 +5,7 @@
 > updated 04 Sep 2026, updated 05 Sep 2026, updated 06 Sep 2026,
 > updated 07 Sep 2026 (twice), updated 08 Sep 2026, updated 12 Sep 2026
 > (covering 09-12 Sep), updated 13 Sep 2026, updated 14 Sep 2026,
-> updated 16 Sep 2026, updated 17 Sep 2026 (twice), against branch `leadership-practice`.
+> updated 16 Sep 2026, updated 17 Sep 2026 (three times), against branch `leadership-practice`.
 >
 > This file records **decisions, hard-won schema facts and open questions** —
 > the things that are expensive to rediscover. It is not a substitute for the
@@ -97,6 +97,7 @@ The BRD **contradicts itself** in three places, and the code picked a side:
 | Meeting Occurrences — create, edit, **cancel**, **reschedule**, mark Held, **Agenda add/remove/reorder/record-distribution**, attendance | ✅ live (Attendance/Held/Edit from an earlier session; Cancel/Reschedule/Agenda edit **this session**) |
 | Report Occurrences — create (Template **and** Custom), file URL, review chain (submit / approve / RMI) + history | ⚠️ **built, but disconnected from the nav as of 02 Sep** — `NewReportModal`/`DvReportDetail`/`dvReportOccs` still exist and still work end to end against `lm_reportoccurrences`, but nothing currently opens them (see the row below and §5's 02 Sep entry) |
 | **Meeting Minutes tab** (nav screen) — reads `lm_meetingminuteses` directly | ✅ **live** (01 Sep — the write path itself, `DvMinutesBody`, was already live from an earlier session; only the top-level list screen was still seeded until now) |
+| **Build a report/plan tab** (Artifact group, `ScreenBuildReport`) | ✅ **live, read + write** (17 Sep) — opens a Draft or Returned, unlocked `lm_reportoccurrences` row; edits its title, Sections and Citations; saves only what changed; submits it for review. ⚠️ Not yet exercised against real Dataverse — see §9. |
 | **Reports / Plans tab** (Artifact group, `ScreenOrgReports`) | ✅ **live** (17 Sep) — reads `lm_reportoccurrences`, `lm_reportoccurrencesections` and `lm_reportsectioncitations`. See §5. |
 | **Reports & Plans composer** (hidden `rpt` screen, not the visible tab above) | 🔴 **reverted from live to seeded, on purpose, 02 Sep** — was reading `lm_reportoccurrences` directly as of 01 Sep; rebuilt this session as the citation-based composer from `prototype.html` (sections that cite live KPIs/tactics/PM entries/issues/tasks/other reports), which has no Dataverse equivalent yet, so it now runs on seeded `db.reports`/`db.paragraphs`/`db.templates` instead. This was an explicit product-owner instruction, not a regression found by accident — see §5. |
 | Authority Matrix + Approval Cycles | ✅ live, read-only by design (`AuthorityMatrixPanel`, embedded in Governance Settings) |
@@ -105,7 +106,7 @@ The BRD **contradicts itself** in three places, and the code picked a side:
 | **Decisions register** | 🟡 **partially live** (this session) — `wlog_decisions` read + minimal create wired as its own list on the Decisions tab, alongside (not replacing) the existing seeded Decision workflow. Not yet linked to the Meeting Agenda Item or Report that raised it — deferred by explicit instruction, see §5/§6/§7. |
 | **Committee Scores (nav screen)** | ✅ **live** (01 Sep) — `ScreenGrid` now reads `fetchAuditGridInstances()` joined against `dvMeetingOccs`, instead of seeded `db.grids`. See §5 for the join details and the Approved-only Coverage/Score rule. |
 | **Setup Activity trail** — the Activity tab on a Report/Meeting Setup | ✅ **live** (10 Sep) — `lm_setupactivity` is written on create, edit, publish, approve and expire, and the tab reads the real rows back for any Setup that has a `_dataverseId`. A Setup that has never been saved still shows the seeded sample trail. |
-| **Artifact group** — Business intelligence, Reports / Plans, Reporting hierarchy | 🟡 **mixed** (11 Sep) — all three run on the app's own data rather than the prototype's parallel seed model, but that data is itself seeded: BI reports from `BI_REPORTS`, reports from `db.reports`, hierarchy edges derived from real `RPT:` paragraph citations. The Power BI report itself **cannot be embedded** — see §8. |
+| **Artifact group** — Business intelligence, Reporting hierarchy | 🟡 **mixed** (11 Sep) — both run on the app's own data rather than the prototype's parallel seed model, but that data is itself seeded: BI reports from `BI_REPORTS`, hierarchy edges derived from seeded `RPT:` paragraph citations. (Reports / Plans and Build a report/plan, in the same group, are live since 17 Sep — rows above.) The Power BI report itself **cannot be embedded** — see §8. |
 | **How every table is reached** | 🟡 **changed 16 Sep** — all 42 tables now go through `dvTable()` in `src/services/xenv.js`, which calls the Dataverse connector against `DATA_ORG` (currently DT New). The generated per-table services are no longer imported anywhere. Behaviour is identical while an app is hosted in DT New; the point is that it stays identical when it is not. Creates supply their own primary key since 17 Sep, so a new row's id no longer depends on the response — see §6. |
 | Tasks, Comments, Governance Settings (persisted values) | ❌ **seeded demo data only** |
 | **Meeting Setup "Completion Periods"** (MOM Write-up / MOM Approval / Audit Grid Completion-Submission, each an hours field) | ✅ **live** (15 Sep) — three plain columns on `lm_meetingtemplates` (`lm_momwriteuphours`, `lm_momapprovalhours`, `lm_gridsubmithours`), written/read alongside `quorum`/`torLink` in `dataverse.js` and `GovernanceApp.jsx`. **Persistence only — not yet consumed.** AG-16/AG-05 scoring still reads the global `DEFAULT_SETTINGS` values (§9), not this per-Setup one; the UI says so. |
@@ -1498,22 +1499,33 @@ field is left out of the request:
 `if(empty(<id>), null, concat('/<entity set>(', <id>, ')'))`. If a connector
 version rejects `null` in a lookup, `''` is the fallback.
 
-⚠️ **The flow plan names three entity sets wrongly**, and they fail even with
-a valid id:
+⚠️ **The flow plan named six things wrongly**, and each fails even with a valid
+id. Found three at first; a later run failed with `ODataUnrecognizedPathException
+… segment 'lm_reportoccurrencesections'`, and checking **every** bind path and id
+field in the plan against `power.config.json` and the schemas found the rest:
 
-| Lookup | Plan says | Correct |
+| Where | Plan said | Correct |
 |---|---|---|
-| `lm_KPI` | `/lm_kpis(…)` | **`/strategy_kpises(…)`** |
-| `lm_Process` | `/lm_processes(…)` | **`/strategy_processes(…)`** |
-| `lm_CitedSection` | `/lm_reportoccurrencesections(…)` | **`/lm_reportoccurrencesectionses(…)`** |
+| Citation → `lm_KPI` | `/lm_kpis(…)` | **`/strategy_kpises(…)`** |
+| Citation → `lm_Process` | `/lm_processes(…)` | **`/strategy_processes(…)`** |
+| Citation → `lm_CitedSection` | `/lm_reportoccurrencesections(…)` | **`/lm_reportoccurrencesectionses(…)`** |
+| New section's id, read from `NewSec` | `body/lm_reportoccurrencesectionid` | **`body/lm_reportoccurrencesectionsid`** |
+| Occurrence → `lm_CreatorPosition` | `/positions(…)` | **`/cr603_organizationstructures(…)`** |
+| Occurrence, Region branch → `lm_Region` | `/lm_regions(…)` | **`/crd04_regionses(…)`** |
+
+Everything else in the plan was confirmed correct: `businessunits`,
+`cr603_chklst_departmentses`, `hr_functions`, `lm_report_templates`,
+`lm_reportoccurrences`, `lm_reporttemplatecontentchecklists`, `lm_reportoccurrenceid`.
 
 The first two are confirmed by the app's own working writes (`dataverse.js`
 binds `strategy_kpises` / `strategy_processes`), the third by `power.config.json`.
-**`REPORT-OCCURRENCE-FLOW-PLAN.md` and its artifact still carry the wrong names** —
-see §9. The run that surfaced this also had **Cited Section empty**, which is not
-an optional field: it means the step that creates the section isn't named
-exactly `NewSec`. Silencing it with a Compose would save citations attached to no
-section.
+**`REPORT-OCCURRENCE-FLOW-PLAN.md` is corrected** — all six, with a note at the top
+listing them and the empty-lookup Compose pattern. **Its artifact is not** — see §9.
+The run that surfaced this also had **Cited Section empty**. That was first put
+down to the section step not being named `NewSec`; **that was wrong**. The cause
+is the id field above: the plan read `lm_reportoccurrencesectionid`, which does
+not exist, so the value was always empty whatever the step was called. Silencing
+it with a Compose would have saved citations attached to no section.
 
 **4. All 42 adapter table names checked against real entity sets.** A generated
 service's `dataSourceName` is the entity set name, and 41 of 42 appear in
@@ -1554,6 +1566,78 @@ each change above. Governance's push then failed **13 times in a row** on
 The two staging folders were identical in size, file count and config, so the
 problem was service-side and specific to that app. A background loop retrying
 once a minute got it through a few minutes later. See §8.
+
+### This session (17 Sep, continued again): Build a report/plan, on live data
+
+Ported from the Build screen of `Leadership Practice Extension.html` into the
+Leadership app as `src/modules/leadership/screens/BuildReport.jsx`, nav entry
+`build` in the **Artifact** group (above Reports / Plans).
+
+**One deliberate difference from the prototype.** The prototype builds a report
+from nothing. Here the weekly generator already creates each occurrence, so the
+screen **opens an existing one that is still editable** — status **Draft or
+Returned** and not `lm_locked` — picked from a selector at the top, or opened
+with **Edit this report** from Reports / Plans (same rule).
+
+**Same shape as the prototype otherwise:**
+- **Edit / Preview tabs.**
+- **Scope.** The report's Business Unit, period and creator are read-only. A
+  **Department** filter narrows the KPI and Process picker and is not saved.
+- **Title**, written to `lm_name`.
+- **Insert the template's sections as starting rows.** Offered **only while the
+  report has no sections**, so it cannot duplicate. It uses
+  `fetchReportTemplateDetail()` and brings each template section's KPI /
+  Breakdown / Process items across as citations.
+- **Sections**: heading, the five diagnostic angles, text (4000, with a counter
+  near the limit), move up / down, remove.
+- **Citations** in two groups:
+  - linked to real records: **KPI**, **Breakdown** (KPI + dimension),
+    **Process**, **Child Report** (another occurrence);
+  - saved as a named label only: **POC, Project, Strategy, BI Report, Issue,
+    Task** — the 02 Sep text-only decision.
+- **Save draft**, and **Submit for review**. Submit saves unsaved changes first,
+  then calls the existing `submitReportOccurrence()` (status In Review, review
+  step 0, a history row). If the save failed, it does not submit.
+
+**Data layer (`dataverse.js`):**
+- **`fetchReportOccurrenceForEdit(id)`** returns one report's Sections in order,
+  with their Citations, in raw form. Citations are read in chunks of 15 section
+  ids, because a long OR filter makes a URL the service rejects.
+- **`saveReportOccurrenceContent(id, {name, before, after})`** writes only what
+  changed, matching rows by id. No id means new; missing from `after` means
+  removed. Existing citations are only ever **added or removed**, never edited.
+- **Write order is deliberate:** a removed section's citations are deleted
+  **before** the section, and a new section is created **before** the citations
+  that bind to it. One failed row is recorded and the rest carries on; the screen
+  then reloads, so what it shows is what actually saved.
+
+**Styles.** No prototype-only CSS was used: `.rta`, `.cmtbox`, `.acts`, `.fgrid`
+and `.chip` don't exist in this app. The section stack reuses the seeded
+composer's real `.sec` / `.dg-seg` / `.cpick` / `.cite` rules. New CSS is only
+`.bld-grid`, `.bld-fld`, `.bld-foot` and `.bld-prev`. `BuildReport.jsx` was added
+to `scripts/undef-scan.py`'s file list.
+
+**Verified by running the real `saveReportOccurrenceContent` in Node against
+recording mock tables** — 16 checks, all passing. One save covering rename,
+reorder, edit, add and remove produced exactly the expected writes, in the
+integrity-safe order above:
+- the kept citation was neither deleted nor recreated;
+- every bind used the corrected entity sets;
+- no empty `/<set>()` bind was sent;
+- a new section was `lm_source` **2** (Added) and bound to its occurrence;
+- an unchanged report wrote nothing;
+- text over 4000 was reported, not sent.
+
+**Not included, on purpose:**
+- **Paragraph citations.** `lm_citedsection` already holds the citation's own
+  parent, so there is no column left for a cited section.
+- **A template's child-*template* items** come across as labels. There is no
+  occurrence to link until someone picks one.
+- **The prototype's Audience / Also-share-with fields.** `lm_reportoccurrenceshare`'s
+  columns were never inspected, so they would have saved nothing.
+
+**Deploys.** Both apps rebuilt and pushed to Code App Development, each on the
+first attempt: Governance `4912152c…`, Leadership `83db0ef8…`.
 
 ---
 
@@ -1969,7 +2053,7 @@ the entity set (`/lm_reportoccurrencesectionses(…)`).
 `lm_reportoccurrencesections` — key `lm_reportoccurrencesectionsid`;
 `lm_heading` (850), `lm_body` (4000), `lm_diagnosticangle` (1 Untyped …
 5 Prescriptive, same codes as the Template side), `lm_sequence`, `lm_source`
-(Migrated from Template / Added), `lm_reportoccurrence` → the report,
+(**1** Migrated from Template, **2** Added — the flow writes 1, Build a report/plan writes 2), `lm_reportoccurrence` → the report,
 `lm_sourcesectionchecklistitem` → the Template section it came from.
 
 `lm_reportsectioncitations` — key `lm_reportsectioncitationsid`; `lm_name` (the
@@ -2634,11 +2718,22 @@ quorum definition, Decision↔Meeting/Report linking (§7.7, deferred on purpose
       publish, approve at once, then check DT New → `lm_meetingtemplates` →
       Data: **one** row, status Active / Approved. The timing fixes are verified
       only against a simulated Dataverse (§5).
-- [ ] **Correct the entity set names in `REPORT-OCCURRENCE-FLOW-PLAN.md` and the
-      Report Occurrence Generator artifact** — `strategy_kpises`,
-      `strategy_processes`, `lm_reportoccurrencesectionses` — and add the
-      empty-lookup Compose pattern (§5). Anyone building from the plan hits
-      `BadRequest`.
+- [x] ~~Correct the names in `REPORT-OCCURRENCE-FLOW-PLAN.md`~~ — done 17 Sep, all
+      six (§5), with the empty-lookup Compose pattern noted at the top.
+- [ ] **Correct the same six in the Report Occurrence Generator artifact**
+      (`db1d9a44-8e51…`). Anyone building from the artifact rather than the `.md`
+      still hits `BadRequest` / `ODataUnrecognizedPathException`.
+- [ ] **Run one real Save draft in Build a report/plan** (17 Sep). The save diff is
+      verified against mocks only. The first real save is also the first proof
+      that `@odata.bind` lookups are accepted on creates through
+      `CreateRecordWithOrganization` — which the rest of the app's child-row
+      saves depend on too. Add a section with a KPI citation, save, then check
+      DT New → `lm_reportoccurrencesections` and `lm_reportsectioncitations`.
+- [ ] **Submit for review from Build, then confirm** the report shows In Review
+      and a `lm_reportoccurrencehistories` row exists.
+- [ ] **Paragraph citations and report sharing** are not supported in Build (§5):
+      the first needs a target-section column on `lm_reportsectioncitations`, the
+      second needs `lm_reportoccurrenceshare`'s columns inspected.
 - [ ] **Reporting hierarchy is still seeded.** It derives parent/child from seeded
       `RPT:` paragraph citations; the live equivalent is `lm_reportsectioncitations`
       of kind Child Report with `lm_CitedReportOccurrence` set.
