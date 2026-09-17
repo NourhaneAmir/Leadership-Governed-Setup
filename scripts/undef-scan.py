@@ -20,6 +20,7 @@ FILES = [
     r'modules\leadership\screens\BusinessIntelligence.jsx',
     r'modules\leadership\screens\OrgReports.jsx',
     r'modules\leadership\screens\Hierarchy.jsx',
+    r'modules\leadership\screens\BuildReport.jsx',
     r'shared\ui.jsx',
     r'shared\format.js',
 ]

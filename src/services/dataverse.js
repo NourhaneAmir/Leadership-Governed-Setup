@@ -2247,6 +2247,192 @@ export async function fetchReportOccurrenceContent(){
   return { sections, citations };
 }
 
+/* =========================================================================
+   Build a report/plan -- editing one Report Occurrence's content.
+   ========================================================================= */
+
+/* lm_source on a Section: 1 Migrated (from Template), 2 Added (this occurrence
+   only). A Section created by the Build screen is always Added. */
+const SECTION_SOURCE_ADDED = 2;
+
+export const REPORT_CITATION_KIND_KEY = Object.fromEntries(
+  Object.entries(REPORT_CITATION_KIND).map(([code, label]) => [label, Number(code)]));
+
+const EDIT_SECTION_SELECT = ['lm_reportoccurrencesectionsid','lm_heading','lm_body','lm_diagnosticangle',
+  'lm_sequence','lm_source','_lm_reportoccurrence_value','_createdby_value','createdon'];
+const EDIT_CITATION_SELECT = ['lm_reportsectioncitationsid','lm_name','lm_kind','lm_breakdowndimension',
+  '_lm_citedsection_value','_lm_kpi_value','_lm_process_value','_lm_citedreportoccurrence_value'];
+
+/**
+ * One Report Occurrence's Sections, in order, each carrying its Citations --
+ * in RAW form (an empty heading stays empty), because this feeds an editor
+ * whose changes are diffed against it on save.
+ *
+ * Citations are found through lm_citedsection, the parent-section convention
+ * the Report Occurrence flow writes (see fetchReportOccurrenceContent). They
+ * are read in chunks, because a long OR filter over many section ids becomes a
+ * URL the service will not accept.
+ */
+export async function fetchReportOccurrenceForEdit(occurrenceId){
+  const secRes = await Lm_reportoccurrencesectionsesService.getAll({
+    filter: `_lm_reportoccurrence_value eq ${occurrenceId}`,
+    select: EDIT_SECTION_SELECT,
+  });
+  assertSuccess(secRes);
+  const secRows = secRes.data ?? [];
+
+  const citeRows = [];
+  const ids = secRows.map(s => s.lm_reportoccurrencesectionsid);
+  for(let i = 0; i < ids.length; i += 15){
+    const chunk = ids.slice(i, i + 15);
+    const res = await Lm_reportsectioncitationsesService.getAll({
+      filter: chunk.map(id => `_lm_citedsection_value eq ${id}`).join(' or '),
+      select: EDIT_CITATION_SELECT,
+    });
+    assertSuccess(res);
+    citeRows.push(...(res.data ?? []));
+  }
+
+  const citesBySection = {};
+  for(const c of citeRows){
+    const sid = c._lm_citedsection_value; if(!sid) continue;
+    (citesBySection[sid] = citesBySection[sid] || []).push({
+      id: c.lm_reportsectioncitationsid,
+      kind: REPORT_CITATION_KIND[c.lm_kind] || c['lm_kind' + FV] || 'Citation',
+      label: c.lm_name || '',
+      breakdown: SECTION_BREAKDOWN_DIM[c.lm_breakdowndimension] || null,
+      kpiId: c._lm_kpi_value || null,
+      kpiName: c['_lm_kpi_value' + FV] || null,
+      processId: c._lm_process_value || null,
+      processName: c['_lm_process_value' + FV] || null,
+      citedReportId: c._lm_citedreportoccurrence_value || null,
+      citedReportName: c['_lm_citedreportoccurrence_value' + FV] || null,
+    });
+  }
+
+  return secRows
+    .map(s => ({
+      id: s.lm_reportoccurrencesectionsid,
+      heading: s.lm_heading || '',
+      body: s.lm_body || '',
+      angle: SECTION_ANGLE[s.lm_diagnosticangle] || 'Untyped',
+      sequence: s.lm_sequence ?? null,
+      source: s['lm_source' + FV] || null,
+      author: s['_createdby_value' + FV] || null,
+      created: s.createdon || null,
+      citations: citesBySection[s.lm_reportoccurrencesectionsid] || [],
+    }))
+    .sort((a, b) => (a.sequence ?? 1e9) - (b.sequence ?? 1e9)
+                 || String(a.created).localeCompare(String(b.created)));
+}
+
+/* One lm_reportsectioncitations row. Lookups are bound only when they have a
+   value -- an empty bind path is a 400 (see PROJECT-CONTEXT section 5, 17 Sep). */
+function reportCitationRow(c, sectionId){
+  const row = {
+    lm_name: capped(c.label, 850, 'Citation label'),
+    lm_kind: REPORT_CITATION_KIND_KEY[c.kind] ?? null,
+    'lm_CitedSection@odata.bind': `/lm_reportoccurrencesectionses(${sectionId})`,
+  };
+  if(c.kpiId)         row['lm_KPI@odata.bind'] = `/strategy_kpises(${c.kpiId})`;
+  if(c.processId)     row['lm_Process@odata.bind'] = `/strategy_processes(${c.processId})`;
+  if(c.citedReportId) row['lm_CitedReportOccurrence@odata.bind'] = `/lm_reportoccurrences(${c.citedReportId})`;
+  if(c.breakdown && SECTION_BREAKDOWN_DIM_KEY[c.breakdown])
+    row.lm_breakdowndimension = SECTION_BREAKDOWN_DIM_KEY[c.breakdown];
+  return row;
+}
+
+/**
+ * Writes an edited report back, changing only what changed.
+ *
+ * @param {string} occurrenceId
+ * @param {object} p
+ * @param {string} [p.name]  the new title -- pass only when it changed
+ * @param {Array}  p.before  exactly what fetchReportOccurrenceForEdit returned
+ * @param {Array}  p.after   the edited copy, in the order to save
+ * @returns {Promise<{errors:{table:string,error:any,what?:string}[]}>}
+ *
+ * Order matters for integrity: removed sections lose their citations first,
+ * then the section; each kept or new section is written before the citations
+ * that bind to it. A failure is recorded and the rest carries on, so one bad
+ * row does not strand every other change -- the caller reloads afterwards and
+ * shows what actually landed.
+ */
+export async function saveReportOccurrenceContent(occurrenceId, { name, before = [], after = [] } = {}){
+  const errors = [];
+  const fail = (table, error, what) => errors.push({ table, error, what });
+
+  if(name !== undefined){
+    try{
+      const r = await Lm_reportoccurrencesService.update(occurrenceId,
+        { lm_name: capped(name, 850, 'Title') || '(untitled report)' });
+      assertSuccess(r);
+    }catch(e){ fail('lm_reportoccurrences', e, 'title'); }
+  }
+
+  const beforeById = new Map(before.map(s => [s.id, s]));
+  const keptIds = new Set(after.map(s => s.id).filter(Boolean));
+
+  for(const s of before){
+    if(keptIds.has(s.id)) continue;
+    for(const c of s.citations || []){
+      try{ await Lm_reportsectioncitationsesService.delete(c.id); }
+      catch(e){ fail('lm_reportsectioncitations', e, `citation on removed section "${s.heading}"`); }
+    }
+    try{ await Lm_reportoccurrencesectionsesService.delete(s.id); }
+    catch(e){ fail('lm_reportoccurrencesections', e, `removing section "${s.heading}"`); }
+  }
+
+  for(let i = 0; i < after.length; i++){
+    const s = after[i];
+    const seq = i + 1;
+    let fields;
+    try{
+      fields = {
+        lm_heading: capped(s.heading, 850, 'Section heading'),
+        lm_body: capped(s.body, 4000, 'Section text'),
+        lm_diagnosticangle: SECTION_ANGLE_KEY[s.angle] ?? SECTION_ANGLE_KEY.Untyped,
+        lm_sequence: seq,
+      };
+    }catch(e){ fail('lm_reportoccurrencesections', e, `section ${seq}`); continue; }
+
+    let sectionId = s.id;
+    const was = sectionId ? beforeById.get(sectionId) : null;
+    if(!sectionId){
+      try{
+        const created = await Lm_reportoccurrencesectionsesService.create({
+          ...fields,
+          lm_source: SECTION_SOURCE_ADDED,
+          'lm_ReportOccurrence@odata.bind': `/lm_reportoccurrences(${occurrenceId})`,
+        });
+        sectionId = idOrThrow(created, 'lm_reportoccurrencesectionsid');
+      }catch(e){ fail('lm_reportoccurrencesections', e, `adding section ${seq}`); continue; }
+    }else if(!was || was.heading !== s.heading || was.body !== s.body
+                  || was.angle !== s.angle || was.sequence !== seq){
+      try{
+        const r = await Lm_reportoccurrencesectionsesService.update(sectionId, fields);
+        assertSuccess(r);
+      }catch(e){ fail('lm_reportoccurrencesections', e, `section ${seq}`); }
+    }
+
+    const nowIds = new Set((s.citations || []).map(c => c.id).filter(Boolean));
+    for(const c of (was?.citations || [])){
+      if(nowIds.has(c.id)) continue;
+      try{ await Lm_reportsectioncitationsesService.delete(c.id); }
+      catch(e){ fail('lm_reportsectioncitations', e, `removing a citation from section ${seq}`); }
+    }
+    for(const c of (s.citations || [])){
+      if(c.id) continue;
+      try{
+        const created = await Lm_reportsectioncitationsesService.create(reportCitationRow(c, sectionId));
+        idOrThrow(created, 'lm_reportsectioncitationsid');
+      }catch(e){ fail('lm_reportsectioncitations', e, `citing "${c.label}" in section ${seq}`); }
+    }
+  }
+
+  return { errors };
+}
+
 /** Every Meeting Occurrence created from one Meeting Template -- filtered
  *  server-side, and far lighter than fetchMeetingOccurrences() (no agenda or
  *  attendee child rows), since this only needs to answer "is this Template

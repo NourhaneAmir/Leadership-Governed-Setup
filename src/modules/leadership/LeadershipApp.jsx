@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { ArrowUpRight, BarChart3, CalendarDays, CheckSquare, ClipboardCheck, ClipboardList,
-         Gauge, Layers, LineChart, Menu, Network, UsersRound, X } from 'lucide-react';
+         Gauge, Layers, LineChart, Menu, Network, PenLine, UsersRound, X } from 'lucide-react';
 /* Dates, the working calendar and number formatting now live in src/shared so
    a screen lifted out of this file keeps working without it. */
 import { ymd, TODAY, PERIOD, HOLIDAYS, isNonWorking, isWeekend,
@@ -14,6 +14,7 @@ import { Ctx, use } from './store.jsx';
 import { ScreenBI } from './screens/BusinessIntelligence.jsx';
 import { ScreenOrgReports } from './screens/OrgReports.jsx';
 import { ScreenHierarchy } from './screens/Hierarchy.jsx';
+import { ScreenBuildReport } from './screens/BuildReport.jsx';
 import { PEOPLE, P, RPT_SETUPS, RS, DIAG, DiagChip, PROC_REG, PR, BI_REPORTS, BIR, KPI_CAT, KPIC, findKpi, bdDims, achFor, achPct, achCls, CITE_KINDS, citeKind, citeId, citeCls, canSeeReport, rptCfg, rptTagC, matchesQuery, CiteCard,
   STRAT, ST, PM_ENTRIES, PME, ISSUES, ISS, rptName } from './domain.jsx';
 import { Tag, Btn, Note, OD, Bar, Field, Empty, Stat, KVBlock, Rail,
@@ -1375,6 +1376,9 @@ const SCREENS = [
   {id:'dec',  group:'Governance',    label:'Decisions',              Icon:CheckSquare,
    Screen:ScreenDecisions,
    hint:'The Decision register: every Decision and Decision Request whatever raised it.'},
+  {id:'build', group:'Artifact',     label:'Build a report/plan',    Icon:PenLine,        wide:true,
+   Screen:ScreenBuildReport,
+   hint:'Write a Draft or Returned report — sections, angles, citations — and submit it for review.'},
   {id:'orpt', group:'Artifact',      label:'Reports / Plans',        Icon:Layers,         wide:true,
    Screen:ScreenOrgReports,
    hint:'Organizational reports and plans, in and out, with their authors and citations.'},
@@ -2655,7 +2659,8 @@ function App({onSwitch}){
   const myPositionIds = currentUser?.fullName
     ? DV_POS_LIST.filter(p => p.holder && p.holder.toLowerCase() === currentUser.fullName.toLowerCase()).map(p => p.id)
     : [];
-  const dvLookup = { bu:dvBu, region:dvRegion, pos:dvPos, dept:dvDept, rptTpl:dvRptTpl, myPositionIds };
+  const dvLookup = { bu:dvBu, region:dvRegion, pos:dvPos, dept:dvDept, rptTpl:dvRptTpl, myPositionIds,
+                     deptList:DV_DEPT_LIST };
   const ctx = {db,setDb,mut,me,bu,setBu,businessUnits,navOpen,setNavOpen,currentUser,screen,go,openMeeting,openWork,sel,setSel,
                toast,toasts,reset,S,A,work,cal,counts,onSwitch,
                dvMeetingOccs,dvReportOccs,dvMinutes,dvGridInstances,dvDecisions,dvLoading,dvError,refreshOccurrences,

@@ -49,7 +49,7 @@ const fmtStamp = iso => (iso ? fmtD(String(iso).slice(0, 10)) : '—');
    a Position the signed-in user holds is "Issued by you"; anything else is
    "Received". That is the only authorship the table records. */
 export function ScreenOrgReports(){
-  const { dvReportOccs, dvLoading, dvError, dvLookup } = use();
+  const { dvReportOccs, dvLoading, dvError, dvLookup, go } = use();
   const L = dvLookup || {};
   const nm = (fn, id) => (id && typeof fn === 'function' ? fn(id) : null);
 
@@ -192,6 +192,10 @@ export function ScreenOrgReports(){
               <div className="ph-row" style={{ gap: 9, alignItems: 'baseline', flexWrap: 'wrap' }}>
                 <h2 style={{ flex: 1, minWidth: 0 }}>{rec.name}</h2>
                 <Tag c={rptTagC(rec.status)}>{rec.status}</Tag>
+                {/* the same rule Build a report/plan applies */}
+                {!rec.locked && (rec.status === 'Draft' || rec.status === 'Returned')
+                  ? <Btn k="sm pri" onClick={() => go('build', rec.id)}>Edit this report</Btn>
+                  : null}
               </div>
               <div className="csub">
                 {[scopeOf(rec), nm(L.pos, rec.creatorPositionId), fmtP(rec.period),
