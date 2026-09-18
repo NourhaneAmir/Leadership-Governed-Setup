@@ -25,6 +25,7 @@ import { fmtP } from '../../../shared/format.js';
 import { DiagChip, rptTagC, matchesQuery } from '../domain.jsx';
 import { fetchReportOccurrenceForEdit, saveReportOccurrenceContent, submitReportOccurrence,
          fetchReportTemplateDetail, fetchKpis, fetchProcesses,
+         fetchKpiAchievements, pickAchievement,
          SECTION_ANGLE, SECTION_BREAKDOWN_DIM } from '../../../services/dataverse.js';
 
 /* Dataverse angle labels, and the DiagChip / .dg-seg class each maps onto. */
@@ -69,6 +70,48 @@ const crefCls = kind =>
   : kind === 'POC' || kind === 'Project' || kind === 'Strategy' ? 'str'
   : kind === 'Issue' ? 'iss' : '';
 
+/* Baseline / Actual / Target for one cited KPI, for the month the report
+   covers and the scope it is written for.
+
+   The figures are shown, never edited: pm_kpiachievments is owned by
+   Performance Management, and a report cites what it says rather than
+   restating it. A KPI with no row for that period says so plainly -- a blank
+   panel would read as "zero".
+
+   Achievement is deliberately NOT computed here. Whether a higher actual is
+   better depends on the KPI's direction, which strategy_kpis carries but the
+   report does not read yet; showing a percentage without it would call a
+   falling infection rate a miss. Figures only, until the direction is wired. */
+function KpiFigures({ kpiId, rows, rec, L, nm }){
+  if (!kpiId) return null;
+  if (rows === null) return <div className="cite-m">Reading achievement…</div>;
+
+  const hit = pickAchievement(rows.filter(r => r.kpiId === kpiId), {
+    businessUnitId: rec?.businessUnitId || null,
+    departmentName: nm(L.dept, rec?.departmentId) || null,
+    functionName:   nm(L.func, rec?.functionId) || null,
+  });
+
+  if (!hit) return <div className="cite-m">
+    No achievement recorded for {fmtP(rec?.period)}
+    {nm(L.bu, rec?.businessUnitId) ? ' · ' + nm(L.bu, rec.businessUnitId) : ''}.</div>;
+
+  const fig = (label, v) => <span className="mono" style={{ fontSize: 11.5 }}>
+    {label} <b>{v == null ? '—' : v}</b></span>;
+
+  /* What the row was actually matched on, so a figure is never mistaken for one
+     recorded against a narrower scope than it really was. */
+  const on = [hit.businessUnitName, hit.department, hit.function].filter(Boolean).join(' · ');
+
+  return <div className="cite-hd" style={{ marginTop: 5, gap: 10, flexWrap: 'wrap' }}>
+    {fig('Baseline', hit.baseline)}
+    {fig('Actual', hit.actual)}
+    {fig('Target', hit.target)}
+    {hit.historical != null ? fig('Historical', hit.historical) : null}
+    <span className="dg none">{on || 'not scoped'} · {fmtP(rec?.period)}</span>
+  </div>;
+}
+
 export function ScreenBuildReport(){
   const { dvReportOccs, dvLoading, dvLookup, sel, setSel, refreshOccurrences, toast, go } = use();
   const L = dvLookup || {};
@@ -89,6 +132,7 @@ export function ScreenBuildReport(){
   const [reload, setReload]     = useState(0);
   const [catalog, setCatalog]   = useState({ kpis: null, processes: null });
   const [picker, setPicker]     = useState(null);       // { key, kind, q, kpiId, dim, text }
+  const [ach, setAch]           = useState(null);       // achievement rows, or null while reading
 
   /* The report being built follows the app's selection, so "Edit" elsewhere
      (and a Report link from any screen) can open one here. */
@@ -105,6 +149,33 @@ export function ScreenBuildReport(){
       .then(([kpis, processes]) => { if (live) setCatalog({ kpis, processes }); });
     return () => { live = false; };
   }, []);
+
+  /* Every KPI this report cites, from every section. A KPI cited twice is read
+     once. */
+  const citedKpiIds = useMemo(() => [...new Set(
+    sections.flatMap(s => (s.citations || [])
+      .filter(c => c.kind === 'KPI' || c.kind === 'Breakdown')
+      .map(c => c.kpiId).filter(Boolean)))].sort().join(','),
+    [sections]);
+
+  /* Achievement for the period this report covers. One read for all of its
+     KPIs, redone when the report or the set of cited KPIs changes -- not per
+     citation, which would be a round trip each. */
+  const period = rec?.period || null;
+  useEffect(() => {
+    const ids = citedKpiIds ? citedKpiIds.split(',') : [];
+    if (!ids.length || !period) { setAch([]); return; }
+    const [y, m] = String(period).split('-');
+    let live = true;
+    setAch(null);
+    fetchKpiAchievements(+y, { kpiIds: ids, month: +m })
+      .then(rows => { if (live) setAch(rows); })
+      .catch(e => {
+        console.warn('[dataverse] fetchKpiAchievements() failed:', e);
+        if (live) setAch([]);          // the panel says "not recorded", the report still edits
+      });
+    return () => { live = false; };
+  }, [citedKpiIds, period]);
 
   /* Load the selected report's content. */
   useEffect(() => {
@@ -445,6 +516,9 @@ function SectionEditor({ s, i, total, busy, patch, move, remove, uncite, cite, p
                 {!c.id ? <Tag c="amber">not saved</Tag> : null}
               </div>
               {c.label && c.label !== citeTarget(c) ? <div className="cite-m">{c.label}</div> : null}
+              {c.kind === 'KPI' || c.kind === 'Breakdown'
+                ? <KpiFigures kpiId={c.kpiId} rows={ach} rec={rec} L={L} nm={nm}/>
+                : null}
               <button type="button" className="cite-x" title="Remove this citation" disabled={busy}
                 onClick={() => uncite(s.key, c.key)}>×</button>
             </div>)

@@ -250,35 +250,162 @@ export async function fetchProcesses(){
  *
  *  stf_department/stf_function are PLAIN TEXT columns, not lookups, so they
  *  are matched client-side, case-insensitively, rather than filtered server
- *  side -- exact live casing isn't guaranteed. pm_month carries a label
- *  sibling (an option set) whose numeric codes are unconfirmed, so it is
- *  matched the same way, against its formatted value, rather than guessing a
- *  code. pm_year is a plain integer and IS filtered server-side.
+ *  side -- exact live casing isn't guaranteed. pm_year is a plain integer and
+ *  IS filtered server-side, as is pm_month when one is asked for.
  *
- *  ⚠️ _pm_kpi_value's target table is not confirmed (§6 -- over 40 tables in
- *  this org have "KPI" in the name). This matches it against strategy_kpises'
- *  id, the only live KPI table this app has; if that never matches a real
- *  row, the lookup binds to a different table and this needs re-checking
- *  against live data. */
-export async function fetchKpiAchievements(year){
+ *  Two things this comment used to flag as unknown are now confirmed from live
+ *  metadata, so neither is guessed at any more:
+ *    - pm_month runs 1..12 in calendar order (new_pm_kpiachievment_pm_month),
+ *      so a month can be filtered by code instead of matched against its label.
+ *    - _pm_kpi_value targets strategy_kpis (relationship pm_kpiachievment_kpi)
+ *      -- the same table this app's KPIs come from, so the join is sound.
+ *
+ *  Called two ways. With a year alone it returns that whole year, which is what
+ *  the Reports screen reads. With `only`, it narrows to particular KPIs and one
+ *  month -- one filtered read for a single report occurrence, instead of
+ *  pulling a year to use a month of it.
+ *
+ *  @param {number} year
+ *  @param {{kpiIds?:string[], month?:number}} [only]
+ */
+export async function fetchKpiAchievements(year, only = {}){
+  const ids = [...new Set((only.kpiIds || []).filter(Boolean))];
+  if(only.kpiIds && !ids.length) return [];      // asked for none, so none
+  const clauses = [`pm_year eq ${Number(year)}`];
+  if(only.month) clauses.push(`pm_month eq ${Number(only.month)}`);
+  /* `in` is not dependable through this connector, so a KPI set goes as an
+     or-chain. Left off entirely when no ids were asked for. */
+  if(ids.length) clauses.push('(' + ids.map(id => `_pm_kpi_value eq ${id}`).join(' or ') + ')');
   const res = await Pm_kpiachievmentsService.getAll({
-    select: ['pm_kpiachievmentid', '_pm_kpi_value', 'stf_department', 'stf_function',
-             'pm_month', 'pm_year', 'pm_actual', 'pm_target', 'pm_baseline'],
-    filter: `pm_year eq ${Number(year)}`,
+    select: ['pm_kpiachievmentid', '_pm_kpi_value', '_pm_businessunit_value',
+             'stf_department', 'stf_function',
+             'pm_month', 'pm_year', 'pm_actual', 'pm_target', 'pm_baseline', 'pm_historical'],
+    filter: clauses.join(' and '),
   });
   const rows = res?.data ?? [];
   return rows.map(r => ({
     id: r.pm_kpiachievmentid,
     kpiId: r._pm_kpi_value || null,
+    businessUnitId: r._pm_businessunit_value || null,
+    businessUnitName: r['_pm_businessunit_value' + FV] || null,
     department: r.stf_department || null,
     function: r.stf_function || null,
+    month: r.pm_month ?? null,
     monthLabel: r['pm_month' + FV] || null,
     year: r.pm_year ?? null,
     actual: r.pm_actual ?? null,
     target: r.pm_target ?? null,
     baseline: r.pm_baseline ?? null,
+    historical: r.pm_historical ?? null,
   }));
 }
+
+/** The one achievement row that best fits a scope, or null.
+ *
+ *  A row that names a Business Unit, Department or Function must match the one
+ *  the report is scoped to; a row that leaves it blank applies to any. Where
+ *  several survive, the one naming most of them wins, so a row recorded for a
+ *  specific Function beats a general one for the Department. */
+export function pickAchievement(rows, { businessUnitId, departmentName, functionName }){
+  const same = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+  const fits = r =>
+    (!r.businessUnitId || !businessUnitId || r.businessUnitId === businessUnitId) &&
+    (!r.department     || same(r.department, departmentName)) &&
+    (!r.function       || same(r.function, functionName));
+  const ranked = (rows || []).filter(fits).sort((a, b) =>
+    (!!b.function + !!b.department + !!b.businessUnitId) -
+    (!!a.function + !!a.department + !!a.businessUnitId));
+  return ranked[0] || null;
+}
+
+/* The fields of one Attendee row, whichever kind it is.
+
+   A Position attendee binds lm_AttendeePosition and leaves lm_attendeename to
+   the Position behind the lookup. A GROUP attendee has no Position at all: it
+   binds lm_MicrosoftGroup instead, sets lm_isgroup, and carries the group name
+   in lm_attendeename, since and_microsoftgroupmembers holds one row per
+   (group, member) pair and the bound row's own name is a person's.
+
+   lm_attendeetype is the Core/Supportive choice -- 1 Core, 2 Supportive, read
+   from live metadata. It is NOT always Core; the card offers both and the
+   quorum percentage counts only the Core ones. */
+const attendeeFields = a => a.groupRowId
+  ? { lm_attendeename: a.groupName || undefined,
+      lm_isgroup: true,
+      'lm_MicrosoftGroup@odata.bind': `/and_microsoftgroupmembers(${a.groupRowId})`,
+      lm_attendeetype: a.type || 1 }
+  : { 'lm_AttendeePosition@odata.bind': `/cr603_organizationstructures(${a.positionId})`,
+      lm_isgroup: false,
+      lm_attendeetype: a.type || 1 };
+
+/* One Attendee's identity within its unit, for the reconcile diff. A group and
+   a Position can never collide: the group key is prefixed. */
+const attendeeKey = a => a.groupRowId ? 'g:' + a.groupRowId
+                       : a.positionId ? 'p:' + a.positionId
+                       : null;
+const attendeeKeyOfRow = r => r._lm_microsoftgroup_value
+  ? 'g:' + r._lm_microsoftgroup_value
+  : r._lm_attendeeposition_value ? 'p:' + r._lm_attendeeposition_value : null;
+
+/* Columns every Attendee read needs -- the two kinds are told apart by
+   _lm_microsoftgroup_value, so leaving it out would read every group row back
+   as an attendee with no Position. */
+const ATTENDEE_SELECT = ['lm_meetingattendeeslistid', '_lm_attendeeposition_value',
+                         'lm_attendeetype', 'lm_isgroup', '_lm_microsoftgroup_value',
+                         'lm_attendeename'];
+
+// Same reasoning as the Report Template maps above: explicit, not
+// auto-matched, since Dataverse's labels differ slightly (trailing
+// spaces, "Online" vs "Virtual", non-sequential option codes, etc.).
+const MEETING_FREQUENCY_KEY = {
+  'Daily':1, 'Twice Weekly':2, 'Weekly':3, 'Twice Monthly':4, 'Monthly':5,
+  'Quarterly':6, 'Semesterly':7, 'Annually':8, 'Custom':9,
+};
+const MEETING_DAY_OF_WEEK_KEY = { 'Sunday':124330000, 'Monday':124330001, 'Tuesday':124330002, 'Wednesday':124330003, 'Thursday':124330004 };
+const MEETING_MONTH_IN_QUARTER_KEY = { '1st month':124330000, '2nd month':124330001, '3rd month':124330002 };
+/* Added 08 Sep with lm_seconddayoftheweek / lm_seconddayofthemonth /
+   lm_monthofthesemesterseme.
+
+   ⚠️ The second day of the week is 1..5, NOT 124330000-based like
+   lm_daysoftheweek directly above it. Two columns on the same table, holding
+   the same five weekdays, on two different scales -- so the two cannot share a
+   map, and anything reading them has to know which is which. The semester
+   month is likewise a plain 1..6, matching the Report table's
+   lm_monthofthesemester rather than the Meeting table's own quarter column. */
+const MEETING_SECOND_DAY_OF_WEEK_KEY = { 'Sunday':1, 'Monday':2, 'Tuesday':3, 'Wednesday':4, 'Thursday':5 };
+const MEETING_MONTH_IN_SEMESTER_KEY = { '1st month':1, '2nd month':2, '3rd month':3,
+                                        '4th month':4, '5th month':5, '6th month':6 };
+const MEETING_CONFIDENTIALITY_KEY = { 'Public':124330000, 'Internal':124330001, 'Confidential':124330002, 'High Confidential':124330003, 'Restricted':124330004 };
+const MEETING_MODE_KEY = { 'Physical':1, 'Virtual':2, 'Hybrid':3 };
+const MEETING_SETUP_TYPE_KEY = { 'Business Meeting':1, 'Accreditation Committee':2 };
+/** The governed Category list -- one row per (Stage, Classification, Category).
+ *  Reference data owned by the Taxonomy application: this module only reads it,
+ *  and a new Category is a row there, never a change here.
+ *
+ *  Inactive rows are left out so a retired Category stops being offered, while
+ *  Setups already pointing at one keep resolving it (nothing is hard-deleted).
+ *  lm_stage and lm_typeclassification are the same global option sets the
+ *  Meeting Template uses, so their codes need no translation between the two. */
+export async function fetchMeetingCategories(){
+  const res = await Lm_meetingcategoriesService.getAll({
+    select: ['lm_meetingcategoryid','lm_name','lm_stage','lm_typeclassification',
+             'lm_labelpattern','lm_regionchip','lm_requiresspecialty','lm_sortorder'],
+    filter: 'statecode eq 0',
+    orderby: 'lm_sortorder asc,lm_name asc',
+  });
+  return (res?.data ?? []).map(r => ({
+    id: r.lm_meetingcategoryid,
+    name: r.lm_name || '(unnamed)',
+    stageCode: r.lm_stage ?? null,
+    typeCode: r.lm_typeclassification ?? null,
+    labelPattern: r.lm_labelpattern || null,
+    regionChip: r.lm_regionchip || null,
+    requiresSpecialty: r.lm_requiresspecialty === true,
+    sortOrder: r.lm_sortorder ?? null,
+  }));
+}
+
+
 
 /** Sections / Specialties -- table cr301_specialtyksa_service_hubs.
  *  Links directly to Business Unit (cr301_BusinessUnit), not Department --
@@ -1301,94 +1428,6 @@ const Lm_meetingtemplatedepartmentfunctionsService = dvTable('lm_meetingtemplate
 const Lm_meetingtemplatelinkedreportsesService = dvTable('lm_meetingtemplatelinkedreportses', 'lm_meetingtemplatelinkedreportsid');
 const Lm_meetingattendeeslistsService = dvTable('lm_meetingattendeeslists', 'lm_meetingattendeeslistid');
 const Lm_meetingcategoriesService = dvTable('lm_meetingcategories', 'lm_meetingcategoryid');
-
-/* The fields of one Attendee row, whichever kind it is.
-
-   A Position attendee binds lm_AttendeePosition and leaves lm_attendeename to
-   the Position behind the lookup. A GROUP attendee has no Position at all: it
-   binds lm_MicrosoftGroup instead, sets lm_isgroup, and carries the group name
-   in lm_attendeename, since and_microsoftgroupmembers holds one row per
-   (group, member) pair and the bound row's own name is a person's.
-
-   lm_attendeetype is the Core/Supportive choice -- 1 Core, 2 Supportive, read
-   from live metadata. It is NOT always Core; the card offers both and the
-   quorum percentage counts only the Core ones. */
-const attendeeFields = a => a.groupRowId
-  ? { lm_attendeename: a.groupName || undefined,
-      lm_isgroup: true,
-      'lm_MicrosoftGroup@odata.bind': `/and_microsoftgroupmembers(${a.groupRowId})`,
-      lm_attendeetype: a.type || 1 }
-  : { 'lm_AttendeePosition@odata.bind': `/cr603_organizationstructures(${a.positionId})`,
-      lm_isgroup: false,
-      lm_attendeetype: a.type || 1 };
-
-/* One Attendee's identity within its unit, for the reconcile diff. A group and
-   a Position can never collide: the group key is prefixed. */
-const attendeeKey = a => a.groupRowId ? 'g:' + a.groupRowId
-                       : a.positionId ? 'p:' + a.positionId
-                       : null;
-const attendeeKeyOfRow = r => r._lm_microsoftgroup_value
-  ? 'g:' + r._lm_microsoftgroup_value
-  : r._lm_attendeeposition_value ? 'p:' + r._lm_attendeeposition_value : null;
-
-/* Columns every Attendee read needs -- the two kinds are told apart by
-   _lm_microsoftgroup_value, so leaving it out would read every group row back
-   as an attendee with no Position. */
-const ATTENDEE_SELECT = ['lm_meetingattendeeslistid', '_lm_attendeeposition_value',
-                         'lm_attendeetype', 'lm_isgroup', '_lm_microsoftgroup_value',
-                         'lm_attendeename'];
-
-// Same reasoning as the Report Template maps above: explicit, not
-// auto-matched, since Dataverse's labels differ slightly (trailing
-// spaces, "Online" vs "Virtual", non-sequential option codes, etc.).
-const MEETING_FREQUENCY_KEY = {
-  'Daily':1, 'Twice Weekly':2, 'Weekly':3, 'Twice Monthly':4, 'Monthly':5,
-  'Quarterly':6, 'Semesterly':7, 'Annually':8, 'Custom':9,
-};
-const MEETING_DAY_OF_WEEK_KEY = { 'Sunday':124330000, 'Monday':124330001, 'Tuesday':124330002, 'Wednesday':124330003, 'Thursday':124330004 };
-const MEETING_MONTH_IN_QUARTER_KEY = { '1st month':124330000, '2nd month':124330001, '3rd month':124330002 };
-/* Added 08 Sep with lm_seconddayoftheweek / lm_seconddayofthemonth /
-   lm_monthofthesemesterseme.
-
-   ⚠️ The second day of the week is 1..5, NOT 124330000-based like
-   lm_daysoftheweek directly above it. Two columns on the same table, holding
-   the same five weekdays, on two different scales -- so the two cannot share a
-   map, and anything reading them has to know which is which. The semester
-   month is likewise a plain 1..6, matching the Report table's
-   lm_monthofthesemester rather than the Meeting table's own quarter column. */
-const MEETING_SECOND_DAY_OF_WEEK_KEY = { 'Sunday':1, 'Monday':2, 'Tuesday':3, 'Wednesday':4, 'Thursday':5 };
-const MEETING_MONTH_IN_SEMESTER_KEY = { '1st month':1, '2nd month':2, '3rd month':3,
-                                        '4th month':4, '5th month':5, '6th month':6 };
-const MEETING_CONFIDENTIALITY_KEY = { 'Public':124330000, 'Internal':124330001, 'Confidential':124330002, 'High Confidential':124330003, 'Restricted':124330004 };
-const MEETING_MODE_KEY = { 'Physical':1, 'Virtual':2, 'Hybrid':3 };
-const MEETING_SETUP_TYPE_KEY = { 'Business Meeting':1, 'Accreditation Committee':2 };
-/** The governed Category list -- one row per (Stage, Classification, Category).
- *  Reference data owned by the Taxonomy application: this module only reads it,
- *  and a new Category is a row there, never a change here.
- *
- *  Inactive rows are left out so a retired Category stops being offered, while
- *  Setups already pointing at one keep resolving it (nothing is hard-deleted).
- *  lm_stage and lm_typeclassification are the same global option sets the
- *  Meeting Template uses, so their codes need no translation between the two. */
-export async function fetchMeetingCategories(){
-  const res = await Lm_meetingcategoriesService.getAll({
-    select: ['lm_meetingcategoryid','lm_name','lm_stage','lm_typeclassification',
-             'lm_labelpattern','lm_regionchip','lm_requiresspecialty','lm_sortorder'],
-    filter: 'statecode eq 0',
-    orderby: 'lm_sortorder asc,lm_name asc',
-  });
-  return (res?.data ?? []).map(r => ({
-    id: r.lm_meetingcategoryid,
-    name: r.lm_name || '(unnamed)',
-    stageCode: r.lm_stage ?? null,
-    typeCode: r.lm_typeclassification ?? null,
-    labelPattern: r.lm_labelpattern || null,
-    regionChip: r.lm_regionchip || null,
-    requiresSpecialty: r.lm_requiresspecialty === true,
-    sortOrder: r.lm_sortorder ?? null,
-  }));
-}
-
 const MEETING_STAGE_KEY = {
   'Stage 1 BU Operational':1, 'Stage 2 Regional Functional':2,
   'Stage 3 Group Functional':3, 'Stage 4 Top Management, COO & CEO':4,
