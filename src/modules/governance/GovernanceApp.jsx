@@ -83,6 +83,14 @@ const AGENDA_SOURCES=['Migrated - Initial','Added'];
    the code comment on REPORT_TYPE_KEY in dataverse.js), so nothing downstream
    needs the longer name. */
 const REPORT_TYPES=['Plan','Dashboard','Report'];
+/* Only a Report/Conclusion has a submission-timing question to answer: a Plan
+   is submitted before the period it covers, and a Dashboard is a live view that
+   is not tied to one period's submission at all. Kept in Report Type's order so
+   the two fields read together. */
+const SUBMISSION_TIMINGS=['Submission within same Month','Submission After Month'];
+const SUBMISSION_TIMING_HELP={
+  'Submission within same Month':'Submitted in the same month its content covers.',
+  'Submission After Month':'Submitted in the month after the one its content covers.'};
 const REPORT_TYPE_HELP={
   'Plan':'Submitted before the period it covers.',
   'Dashboard':'A live view of figures, not tied to one period’s submission.',
@@ -646,7 +654,7 @@ const BLANK_MEETING={
   status:'Draft', version:0, updated:TODAY};
 
 const BLANK_REPORT={
-  kind:'Report Template', objective:'', reportType:null, reportCategory:null,
+  kind:'Report Template', objective:'', reportType:null, submissionTiming:null, reportCategory:null,
   qualifier:'',
   stage:null, regions:[], businessUnits:[], lines:[], units:[],
   delivery:'Source link', site:null, library:null, folder:null, sourceLink:'', sourceLinkAuto:false,
@@ -1046,6 +1054,10 @@ function validateReport(s, all){
   if(!(s.objective||'').trim()) r.push({field:'f-objective', step:1, msg:'Report Objective is required.'});
   if(!s.reportType)     r.push({field:'f-reportType', step:1, msg:'Report Type is required.'});
   if(!s.reportCategory) r.push({field:'f-reportCategory', step:1, msg:'Report Category is required.'});
+  /* Required only where the field is shown -- a Plan or a Dashboard is never
+     asked, so an empty timing on one of those is not an omission. */
+  if(s.reportType==='Report' && !s.submissionTiming)
+    r.push({field:'f-submissionTiming', step:1, msg:'Submission Timing is required for a Report.'});
   /* 2 — scope */
   if(!s.stage) r.push({field:'f-stage', step:2, msg:'Stage is required.'});
   r.push(...scopeRules(s,2));
@@ -2614,11 +2626,22 @@ function ReportWizard({rec,onClose}){
           <Field id="f-reportType" label="Report Type" req govern
             hint={s.reportType?REPORT_TYPE_HELP[s.reportType]:'Plan, Report and Conclusion differ by which month the content covers.'}>
             <Seg id="f-reportType" opts={REPORT_TYPES} val={s.reportType}
-              onChange={v=>set({reportType:v})}/></Field>
+              onChange={v=>set({reportType:v,
+                /* Leaving a stale timing behind would save a Plan as though it
+                   answered a question only a Report is asked. */
+                ...(v==='Report'?{}:{submissionTiming:null})})}/></Field>
           <Field id="f-reportCategory" label="Report Category" req govern>
             <Sel id="f-reportCategory" val={s.reportCategory} opts={REPORT_CATEGORIES}
               onChange={v=>set({reportCategory:v})}/></Field>
         </div>
+        {s.reportType==='Report'
+          ? <Field id="f-submissionTiming" label="Submission Timing" req govern
+              hint={s.submissionTiming
+                ? SUBMISSION_TIMING_HELP[s.submissionTiming]
+                : 'Whether this report is submitted in the month it covers, or the month after.'}>
+              <Sel id="f-submissionTiming" val={s.submissionTiming} opts={SUBMISSION_TIMINGS}
+                onChange={v=>set({submissionTiming:v})}/></Field>
+          : null}
       </div>;
 
       if(step===2) return <div className="card">
@@ -2751,6 +2774,7 @@ function buildReportTemplatePayload(f){
     version: f.version,
     objective: f.objective,
     reportType: f.reportType,
+    submissionTiming: f.reportType==='Report' ? f.submissionTiming : undefined,
     reportCategory: f.reportCategory,
     frequency: f.frequency,
     dayOfWeek: f.dayOfWeek,
@@ -2983,6 +3007,7 @@ function buildPublishSummary(original, edited){
   if(isReport){
     addField('Objective', original.objective, edited.objective);
     addField('Report Type', original.reportType, edited.reportType);
+    addField('Submission Timing', original.submissionTiming, edited.submissionTiming);
     addField('Report Category', original.reportCategory, edited.reportCategory);
     addField('Report Delivery', original.delivery, edited.delivery);
     addField('Source link', original.sourceLink, edited.sourceLink);
@@ -3121,6 +3146,7 @@ function PublishConfirmModal({original, edited, onConfirm, onCancel}){
 
 const DV_REPORT_TYPE=['Plan','Dashboard','Report'];
 const DV_REPORT_CATEGORY=['Executive','Core','ADHOC'];
+const DV_SUBMISSION_TIMING=['Submission within same Month','Submission After Month'];
 const DV_FREQUENCY=['Daily','Twice Weekly','Weekly','Twice Monthly','Monthly','Quarterly','Semesterly','Annually','Custom'];
 const DV_DAY_OF_WEEK=['Sunday','Monday','Tuesday','Wednesday','Thursday'];
 const DV_MONTH_IN_QUARTER=['1st month','2nd month','3rd month'];
@@ -3195,6 +3221,7 @@ function dataverseReportToSetup(detail){
     name:p.lm_newcolumn||'(untitled)',
     objective:p.lm_objective||'',
     reportType:byCode1(DV_REPORT_TYPE,p.lm_reporttype),
+    submissionTiming:byCode1(DV_SUBMISSION_TIMING,p.lm_submissiontiming),
     reportCategory:byCode1(DV_REPORT_CATEGORY,p.lm_reportcategory),
     frequency:byCode1(DV_FREQUENCY,p.lm_frequency),
     dayOfWeek:byCode1(DV_DAY_OF_WEEK,p.lm_dayoftheweek),
@@ -4389,7 +4416,8 @@ function App({onSwitch}){
     ['stage','Stage'],['function','Function'],['frequency','Frequency'],
     ['quorum','Quorum Threshold %'],['torLink','TOR / Policy link'],
     ['confidentiality','Confidentiality'],['delivery','Report Delivery'],
-    ['reportType','Report Type'],['reportCategory','Report Category'],['fileAttachment','File Attachment'],
+    ['reportType','Report Type'],['submissionTiming','Submission Timing'],
+    ['reportCategory','Report Category'],['fileAttachment','File Attachment'],
     ['mode','Default Meeting Mode'],
     ['momWriteupHours','MOM Write-up Period'],['momApprovalHours','MOM Approval Period'],
     ['gridSubmitHours','Audit Grid Completion / Submission Period']];

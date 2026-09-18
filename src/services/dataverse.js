@@ -701,6 +701,12 @@ const CONFIDENTIALITY_KEY = { 'Public':1, 'Internal':2, 'Confidential':3, 'High 
 // instruction. Only the label is this app's own choice -- the code (3) is
 // what actually gets written and has to stay the same.
 const REPORT_TYPE_KEY = { 'Plan':1, 'Dashboard':2, 'Report':3 };
+/* Global option set lm_submissiontiming, values read from live metadata. Only
+   a Report/Conclusion carries one -- see SUBMISSION_TIMING's note in
+   GovernanceApp.jsx. */
+const SUBMISSION_TIMING_KEY = {
+  'Submission within same Month':1, 'Submission After Month':2,
+};
 const REPORT_CATEGORY_KEY = { 'Executive':1, 'Core':2, 'ADHOC':3 };
 
 // lm_reportstatus and lm_meetingstatus are both the same global option set
@@ -729,6 +735,10 @@ function reportTemplateParentPayload(payload){
     lm_objective: payload.objective || null,
     lm_reporttype: payload.reportType ? REPORT_TYPE_KEY[payload.reportType] : null,
     lm_reportcategory: payload.reportCategory ? REPORT_CATEGORY_KEY[payload.reportCategory] : null,
+    /* Null for Plan and Dashboard, which have no same-month/after-month
+       question to answer -- the form clears it when Report Type changes. */
+    lm_submissiontiming: payload.submissionTiming
+      ? SUBMISSION_TIMING_KEY[payload.submissionTiming] : null,
     lm_frequency: payload.frequency ? FREQUENCY_KEY[payload.frequency] : null,
     lm_dayoftheweek: payload.dayOfWeek ? DAY_OF_WEEK_KEY[payload.dayOfWeek] : null,
     lm_dayofthemonth: typeof payload.dayOfMonth === 'number' ? payload.dayOfMonth : null,
@@ -1180,6 +1190,8 @@ async function fetchReportTemplateChildIds(dvId){
  * @param {string} payload.name
  * @param {string} [payload.objective]
  * @param {string} [payload.reportType] one of REPORT_TYPE_KEY's keys
+ * @param {string} [payload.submissionTiming] one of SUBMISSION_TIMING_KEY's keys --
+ *        only meaningful when reportType is 'Report'
  * @param {string} [payload.reportCategory] one of REPORT_CATEGORY_KEY's keys
  * @param {string} [payload.frequency] one of FREQUENCY_KEY's keys
  * @param {string} [payload.dayOfWeek] one of DAY_OF_WEEK_KEY's keys
@@ -1952,6 +1964,7 @@ export async function fetchMeetingTemplatesList(){
 export async function fetchReportTemplateDetail(id){
   const parentRes = await Lm_report_templatesService.get(id, {
     select: ['lm_report_templateid','lm_newcolumn','lm_objective','lm_reporttype','lm_reportcategory',
+      'lm_submissiontiming',
       'lm_frequency','lm_dayoftheweek','lm_dayofthemonth','lm_monthofthequarter',
       'lm_seconddayoftheweek','lm_seconddayofthemonth','lm_monthofthesemester','lm_month','lm_confidentiality',
       'lm_destinationsharepointlink','lm_fileattachement','lm_reportstatus','lm_version','lm_stage','modifiedon','createdon',
@@ -2144,6 +2157,7 @@ export const REPORT_OCC_STATUS = { 1:'Draft', 2:'In Review', 3:'Approved', 4:'Re
 // / frequencyCode (see fetchReportTemplatesList in the section above) --
 // mirrors the MEETING_* decodes below for the meeting side.
 export const REPORT_TYPE = { 1:'Plan', 2:'Dashboard', 3:'Report' };
+export const SUBMISSION_TIMING = { 1:'Submission within same Month', 2:'Submission After Month' };
 export const REPORT_CATEGORY = { 1:'Executive', 2:'Core', 3:'ADHOC' };
 export const REPORT_FREQUENCY = {
   1:'Daily', 2:'Twice Weekly', 3:'Weekly', 4:'Twice Monthly', 5:'Monthly',
