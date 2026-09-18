@@ -348,6 +348,10 @@ let PROCESS_FETCH_ERROR=null;
    not left for the UI to do per render. */
 let GROUP_MEMBERS=[];
 let MICROSOFT_GROUPS=[];
+/* group name -> the and_microsoftgroupmembers row an Attendee's lookup binds
+   to, and back again for reading a saved Setup. Built beside MICROSOFT_GROUPS. */
+let GROUP_ROW_BY_NAME={};
+let GROUP_NAME_BY_ROW={};
 
 let PROCESSES=['PRC-QLT-01 Quality indicator management','PRC-QLT-02 Corrective action management',  'PRC-NUR-01 Nursing establishment planning','PRC-MED-01 Medication reconciliation',
   'PRC-IPC-01 Infection surveillance','PRC-OPS-01 Patient flow management',
@@ -500,20 +504,27 @@ function dropRepeats(subject,noun){
    when Region-scoped, or its Business Unit when BU-scoped (unitLabel already
    picks the right one); either is dropped, same as {Department}, when the
    Setup spans more than one and there is no single token to name it after. */
-const slug=w=>(w||'').replace(/[^a-zA-Z0-9]+/g,'');
-const scopeToken=s=>{ const keys=scopeKeys(s); return keys.length===1 ? slug(unitLabel(s,keys[0])) : ''; };
+/* One token of a derived name. Punctuation goes, SPACES STAY -- a Department
+   like "Digital Transformation and Clinical Governance" has to stay readable;
+   `_` separates the tokens, it does not replace the spaces inside them. */
+const nameToken=w=>(w||'').replace(/[^a-zA-Z0-9 ]+/g,' ').replace(/\s+/g,' ').trim();
+/* For MATCHING, not display: everything non-alphanumeric goes, so "Ad Hoc",
+   "ad-hoc" and "ADHOC" all compare equal. */
+const squash=w=>(w||'').replace(/[^a-zA-Z0-9]+/g,'');
+const scopeToken=s=>{ const keys=scopeKeys(s); return keys.length===1 ? nameToken(unitLabel(s,keys[0])) : ''; };
 /* An Ad Hoc Report Category has no cadence -- a submission is raised when
    needed, not on a schedule, the same reasoning a one-off Meeting already
    gets. Matched normalised (spaces/hyphens stripped, case-insensitive)
    since the exact Dataverse label spelling isn't pinned down here. */
-const isAdHocCategory=s=>slug(s.reportCategory).toLowerCase()==='adhoc';
+const isAdHocCategory=s=>squash(s.reportCategory).toLowerCase()==='adhoc';
 function derivedName(s){
   const pre=STAGE_PREFIX[STAGES.indexOf(s.stage)]||'';
   const subj=subjectOf(s);
   const fallbackStageWord=FALLBACK_STAGE_WORD[STAGES.indexOf(s.stage)]||'';
   let base;
   if(s.kind==='Report Template'){
-    base=[scopeToken(s),slug(subj),slug(s.reportCategory),slug(s.frequency)].filter(Boolean).join('_');
+    base=[scopeToken(s),nameToken(subj),nameToken(s.reportCategory),nameToken(s.frequency)]
+      .filter(Boolean).join('_');
   } else if(s.category===TOT){
     /* the Team of Teams is named after the Department it serves */
     const dep=(linesOf(s)[0]||{}).department;
@@ -1439,30 +1450,40 @@ const SEC_ITEM_LABEL = {
    derived through deptInBu() and a Function filter cannot apply to them --
    nothing links a KPI or a Process to a Function. Report Templates do carry
    Department › Function lines, so all three filters apply there. */
-function ScopeFilter({bu,dept,fn,setBu,setDept,setFn,showDepartment=true,showFunction}){
-  const deptOpts = DEPARTMENTS.filter(d=>deptInBu(d.id,bu));
-  const fnOpts   = FUNCTIONS.filter(f=>!dept||f.dept===dept);
-  const any = bu||dept||fn;
+/* Scope filter for the KPI / Process pickers: Region and Business Unit only.
+
+   Department is deliberately NOT offered. A KPI or Process carries only its own
+   Department, so filtering by one hid most of the list for anyone who did not
+   already know which Department owned the measure they wanted. Region and
+   Business Unit are the organisational choices a Setup actually makes, and both
+   are resolved through the Department behind the scenes (see inScopeByOrg). */
+function ScopeFilter({bu,region,dept,setBu,setRegion,setDept}){
+  /* Each filter narrows the next one's options: Region -> Business Unit ->
+     Department. All three are optional; with none chosen nothing is narrowed. */
+  const buOpts = BUSINESS_UNITS.filter(b=>!region || b.region===region);
+  const deptOpts = DEPARTMENTS.filter(d =>
+    bu     ? deptInBu(d.id, bu)
+  : region ? buOpts.some(b=>deptInBu(d.id, b.id))
+           : true);
+  const any = bu||region||dept;
   return <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',marginBottom:8}}>
-    <select value={bu||''} style={{flex:'1 1 130px',minWidth:110}}
-      onChange={e=>{const v=e.target.value||null; setBu(v); setDept(null); setFn&&setFn(null);}}>
-      <option value="">All business units</option>
-      {BUSINESS_UNITS.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
+    <select value={region||''} style={{flex:'1 1 130px',minWidth:110}}
+      onChange={e=>{const v=e.target.value||null; setRegion(v); setBu(null); setDept(null);}}>
+      <option value="">All regions</option>
+      {REGIONS.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
     </select>
-    {showDepartment &&
-      <select value={dept||''} style={{flex:'1 1 130px',minWidth:110}}
-        onChange={e=>{const v=e.target.value||null; setDept(v); setFn&&setFn(null);}}>
-        <option value="">All departments</option>
-        {deptOpts.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
-      </select>}
-    {showFunction &&
-      <select value={fn||''} style={{flex:'1 1 130px',minWidth:110}}
-        onChange={e=>setFn(e.target.value||null)}>
-        <option value="">All functions</option>
-        {fnOpts.map(f=><option key={f.id} value={f.id}>{f.name}</option>)}
-      </select>}
+    <select value={bu||''} style={{flex:'1 1 130px',minWidth:110}}
+      onChange={e=>{const v=e.target.value||null; setBu(v); setDept(null);}}>
+      <option value="">All business units</option>
+      {buOpts.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
+    </select>
+    <select value={dept||''} style={{flex:'1 1 130px',minWidth:110}}
+      onChange={e=>setDept(e.target.value||null)}>
+      <option value="">All departments</option>
+      {deptOpts.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
+    </select>
     {any && <button type="button" className="sec-dim"
-      onClick={()=>{setBu(null);setDept(null);setFn&&setFn(null);}}>Clear</button>}
+      onClick={()=>{setBu(null);setRegion(null);setDept(null);}}>Clear</button>}
   </div>;
 }
 
@@ -1475,7 +1496,6 @@ function SectionRowEditor({sec,index,templateId,onPatch,onRemove}){
   const [bdKpi,setBdKpi]=useState('');
   const [buF,setBuF]=useState(null);
   const [deptF,setDeptF]=useState(null);
-  const [fnF,setFnF]=useState(null);
   // Child report/plan picker: Stage decides which sub-filter applies -- a
   // Stage 1 Template runs per Business Unit, a Stage 2 Template per Region,
   // Stage 3/4 are group-wide and take neither.
@@ -1483,17 +1503,27 @@ function SectionRowEditor({sec,index,templateId,onPatch,onRemove}){
   const [regionF,setRegionF]=useState(null);
   const items = sec.items||[];
 
-  /* A KPI or Process is in scope when its own Department matches the filter,
-     or -- when only a Business Unit is chosen -- when that Department belongs
-     to it. deptInBu() already handles a Department sitting under more than one
-     Business Unit. */
-  const inScopeByDept = deptId => {
-    if(deptF) return deptId===deptF;
-    if(buF)   return !!deptId && deptInBu(deptId,buF);
+  /* A KPI or Process carries its own Department and nothing else organisational
+     (PROJECT-CONTEXT section 6), so Business Unit and Region are both resolved
+     THROUGH that Department: a Business Unit matches when the Department sits
+     under it, a Region when the Department sits under any Business Unit in it.
+     deptInBu() already handles a Department belonging to more than one.
+
+     With neither chosen, every KPI and Process is offered -- the list is no
+     longer narrowed by Department, which used to hide most of it. */
+  const regionBuIds = regionF
+    ? BUSINESS_UNITS.filter(b=>b.region===regionF).map(b=>b.id)
+    : null;
+  const inScopeByOrg = deptId => {
+    /* Most specific wins: a chosen Department is an exact match, otherwise fall
+       back to the Business Unit, then the Region, then everything. */
+    if(deptF)       return deptId===deptF;
+    if(buF)         return !!deptId && deptInBu(deptId,buF);
+    if(regionBuIds) return !!deptId && regionBuIds.some(id=>deptInBu(deptId,id));
     return true;
   };
-  const kpiOpts     = KPIS.filter(n=>inScopeByDept(KPI_DEPT_BY_NAME[n]));
-  const processOpts = PROCESSES.filter(n=>inScopeByDept(PROCESS_DEPT_BY_NAME[n]));
+  const kpiOpts     = KPIS.filter(n=>inScopeByOrg(KPI_DEPT_BY_NAME[n]));
+  const processOpts = PROCESSES.filter(n=>inScopeByOrg(PROCESS_DEPT_BY_NAME[n]));
 
   /* A child report/plan cites a REAL lm_report_templateid, so the options come
      from the live Dataverse list, not from local Setups -- a local Setup's `id`
@@ -1564,13 +1594,16 @@ function SectionRowEditor({sec,index,templateId,onPatch,onRemove}){
       </div>
 
       {picking!=='Child Template' && <>
-        <ScopeFilter bu={buF} dept={deptF} fn={fnF}
-          setBu={setBuF} setDept={setDeptF} setFn={setFnF}
-          showDepartment showFunction={false}/>
-        {(buF||deptF) &&
+        <ScopeFilter bu={buF} region={regionF} dept={deptF}
+          setBu={setBuF} setRegion={setRegionF} setDept={setDeptF}/>
+        {(buF||regionF||deptF) &&
           <div className="holder" style={{marginBottom:8}}>
-            Filtered by the Department each {picking==='Process'?'Process':'KPI'} belongs to.
-            Function does not apply — nothing links a {picking==='Process'?'Process':'KPI'} to one.</div>}
+            {deptF
+              ? <>Showing only {picking==='Process'?'Processes':'KPIs'} in the Department chosen.</>
+              : <>Showing every {picking==='Process'?'Process':'KPI'} whose Department sits under the
+                  {buF?' Business Unit':' Region'} chosen.</>}
+            {' '}All three filters are optional — clear them to see everything. Function is not
+            offered: a {picking==='Process'?'Process':'KPI'} carries only its own Department.</div>}
       </>}
 
       {picking==='Child Template' && <>
@@ -1752,6 +1785,9 @@ function RowEditor({id,rows,onChange,render,onAdd,addLabel,empty,reorder}){
 function AttendeeList({id,rows,opts,onChange}){
   const patch=(i,p)=>onChange(rows.map((x,j)=>j===i?{...x,...p}:x));
   const add=()=>onChange([...(rows||[]),{id:uid('cm'),position:null,type:'Core'}]);
+  /* A group attendee stands for everyone in it, so it takes the place of a
+     Position rather than sitting beside one: the row has no PosSel at all. */
+  const addGroup=()=>onChange([...(rows||[]),{id:uid('cg'),kind:'group',group:'',type:'Core'}]);
   return <div className="mem-list" id={id}>
     {rows.length===0
       ? <div className="mem-empty">No attendee recorded for this unit yet.</div>
@@ -1759,8 +1795,22 @@ function AttendeeList({id,rows,opts,onChange}){
           const supp=r.type==='Supportive';
           return <div className={'mem-row '+(supp?'supp':'core')} key={r.id||i}>
             <div className="mem-id">
-              <PosSel val={r.position} placeholder="Choose a Position…" opts={opts}
-                onChange={v=>patch(i,{position:v})}/>
+              {r.kind==='group'
+                ? <>
+                    <Sel val={r.group||null} opts={MICROSOFT_GROUPS}
+                      placeholder={MICROSOFT_GROUPS.length?'Choose a Microsoft Group…':'No groups found'}
+                      onChange={v=>patch(i,{group:v||''})}/>
+                    {r.group
+                      ? <div className="holder" style={{marginTop:4}}>
+                          {(()=>{const m=GROUP_MEMBERS.filter(x=>x.group===r.group).map(x=>x.member);
+                            return m.length
+                              ? `${m.length} member${m.length===1?'':'s'}: ${m.join(', ')}`
+                              : 'No members recorded for this group.';})()}
+                        </div>
+                      : null}
+                  </>
+                : <PosSel val={r.position} placeholder="Choose a Position…" opts={opts}
+                    onChange={v=>patch(i,{position:v})}/>}
             </div>
             <div className="mem-roles" role="group" aria-label="Attendee type">
               {ATTENDEE_TYPES.map(t=>
@@ -1773,7 +1823,10 @@ function AttendeeList({id,rows,opts,onChange}){
               onClick={()=>onChange(rows.filter((_,j)=>j!==i))}>✕</button>
           </div>;
         })}
-    <button type="button" className="mem-add" onClick={add}>+ Add attendee</button>
+    <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+      <button type="button" className="mem-add" onClick={add}>+ Add attendee</button>
+      <button type="button" className="mem-add" onClick={addGroup}>+ Add Microsoft Group</button>
+    </div>
   </div>;
 }
 
@@ -2459,7 +2512,9 @@ function UnitsTable({s}){
       </tr></thead>
       <tbody>{keys.map(k=>{
         const u=unitOf(s,k)||{};
-        const core=(u.coreMembers||[]).filter(m=>m.position);
+        /* Every attendee that is actually filled in -- a Position row with a
+           Position, or a group row with a group. */
+        const core=(u.coreMembers||[]).filter(m=>m.kind==='group'?m.group:m.position);
         return <tr key={k}>
           <td className="k">{unitLabel(s,k)}
             <div className="t-sub">{unitSub(s,k)}</div></td>
@@ -2806,7 +2861,7 @@ function buildMeetingTemplatePayload(f){
     torLink: f.torLink || undefined,
     // Business Unit/Chairman/Co-Chairman/Facilitator/Team-Channel no
     // longer live on the parent record -- they're per-unit now. Attendees
-    // is now per-unit too (each unit carries its own `attendeePositionIds`),
+    // is now per-unit too (each unit carries its own `attendees`),
     // since Lm_meetingattendeeslists got real lookups back to a specific
     // Business-Unit or Region row, not just the parent template.
     stageLevel: lv,
@@ -2821,7 +2876,18 @@ function buildMeetingTemplatePayload(f){
         coChairmanId: u.coChairman || undefined,
         facilitatorId: u.facilitator || undefined,
         channelId: u.channel || undefined,
-        attendeePositionIds: (u.coreMembers||[]).filter(m=>m.position).map(m=>m.position),
+        /* Either a Position or a group, never both, and each carrying its own
+           Core/Supportive. A group whose name no longer resolves to a row is
+           dropped rather than written with an empty bind -- Dataverse rejects
+           `/table()`. */
+        attendees: (u.coreMembers||[]).map(m=>{
+          const type = m.type==='Supportive' ? 2 : 1;
+          if(m.kind==='group')
+            return m.group && GROUP_ROW_BY_NAME[m.group]
+              ? { groupRowId: GROUP_ROW_BY_NAME[m.group], groupName: m.group, type }
+              : null;
+          return m.position ? { positionId: m.position, type } : null;
+        }).filter(Boolean),
       };
     }),
     agenda: (f.agenda||[]).filter(a=>a.text).map((a,i)=>({
@@ -3179,6 +3245,18 @@ function dataverseReportToSetup(detail){
   };
 }
 
+/* One saved Attendee row as the card edits it. A group row is recognised by
+   its lookup; its name comes from lm_attendeename, falling back to the group
+   the bound membership row belongs to. Core/Supportive is carried both ways --
+   dropping it here used to turn every Supportive attendee back into a Core one
+   the next time the Setup was saved. */
+const attendeeToRow=a=>a._lm_microsoftgroup_value
+  ? { id:uid('cg'), kind:'group',
+      group:a.lm_attendeename||GROUP_NAME_BY_ROW[a._lm_microsoftgroup_value]||'',
+      type:a.lm_attendeetype===2?'Supportive':'Core' }
+  : { id:uid('cm'), position:a._lm_attendeeposition_value||null,
+      type:a.lm_attendeetype===2?'Supportive':'Core' };
+
 function dataverseMeetingToSetup(detail){
   const p=detail.parent;
   const buUnits=(detail.businessUnits||[]).map(bu=>({
@@ -3187,7 +3265,7 @@ function dataverseMeetingToSetup(detail){
     channel:bu._lm_teamchannel_value||null, team:teamOfChannel(bu._lm_teamchannel_value),
     chairman:bu._lm_meetingchairman_value||null, coChairman:bu._lm_meetingcochairman_value||null,
     facilitator:bu._lm_meetingorganizerfacilitator_value||null,
-    coreMembers:(bu.attendees||[]).map(a=>({position:a._lm_attendeeposition_value||null})),
+    coreMembers:(bu.attendees||[]).map(attendeeToRow),
   }));
   const regionUnits=(detail.regions||[]).map(rg=>({
     id:'dvu-'+rg.lm_meetingtemplateregionid, key:rg._lm_region_value,
@@ -3195,7 +3273,7 @@ function dataverseMeetingToSetup(detail){
     channel:rg._lm_teamchannel_value||null, team:teamOfChannel(rg._lm_teamchannel_value),
     chairman:rg._lm_meetingchairman_value||null, coChairman:rg._lm_meetingcochairman_value||null,
     facilitator:rg._lm_meetingorganizerfacilitator_value||null,
-    coreMembers:(rg.attendees||[]).map(a=>({position:a._lm_attendeeposition_value||null})),
+    coreMembers:(rg.attendees||[]).map(attendeeToRow),
   }));
   const isRegionLevel=regionUnits.length>0 && buUnits.length===0;
   // A Stage 3/4 Setup has no per-unit child table, so its one section comes
@@ -4208,6 +4286,19 @@ function App({onSwitch}){
         if(gm){
           GROUP_MEMBERS=gm;
           MICROSOFT_GROUPS=[...new Set(gm.map(r=>r.group))].sort((a,b)=>a.localeCompare(b));
+          /* and_microsoftgroupmembers is flat -- one row per (group, member)
+             pair, no row that IS the group -- but lm_MicrosoftGroup on an
+             Attendee is a lookup INTO it. Each group therefore nominates a
+             representative row, its lowest id, so the same group always binds
+             to the same row. Deleting that membership leaves the attendee's
+             lookup empty; lm_attendeename still carries the group's name. */
+          GROUP_ROW_BY_NAME={}; GROUP_NAME_BY_ROW={};
+          for(const r of [...gm].sort((a,b)=>String(a.id).localeCompare(String(b.id)))){
+            if(r.group && r.id){
+              if(!GROUP_ROW_BY_NAME[r.group]) GROUP_ROW_BY_NAME[r.group]=r.id;
+              GROUP_NAME_BY_ROW[r.id]=r.group;
+            }
+          }
           changed=true;
         }
       }catch(e){

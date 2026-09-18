@@ -201,8 +201,14 @@ export async function fetchKpis(){
     // Dataverse signature of a primary name column -- likely renamed after
     // creation without updating the logical name. Confirm this is really
     // the KPI's display name; swap for the right column if not.
-    select: ['strategy_kpisid', 'strategy_newcolumn', '_strategy_department_value',
-             'strategy_departmentname', '_strategy_process_value', 'strategy_processname'],
+    /* A lookup's name column (strategy_departmentname, strategy_processname)
+        is NOT selectable -- $select-ing one fails the whole read with
+        0x80060888 "Could not find a property named ...". The display name
+        comes from the lookup's formatted-value annotation instead; the
+        adapter requests those on every list read. See PROJECT-CONTEXT section 6,
+        "A lookup's display name is already on the row". */
+    select: ['strategy_kpisid', 'strategy_newcolumn',
+             '_strategy_department_value', '_strategy_process_value'],
   });
   const rows = rowsOrThrow(res);
   // {id, name, dept} -- id is needed to write lm_RelatedKPI@odata.bind when
@@ -217,24 +223,24 @@ export async function fetchKpis(){
     id: r.strategy_kpisid,
     name: r.strategy_newcolumn,
     dept: r._strategy_department_value ?? null,
-    deptName: r.strategy_departmentname || null,
+    deptName: r['_strategy_department_value' + FV] || null,
     processId: r._strategy_process_value ?? null,
-    processName: r.strategy_processname || null,
+    processName: r['_strategy_process_value' + FV] || null,
   }));
 }
 
 export async function fetchProcesses(){
   const res = await Strategy_processesService.getAll({
     // same strategy_newcolumn caveat as fetchKpis above.
-    select: ['strategy_processid', 'strategy_newcolumn', '_strategy_department_value',
-             'strategy_departmentname'],
+    /* same rule as fetchKpis above -- no name columns in $select */
+    select: ['strategy_processid', 'strategy_newcolumn', '_strategy_department_value'],
   });
   const rows = rowsOrThrow(res);
   return rows.filter(r=>r.strategy_newcolumn).map(r => ({
     id: r.strategy_processid,
     name: r.strategy_newcolumn,
     dept: r._strategy_department_value ?? null,
-    deptName: r.strategy_departmentname || null,
+    deptName: r['_strategy_department_value' + FV] || null,
   }));
 }
 
@@ -1283,6 +1289,42 @@ const Lm_meetingtemplatedepartmentfunctionsService = dvTable('lm_meetingtemplate
 const Lm_meetingtemplatelinkedreportsesService = dvTable('lm_meetingtemplatelinkedreportses', 'lm_meetingtemplatelinkedreportsid');
 const Lm_meetingattendeeslistsService = dvTable('lm_meetingattendeeslists', 'lm_meetingattendeeslistid');
 
+/* The fields of one Attendee row, whichever kind it is.
+
+   A Position attendee binds lm_AttendeePosition and leaves lm_attendeename to
+   the Position behind the lookup. A GROUP attendee has no Position at all: it
+   binds lm_MicrosoftGroup instead, sets lm_isgroup, and carries the group name
+   in lm_attendeename, since and_microsoftgroupmembers holds one row per
+   (group, member) pair and the bound row's own name is a person's.
+
+   lm_attendeetype is the Core/Supportive choice -- 1 Core, 2 Supportive, read
+   from live metadata. It is NOT always Core; the card offers both and the
+   quorum percentage counts only the Core ones. */
+const attendeeFields = a => a.groupRowId
+  ? { lm_attendeename: a.groupName || undefined,
+      lm_isgroup: true,
+      'lm_MicrosoftGroup@odata.bind': `/and_microsoftgroupmembers(${a.groupRowId})`,
+      lm_attendeetype: a.type || 1 }
+  : { 'lm_AttendeePosition@odata.bind': `/cr603_organizationstructures(${a.positionId})`,
+      lm_isgroup: false,
+      lm_attendeetype: a.type || 1 };
+
+/* One Attendee's identity within its unit, for the reconcile diff. A group and
+   a Position can never collide: the group key is prefixed. */
+const attendeeKey = a => a.groupRowId ? 'g:' + a.groupRowId
+                       : a.positionId ? 'p:' + a.positionId
+                       : null;
+const attendeeKeyOfRow = r => r._lm_microsoftgroup_value
+  ? 'g:' + r._lm_microsoftgroup_value
+  : r._lm_attendeeposition_value ? 'p:' + r._lm_attendeeposition_value : null;
+
+/* Columns every Attendee read needs -- the two kinds are told apart by
+   _lm_microsoftgroup_value, so leaving it out would read every group row back
+   as an attendee with no Position. */
+const ATTENDEE_SELECT = ['lm_meetingattendeeslistid', '_lm_attendeeposition_value',
+                         'lm_attendeetype', 'lm_isgroup', '_lm_microsoftgroup_value',
+                         'lm_attendeename'];
+
 // Same reasoning as the Report Template maps above: explicit, not
 // auto-matched, since Dataverse's labels differ slightly (trailing
 // spaces, "Online" vs "Virtual", non-sequential option codes, etc.).
@@ -1377,7 +1419,8 @@ export const MEETING_MONTH_IN_QUARTER = {
  * @param {number} [payload.gridSubmitHours] elapsed hours, Audit Grid created -> submitted to Chair
  * @param {string} [payload.torLink]
  * @param {string} [payload.stageLevel] 'bu'|'region'|'group' -- only 'bu' and 'region' currently create per-unit child rows
- * @param {{key:string,name:string,businessUnitId?:string,regionId?:string,chairmanId?:string,coChairmanId?:string,facilitatorId?:string,attendeePositionIds?:string[]}[]} [payload.units] one entry per configured unit, each with its own Attendees list
+ * @param {{key:string,name:string,businessUnitId?:string,regionId?:string,chairmanId?:string,coChairmanId?:string,facilitatorId?:string,attendees?:{positionId?:string,groupRowId?:string,groupName?:string,type?:number}[]}[]} [payload.units] one entry per configured unit, each with its own Attendees list --
+ *        an attendee is either a Position (`positionId`) or a Microsoft Group (`groupRowId` + `groupName`), `type` 1 Core / 2 Supportive
  * @param {{step:number, text:string, ownerId?:string, source:string}[]} [payload.agenda]
  * @param {{departmentId:string, functionId?:string}[]} [payload.lines]
  * @param {{name:string, functionId?:string}[]} [payload.supportive]
@@ -1499,19 +1542,22 @@ async function reconcileMeetingUnits(templateId, payload, existing, errors){
     await reconcileRows({
       service: Lm_meetingattendeeslistsService,
       existing: byUnit.get(unitRowId) || [],
-      wanted: (unit.attendeePositionIds || []).filter(Boolean),
+      wanted: (unit.attendees || []).filter(a => attendeeKey(a)),
       idField: 'lm_meetingattendeeslistid', table: 'lm_meetingattendeeslists',
-      keyOfExisting: r => r._lm_attendeeposition_value,
-      keyOfWanted:   positionId => positionId,
-      build: positionId => ({
+      keyOfExisting: attendeeKeyOfRow,
+      keyOfWanted:   attendeeKey,
+      build: a => ({
         /* Same shape the create path writes: the template bind AND the
            per-unit one. Dropping the template bind here would leave rows the
            template-level queries cannot see. */
         'lm_MeetingTemplate@odata.bind': `/lm_meetingtemplates(${templateId})`,
         [lookupField]: `/${unitSet}(${unitRowId})`,
-        'lm_AttendeePosition@odata.bind': `/cr603_organizationstructures(${positionId})`,
-        lm_attendeetype: 1, // Core -- these come from each unit's coreMembers list
+        ...attendeeFields(a),
       }),
+      /* Who the attendee is cannot change without changing the key, so the
+         only thing a surviving row can differ in is Core vs Supportive. */
+      diff: (a, row) => (row.lm_attendeetype || 1) === (a.type || 1)
+        ? {} : { lm_attendeetype: a.type || 1 },
       errors,
     });
   };
@@ -1579,13 +1625,12 @@ async function createMeetingTemplateChildren(templateId, payload, errors, opts =
       continue;
     }
 
-    for(const posId of (unit.attendeePositionIds||[])){
-      if(!posId) continue;
+    for(const att of (unit.attendees||[])){
+      if(!attendeeKey(att)) continue;
       try{
         const attPayload = {
           'lm_MeetingTemplate@odata.bind': bind,
-          'lm_AttendeePosition@odata.bind': `/cr603_organizationstructures(${posId})`,
-          lm_attendeetype: 1, // Core -- these come from each unit's coreMembers list
+          ...attendeeFields(att),
         };
         if(unitBind && unitLookupField) attPayload[unitLookupField] = unitBind;
         await Lm_meetingattendeeslistsService.create(attPayload);
@@ -1667,11 +1712,11 @@ async function fetchMeetingTemplateChildIds(dvId){
   const [buAttendees, regionAttendees] = await Promise.all([
     Promise.all(businessUnits.map(bu => Lm_meetingattendeeslistsService.getAll({
       filter: `_lm_meetingtemplateperbusinessunit_value eq ${bu.lm_meetingtemplatebusinessunitsid}`,
-      select: ['lm_meetingattendeeslistid','_lm_attendeeposition_value','lm_attendeetype'],
+      select: ATTENDEE_SELECT,
     }).then(r=>r?.data??[]).catch(()=>[]))),
     Promise.all(regions.map(rg => Lm_meetingattendeeslistsService.getAll({
       filter: `_lm_meetingtemplateperregion_value eq ${rg.lm_meetingtemplateregionid}`,
-      select: ['lm_meetingattendeeslistid','_lm_attendeeposition_value','lm_attendeetype'],
+      select: ATTENDEE_SELECT,
     }).then(r=>r?.data??[]).catch(()=>[]))),
   ]);
   return {
@@ -1718,7 +1763,8 @@ async function fetchMeetingTemplateChildIds(dvId){
  * @param {number} [payload.gridSubmitHours] elapsed hours, Audit Grid created -> submitted to Chair
  * @param {string} [payload.torLink]
  * @param {string} [payload.stageLevel] 'bu'|'region'|'group' -- only 'bu' and 'region' currently create per-unit child rows
- * @param {{key:string,name:string,businessUnitId?:string,regionId?:string,chairmanId?:string,coChairmanId?:string,facilitatorId?:string,attendeePositionIds?:string[]}[]} [payload.units] one entry per configured unit, each with its own Attendees list
+ * @param {{key:string,name:string,businessUnitId?:string,regionId?:string,chairmanId?:string,coChairmanId?:string,facilitatorId?:string,attendees?:{positionId?:string,groupRowId?:string,groupName?:string,type?:number}[]}[]} [payload.units] one entry per configured unit, each with its own Attendees list --
+ *        an attendee is either a Position (`positionId`) or a Microsoft Group (`groupRowId` + `groupName`), `type` 1 Core / 2 Supportive
  * @param {{step:number, text:string, ownerId?:string, source:string}[]} [payload.agenda]
  * @param {{departmentId:string, functionId?:string}[]} [payload.lines]
  * @param {{name:string, functionId?:string}[]} [payload.supportive]
@@ -2025,13 +2071,13 @@ export async function fetchMeetingTemplateDetail(id){
     Promise.all(businessUnits.map(bu =>
       Lm_meetingattendeeslistsService.getAll({
         filter: `_lm_meetingtemplateperbusinessunit_value eq ${bu.lm_meetingtemplatebusinessunitsid}`,
-        select: ['_lm_attendeeposition_value','lm_attendeetype'],
+        select: ATTENDEE_SELECT,
       }).then(r => r?.data ?? []).catch(()=>[])
     )),
     Promise.all(regions.map(rg =>
       Lm_meetingattendeeslistsService.getAll({
         filter: `_lm_meetingtemplateperregion_value eq ${rg.lm_meetingtemplateregionid}`,
-        select: ['_lm_attendeeposition_value','lm_attendeetype'],
+        select: ATTENDEE_SELECT,
       }).then(r => r?.data ?? []).catch(()=>[])
     )),
   ]);
