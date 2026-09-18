@@ -1166,11 +1166,10 @@ const LockNote=()=><span className="tx-lock" title="Taxonomy-owned. Read-only in
     <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
   Taxonomy-owned</span>;
 
-function Field({id,label,req,hint,children,when=true,govern}){
+function Field({id,label,req,hint,children,when=true}){
   if(when===false) return null;
   return <div className="f" id={id?id+'-wrap':undefined}>
-    <label htmlFor={id}>{label}{req?<span className="req">*</span>:null}
-      {govern?<LockNote/>:null}</label>
+    <label htmlFor={id}>{label}{req?<span className="req">*</span>:null}</label>
     {children}
     {hint?<div className="hint">{hint}</div>:null}
   </div>;
@@ -1943,7 +1942,7 @@ function MeetingClassField({s,set,accred,tot,locked}){
      another Stage elsewhere, or left from before the Category rows existed.
      Say so instead of showing an empty picker. */
   const orphaned = s.category && !opts.includes(s.category);
-  return <Field id="f-category" label="Type / Classification" req when={!accred} govern
+  return <Field id="f-category" label="Type / Classification" req when={!accred}
     hint={tot ? null
       : !s.stage ? 'Choose a Stage above — it decides which Classifications apply.'
       : 'Narrowed to what this Stage allows. It narrows the Category below, and becomes part of the name.'}>
@@ -1971,12 +1970,12 @@ function MeetingCategoryField({s,set}){
      moved off. Say so rather than showing an empty picker. */
   const orphaned = s.meetingCategory && !opts.some(c=>c.id===s.meetingCategory);
   if(!s.stage || !s.category)
-    return <Field id="f-meetingCategory" label="Category" govern
+    return <Field id="f-meetingCategory" label="Category"
       hint="Choose a Stage and a Type / Classification above — the Category list is the set valid for that pair.">
       <Sel id="f-meetingCategory" val={null} opts={[]} disabled
         placeholder="Stage and Type / Classification first…" onChange={()=>{}}/>
     </Field>;
-  return <Field id="f-meetingCategory" label="Category" req={opts.length>0} govern
+  return <Field id="f-meetingCategory" label="Category" req={opts.length>0}
     hint={chosen?.regionChip
       ? `${chosen.name} is recorded against ${chosen.regionChip}.`
       : 'The governed Category for this Stage and Type / Classification. Maintained in the Taxonomy application.'}>
@@ -2074,7 +2073,7 @@ function ScopeFields({s,set,stepNo}){
 
   return <>
     {lv==='bu'
-      ? <Field id="f-businessUnits" label="Business Units" req govern
+      ? <Field id="f-businessUnits" label="Business Units" req
           hint="Tick every Business Unit this Setup runs in. It is authored once here, and a section is
                 created for each one on the next step.">
           <MultiPick id="f-businessUnits" groups={buGroups} val={s.businessUnits}
@@ -2086,7 +2085,7 @@ function ScopeFields({s,set,stepNo}){
       : null}
 
     {lv==='region'
-      ? <Field id="f-regions" label="Regions" req govern
+      ? <Field id="f-regions" label="Regions" req
           hint="A Stage 2 Setup multiplies by Region — tick Saudi Arabia and Egypt and it runs once in each,
                 with its own Chairman and Organizer per region.">
           <MultiPick id="f-regions" groups={rgGroups} val={s.regions}
@@ -2099,7 +2098,7 @@ function ScopeFields({s,set,stepNo}){
 
     {exec
       ? null
-      : <Field id="f-lines" label={tot?'Department':'Departments and Functions'} req govern
+      : <Field id="f-lines" label={tot?'Department':'Departments and Functions'} req
           hint={tot
             ? 'A Team of Teams belongs to one Department. Leave the Function empty and it covers the '+
               'whole Department.'
@@ -2152,7 +2151,7 @@ function ScopeFields({s,set,stepNo}){
    missing. Add lm_month (1..12) to lm_meetingtemplates and delete the prop. */
 function CadenceFields({s,set,noMonth}){
   return <>
-    <Field id="f-frequency" label="Frequency" req govern>
+    <Field id="f-frequency" label="Frequency" req>
       <Sel id="f-frequency" val={s.frequency} opts={FREQUENCIES}
         onChange={v=>set({frequency:v, dayOfWeek:null, dayOfMonth:null, monthInQuarter:null,
                           secondDayOfWeek:null, secondDayOfMonth:null, monthInSemester:null,
@@ -2162,11 +2161,11 @@ function CadenceFields({s,set,noMonth}){
           only when there is a second to distinguish it from. */}
       <Field id="f-dayOfWeek"
         label={DOW2_FREQ.includes(s.frequency)?'First day of week':'Day of week'}
-        req when={DOW_FREQ.includes(s.frequency)} govern>
+        req when={DOW_FREQ.includes(s.frequency)}>
         <Sel id="f-dayOfWeek" val={s.dayOfWeek} opts={DAYS_OF_WEEK}
           onChange={v=>set({dayOfWeek:v})}/></Field>
       <Field id="f-secondDayOfWeek" label="Second day of week" req
-        when={DOW2_FREQ.includes(s.frequency)} govern
+        when={DOW2_FREQ.includes(s.frequency)}
         hint="Must differ from the first day.">
         <Sel id="f-secondDayOfWeek" val={s.secondDayOfWeek}
           opts={DAYS_OF_WEEK.filter(d=>d!==s.dayOfWeek)}
@@ -2183,16 +2182,16 @@ function CadenceFields({s,set,noMonth}){
           onChange={e=>set({secondDayOfMonth:e.target.value===''?null:+e.target.value})}/></Field>
 
       <Field id="f-monthInQuarter" label="Month within quarter" req
-        when={MIQ_FREQ.includes(s.frequency)} govern>
+        when={MIQ_FREQ.includes(s.frequency)}>
         <Sel id="f-monthInQuarter" val={s.monthInQuarter} opts={MONTHS_IN_QUARTER}
           onChange={v=>set({monthInQuarter:v})}/></Field>
       <Field id="f-monthInSemester" label="Month within semester" req
-        when={MOS_FREQ.includes(s.frequency)} govern
+        when={MOS_FREQ.includes(s.frequency)}
         hint="A semester is six months.">
         <Sel id="f-monthInSemester" val={s.monthInSemester} opts={MONTHS_IN_SEMESTER}
           onChange={v=>set({monthInSemester:v})}/></Field>
       <Field id="f-month" label="Month" req={!noMonth}
-        when={MOY_FREQ.includes(s.frequency)} govern
+        when={MOY_FREQ.includes(s.frequency)}
         hint={noMonth?null:"The calendar month the report is due in each year."}>
         {noMonth
           ? <div className="holder">
@@ -2288,19 +2287,19 @@ function UnitSetup({s,set,issues,shared,intro}){
         </button>
         {closed?null:<>
           <div className="unit-bd">
-            <Field id={'u-sec-'+k} label="Section / Specialty" govern when={lv==='bu' && secs.length>0}
+            <Field id={'u-sec-'+k} label="Section / Specialty" when={lv==='bu' && secs.length>0}
               hint="Optional. Offered only where a chosen Department has Sections inside this unit.">
               <Sel id={'u-sec-'+k} val={u.section} placeholder="None — the whole Department"
                 opts={secs.map(x=>({v:x.id,label:`${x.name} · ${nameOf(DEPARTMENTS,x.dept)}`}))}
                 onChange={v=>setUnit(k,{section:v})}/></Field>
 
             <div className="f-row">
-              <Field id={'u-team-'+k} label="Team" govern
+              <Field id={'u-team-'+k} label="Team"
                 hint="The Team this unit discusses it in. Every Team is offered — the Teams table carries no Business Unit or Region, so it can't be narrowed to this unit.">
                 <Sel id={'u-team-'+k} val={uTeam} opts={teams.map(t=>({v:t.id,label:t.name}))}
                   placeholder={teams.length?'Select…':'No Teams found'}
                   onChange={v=>setUnit(k,{team:v,channel:null})}/></Field>
-              <Field id={'u-chan-'+k} label="Channel" req={!!uTeam} govern
+              <Field id={'u-chan-'+k} label="Channel" req={!!uTeam}
                 hint={uTeam
                   ? (report
                       ? 'Narrowed to the Channels inside that Team. Choosing one fills in the Source link from its SharePoint path.'
@@ -2323,12 +2322,12 @@ function UnitSetup({s,set,issues,shared,intro}){
             {report
               ? <>
                   <div className="f-row">
-                    <Field id={'u-sub-'+k} label="Submitting Position" req govern
+                    <Field id={'u-sub-'+k} label="Submitting Position" req
                       hint="Who prepares and submits this report in this unit.">
                       <PosSel id={'u-sub-'+k} val={u.submitter} opts={positionsInScope(s,k)}
                         onChange={v=>setUnit(k,{submitter:v})}/>
                     </Field>
-                    <Field id={'u-own-'+k} label="Owner Position" req govern
+                    <Field id={'u-own-'+k} label="Owner Position" req
                       hint="Accountable for the content.">
                       <PosSel id={'u-own-'+k} val={u.owner} opts={positionsInScope(s,k)}
                         onChange={v=>setUnit(k,{owner:v})}/>
@@ -2340,7 +2339,7 @@ function UnitSetup({s,set,issues,shared,intro}){
                   <div className="f-row3">
                     {[['Chairman','chairman',true],['Co-Chairman','coChairman',false],
                       ['Organizer / Facilitator','facilitator',true]].map(([label,key,req])=>
-                      <Field key={key} id={'u-'+key+'-'+k} label={label} req={req} govern>
+                      <Field key={key} id={'u-'+key+'-'+k} label={label} req={req}>
                         <PosSel id={'u-'+key+'-'+k} val={u[key]} placeholder={req?'Select…':'None'}
                           opts={positionsInScope(s,k)}
                           onChange={v=>setUnit(k,{[key]:v})}/>
@@ -2554,7 +2553,7 @@ function MeetingWizard({rec,onClose}){
             <input id="f-quorum" type="number" min="0" max="100" value={s.quorum??''}
               onChange={e=>set({quorum:e.target.value===''?null:+e.target.value})}/>
             <span>%</span></div></Field>
-        <Field id="f-supportive" label="Supportive Function Representation" govern>
+        <Field id="f-supportive" label="Supportive Function Representation">
           <ComboMulti id="f-supportive" opts={functionNames()} val={s.supportive}
             placeholder="Search functions…" onChange={v=>set({supportive:v})}/></Field>
         <Field id="f-torLink" label="TOR / Policy link" req={accred}
@@ -2627,7 +2626,7 @@ function MeetingWizard({rec,onClose}){
               <Sel val={r.role} opts={REPORT_ROLES}
                 onChange={v=>set({linkedTemplates:s.linkedTemplates.map((x,j)=>j===i?{...x,role:v}:x)})}/>
             </div>}/>
-          <Field id="f-confidentiality" label="Confidentiality" req govern
+          <Field id="f-confidentiality" label="Confidentiality" req
             hint="Inherited by every occurrence created from this Setup.">
             <Seg id="f-confidentiality" opts={CONFIDENTIALITY} val={s.confidentiality}
               onChange={v=>set({confidentiality:v})}/></Field>
@@ -2746,19 +2745,19 @@ function ReportWizard({rec,onClose}){
           <textarea id="f-objective" value={s.objective||''}
             onChange={e=>set({objective:e.target.value})}/></Field>
         <div className="f-row">
-          <Field id="f-reportType" label="Report Type" req govern
+          <Field id="f-reportType" label="Report Type" req
             hint={s.reportType?REPORT_TYPE_HELP[s.reportType]:'Plan, Report and Conclusion differ by which month the content covers.'}>
             <Seg id="f-reportType" opts={REPORT_TYPES} val={s.reportType}
               onChange={v=>set({reportType:v,
                 /* Leaving a stale timing behind would save a Plan as though it
                    answered a question only a Report is asked. */
                 ...(v==='Report'?{}:{submissionTiming:null})})}/></Field>
-          <Field id="f-reportCategory" label="Report Category" req govern>
+          <Field id="f-reportCategory" label="Report Category" req>
             <Sel id="f-reportCategory" val={s.reportCategory} opts={REPORT_CATEGORIES}
               onChange={v=>set({reportCategory:v})}/></Field>
         </div>
         {s.reportType==='Report'
-          ? <Field id="f-submissionTiming" label="Submission Timing" req govern
+          ? <Field id="f-submissionTiming" label="Submission Timing" req
               hint={s.submissionTiming
                 ? SUBMISSION_TIMING_HELP[s.submissionTiming]
                 : 'Whether this report is submitted in the month it covers, or the month after.'}>
@@ -2782,7 +2781,7 @@ function ReportWizard({rec,onClose}){
           <h2>Destination and content</h2>
           
           {(()=>{ const dest=destinationOf(s);
-            return <Field id="f-sourceLink" label="Destination" govern
+            return <Field id="f-sourceLink" label="Destination"
               hint="Taken from the Team Channel chosen for each unit in Setup per unit — the first
                     Channel with a SharePoint path is used. There is nothing to type here.">
               {dest
@@ -2792,7 +2791,7 @@ function ReportWizard({rec,onClose}){
                     <b> Setup per unit</b>, and the Channel’s SharePoint path becomes the destination.
                   </div>}
             </Field>; })()}
-          <Field id="f-fileAttachment" label="File Attachment" govern
+          <Field id="f-fileAttachment" label="File Attachment"
             hint="A link to a reference or example file for this Report Template as a whole — optional.">
             <input id="f-fileAttachment" type="text" value={s.fileAttachment||''}
               onChange={e=>set({fileAttachment:e.target.value})}/></Field>
@@ -2813,11 +2812,11 @@ function ReportWizard({rec,onClose}){
               return null; })()}
           </Field>
           <div className="f-row">
-            <Field id="f-processes" label="Related Processes" govern
+            <Field id="f-processes" label="Related Processes"
               hint="Referenced by identifier only, never copied.">
               <ComboMulti id="f-processes" opts={PROCESSES} val={s.processes}
                 placeholder="Search processes…" onChange={v=>set({processes:v})}/></Field>
-            <Field id="f-kpis" label="Related KPIs" govern
+            <Field id="f-kpis" label="Related KPIs"
               hint="Referenced by identifier only, never copied.">
               <ComboMulti id="f-kpis" opts={KPIS} val={s.kpis}
                 placeholder="Search KPIs…" onChange={v=>set({kpis:v})}/></Field>
@@ -2841,7 +2840,7 @@ function ReportWizard({rec,onClose}){
             ? <Note k="info" ic="i">Ad Hoc reports have no fixed cadence — a submission is raised
                 when it's needed, not on a schedule, so there is nothing to set here.</Note>
             : <CadenceFields s={s} set={set}/>}
-          <Field id="f-confidentiality" label="Confidentiality" req govern
+          <Field id="f-confidentiality" label="Confidentiality" req
             hint="Inherited by every submission created from this Setup.">
             <Seg id="f-confidentiality" opts={CONFIDENTIALITY} val={s.confidentiality}
               onChange={v=>set({confidentiality:v})}/></Field>
