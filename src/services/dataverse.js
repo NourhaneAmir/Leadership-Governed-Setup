@@ -1394,7 +1394,7 @@ const MEETING_STAGE_KEY = {
   'Stage 3 Group Functional':3, 'Stage 4 Top Management, COO & CEO':4,
 };
 const MEETING_CATEGORY_KEY = {
-  'Planning Meeting':124330000, 'Performance Monitoring Meeting':124330001,
+  'Planning Meeting':124330000, 'Monitoring Meeting':124330001,
   'Clinical Meeting':124330002, 'Operational Meeting':124330003,
   'Technology Meeting':124330004, 'Cross-Functional Meeting':124330005,
   'Cross-Functional Team of Teams':124330006,
@@ -1407,7 +1407,7 @@ const LINKED_REPORT_TYPE_KEY = { 'Input':2, 'Output':1 };
 // the inverse of the *_KEY maps above, which only serve the write path.
 export const MEETING_SETUP_TYPE = { 1:'Business Meeting', 2:'Accreditation Committee' };
 export const MEETING_CATEGORY = {
-  124330000:'Planning Meeting', 124330001:'Performance Monitoring Meeting',
+  124330000:'Planning Meeting', 124330001:'Monitoring Meeting',
   124330002:'Clinical Meeting', 124330003:'Operational Meeting',
   124330004:'Technology Meeting', 124330005:'Cross-Functional Meeting',
   124330006:'Cross-Functional Team of Teams',

@@ -22,7 +22,7 @@ const nowStamp=()=>new Date().toISOString().slice(0,10);
 const SETUP_TYPES=['Business Meeting','Accreditation Committee'];
 /* internal key stays `category`; on screen this list is "Type / Classification". */
 const TOT='Cross-Functional Team of Teams';
-const CATEGORIES=['Planning Meeting','Performance Monitoring Meeting','Clinical Meeting',
+const CATEGORIES=['Planning Meeting','Monitoring Meeting','Clinical Meeting',
                   'Operational Meeting','Technology Meeting','Cross-Functional Meeting', TOT];
 /* The Team of Teams is the standing cross-functional forum OF ONE DEPARTMENT. It is where that
    department monitors its own service strategy, which is why it takes exactly one Department while
@@ -214,7 +214,7 @@ let POSITIONS=[
    classification. Change the scope and the name follows. */
 const CLASS_NOUN={
   'Planning Meeting':'Planning Meeting',
-  'Performance Monitoring Meeting':'Performance Monitoring Meeting',
+  'Monitoring Meeting':'Monitoring Meeting',
   'Clinical Meeting':'Clinical Meeting',
   'Operational Meeting':'Operational Meeting',
   'Technology Meeting':'Technology Meeting',
@@ -606,10 +606,20 @@ function copyUnitBody(kind,from){
    backed app would feel without wiring an actual database.
    ========================================================================= */
 const GOV_DB_KEY='andalusiaPulse.governanceSetup.db.v1';
+/* lm_meetingclassification 124330001 was relabelled "Performance Monitoring
+   Meeting" -> "Monitoring Meeting". The code is unchanged, so nothing in
+   Dataverse moved, but a draft stored in this tab before the rename still holds
+   the old string -- which now matches no option, leaving Type / Classification
+   blank on a Setup that plainly had one. Rewritten on the way in. */
+const renameMonitoring = db => {
+  for(const s of (db?.setups || []))
+    if(s.category === 'Performance Monitoring Meeting') s.category = 'Monitoring Meeting';
+  return db;
+};
 function loadDb(){
   try{
     const raw=sessionStorage.getItem(GOV_DB_KEY);
-    if(raw) return JSON.parse(raw);
+    if(raw) return renameMonitoring(JSON.parse(raw));
   }catch(e){ /* corrupt or inaccessible storage — fall through to seed */ }
   return seed();
 }
@@ -723,7 +733,7 @@ function seed(){
 
   /* 3 — published Monitoring Meeting at Stage 3 — group-wide, a single section */
   mk({id:'su-3', kind:'Committee / Meeting', setupType:'Business Meeting',
-    category:'Performance Monitoring Meeting',
+    category:'Monitoring Meeting',
     stage:STAGES[2], regions:[], businessUnits:[],
     lines:[{id:'ln3a', department:'Quality', function:null},
            {id:'ln3b', department:'Medical Affairs', function:null},
@@ -3237,7 +3247,7 @@ const DV_MEETING_MONTH_IN_QUARTER={124330000:'1st month',124330001:'2nd month',1
 const DV_MEETING_SECOND_DAY_OF_WEEK={1:'Sunday',2:'Monday',3:'Tuesday',4:'Wednesday',5:'Thursday'};
 const DV_MEETING_MONTH_IN_SEMESTER={1:'1st month',2:'2nd month',3:'3rd month',4:'4th month',5:'5th month',6:'6th month'};
 const DV_MEETING_CONFIDENTIALITY={124330000:'Public',124330001:'Internal',124330002:'Confidential',124330003:'High Confidential',124330004:'Restricted'};
-const DV_MEETING_CATEGORY={124330000:'Planning Meeting',124330001:'Performance Monitoring Meeting',124330002:'Clinical Meeting',124330003:'Operational Meeting',124330004:'Technology Meeting',124330005:'Cross-Functional Meeting',124330006:TOT};
+const DV_MEETING_CATEGORY={124330000:'Planning Meeting',124330001:'Monitoring Meeting',124330002:'Clinical Meeting',124330003:'Operational Meeting',124330004:'Technology Meeting',124330005:'Cross-Functional Meeting',124330006:TOT};
 const DV_MEETING_MODE={1:'Physical',2:'Virtual',3:'Hybrid'};
 const DV_MEETING_SETUP_TYPE={1:'Business Meeting',2:'Accreditation Committee'};
 const DV_MEETING_STAGE={1:STAGES[0],2:STAGES[1],3:STAGES[2],4:STAGES[3]};
@@ -4163,6 +4173,20 @@ const LIST_DEFS=[
   {id:'folders',      name:'Folders',        cascade2:true,
    note:'A Folder belongs to a Library, which belongs to a Site. Choose both. All three are read '+
      'from the Teams Channels table.'},
+  {id:'meetingcats',  name:'Meeting Categories', parent:'Stage',
+   parentOpts:()=>STAGES.map((st,i)=>({v:String(i+1),label:st})),
+   rows:p=>MEETING_CATEGORIES
+     .filter(c=>!p || String(c.stageCode)===p)
+     .map(c=>[c.name,
+              DV_MEETING_CATEGORY[c.typeCode]||'—',
+              STAGES[(c.stageCode||0)-1]||'—',
+              c.labelPattern||'{Category}',
+              c.requiresSpecialty?'per Specialty':'—',
+              c.regionChip||'—']),
+   note:'Category, Type / Classification, Stage, then how the name is built, whether it is '+
+     'recorded per Specialty, and its region chip. One row per Stage and Classification the '+
+     'Category is valid for, so the same Category appears once per combination it belongs to. '+
+     'This is the list the Category picker on a Meeting Setup reads.'},
   {id:'processes',    name:'Processes',      filterByBuDept:true,
    rows:()=>PROCESSES.map(p=>[p])},
   {id:'kpis',         name:'KPIs',           filterByBuDept:true,

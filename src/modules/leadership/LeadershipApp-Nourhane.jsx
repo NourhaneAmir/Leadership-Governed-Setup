@@ -89,7 +89,7 @@ const PERSONAS = ['u1','u6','u5','u2','u7','u4','u3','u8'];
 
 /* ---- Taxonomy: Meeting Setups (read-only in Leadership Practice) -------- */
 const SETUP_TYPES = ['Business Meeting','Committee'];
-const BM_CLASSES = ['Planning Meeting','Performance Monitoring Meeting','Clinical Meeting',
+const BM_CLASSES = ['Planning Meeting','Monitoring Meeting','Clinical Meeting',
   'Operational Meeting','Technology Meeting','Cross-functional Meeting'];
 const CM_CLASSES = ['Accreditation-required Committee','Governed Committee'];
 const ADHOC_TYPES = ['Leadership','Alignment','Governance'];
@@ -114,7 +114,7 @@ const MTG_SETUPS = [
    required:['u7','u14','u5'], optional:['u2'],
    consumes:[]},
   {id:'ms4', name:'Monthly Performance Review', type:'Business Meeting',
-   cls:'Performance Monitoring Meeting', bu:'AHJ', cadence:'Monthly — first Tuesday',
+   cls:'Monitoring Meeting', bu:'AHJ', cadence:'Monthly — first Tuesday',
    quorumPct:null, tor:null, torReview:null,
    chair:'u7', facilitator:'u1', recorder:'u4',
    required:['u7','u5','u10','u11'], optional:['u1'],
