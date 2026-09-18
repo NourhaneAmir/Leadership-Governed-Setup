@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useLayoutEffect, useRef, createContext, useContext } from 'react';
 import { createPortal } from 'react-dom';
 import { ClipboardList, ListChecks, ArrowUpRight, FileText, CalendarDays, Check, MoreHorizontal } from 'lucide-react';
-import { fetchRegions, fetchBusinessUnits, fetchDepartments, fetchFunctions, fetchProcesses, fetchKpis, fetchSections, fetchPositions, departmentBuIndex, fetchTeamsChannels, fetchMicrosoftGroupMembers, fetchCurrentUser, saveReportTemplateToDataverse, saveMeetingTemplateToDataverse, updateReportTemplateToDataverse, updateMeetingTemplateToDataverse, updateReportTemplateStatus, updateMeetingTemplateStatus, fetchReportTemplatesList, fetchMeetingTemplatesList, fetchReportTemplateDetail, fetchMeetingTemplateDetail, fetchMeetingOccurrencesByTemplate, fetchReportOccurrencesByTemplate, TEMPLATE_STATUS_LABEL,
+import { fetchRegions, fetchBusinessUnits, fetchDepartments, fetchFunctions, fetchProcesses, fetchKpis, fetchSections, fetchPositions, departmentBuIndex, fetchTeamsChannels, fetchMicrosoftGroupMembers, fetchMeetingCategories, fetchCurrentUser, saveReportTemplateToDataverse, saveMeetingTemplateToDataverse, updateReportTemplateToDataverse, updateMeetingTemplateToDataverse, updateReportTemplateStatus, updateMeetingTemplateStatus, fetchReportTemplatesList, fetchMeetingTemplatesList, fetchReportTemplateDetail, fetchMeetingTemplateDetail, fetchMeetingOccurrencesByTemplate, fetchReportOccurrencesByTemplate, TEMPLATE_STATUS_LABEL,
   logSetupActivity, logSetupActivityBatch, fetchSetupActivity } from '../../services/dataverse.js';
 import './governance-modern.css';
 
@@ -354,6 +354,10 @@ let PROCESS_FETCH_ERROR=null;
    is the distinct group name list the picker offers -- the same group name
    repeats once per member in the raw table, so this is deduplicated here,
    not left for the UI to do per render. */
+/* The governed Category list, read from lm_meetingcategories. Empty until the
+   reference-data effect fills it; the picker says so rather than pretending
+   there are no Categories. */
+let MEETING_CATEGORIES=[];
 let GROUP_MEMBERS=[];
 let MICROSOFT_GROUPS=[];
 /* group name -> the and_microsoftgroupmembers row an Attendee's lookup binds
@@ -1020,10 +1024,16 @@ function validateMeeting(s){
   if(s.setupType==='Business Meeting' && !s.category)
     r.push({field:'f-category', step:1,
       msg:'Type / Classification is required when Setup Type is Business Meeting.'});
+  if(!s.stage) r.push({field:'f-stage', step:1, msg:'Stage is required.'});
+  /* Required only where the governed list actually offers something for this
+     Stage and Classification. An empty list means the reference data has no row
+     for that pair -- which is a gap in the Taxonomy application, not something
+     the person filling this in can fix. */
+  if(meetingCategoryOpts(s).length && !s.meetingCategory)
+    r.push({field:'f-meetingCategory', step:1, msg:'Category is required.'});
   /* the name is derived, so what can fail is that it does not resolve, or that it collides */
   r.push(...nameRules(s,1));
   /* 2 — scope */
-  if(!s.stage) r.push({field:'f-stage', step:2, msg:'Stage is required.'});
   r.push(...scopeRules(s,2));
   /* 3 — cadence. Location and the meeting link are not held here — they are set on
      each occurrence, because one Setup runs in several units with a different venue in each. */
@@ -1879,6 +1889,54 @@ function AttendeeList({id,rows,opts,onChange}){
   </div>;
 }
 
+/* The governed Category, the third level of the taxonomy cascade
+   (Stage -> Type / Classification -> Category). The rows come from
+   lm_meetingcategories and are filtered to the pair already chosen above, so
+   the list only ever offers what that combination actually allows.
+
+   Both parts of the lookup are kept on the Setup: the row id, which is what
+   binds, and the name, which is stamped at save so a later rename in the
+   Taxonomy application cannot restate Setups already published. */
+const meetingCategoryOpts = s =>
+  (!s.stage || !s.category) ? []
+    : MEETING_CATEGORIES.filter(c =>
+        c.stageCode === STAGES.indexOf(s.stage) + 1 &&
+        DV_MEETING_CATEGORY[c.typeCode] === s.category);
+
+function MeetingCategoryField({s,set}){
+  const opts = meetingCategoryOpts(s);
+  const chosen = MEETING_CATEGORIES.find(c=>c.id===s.meetingCategory);
+  /* A Setup can hold a Category that is no longer offered -- retired in the
+     Taxonomy application, or belonging to a Stage the Setup has since been
+     moved off. Say so rather than showing an empty picker. */
+  const orphaned = s.meetingCategory && !opts.some(c=>c.id===s.meetingCategory);
+  if(!s.stage || !s.category)
+    return <Field id="f-meetingCategory" label="Category" govern
+      hint="Choose a Stage and a Type / Classification above — the Category list is the set valid for that pair.">
+      <Sel id="f-meetingCategory" val={null} opts={[]} disabled
+        placeholder="Stage and Type / Classification first…" onChange={()=>{}}/>
+    </Field>;
+  return <Field id="f-meetingCategory" label="Category" req={opts.length>0} govern
+    hint={chosen?.regionChip
+      ? `${chosen.name} is recorded against ${chosen.regionChip}.`
+      : 'The governed Category for this Stage and Type / Classification. Maintained in the Taxonomy application.'}>
+    <Sel id="f-meetingCategory" val={s.meetingCategory}
+      opts={opts.map(c=>({v:c.id, label:c.regionChip?`${c.name} · ${c.regionChip}`:c.name}))}
+      placeholder={opts.length?'Choose a Category…':'No Category defined for this combination'}
+      onChange={v=>set({meetingCategory:v,
+        meetingCategoryName:MEETING_CATEGORIES.find(c=>c.id===v)?.name||null})}/>
+    {orphaned
+      ? <Note k="warn" ic="⚠">This Setup holds <b>{s.meetingCategoryName||'a Category'}</b>, which is not
+          in the list for this Stage and Type / Classification — it may have been retired, or the Stage
+          may have changed. Pick one from the list before publishing.</Note>
+      : null}
+    {chosen?.requiresSpecialty
+      ? <Note k="teal" ic="◆">{chosen.name} is recorded per Specialty — choose the Specialty with the
+          unit on the next step.</Note>
+      : null}
+  </Field>;
+}
+
 /* ---- the name needs no field ---------------------------------------------
    It is produced by the Setup and shown in the page header and the register, so
    there is nothing to fill in. The only time it needs the screen is when two
@@ -2374,14 +2432,27 @@ function MeetingWizard({rec,onClose}){
               onChange={v=>set({setupType:v, category:v==='Accreditation Committee'?null:s.category})}/>
             {locked?<div className="hint"><LockNote/> Locked after first publish.</div>:null}
           </Field>
+          <Field id="f-stage" label="Stage" req
+            hint="It decides what this Setup multiplies by — Business Unit at Stage 1, Region at
+                  Stage 2, nothing at Stage 3 and 4 — and which Categories are offered below.
+                  Changing it starts the units on the next step again.">
+            <Seg id="f-stage" opts={STAGES.map(x=>({v:x,label:x.replace(/^Stage (\d) /,'$1 · ')}))}
+              val={s.stage}
+              onChange={v=>{const ns={...s,stage:v,regions:[],businessUnits:[],units:[]};
+                set({stage:v, regions:[], businessUnits:[],
+                     /* the Category list is per Stage, so one chosen under the old
+                        Stage may not exist under the new one */
+                     meetingCategory:null, meetingCategoryName:null,
+                     ...(v===STAGES[3]?{lines:[]}:{}), units:syncUnits(ns)});}}/></Field>
           <Field id="f-category" label="Type / Classification" req when={!accred} govern
-            hint={tot?null:'It becomes the last words of the name.'}>
+            hint={tot?null:'It narrows the Category below, and becomes part of the name.'}>
             <Sel id="f-category" val={s.category} opts={CATEGORIES} disabled={locked}
-              onChange={v=>set({category:v,
+              onChange={v=>set({category:v, meetingCategory:null, meetingCategoryName:null,
                 /* a Team of Teams carries one Department — keep the first line if several were added */
                 ...(v===TOT?{lines:(s.lines||[]).slice(0,1)}:{})})}/>
             {tot?<Note k="teal" ic="◆">{TOT_NOTE}</Note>:null}
           </Field>
+          <MeetingCategoryField s={s} set={set}/>
           <DerivedName s={s} set={set}/>
           {locked?<Note k="lock" ic="—">Setup Type is locked. Everything else may be changed, and
             publishing will create version {s.version+1}.</Note>:null}
@@ -2390,15 +2461,9 @@ function MeetingWizard({rec,onClose}){
 
       if(step===2) return <div className="card">
         <h2>Organisational scope</h2>
-        <div className="csub">Stage decides what this Setup multiplies by — Business Unit at Stage 1,
-          Region at Stage 2, nothing at Stage 3 and 4.</div>
-        <Field id="f-stage" label="Stage" req
-          hint="Changing the Stage changes the multiplier, so the units chosen below start again.">
-          <Seg id="f-stage" opts={STAGES.map(x=>({v:x,label:x.replace(/^Stage (\d) /,'$1 · ')}))}
-            val={s.stage}
-            onChange={v=>{const ns={...s,stage:v,regions:[],businessUnits:[],units:[]};
-              set({stage:v, regions:[], businessUnits:[],
-                   ...(v===STAGES[3]?{lines:[]}:{}), units:syncUnits(ns)});}}/></Field>
+        <div className="csub">Which units this Setup runs in. {s.stage
+          ? <>The Stage chosen on the previous step — <b>{s.stage}</b> — decides what it multiplies by.</>
+          : <>Choose a Stage on the previous step first — it decides what this multiplies by.</>}</div>
         <ScopeFields s={s} set={set} stepNo={2}/>
       </div>;
 
@@ -2902,6 +2967,11 @@ function buildMeetingTemplatePayload(f){
     // since Lm_meetingattendeeslists got real lookups back to a specific
     // Business-Unit or Region row, not just the parent template.
     stageLevel: lv,
+    meetingCategoryId: f.meetingCategory || undefined,
+    /* Stamped from the list at save time, falling back to whatever the Setup
+       was last saved with if the row has since been retired. */
+    meetingCategoryName:
+      MEETING_CATEGORIES.find(c=>c.id===f.meetingCategory)?.name || f.meetingCategoryName || undefined,
     units: keys.map(k=>{
       const u=unitOf(f,k)||{};
       return {
@@ -3015,6 +3085,7 @@ function buildPublishSummary(original, edited){
   }else{
     addField('Setup Type', original.setupType, edited.setupType);
     addField('Type / Classification', original.category, edited.category);
+    addField('Category', original.meetingCategoryName, edited.meetingCategoryName);
     addField('Default Meeting Mode', original.mode, edited.mode);
     addField('Quorum Threshold %', original.quorum, edited.quorum, v=>(v==null||v===''?'—':`${v}%`));
     const hoursOrDash = v=>(v==null||v===''?'—':`${v} hours`);
@@ -3333,6 +3404,9 @@ function dataverseMeetingToSetup(detail){
     name:p.lm_meetingtemplatename||'(untitled)',
     setupType:DV_MEETING_SETUP_TYPE[p.lm_setuptype]||'Business Meeting',
     category:DV_MEETING_CATEGORY[p.lm_typeclassification]||null,
+    meetingCategory:p._lm_category_value||null,
+    /* The stamped name, not the lookup's -- what this Setup was published as. */
+    meetingCategoryName:p.lm_category_name||null,
     stage:isRegionLevel?STAGES[1]:(DV_MEETING_STAGE[p.lm_stages]||STAGES[0]),
     frequency:byCode1(DV_FREQUENCY,p.lm_frequency),
     dayOfWeek:DV_MEETING_DAY_OF_WEEK[p.lm_daysoftheweek]||null,
@@ -4321,6 +4395,13 @@ function App({onSwitch}){
         console.warn('[dataverse] fetchTeamsChannels() failed -- Team/Channel pickers will be empty:', e);
       }
       try{
+        const mc=await fetchMeetingCategories();
+        if(cancelled) return;
+        if(mc&&mc.length){ MEETING_CATEGORIES=mc; changed=true; }
+      }catch(e){
+        console.warn('[dataverse] fetchMeetingCategories() failed -- Category picker will be empty:', e);
+      }
+      try{
         const gm=await fetchMicrosoftGroupMembers();
         if(cancelled) return;
         if(gm){
@@ -4412,7 +4493,7 @@ function App({onSwitch}){
   };
 
   /* fields worth naming individually in the audit trail */
-  const TRACKED=[['name','Name'],['setupType','Setup Type'],['category','Type / Classification'],
+  const TRACKED=[['name','Name'],['setupType','Setup Type'],['category','Type / Classification'],['meetingCategoryName','Category'],
     ['stage','Stage'],['function','Function'],['frequency','Frequency'],
     ['quorum','Quorum Threshold %'],['torLink','TOR / Policy link'],
     ['confidentiality','Confidentiality'],['delivery','Report Delivery'],

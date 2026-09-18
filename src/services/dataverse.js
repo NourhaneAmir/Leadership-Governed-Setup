@@ -1300,6 +1300,7 @@ const Lm_meetingtemplatesupportivefunctionsesService = dvTable('lm_meetingtempla
 const Lm_meetingtemplatedepartmentfunctionsService = dvTable('lm_meetingtemplatedepartmentfunctions', 'lm_meetingtemplatedepartmentfunctionid');
 const Lm_meetingtemplatelinkedreportsesService = dvTable('lm_meetingtemplatelinkedreportses', 'lm_meetingtemplatelinkedreportsid');
 const Lm_meetingattendeeslistsService = dvTable('lm_meetingattendeeslists', 'lm_meetingattendeeslistid');
+const Lm_meetingcategoriesService = dvTable('lm_meetingcategories', 'lm_meetingcategoryid');
 
 /* The fields of one Attendee row, whichever kind it is.
 
@@ -1361,6 +1362,33 @@ const MEETING_MONTH_IN_SEMESTER_KEY = { '1st month':1, '2nd month':2, '3rd month
 const MEETING_CONFIDENTIALITY_KEY = { 'Public':124330000, 'Internal':124330001, 'Confidential':124330002, 'High Confidential':124330003, 'Restricted':124330004 };
 const MEETING_MODE_KEY = { 'Physical':1, 'Virtual':2, 'Hybrid':3 };
 const MEETING_SETUP_TYPE_KEY = { 'Business Meeting':1, 'Accreditation Committee':2 };
+/** The governed Category list -- one row per (Stage, Classification, Category).
+ *  Reference data owned by the Taxonomy application: this module only reads it,
+ *  and a new Category is a row there, never a change here.
+ *
+ *  Inactive rows are left out so a retired Category stops being offered, while
+ *  Setups already pointing at one keep resolving it (nothing is hard-deleted).
+ *  lm_stage and lm_typeclassification are the same global option sets the
+ *  Meeting Template uses, so their codes need no translation between the two. */
+export async function fetchMeetingCategories(){
+  const res = await Lm_meetingcategoriesService.getAll({
+    select: ['lm_meetingcategoryid','lm_name','lm_stage','lm_typeclassification',
+             'lm_labelpattern','lm_regionchip','lm_requiresspecialty','lm_sortorder'],
+    filter: 'statecode eq 0',
+    orderby: 'lm_sortorder asc,lm_name asc',
+  });
+  return (res?.data ?? []).map(r => ({
+    id: r.lm_meetingcategoryid,
+    name: r.lm_name || '(unnamed)',
+    stageCode: r.lm_stage ?? null,
+    typeCode: r.lm_typeclassification ?? null,
+    labelPattern: r.lm_labelpattern || null,
+    regionChip: r.lm_regionchip || null,
+    requiresSpecialty: r.lm_requiresspecialty === true,
+    sortOrder: r.lm_sortorder ?? null,
+  }));
+}
+
 const MEETING_STAGE_KEY = {
   'Stage 1 BU Operational':1, 'Stage 2 Regional Functional':2,
   'Stage 3 Group Functional':3, 'Stage 4 Top Management, COO & CEO':4,
@@ -1433,6 +1461,9 @@ export const MEETING_MONTH_IN_QUARTER = {
  * @param {string} [payload.stageLevel] 'bu'|'region'|'group' -- only 'bu' and 'region' currently create per-unit child rows
  * @param {{key:string,name:string,businessUnitId?:string,regionId?:string,chairmanId?:string,coChairmanId?:string,facilitatorId?:string,attendees?:{positionId?:string,groupRowId?:string,groupName?:string,type?:number}[]}[]} [payload.units] one entry per configured unit, each with its own Attendees list --
  *        an attendee is either a Position (`positionId`) or a Microsoft Group (`groupRowId` + `groupName`), `type` 1 Core / 2 Supportive
+ * @param {string} [payload.meetingCategoryId] lm_meetingcategory row id, from fetchMeetingCategories()
+ * @param {string} [payload.meetingCategoryName] that row's name, stamped so a later rename
+ *        in the Taxonomy application cannot restate Setups already published
  * @param {{step:number, text:string, ownerId?:string, source:string}[]} [payload.agenda]
  * @param {{departmentId:string, functionId?:string}[]} [payload.lines]
  * @param {{name:string, functionId?:string}[]} [payload.supportive]
@@ -1457,6 +1488,11 @@ function meetingTemplateParentPayload(payload){
     lm_meetingtemplatename: payload.name || 'Untitled Meeting Setup',
     lm_setuptype: payload.setupType ? MEETING_SETUP_TYPE_KEY[payload.setupType] : null,
     lm_typeclassification: payload.category ? MEETING_CATEGORY_KEY[payload.category] : null,
+    /* The name is stamped beside the lookup, not derived from it on read --
+       see this file's note on lm_Category_Name. Written even when the lookup
+       is empty, so a Setup saved before the Category list existed still says
+       what it was. */
+    lm_category_name: payload.meetingCategoryName || null,
     lm_stages: payload.stage ? MEETING_STAGE_KEY[payload.stage] : null,
     lm_frequency: payload.frequency ? MEETING_FREQUENCY_KEY[payload.frequency] : null,
     lm_daysoftheweek: payload.dayOfWeek ? MEETING_DAY_OF_WEEK_KEY[payload.dayOfWeek] : null,
@@ -1475,6 +1511,8 @@ function meetingTemplateParentPayload(payload){
     lm_meetingstatus: payload.status ? TEMPLATE_STATUS_KEY[payload.status] : null,
     lm_version: typeof payload.version === 'number' ? payload.version : null,
   };
+  /* Never bound with an empty id -- `/lm_meetingcategories()` is a 400. */
+  if(payload.meetingCategoryId) row['lm_Category@odata.bind'] = `/lm_meetingcategories(${payload.meetingCategoryId})`;
   if(groupUnit?.chairmanId)    row['lm_MeetingChairman@odata.bind']            = `/cr603_organizationstructures(${groupUnit.chairmanId})`;
   if(groupUnit?.coChairmanId)  row['lm_MeetingCoChairman@odata.bind']          = `/cr603_organizationstructures(${groupUnit.coChairmanId})`;
   if(groupUnit?.facilitatorId) row['lm_MeetingOrganizerFacilitator@odata.bind'] = `/cr603_organizationstructures(${groupUnit.facilitatorId})`;
@@ -1777,6 +1815,9 @@ async function fetchMeetingTemplateChildIds(dvId){
  * @param {string} [payload.stageLevel] 'bu'|'region'|'group' -- only 'bu' and 'region' currently create per-unit child rows
  * @param {{key:string,name:string,businessUnitId?:string,regionId?:string,chairmanId?:string,coChairmanId?:string,facilitatorId?:string,attendees?:{positionId?:string,groupRowId?:string,groupName?:string,type?:number}[]}[]} [payload.units] one entry per configured unit, each with its own Attendees list --
  *        an attendee is either a Position (`positionId`) or a Microsoft Group (`groupRowId` + `groupName`), `type` 1 Core / 2 Supportive
+ * @param {string} [payload.meetingCategoryId] lm_meetingcategory row id, from fetchMeetingCategories()
+ * @param {string} [payload.meetingCategoryName] that row's name, stamped so a later rename
+ *        in the Taxonomy application cannot restate Setups already published
  * @param {{step:number, text:string, ownerId?:string, source:string}[]} [payload.agenda]
  * @param {{departmentId:string, functionId?:string}[]} [payload.lines]
  * @param {{name:string, functionId?:string}[]} [payload.supportive]
@@ -2055,6 +2096,7 @@ export async function fetchReportTemplateDetail(id){
 export async function fetchMeetingTemplateDetail(id){
   const parentRes = await Lm_meetingtemplatesService.get(id, {
     select: ['lm_meetingtemplateid','lm_meetingtemplatename','lm_setuptype','lm_typeclassification','lm_stages',
+      '_lm_category_value','lm_category_name',
       'lm_frequency','lm_daysoftheweek','lm_dayofthemonth','lm_monthofthequarter',
       'lm_seconddayoftheweek','lm_seconddayofthemonth','lm_monthofthesemesterseme','lm_defaultmeetingmode',
       'lm_meetingconfidentiality','lm_quorumthreshold','lm_torpolicylink','lm_meetingstatus','lm_version','modifiedon','createdon',
