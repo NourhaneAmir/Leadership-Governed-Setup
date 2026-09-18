@@ -758,6 +758,32 @@
 
 .gov-root .mem-empty{ font-size:11.5px; color:var(--muted); font-style:italic; padding:2px 0 4px }
 
+/* A Microsoft Group attendee and its roster. The group row is an ordinary
+   .mem-row; its people hang beneath it on a rail in the type's colour, so the
+   whole block reads as one attendee that happens to be several people. The
+   member rows are a quieter version of the same treatment -- smaller avatar,
+   no controls -- because they are shown, not edited. */
+.gov-root .mem-grp{ display:flex; flex-direction:column; gap:4px }
+.gov-root .mem-sub{
+  display:flex; flex-direction:column; gap:3px;
+  margin:0 0 2px 18px; padding:7px 11px 7px 14px;
+  border-left:2px solid var(--border-d); border-radius:0 9px 9px 0;
+  background:var(--surface);
+}
+.gov-root .mem-grp.core .mem-sub{ border-left-color:var(--teal) }
+.gov-root .mem-grp.supp .mem-sub{ border-left-color:var(--green) }
+.gov-root .mem-sub-hd{
+  font-size:9.5px; font-weight:700; letter-spacing:.06em;
+  text-transform:uppercase; color:var(--faint); margin-bottom:3px;
+}
+.gov-root .mem-sub-row{ display:flex; align-items:center; gap:8px }
+.gov-root .mem-sub-row .pos-av{ width:22px; height:22px; font-size:8.5px }
+.gov-root .mem-grp.supp .mem-sub-row .pos-av{
+  background:linear-gradient(135deg,#49604C 0%,#82967D 100%);
+}
+.gov-root .mem-sub-nm{ font-size:12.5px; color:var(--ink); overflow-wrap:anywhere }
+.gov-root .mem-sub-empty{ font-size:11.5px; color:var(--muted); font-style:italic }
+
 @media(max-width:720px){
   .gov-root .mem-row{ flex-wrap:wrap }
   .gov-root .mem-id{ flex:1 1 100%; order:3 }

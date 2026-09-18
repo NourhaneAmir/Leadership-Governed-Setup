@@ -1262,7 +1262,7 @@ function PosSel({id,val,onChange,opts,placeholder='Select…',disabled}){
           keeps a neutral circle so a column of them stays aligned. */}
       {sel
         ? <>
-            <span className="pos-av" aria-hidden="true">{posInitials(sel.holder||sel.name)}</span>
+            <span className="pos-av" aria-hidden="true">{sel.av||posInitials(sel.holder||sel.name)}</span>
             <span className="pos-sel-v"><b>{sel.name}</b>{sel.holder?<i>{sel.holder}</i>:null}</span>
           </>
         : <>
@@ -1286,7 +1286,7 @@ function PosSel({id,val,onChange,opts,placeholder='Select…',disabled}){
               <button type="button" key={o.id}
                 className={'combo-opt pos-sel-opt'+(o.id===val?' on':'')}
                 onClick={()=>{ onChange(o.id); setOpen(false); setQ(''); }}>
-                <span className="pos-av" aria-hidden="true">{posInitials(o.holder||o.name)}</span>
+                <span className="pos-av" aria-hidden="true">{o.av||posInitials(o.holder||o.name)}</span>
                 <span className="pos-sel-v"><b>{o.name}</b>{o.holder?<i>{o.holder}</i>:null}</span>
               </button>)}
           </>}
@@ -1786,41 +1786,78 @@ function AttendeeList({id,rows,opts,onChange}){
   const patch=(i,p)=>onChange(rows.map((x,j)=>j===i?{...x,...p}:x));
   const add=()=>onChange([...(rows||[]),{id:uid('cm'),position:null,type:'Core'}]);
   /* A group attendee stands for everyone in it, so it takes the place of a
-     Position rather than sitting beside one: the row has no PosSel at all. */
+     Position rather than sitting beside one -- same control, different list. */
   const addGroup=()=>onChange([...(rows||[]),{id:uid('cg'),kind:'group',group:'',type:'Core'}]);
+  const membersOf=g=>g ? GROUP_MEMBERS.filter(x=>x.group===g).map(x=>x.member) : [];
+  /* Groups shaped as PosSel options: the name reads as the row, the member
+     count sits beneath it where a Position shows its holder, and `av` keeps
+     the avatar on the group's initials rather than the count's. Rebuilt each
+     render because GROUP_MEMBERS is filled in after the first one. */
+  const groupOpts=MICROSOFT_GROUPS.map(g=>{
+    const n=membersOf(g).length;
+    return { id:g, name:g, av:posInitials(g), holder:`${n} member${n===1?'':'s'}` };
+  });
   return <div className="mem-list" id={id}>
     {rows.length===0
       ? <div className="mem-empty">No attendee recorded for this unit yet.</div>
       : rows.map((r,i)=>{
           const supp=r.type==='Supportive';
+          /* The type pills and the remove control are the same on both kinds of
+             row, so they are built once and placed into whichever shape the row
+             takes. */
+          const roles=<div className="mem-roles" role="group" aria-label="Attendee type">
+            {ATTENDEE_TYPES.map(t=>
+              <button type="button" key={t} aria-pressed={r.type===t}
+                className={'mem-role'+(r.type===t?' on':'')+(t==='Supportive'?' supp':'')}
+                onClick={()=>patch(i,{type:t})}>{t}</button>)}
+          </div>;
+          const remove=<button type="button" className="mem-x"
+            title={r.kind==='group'?'Remove this group':'Remove this attendee'}
+            aria-label={r.kind==='group'?'Remove this group':'Remove this attendee'}
+            onClick={()=>onChange(rows.filter((_,j)=>j!==i))}>✕</button>;
+
+          if(r.kind==='group'){
+            /* The group's people, shown but not stored: the Setup records the
+               group, and who belongs to it is answered by
+               and_microsoftgroupmembers whenever this is read. They inherit the
+               group's Core/Supportive, so they carry no pills of their own. */
+            const members=membersOf(r.group);
+            return <div className={'mem-grp '+(supp?'supp':'core')} key={r.id||i}>
+              <div className={'mem-row '+(supp?'supp':'core')}>
+                <div className="mem-id">
+                  <PosSel val={r.group||null} opts={groupOpts}
+                    placeholder={groupOpts.length?'Choose a Microsoft Group…':'No groups found'}
+                    onChange={v=>patch(i,{group:v||''})}/>
+                </div>
+                {roles}
+                {remove}
+              </div>
+              {r.group
+                ? <div className="mem-sub">
+                    <div className="mem-sub-hd">
+                      {members.length
+                        ? `${members.length} member${members.length===1?'':'s'} · attending as ${supp?'Supportive':'Core'}`
+                        : 'Members'}
+                    </div>
+                    {members.length
+                      ? members.map((m,j)=>
+                          <div className="mem-sub-row" key={m+j}>
+                            <span className="pos-av" aria-hidden="true">{posInitials(m)}</span>
+                            <span className="mem-sub-nm">{m}</span>
+                          </div>)
+                      : <div className="mem-sub-empty">No members recorded for this group.</div>}
+                  </div>
+                : null}
+            </div>;
+          }
+
           return <div className={'mem-row '+(supp?'supp':'core')} key={r.id||i}>
             <div className="mem-id">
-              {r.kind==='group'
-                ? <>
-                    <Sel val={r.group||null} opts={MICROSOFT_GROUPS}
-                      placeholder={MICROSOFT_GROUPS.length?'Choose a Microsoft Group…':'No groups found'}
-                      onChange={v=>patch(i,{group:v||''})}/>
-                    {r.group
-                      ? <div className="holder" style={{marginTop:4}}>
-                          {(()=>{const m=GROUP_MEMBERS.filter(x=>x.group===r.group).map(x=>x.member);
-                            return m.length
-                              ? `${m.length} member${m.length===1?'':'s'}: ${m.join(', ')}`
-                              : 'No members recorded for this group.';})()}
-                        </div>
-                      : null}
-                  </>
-                : <PosSel val={r.position} placeholder="Choose a Position…" opts={opts}
-                    onChange={v=>patch(i,{position:v})}/>}
+              <PosSel val={r.position} placeholder="Choose a Position…" opts={opts}
+                onChange={v=>patch(i,{position:v})}/>
             </div>
-            <div className="mem-roles" role="group" aria-label="Attendee type">
-              {ATTENDEE_TYPES.map(t=>
-                <button type="button" key={t} aria-pressed={r.type===t}
-                  className={'mem-role'+(r.type===t?' on':'')+(t==='Supportive'?' supp':'')}
-                  onClick={()=>patch(i,{type:t})}>{t}</button>)}
-            </div>
-            <button type="button" className="mem-x" title="Remove this attendee"
-              aria-label="Remove this attendee"
-              onClick={()=>onChange(rows.filter((_,j)=>j!==i))}>✕</button>
+            {roles}
+            {remove}
           </div>;
         })}
     <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
@@ -1828,29 +1865,6 @@ function AttendeeList({id,rows,opts,onChange}){
       <button type="button" className="mem-add" onClick={addGroup}>+ Add Microsoft Group</button>
     </div>
   </div>;
-}
-
-/* Reference lookup, not a Setup field -- picking a group here writes nothing
-   to the Setup and adds nobody to Attendees. It only answers "who is in this
-   group", from and_microsoftgroupmembers (§6/PROJECT-CONTEXT), for whoever
-   is filling in Attendees above to check against. Own local state per unit
-   card since UnitSetup renders these inline via .map(), not as a
-   subcomponent -- a hook can't live in that loop directly, but a child
-   component instantiated inside it can hold its own. */
-function GroupMembersLookup({id}){
-  const [group,setGroup]=useState('');
-  const members=group ? GROUP_MEMBERS.filter(r=>r.group===group).map(r=>r.member) : [];
-  return <Field id={id} label="Look up a Microsoft Group"
-    hint="Pick a Microsoft 365 group to see who's in it — for reference only; it does not add them as Attendees.">
-    <Sel id={id} val={group||null} placeholder={MICROSOFT_GROUPS.length?'Choose a group…':'No groups found'}
-      opts={MICROSOFT_GROUPS} onChange={v=>setGroup(v||'')}/>
-    {group
-      ? <div className="holder" style={{marginTop:6}}>
-          {members.length
-            ? `${members.length} member${members.length===1?'':'s'}: ${members.join(', ')}`
-            : 'No members recorded for this group.'}</div>
-      : null}
-  </Field>;
 }
 
 /* ---- the name needs no field ---------------------------------------------
@@ -2203,12 +2217,11 @@ function UnitSetup({s,set,issues,shared,intro}){
                       </Field>)}
                   </div>
                   <Field id={'u-cm-'+k} label="Attendees"
-                    hint="Core attendees count towards the quorum. Supportive attendees do not.">
+                    hint="Core attendees count towards the quorum. Supportive attendees do not. A Microsoft Group attends as one attendee — everyone in it is listed beneath it and takes the group’s type.">
                     <AttendeeList id={'u-cm-'+k} rows={u.coreMembers||[]}
                       opts={positionsInScope(s,k)}
                       onChange={v=>setUnit(k,{coreMembers:v})}/>
                   </Field>
-                  <GroupMembersLookup id={'u-grp-'+k}/>
                 </>}
           </div>
           <div className="unit-ft">
