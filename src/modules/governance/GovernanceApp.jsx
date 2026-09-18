@@ -1907,11 +1907,61 @@ function AttendeeList({id,rows,opts,onChange}){
    Both parts of the lookup are kept on the Setup: the row id, which is what
    binds, and the name, which is stamped at save so a later rename in the
    Taxonomy application cannot restate Setups already published. */
+/* Which Type / Classifications a Stage allows -- read off the Category rows
+   rather than held as a second list, so the two can never disagree.
+
+   Returned in CATEGORIES' order, not the data's, so the picker keeps its
+   familiar running order whatever order the rows came back in.
+
+   Team of Teams is always included: no Category row carries classification
+   124330006, so filtering on the data alone would remove it from the app
+   entirely. Falls back to the whole list while the reference data is empty. */
+const classificationOpts = s => {
+  if(!MEETING_CATEGORIES.length) return CATEGORIES;
+  const stageCode = STAGES.indexOf(s.stage) + 1;
+  if(stageCode < 1) return CATEGORIES;
+  const allowed = new Set(MEETING_CATEGORIES
+    .filter(c => c.stageCode === stageCode)
+    .map(c => DV_MEETING_CATEGORY[c.typeCode])
+    .filter(Boolean));
+  allowed.add(TOT);
+  return CATEGORIES.filter(n => allowed.has(n));
+};
+
 const meetingCategoryOpts = s =>
   (!s.stage || !s.category) ? []
     : MEETING_CATEGORIES.filter(c =>
         c.stageCode === STAGES.indexOf(s.stage) + 1 &&
         DV_MEETING_CATEGORY[c.typeCode] === s.category);
+
+/* Type / Classification, narrowed to what the chosen Stage allows. The middle
+   level of the cascade: Stage decides this list, and this list decides the
+   Category list below it. */
+function MeetingClassField({s,set,accred,tot,locked}){
+  const opts = classificationOpts(s);
+  /* A Setup can hold a Classification its Stage no longer allows -- moved to
+     another Stage elsewhere, or left from before the Category rows existed.
+     Say so instead of showing an empty picker. */
+  const orphaned = s.category && !opts.includes(s.category);
+  return <Field id="f-category" label="Type / Classification" req when={!accred} govern
+    hint={tot ? null
+      : !s.stage ? 'Choose a Stage above — it decides which Classifications apply.'
+      : 'Narrowed to what this Stage allows. It narrows the Category below, and becomes part of the name.'}>
+    <Sel id="f-category" val={s.category} opts={orphaned?[...opts,s.category]:opts}
+      disabled={locked || !s.stage}
+      placeholder={!s.stage ? 'Choose a Stage first…'
+        : opts.length ? 'Choose a Type / Classification…'
+        : 'No Classification defined for this Stage'}
+      onChange={v=>set({category:v, meetingCategory:null, meetingCategoryName:null,
+        /* a Team of Teams carries one Department — keep the first line if several were added */
+        ...(v===TOT?{lines:(s.lines||[]).slice(0,1)}:{})})}/>
+    {orphaned
+      ? <Note k="warn" ic="⚠"><b>{s.category}</b> is not offered at {s.stage} — no Category is
+          defined for that pair. Pick one from the list, or change the Stage back.</Note>
+      : null}
+    {tot?<Note k="teal" ic="◆">{TOT_NOTE}</Note>:null}
+  </Field>;
+}
 
 function MeetingCategoryField({s,set}){
   const opts = meetingCategoryOpts(s);
@@ -2449,19 +2499,17 @@ function MeetingWizard({rec,onClose}){
             <Seg id="f-stage" opts={STAGES.map(x=>({v:x,label:x.replace(/^Stage (\d) /,'$1 · ')}))}
               val={s.stage}
               onChange={v=>{const ns={...s,stage:v,regions:[],businessUnits:[],units:[]};
+                /* Both lists below are per Stage, so a Classification or Category
+                   chosen under the old one may not exist under the new one. The
+                   Classification is only dropped when the new Stage really does
+                   not allow it -- changing Stage between two that both allow
+                   Clinical Meeting should not make you pick it again. */
+                const keepsClass = classificationOpts({...s,stage:v}).includes(s.category);
                 set({stage:v, regions:[], businessUnits:[],
-                     /* the Category list is per Stage, so one chosen under the old
-                        Stage may not exist under the new one */
+                     ...(keepsClass?{}:{category:null}),
                      meetingCategory:null, meetingCategoryName:null,
                      ...(v===STAGES[3]?{lines:[]}:{}), units:syncUnits(ns)});}}/></Field>
-          <Field id="f-category" label="Type / Classification" req when={!accred} govern
-            hint={tot?null:'It narrows the Category below, and becomes part of the name.'}>
-            <Sel id="f-category" val={s.category} opts={CATEGORIES} disabled={locked}
-              onChange={v=>set({category:v, meetingCategory:null, meetingCategoryName:null,
-                /* a Team of Teams carries one Department — keep the first line if several were added */
-                ...(v===TOT?{lines:(s.lines||[]).slice(0,1)}:{})})}/>
-            {tot?<Note k="teal" ic="◆">{TOT_NOTE}</Note>:null}
-          </Field>
+          <MeetingClassField s={s} set={set} accred={accred} tot={tot} locked={locked}/>
           <MeetingCategoryField s={s} set={set}/>
           <DerivedName s={s} set={set}/>
           {locked?<Note k="lock" ic="—">Setup Type is locked. Everything else may be changed, and
