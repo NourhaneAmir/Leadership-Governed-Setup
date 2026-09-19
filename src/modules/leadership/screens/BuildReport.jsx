@@ -70,8 +70,14 @@ const fingerprint = (name, sections) => JSON.stringify([
                      s.citations.map(c => c.id || c.key)]),
 ]);
 
+/* What a citation names. The lookup's own name wins over the stored label, so a
+   record renamed at source reads correctly in every report citing it. The label
+   is the fallback, and still the only thing citations written before the four
+   lookups existed have. */
 const citeTarget = c =>
-  c.kpiName || c.processName || c.citedReportName || c.label || '(no target recorded)';
+  c.kpiName || c.processName || c.citedReportName ||
+  c.pocName || c.strategyName || c.biName || c.taskName ||
+  c.label || '(no target recorded)';
 
 const crefCls = kind =>
   kind === 'KPI' || kind === 'Breakdown' ? 'kpi'
@@ -697,10 +703,9 @@ function CitePicker({ picker, setPicker, onCite, catalog, inScope, reports, take
   const set = f => setPicker(p => ({ ...p, ...f }));
   const k = picker.kind;
   const has = pred => taken.some(pred);
-  /* A citation of one of the PICKED_KINDS keeps its id only until the report is
-     saved -- there is no column for it -- so after a reload the label is all
-     there is to compare. Checking both means the "already cited" state is right
-     before AND after a save, and stays right if the lookups are ever added. */
+  /* Ids now survive a save -- lm_POC, lm_Strategy, lm_BIReport and lm_Task were
+     added 20 Sep. The label is still compared as well, because a citation
+     written before those columns existed has no id to match on. */
   const cited = (kind, id, idKey, label) =>
     has(c => c.kind === kind && ((id && c[idKey] === id) || (!c[idKey] && c.label === label)));
 

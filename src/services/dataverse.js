@@ -2634,7 +2634,8 @@ export async function fetchReportOccurrenceContent(){
     Lm_reportsectioncitationsesService.getAll({
       select: ['lm_reportsectioncitationsid','lm_name','lm_kind','lm_breakdowndimension',
                '_lm_citedsection_value','_lm_kpi_value','_lm_process_value',
-               '_lm_citedreportoccurrence_value'],
+               '_lm_citedreportoccurrence_value',
+               '_lm_poc_value','_lm_strategy_value','_lm_bireport_value','_lm_task_value'],
     }),
   ]);
   assertSuccess(secRes);
@@ -2663,6 +2664,14 @@ export async function fetchReportOccurrenceContent(){
     processName: c['_lm_process_value' + FV] || null,
     citedReportId: c._lm_citedreportoccurrence_value || null,
     citedReportName: c['_lm_citedreportoccurrence_value' + FV] || null,
+    pocId: c._lm_poc_value || null,
+    pocName: c['_lm_poc_value' + FV] || null,
+    strategyId: c._lm_strategy_value || null,
+    strategyName: c['_lm_strategy_value' + FV] || null,
+    biId: c._lm_bireport_value || null,
+    biName: c['_lm_bireport_value' + FV] || null,
+    taskId: c._lm_task_value || null,
+    taskName: c['_lm_task_value' + FV] || null,
   }));
 
   return { sections, citations };
@@ -2682,7 +2691,8 @@ export const REPORT_CITATION_KIND_KEY = Object.fromEntries(
 const EDIT_SECTION_SELECT = ['lm_reportoccurrencesectionsid','lm_heading','lm_body','lm_diagnosticangle',
   'lm_sequence','lm_source','_lm_reportoccurrence_value','_createdby_value','createdon'];
 const EDIT_CITATION_SELECT = ['lm_reportsectioncitationsid','lm_name','lm_kind','lm_breakdowndimension',
-  '_lm_citedsection_value','_lm_kpi_value','_lm_process_value','_lm_citedreportoccurrence_value'];
+  '_lm_citedsection_value','_lm_kpi_value','_lm_process_value','_lm_citedreportoccurrence_value',
+  '_lm_poc_value','_lm_strategy_value','_lm_bireport_value','_lm_task_value'];
 
 /**
  * One Report Occurrence's Sections, in order, each carrying its Citations --
@@ -2728,6 +2738,14 @@ export async function fetchReportOccurrenceForEdit(occurrenceId){
       processName: c['_lm_process_value' + FV] || null,
       citedReportId: c._lm_citedreportoccurrence_value || null,
       citedReportName: c['_lm_citedreportoccurrence_value' + FV] || null,
+      pocId: c._lm_poc_value || null,
+      pocName: c['_lm_poc_value' + FV] || null,
+      strategyId: c._lm_strategy_value || null,
+      strategyName: c['_lm_strategy_value' + FV] || null,
+      biId: c._lm_bireport_value || null,
+      biName: c['_lm_bireport_value' + FV] || null,
+      taskId: c._lm_task_value || null,
+      taskName: c['_lm_task_value' + FV] || null,
     });
   }
 
@@ -2758,6 +2776,13 @@ function reportCitationRow(c, sectionId){
   if(c.kpiId)         row['lm_KPI@odata.bind'] = `/strategy_kpises(${c.kpiId})`;
   if(c.processId)     row['lm_Process@odata.bind'] = `/strategy_processes(${c.processId})`;
   if(c.citedReportId) row['lm_CitedReportOccurrence@odata.bind'] = `/lm_reportoccurrences(${c.citedReportId})`;
+  /* The four added 20 Sep. Targets confirmed from the relationship names in
+     live metadata. Bound only when set, like every lookup above -- an empty
+     bind path is a 400. */
+  if(c.pocId)         row['lm_POC@odata.bind'] = `/stf_strategypocs(${c.pocId})`;
+  if(c.strategyId)    row['lm_Strategy@odata.bind'] = `/strategy_strategies(${c.strategyId})`;
+  if(c.biId)          row['lm_BIReport@odata.bind'] = `/lm_bireportdashboards(${c.biId})`;
+  if(c.taskId)        row['lm_Task@odata.bind'] = `/hx_taskses(${c.taskId})`;
   if(c.breakdown && SECTION_BREAKDOWN_DIM_KEY[c.breakdown])
     row.lm_breakdowndimension = SECTION_BREAKDOWN_DIM_KEY[c.breakdown];
   return row;
