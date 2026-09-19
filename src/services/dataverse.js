@@ -3608,6 +3608,25 @@ export async function linkMeetingOccurrenceReport({ meetingOccurrenceId, name, r
   }
 }
 
+/** Adds the Report Occurrence to a link that was made against the Template
+ *  alone. The Template stays as it was -- this fills in what was not known
+ *  when the link was first made, which is exactly what the Documents tab
+ *  offered and could not then do.
+ *
+ *  The name is rewritten at the same time: a Template-only link was named
+ *  after the Template, and once it points at an occurrence the occurrence's
+ *  own name is the truthful one. */
+export async function attachReportOccurrenceToLink({ linkId, reportOccurrenceId, name }){
+  try{
+    const row = { 'lm_ReportOccurrence@odata.bind': `/lm_reportoccurrences(${reportOccurrenceId})` };
+    if(name) row.lm_reportname = name.trim().slice(0, 850);
+    assertSuccess(await Lm_meetingoccurrencelinkedreportsesService.update(linkId, row));
+    return { id: linkId, errors: [] };
+  }catch(e){
+    return { id: null, errors: [{ table:'lm_meetingoccurrencelinkedreportses', error:e }] };
+  }
+}
+
 export async function unlinkMeetingOccurrenceReport(linkId){
   try{
     await Lm_meetingoccurrencelinkedreportsesService.delete(linkId);

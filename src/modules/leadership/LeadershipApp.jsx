@@ -27,6 +27,7 @@ import { fetchMeetingOccurrences, fetchReportOccurrences, createMeetingOccurrenc
          archiveMeetingOccurrenceAgendaItem, updateMeetingOccurrenceAgendaSequence,
          fetchMeetingOccurrenceDepartments, fetchMeetingOccurrenceLinkedReports,
          linkMeetingOccurrenceReport, unlinkMeetingOccurrenceReport,
+         attachReportOccurrenceToLink,
          fetchBusinessUnits, fetchPositions, fetchDepartments, fetchFunctions, fetchRegions,
          fetchMeetingTemplatesList, fetchMeetingTemplateDetail,
          fetchReportTemplatesList, fetchReportTemplateDetail, fetchCurrentUser,
@@ -6003,12 +6004,42 @@ function DvMeetingDetail({rec,back}){
      several lines onto). Empty means "no Department constraint known", not
      "no Department", so the match below falls back to Template + BU alone. */
   const meetingDeptIds = new Set([rec.departmentId, ...deptRows.map(d=>d.departmentId)].filter(Boolean));
-  const matchingOccs = linkTplId ? dvReportOccs.filter(r=>
-       r.templateId===linkTplId
-    && (rec.businessUnitId ? r.businessUnitId===rec.businessUnitId
-        : rec.regionId ? r.regionId===rec.regionId : true)
-    && (meetingDeptIds.size===0 || meetingDeptIds.has(r.departmentId))
-  ) : [];
+  /* Occurrences of one Template. `scoped` applies this Meeting's own Business
+     Unit or Region and its Departments; unscoped is every occurrence of that
+     Template, which is what the tab falls back to offering when the scoped
+     match is empty -- a Template with occurrences somewhere should not read as
+     a Template with none. */
+  const occsForTemplate = (tplId, scoped) => !tplId ? [] : dvReportOccs.filter(r=>
+       r.templateId===tplId
+    && (!scoped || (
+         (rec.businessUnitId ? r.businessUnitId===rec.businessUnitId
+          : rec.regionId ? r.regionId===rec.regionId : true)
+      && (meetingDeptIds.size===0 || meetingDeptIds.has(r.departmentId))))
+  );
+  const [showAll,setShowAll]=useState(false);
+  const matchingOccs = occsForTemplate(linkTplId, !showAll);
+  const outsideScope = linkTplId ? occsForTemplate(linkTplId,false).length - occsForTemplate(linkTplId,true).length : 0;
+
+  /* Attaching an occurrence to a link that was made against the Template
+     alone -- which link is open, and whether its list is scoped. */
+  const [attachFor,setAttachFor]=useState(null);
+  const [attachAll,setAttachAll]=useState(false);
+  const [attaching,setAttaching]=useState(false);
+  const onAttachOcc = async (link, occ) => {
+    setAttaching(true);
+    try{
+      const {id,errors} = await attachReportOccurrenceToLink({
+        linkId: link.id, reportOccurrenceId: occ.id, name: occ.name });
+      if(!id){
+        console.warn('[dataverse] attachReportOccurrenceToLink() failed:', errors);
+        toast('Not attached','Attaching this occurrence failed. Check the console for details.','err');
+        return;
+      }
+      toast('Occurrence attached',`${occ.name} is now linked to this Meeting.`,'ok');
+      setAttachFor(null); setAttachAll(false);
+      await reloadDocs();
+    }finally{ setAttaching(false); }
+  };
 
   const onLinkDoc = async (occ) => {
     setLinking(true);
@@ -6548,17 +6579,63 @@ function DvMeetingDetail({rec,back}){
                   <th>Linked</th><th></th></tr></thead>
                 <tbody>{docs.map(d=>{
                   const occ = d.reportOccurrenceId ? dvReportOccs.find(r=>r.id===d.reportOccurrenceId) : null;
-                  return <tr key={d.id}>
+                  /* Three states, not two: an occurrence that loaded, one that
+                     is linked but not in the loaded set, and none at all. The
+                     middle one used to read as the last, which denied a link
+                     that exists. */
+                  const attachable = !d.reportOccurrenceId && d.reportTemplateId;
+                  const open = attachFor===d.id;
+                  const opts = attachable ? occsForTemplate(d.reportTemplateId, !attachAll) : [];
+                  const outside = attachable
+                    ? occsForTemplate(d.reportTemplateId,false).length
+                      - occsForTemplate(d.reportTemplateId,true).length : 0;
+                  return <React.Fragment key={d.id}>
+                    <tr>
                     <td><div className="t-main">{d.name}</div></td>
                     <td>{occ
                       ? <a onClick={()=>openDvRec('Report',occ)}>{occ.name} · {fmtP(occ.period)}</a>
+                      : d.reportOccurrenceId
+                      ? <><div className="t-main">{d.name}</div>
+                          <div className="t-sub">Linked, but this occurrence is not in the loaded set.</div></>
                       : <span className="dim">— no occurrence linked —</span>}</td>
                     <td className="dim">{dvRptTpl(d.reportTemplateId)||'—'}</td>
                     <td className="dim">{d.created?fmtD(d.created.slice(0,10)):'—'}</td>
-                    <td style={{textAlign:'right'}}>
+                    <td style={{textAlign:'right',whiteSpace:'nowrap'}}>
+                      {attachable
+                        ? <Btn k="sm" onClick={()=>{ setAttachFor(open?null:d.id); setAttachAll(false); }}>
+                            {open?'Cancel':'Attach an occurrence'}</Btn>
+                        : null}{' '}
                       <Btn k="sm" disabled={unlinkingId===d.id} onClick={()=>onUnlinkDoc(d.id)}>
                         {unlinkingId===d.id?'Removing…':'Remove'}</Btn></td>
-                  </tr>;})}
+                    </tr>
+                    {open ? <tr><td colSpan={5} style={{background:'var(--surface)'}}>
+                      <div className="csub" style={{marginBottom:8}}>
+                        Occurrences of <b>{dvRptTpl(d.reportTemplateId)||'this Template'}</b>
+                        {attachAll ? ' — every one, whatever its scope.'
+                          : ` in this Meeting's own scope.`}
+                      </div>
+                      {opts.length===0
+                        ? <Note k="info" ic="i">
+                            {attachAll
+                              ? 'This Template has no Report Occurrence at all yet.'
+                              : outside>0
+                              ? <>None in this Meeting's scope. {outside} exist{outside===1?'s':''} elsewhere
+                                  — show them below to attach one anyway.</>
+                              : 'This Template has no Report Occurrence yet.'}
+                          </Note>
+                        : opts.map(o=>
+                            <div key={o.id} className="sched-r" style={{cursor:'default'}}>
+                              <div className="sched-t"><div className="n">{o.name}</div>
+                                <div className="m">{fmtP(o.period)} · {o.status}</div></div>
+                              <Btn k="sm pri" disabled={attaching} onClick={()=>onAttachOcc(d,o)}>
+                                {attaching?'Attaching…':'Attach'}</Btn>
+                            </div>)}
+                      {!attachAll && outside>0
+                        ? <Btn k="sm" style={{marginTop:8}} onClick={()=>setAttachAll(true)}>
+                            Show all {outside+opts.length} occurrences of this Template</Btn>
+                        : null}
+                    </td></tr> : null}
+                  </React.Fragment>;})}
                 </tbody></table>}
 
           <div className="card">
@@ -6569,7 +6646,7 @@ function DvMeetingDetail({rec,back}){
               {meetingDeptIds.size>0 ? ' and Department' : ''} is offered if one exists —
               otherwise the Template alone can be linked, and the occurrence added later.
             </div>
-            <select value={linkTplId} onChange={e=>{setLinkTplId(e.target.value);}}>
+            <select value={linkTplId} onChange={e=>{setLinkTplId(e.target.value); setShowAll(false);}}>
               <option value="">Choose a Report Template…</option>
               {DV_RPT_TPL_LIST.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
@@ -6587,10 +6664,16 @@ function DvMeetingDetail({rec,back}){
                     </div>)}
                 </div>
               : <div style={{marginTop:10}}>
-                  <Note k="info" ic="i">No live Report Occurrence matches this Template for this Meeting's
-                    own scope yet.</Note>
+                  <Note k="info" ic="i">{outsideScope>0
+                    ? <>No Report Occurrence of this Template is in this Meeting's own scope.
+                        {' '}{outsideScope} exist{outsideScope===1?'s':''} elsewhere.</>
+                    : <>This Template has no Report Occurrence yet.</>}</Note>
+                  {outsideScope>0
+                    ? <Btn k="sm" style={{marginTop:8,marginRight:6}} onClick={()=>setShowAll(true)}>
+                        Show all {outsideScope} — attach one anyway</Btn>
+                    : null}
                   <Btn k="sm" style={{marginTop:8}} disabled={linking} onClick={()=>onLinkDoc(null)}>
-                    {linking?'Linking…':'Link the Template only — no occurrence yet'}</Btn>
+                    {linking?'Linking…':'Link the Template only — add the occurrence later'}</Btn>
                 </div>
             ) : null}
           </div>
