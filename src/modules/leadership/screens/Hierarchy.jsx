@@ -3,65 +3,115 @@
 
    One of the three read-side screens ported from Leadership Practice
    Extension.html's "Read" group. Everything it needs comes from
-   ../domain.jsx, ../store.jsx and ../../../shared — never from
-   LeadershipApp.jsx, so this file can move to another module (or another
-   app) without dragging the execution module behind it.
+   ../store.jsx and ../../../shared — never from LeadershipApp.jsx, so this
+   file can move to another module (or another app) without dragging the
+   execution module behind it.
 
    Laid out as the prototype has it, because the shape carries the argument:
    a top-down org chart, not an indented list. A report/plan sits ABOVE the
    ones it rests on, so the depth of a claim is something you see rather than
    something you count — and a report with three levels under it is visibly a
    different kind of statement from one with none.
+
+   LIVE (20 Sep). It used to read the seeded db.reports / db.paragraphs model
+   and derive its edges from `RPT:` citation strings. It now reads the real
+   tables: lm_reportoccurrences for the nodes, and lm_reportsectioncitations
+   for the edges — a citation of kind "Child Report" IS an edge, which is the
+   same rule the seeded version used, against records instead of strings.
    ========================================================================= */
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { use } from '../store.jsx';
-import { Btn, Tag, Modal, Empty } from '../../../shared/ui.jsx';
+import { Btn, Tag, Modal, Empty, Note } from '../../../shared/ui.jsx';
 import { fmtP } from '../../../shared/format.js';
-import { P, BIR, DiagChip, findKpi, citeKind, citeId, rptCfg } from '../domain.jsx';
+import { DiagChip } from '../domain.jsx';
+import { fetchReportOccurrenceContent } from '../../../services/dataverse.js';
+
+/* DiagChip is keyed by the class, not the label, and a Section's angle comes
+   back from Dataverse as the label. Same map Build a report/plan keeps. */
+const ANGLE_CLS = { Descriptive:'d1', Diagnostic:'d2', Predictive:'d3', Prescriptive:'d4' };
 
 /* ---- 3. Reporting hierarchy -------------------------------------------- */
 export function ScreenHierarchy(){
-  const {db,go,setSel} = use();
-  const [q,setQ]         = useState('');
-  const [type,setType]   = useState('');
-  const [dept,setDept]   = useState('');
-  const [focus,setFocus] = useState(null);
+  const {dvReportOccs, dvLookup, openDvRec} = use();
+  const L  = dvLookup || {};
+  const nm = (fn, id) => (id && typeof fn === 'function' ? fn(id) : null);
+
+  const [q,setQ]           = useState('');
+  const [type,setType]     = useState('');
+  const [dept,setDept]     = useState('');
+  const [focus,setFocus]   = useState(null);
   const [detail,setDetail] = useState(null);
+  const [content,setContent] = useState(null);   // { sections, citations } once read
+  const [err,setErr]       = useState(null);
 
-  const reports = db.reports || [];
+  /* Sections and citations are read when this tab opens rather than at app
+     start: nothing else needs them and the bodies are long. Same shape and
+     same reasoning as Reports / Plans. */
+  useEffect(()=>{
+    let live = true;
+    setErr(null);
+    fetchReportOccurrenceContent()
+      .then(c=>{ if(live) setContent(c); })
+      .catch(e=>{
+        console.warn('[dataverse] Report sections/citations read failed:', e);
+        if(live){ setErr(e); setContent({sections:[], citations:[]}); }
+      });
+    return ()=>{ live = false; };
+  },[]);
+
+  const reports = dvReportOccs || [];
   const rep     = id => reports.find(r=>r.id===id) || null;
-  const parasOf = r => (r.blocks||[])
-    .map(id=>(db.paragraphs||[]).find(p=>p.id===id)).filter(Boolean);
-  const typeOf  = r => rptCfg(r)?.cat || 'Report / Plan';
-  const nameOf  = r => rptCfg(r)?.name || '(untitled)';
+  const nameOf  = r => r?.name || '(untitled)';
+  const typeOf  = r => nm(L.rptTpl, r?.templateId) || 'Report / Plan';
+  const deptOf  = r => nm(L.dept, r?.departmentId) || null;
 
-  /* A report is the parent of anything its paragraphs cite — whether cited
-     whole (a Child Report reference) or through one of that report's own
-     paragraphs. Both routes mean the same thing: this conclusion rests on
-     that one. So the tree is derived from real citations, never declared. */
-  const childIdsOf = r => {
-    const out = [];
-    parasOf(r).forEach(p=>(p.cites||[]).forEach(c=>{
-      const k = citeKind(c), id = citeId(c);
-      let target = null;
-      if(k==='RPT') target = rep(id);
-      if(k==='PAR'){
-        const owner = reports.find(x=>(x.blocks||[]).includes(id));
-        if(owner) target = owner;
-      }
-      if(target && target.id!==r.id && !out.includes(target.id)) out.push(target.id);
-    }));
-    return out;
-  };
-  const parentIdsOf = id => reports.filter(r=>childIdsOf(r).includes(id)).map(r=>r.id);
-  const roots = reports.filter(r=>parentIdsOf(r.id).length===0);
+  /* Sections per report, and the citations inside each section. The edge the
+     tree is built from lives across the two: a citation names the child, and
+     the section it sits in belongs to the parent. */
+  const {sectionsByReport, citesBySection, childIds, parentIds} = useMemo(()=>{
+    const secs = {}, cites = {}, kids = {}, parents = {};
+    const ownerOfSection = {};
+    for(const s of content?.sections || []){
+      if(!s.reportId) continue;
+      (secs[s.reportId] = secs[s.reportId] || []).push(s);
+      ownerOfSection[s.id] = s.reportId;
+    }
+    for(const k in secs){
+      secs[k].sort((a,b)=>
+        (a.sequence ?? 1e9) - (b.sequence ?? 1e9) || String(a.created).localeCompare(String(b.created)));
+    }
+    for(const c of content?.citations || []){
+      if(!c.sectionId) continue;
+      (cites[c.sectionId] = cites[c.sectionId] || []).push(c);
+      /* The edge. A Child Report citation means "this report rests on that
+         one" — the same claim the seeded model made with an RPT: string. */
+      const parent = ownerOfSection[c.sectionId];
+      const child  = c.citedReportId;
+      if(!parent || !child || parent === child) continue;
+      (kids[parent]    = kids[parent]    || new Set()).add(child);
+      (parents[child]  = parents[child]  || new Set()).add(parent);
+    }
+    return {
+      sectionsByReport: secs, citesBySection: cites,
+      childIds:  id => [...(kids[id] || [])],
+      parentIds: id => [...(parents[id] || [])],
+    };
+  },[content]);
+
+  const sectionsOf = r => sectionsByReport[r.id] || [];
+  const citesOf    = s => citesBySection[s.id] || [];
+  const childrenOf = r => childIds(r.id).map(rep).filter(Boolean);
+
+  /* A report nothing else cites is a top of the tree. Reports with no content
+     read at all are still roots — they simply have nothing under them. */
+  const roots = reports.filter(r=>parentIds(r.id).length===0);
 
   /* Everything above and below the focused report stays lit; the rest dims,
      so a branch reads without the tree being torn apart to show it. */
   const relatedTo = id => {
     const seen = new Set();
-    const up   = x => { if(seen.has(x)) return; seen.add(x); parentIdsOf(x).forEach(up); };
-    const down = x => { if(seen.has(x)) return; seen.add(x); childIdsOf(rep(x)||{}).forEach(down); };
+    const up   = x => { if(seen.has(x)) return; seen.add(x); parentIds(x).forEach(up); };
+    const down = x => { if(seen.has(x)) return; seen.add(x); childIds(x).forEach(down); };
     up(id); down(id);
     return seen;
   };
@@ -71,40 +121,27 @@ export function ScreenHierarchy(){
   const matches = r =>
     (!q.trim() || nameOf(r).toLowerCase().includes(q.trim().toLowerCase())) &&
     (!type || typeOf(r)===type) &&
-    (!dept || r.dept===dept);
+    (!dept || deptOf(r)===dept);
 
   const types = [...new Set(reports.map(typeOf))].sort();
-  const depts = [...new Set(reports.map(r=>r.dept).filter(Boolean))].sort();
+  const depts = [...new Set(reports.map(deptOf).filter(Boolean))].sort();
 
-  /* The BI reports a report/plan ultimately rests on, reached through the
-     KPIs its paragraphs cite. */
-  const biOf = r => {
-    const ids = [];
-    parasOf(r).forEach(p=>(p.cites||[]).forEach(c=>{
-      if(citeKind(c)!=='KPI' && citeKind(c)!=='BD') return;
-      const f = findKpi(citeId(c));
-      if(f && f.k.bi && !ids.includes(f.k.bi)) ids.push(f.k.bi);
-    }));
-    return ids.map(BIR).filter(Boolean);
-  };
+  /* The BI reports a report/plan rests on. Read straight off its citations
+     now that lm_BIReport is a real lookup — it used to be inferred by walking
+     each cited KPI to the dashboard behind it. */
+  const biOf = r => [...new Set(
+    sectionsOf(r).flatMap(s=>citesOf(s)
+      .filter(c=>c.kind==='BI Report')
+      .map(c=>c.biName || c.label).filter(Boolean)))];
 
-  /* A citation cycle would otherwise recurse until the stack gives out. The
-     prototype drops a repeated node silently; this keeps it as a marker,
-     because "it also hangs here" is a real edge and hiding it would make the
-     tree read as smaller than it is. */
+  /* A citation cycle would otherwise recurse until the stack gives out. A
+     repeated node is kept as a marker rather than dropped, because "it also
+     hangs here" is a real edge and hiding it would make the tree read as
+     smaller than it is. */
   const Node = ({r,seen}) => {
-    const kids = childIdsOf(r).map(rep).filter(Boolean);
-    const dim  = (related && !related.has(r.id)) || (filtersOn && !matches(r));
-    const paras = parasOf(r);
-    const box =
-      <button type="button"
-        className={'tnodebox'+(dim?' dim':'')+(focus===r.id?' focused':'')}
-        onClick={()=>{ setFocus(r.id); setDetail(r.id); }}>
-        <span className="tn-t">{nameOf(r)}</span>
-        <span className="tn-m">{typeOf(r)} · {P(r.creator).name}</span>
-        <span className="tn-m">{paras.length} section{paras.length===1?'':'s'}
-          {kids.length?` · ${kids.length} child${kids.length===1?'':'ren'}`:''}</span>
-      </button>;
+    const kids  = childrenOf(r);
+    const dim   = (related && !related.has(r.id)) || (filtersOn && !matches(r));
+    const secs  = sectionsOf(r);
 
     if(seen.includes(r.id))
       return <li><div className="tnodebox dim repeat">
@@ -112,7 +149,14 @@ export function ScreenHierarchy(){
         <span className="tn-m">already shown higher up</span></div></li>;
 
     return <li>
-      {box}
+      <button type="button"
+        className={'tnodebox'+(dim?' dim':'')+(focus===r.id?' focused':'')}
+        onClick={()=>{ setFocus(r.id); setDetail(r.id); }}>
+        <span className="tn-t">{nameOf(r)}</span>
+        <span className="tn-m">{typeOf(r)}{r.period?' · '+fmtP(r.period):''}</span>
+        <span className="tn-m">{secs.length} section{secs.length===1?'':'s'}
+          {kids.length?` · ${kids.length} child${kids.length===1?'':'ren'}`:''}</span>
+      </button>
       {kids.length
         ? <ul>{kids.map(k=><Node key={k.id} r={k} seen={[...seen,r.id]}/>)}</ul>
         : null}
@@ -120,11 +164,18 @@ export function ScreenHierarchy(){
   };
 
   const det = detail ? rep(detail) : null;
+  const loading = content === null;
 
   return <>
     <div className="ph"><h1>Reporting hierarchy</h1>
       <div className="sub">Every report/plan and every child it references, as one tree. Click a
         report to focus its branch; click again to see what’s inside it.</div></div>
+
+    {err
+      ? <Note k="warn" ic="⚠">The sections and citations could not be read, so the tree shows every
+          report/plan as a top-level one. Nothing is missing from the register — only the links
+          between them.</Note>
+      : null}
 
     <div className="card" style={{padding:14}}>
       <div className="flbl">Filter the hierarchy</div>
@@ -132,7 +183,7 @@ export function ScreenHierarchy(){
         <input type="search" value={q} onChange={e=>setQ(e.target.value)}
           placeholder="Search report/plan name…"/>
         <select value={type} onChange={e=>setType(e.target.value)}>
-          <option value="">Any type</option>
+          <option value="">Any template</option>
           {types.map(t=><option key={t} value={t}>{t}</option>)}
         </select>
         <select value={dept} onChange={e=>setDept(e.target.value)}>
@@ -150,7 +201,9 @@ export function ScreenHierarchy(){
     </div>
 
     <div className="card hier-canvas">
-      {roots.length===0
+      {loading
+        ? <Empty ic="…">Reading report sections and citations…</Empty>
+        : roots.length===0
         ? <Empty>{reports.length
             ? 'Every report/plan cites another one, so the tree has no top. Clear a citation cycle to see it.'
             : 'No report/plan exists yet.'}</Empty>
@@ -160,32 +213,32 @@ export function ScreenHierarchy(){
     </div>
 
     <div className="cnote">Top-level reports/plans are the ones nothing else references. Every
-      branch below one is a report/plan it cites — whole, or through one of its own paragraphs.
-      Click any box to focus its branch and see what’s inside it.</div>
+      branch below one is a report/plan it cites, through a <b>Child Report</b> citation in one of
+      its sections. Click any box to focus its branch and see what’s inside it.</div>
 
     {det
       ? <Modal onClose={()=>setDetail(null)}
           title={nameOf(det)}
-          sub={[typeOf(det), P(det.creator).name, fmtP(det.period)].filter(Boolean).join(' · ')}
+          sub={[typeOf(det), deptOf(det), det.status, fmtP(det.period)].filter(Boolean).join(' · ')}
           footer={<>
             <Btn onClick={()=>setDetail(null)}>Close</Btn>
-            <Btn k="pri" onClick={()=>{ setSel(v=>({...v,rpt:det.id})); go('rpt'); }}>
+            <Btn k="pri" onClick={()=>{ setDetail(null); openDvRec('Report', det); }}>
               Open full report/plan</Btn>
           </>}>
           <div className="flbl" style={{marginBottom:6}}>Sections</div>
-          {parasOf(det).length===0
+          {sectionsOf(det).length===0
             ? <div className="holder">This report/plan has no sections yet.</div>
-            : parasOf(det).map(p=>
-                <div key={p.id} className="hier-sec">
-                  <div className="h"><b>{p.h}</b><DiagChip d={p.diag}/></div>
+            : sectionsOf(det).map(s=>
+                <div key={s.id} className="hier-sec">
+                  <div className="h"><b>{s.heading}</b><DiagChip d={ANGLE_CLS[s.angle]}/></div>
                   <div className="csub" style={{marginBottom:0}}>
-                    {String(p.text||'').slice(0,140)}{String(p.text||'').length>140?'…':''}</div>
+                    {String(s.body||'').slice(0,140)}{String(s.body||'').length>140?'…':''}</div>
                 </div>)}
           {biOf(det).length
             ? <>
                 <div className="flbl" style={{margin:'14px 0 6px'}}>BI reports referenced</div>
                 <div className="pill-set">
-                  {biOf(det).map(b=><Tag key={b.id} c="teal">{b.n}</Tag>)}
+                  {biOf(det).map(n=><Tag key={n} c="teal">{n}</Tag>)}
                 </div>
               </>
             : null}
