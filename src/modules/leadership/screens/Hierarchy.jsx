@@ -68,9 +68,31 @@ export function ScreenHierarchy(){
   /* Sections per report, and the citations inside each section. The edge the
      tree is built from lives across the two: a citation names the child, and
      the section it sits in belongs to the parent. */
-  const {sectionsByReport, citesBySection, childIds, parentIds} = useMemo(()=>{
+  /* A citation's label for a Child Report is written "Child: <name>" by the
+     generator and "Report: <name>" by the picker. Either way the name is what
+     follows the colon. */
+  const bareName = t => String(t||'').replace(/^\s*(child|report)\s*:\s*/i,'').trim();
+  const norm = t => bareName(t).toLowerCase().replace(/\s+/g,' ');
+
+  /* Name -> the one occurrence carrying it. A name held by more than one is
+     dropped: an edge to the wrong report is worse than no edge. */
+  const idByName = useMemo(()=>{
+    const count = new Map(), first = new Map();
+    for(const r of reports){
+      const k = norm(r.name);
+      if(!k) continue;
+      count.set(k,(count.get(k)||0)+1);
+      if(!first.has(k)) first.set(k, r.id);
+    }
+    const out = new Map();
+    for(const [k,n] of count) if(n===1) out.set(k, first.get(k));
+    return out;
+  },[reports]);
+
+  const {sectionsByReport, citesBySection, childIds, parentIds, edgeStats} = useMemo(()=>{
     const secs = {}, cites = {}, kids = {}, parents = {};
     const ownerOfSection = {};
+    let byLookup = 0, byName = 0, unresolved = 0;
     for(const s of content?.sections || []){
       if(!s.reportId) continue;
       (secs[s.reportId] = secs[s.reportId] || []).push(s);
@@ -84,9 +106,20 @@ export function ScreenHierarchy(){
       if(!c.sectionId) continue;
       (cites[c.sectionId] = cites[c.sectionId] || []).push(c);
       /* The edge. A Child Report citation means "this report rests on that
-         one" — the same claim the seeded model made with an RPT: string. */
+         one" — the same claim the seeded model made with an RPT: string.
+
+         The lookup wins where it is set. Where it is not -- which is every
+         seeded citation today -- the label's name is matched against the
+         register, so the edges that exist are drawn instead of being lost to
+         a column nobody filled in. */
+      if(c.kind !== 'Child Report' && !c.citedReportId) continue;
       const parent = ownerOfSection[c.sectionId];
-      const child  = c.citedReportId;
+      let child = c.citedReportId;
+      if(child) byLookup++;
+      else {
+        child = idByName.get(norm(c.label)) || null;
+        if(child) byName++; else if(c.kind === 'Child Report') unresolved++;
+      }
       if(!parent || !child || parent === child) continue;
       (kids[parent]    = kids[parent]    || new Set()).add(child);
       (parents[child]  = parents[child]  || new Set()).add(parent);
@@ -95,8 +128,9 @@ export function ScreenHierarchy(){
       sectionsByReport: secs, citesBySection: cites,
       childIds:  id => [...(kids[id] || [])],
       parentIds: id => [...(parents[id] || [])],
+      edgeStats: { byLookup, byName, unresolved },
     };
-  },[content]);
+  },[content, idByName]);
 
   const sectionsOf = r => sectionsByReport[r.id] || [];
   const citesOf    = s => citesBySection[s.id] || [];
@@ -123,6 +157,29 @@ export function ScreenHierarchy(){
     (!type || typeOf(r)===type) &&
     (!dept || deptOf(r)===dept);
 
+  /* A branch survives a filter when anything in it matches, so a match deep
+     down still pulls its ancestors into view -- otherwise filtering would hide
+     the very structure this screen exists to show. Memoised because it walks
+     the whole tree per node otherwise. */
+  const branchHasMatch = useMemo(()=>{
+    const memo = new Map();
+    const walk = (id, trail) => {
+      if(memo.has(id)) return memo.get(id);
+      if(trail.has(id)) return false;          // a cycle contributes nothing
+      trail.add(id);
+      const r = rep(id);
+      let hit = !!r && matches(r);
+      if(!hit) for(const k of childIds(id)) if(walk(k, trail)){ hit = true; break; }
+      trail.delete(id);
+      memo.set(id, hit);
+      return hit;
+    };
+    return id => walk(id, new Set());
+  },[content, q, type, dept, reports]);
+
+  const visible = r => !filtersOn || branchHasMatch(r.id);
+  const matchCount = filtersOn ? reports.filter(matches).length : reports.length;
+
   const types = [...new Set(reports.map(typeOf))].sort();
   const depts = [...new Set(reports.map(deptOf).filter(Boolean))].sort();
 
@@ -139,7 +196,9 @@ export function ScreenHierarchy(){
      hangs here" is a real edge and hiding it would make the tree read as
      smaller than it is. */
   const Node = ({r,seen}) => {
-    const kids  = childrenOf(r);
+    const kids  = childrenOf(r).filter(visible);
+    /* Dim means "context, not result": a node kept only because something
+       under it matched, or one outside the focused branch. */
     const dim   = (related && !related.has(r.id)) || (filtersOn && !matches(r));
     const secs  = sectionsOf(r);
 
@@ -163,6 +222,8 @@ export function ScreenHierarchy(){
     </li>;
   };
 
+  const shownRoots = roots.filter(visible);
+  const linkedCount = reports.filter(r=>childIds(r.id).length || parentIds(r.id).length).length;
   const det = detail ? rep(detail) : null;
   const loading = content === null;
 
@@ -207,10 +268,30 @@ export function ScreenHierarchy(){
         ? <Empty>{reports.length
             ? 'Every report/plan cites another one, so the tree has no top. Clear a citation cycle to see it.'
             : 'No report/plan exists yet.'}</Empty>
+        : shownRoots.length===0
+        ? <Empty>No report/plan matches those filters.</Empty>
         : <div className="org-tree">
-            <ul>{roots.map(r=><Node key={r.id} r={r} seen={[]}/>)}</ul>
+            <ul>{shownRoots.map(r=><Node key={r.id} r={r} seen={[]}/>)}</ul>
           </div>}
     </div>
+
+    {!loading && !err
+      ? <div className="cnote" style={{marginTop:0}}>
+          <b>{linkedCount}</b> of {reports.length} report{reports.length===1?'':'s'} sit in a tree
+          with another{filtersOn ? <> · <b>{matchCount}</b> match the filters</> : null}.
+          {edgeStats.byName>0
+            ? <> {edgeStats.byName} link{edgeStats.byName===1?'':'s'} {edgeStats.byName===1?'was':'were'} matched
+                by name: those citations name a child report but leave{' '}
+                <code>lm_citedreportoccurrence</code> empty, so the tree would otherwise be flat.
+                Citing through the picker fills it in.</>
+            : null}
+          {edgeStats.unresolved>0
+            ? <> {edgeStats.unresolved} Child Report citation{edgeStats.unresolved===1?'':'s'} could
+                not be resolved to a report at all — no lookup, and the name matches nothing in the
+                register (or matches more than one).</>
+            : null}
+        </div>
+      : null}
 
     <div className="cnote">Top-level reports/plans are the ones nothing else references. Every
       branch below one is a report/plan it cites, through a <b>Child Report</b> citation in one of
