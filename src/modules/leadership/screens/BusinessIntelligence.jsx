@@ -9,7 +9,7 @@
    ========================================================================= */
 import React, { useState, useEffect, useMemo } from 'react';
 import { use } from '../store.jsx';
-import { Btn, Tag, Note, Empty, Field, Bar } from '../../../shared/ui.jsx';
+import { Btn, Tag, Note, Empty, Bar, Combo } from '../../../shared/ui.jsx';
 import { PERIOD, fmtP } from '../../../shared/format.js';
 import { achFor, achPct, achCls, bdDims,
          matchesQuery } from '../domain.jsx';
@@ -235,27 +235,6 @@ export function BiFrame({bi}){
   </div>;
 }
 
-/* A plain <select>, paired with its own search box that narrows the option
-   list -- for a live catalogue that can run to dozens or hundreds of rows,
-   unlike the small seeded lists this replaced. The currently chosen option
-   always stays in the list even if the search text no longer matches it, so
-   picking one and then typing something else doesn't silently blank the
-   control. */
-function SearchSelect({ label, value, onChange, options, allLabel, searchPlaceholder }){
-  const [q,setQ] = useState('');
-  const visible = options.filter(o=>matchesQuery(q,[o.name]) || o.id===value);
-  return <Field label={label}>
-    <input type="search" value={q} placeholder={searchPlaceholder}
-      onChange={e=>setQ(e.target.value)}
-      style={{width:'100%',border:'1px solid var(--border-d)',borderRadius:8,
-              padding:'6px 9px',fontSize:12.5,marginBottom:5}}/>
-    <select value={value} onChange={e=>onChange(e.target.value)}>
-      <option value="">{allLabel}</option>
-      {visible.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}
-    </select>
-  </Field>;
-}
-
 /* ---- 1. Business intelligence ------------------------------------------ */
 export function ScreenBI(){
   /* The dashboards, and which KPI each sits behind. Read here rather than at
@@ -327,15 +306,13 @@ export function ScreenBI(){
       <div className="csub">Filters combine. Process and Department come straight from the KPI's
         own record in strategy_kpises — search either list if it runs long.</div>
       <div className="f-row3">
-        <SearchSelect label="Process" value={fProc} onChange={setFProc}
-          options={loading ? [] : procs} allLabel="Any Process" searchPlaceholder="Search processes…"/>
-        <SearchSelect label="Owning department" value={fOwner} onChange={setFOwner}
-          options={deptList} allLabel="Any department" searchPlaceholder="Search departments…"/>
-        <Field label="BI report">
-          <select value={fBi} onChange={e=>setFBi(e.target.value)}>
-            <option value="">Any BI report</option>
-            {biList.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
-          </select></Field>
+        <Combo label="Process" value={fProc} onChange={setFProc}
+          opts={loading ? [] : procs} all="Any Process" placeholder="Search processes…"/>
+        <Combo label="Owning department" value={fOwner} onChange={setFOwner}
+          opts={deptList} all="Any department" placeholder="Search departments…"/>
+        <Combo label="BI report" value={fBi} onChange={setFBi}
+          opts={biList.map(b=>({id:b.id, name:b.name, sub:b.kpiName||null}))}
+          all="Any BI report" placeholder="Search BI reports…"/>
       </div>
       <div className="btn-row" style={{marginTop:4}}>
         <input type="search" value={q} placeholder="Search KPIs…"

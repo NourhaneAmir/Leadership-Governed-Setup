@@ -21,7 +21,7 @@
    ========================================================================= */
 import React, { useState, useEffect, useMemo } from 'react';
 import { use } from '../store.jsx';
-import { Btn, Tag, Modal, Empty, Note } from '../../../shared/ui.jsx';
+import { Btn, Tag, Modal, Empty, Note, Combo } from '../../../shared/ui.jsx';
 import { fmtP } from '../../../shared/format.js';
 import { DiagChip } from '../domain.jsx';
 import { fetchReportOccurrenceContent } from '../../../services/dataverse.js';
@@ -33,7 +33,11 @@ const ANGLE_CLS = { Descriptive:'d1', Diagnostic:'d2', Predictive:'d3', Prescrip
 /* ---- 3. Reporting hierarchy -------------------------------------------- */
 export function ScreenHierarchy(){
   const {dvReportOccs, dvLookup, openDvRec} = use();
-  const L  = dvLookup || {};
+  /* Both are memoised because everything below -- the template index, the edge
+     map, the filter walk -- depends on them. Left as plain fallbacks they are
+     new objects on every render, so the whole citation set would be rewalked
+     on each keystroke in the search box. */
+  const L  = useMemo(()=>dvLookup || {}, [dvLookup]);
   const nm = (fn, id) => (id && typeof fn === 'function' ? fn(id) : null);
 
   const [q,setQ]           = useState('');
@@ -59,7 +63,7 @@ export function ScreenHierarchy(){
     return ()=>{ live = false; };
   },[]);
 
-  const reports = dvReportOccs || [];
+  const reports = useMemo(()=>dvReportOccs || [], [dvReportOccs]);
   const rep     = id => reports.find(r=>r.id===id) || null;
   const nameOf  = r => r?.name || '(untitled)';
   const typeOf  = r => nm(L.rptTpl, r?.templateId) || 'Report / Plan';
@@ -273,14 +277,10 @@ export function ScreenHierarchy(){
       <div className="hier-f">
         <input type="search" value={q} onChange={e=>setQ(e.target.value)}
           placeholder="Search report/plan name…"/>
-        <select value={type} onChange={e=>setType(e.target.value)}>
-          <option value="">Any template</option>
-          {types.map(t=><option key={t} value={t}>{t}</option>)}
-        </select>
-        <select value={dept} onChange={e=>setDept(e.target.value)}>
-          <option value="">Any department</option>
-          {depts.map(d=><option key={d} value={d}>{d}</option>)}
-        </select>
+        <Combo value={type} onChange={setType} all="Any template"
+          placeholder="Search templates…" opts={types.map(t=>({id:t, name:t}))}/>
+        <Combo value={dept} onChange={setDept} all="Any department"
+          placeholder="Search departments…" opts={depts.map(d=>({id:d, name:d}))}/>
       </div>
       {focus
         ? <div className="csub" style={{marginTop:8,marginBottom:0}}>

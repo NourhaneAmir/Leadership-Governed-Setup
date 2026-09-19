@@ -28,6 +28,73 @@ export const Field = ({label,req,hint,err,children}) =>
     {err && <div className="err">{err}</div>}
   </div>;
 
+/* A dropdown you can type in.
+
+   `opts` is [{id, name, sub?}]. `value` is an id, or '' for none, and `all` is
+   what that empty choice is called. onChange is given the id.
+
+   The search field is focused when the panel opens, so the control can be
+   driven from the keyboard. The currently chosen option stays in the list
+   whatever the search text says -- otherwise typing after choosing would make
+   the selection look lost. */
+export function Combo({label, value, onChange, opts = [], all = 'Any', placeholder = 'Search…', disabled}){
+  const [open, setOpen] = React.useState(false);
+  const [q, setQ]       = React.useState('');
+  const box  = React.useRef(null);
+  const find = React.useRef(null);
+
+  React.useEffect(() => {
+    if(!open) return;
+    const onDoc = e => { if(!box.current?.contains(e.target)) setOpen(false); };
+    const onKey = e => { if(e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    find.current?.focus();
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const needle = q.trim().toLowerCase();
+  const shown = needle
+    ? opts.filter(o => (o.name || '').toLowerCase().includes(needle)
+                    || (o.sub || '').toLowerCase().includes(needle)
+                    || o.id === value)
+    : opts;
+  const chosen = opts.find(o => o.id === value);
+
+  const pick = id => { onChange(id); setOpen(false); setQ(''); };
+
+  const control = <div className="combo" ref={box}>
+    <button type="button" className="combo-btn" disabled={disabled}
+      aria-expanded={open} aria-haspopup="listbox"
+      onClick={() => { if(!disabled){ setOpen(o => !o); setQ(''); } }}>
+      <span className={chosen ? 'combo-v' : 'combo-v none'}>{chosen ? chosen.name : all}</span>
+      <span className="combo-cv" aria-hidden="true">▾</span>
+    </button>
+    {open
+      ? <div className="combo-pop" role="listbox">
+          <input ref={find} type="search" className="combo-q" value={q}
+            placeholder={placeholder} onChange={e => setQ(e.target.value)}/>
+          <button type="button" className={'combo-opt' + (value ? '' : ' on')}
+            onClick={() => pick('')}>{all}</button>
+          {shown.length === 0
+            ? <div className="combo-empty">Nothing matches that search.</div>
+            : shown.map(o =>
+                <button type="button" key={o.id} role="option" aria-selected={o.id === value}
+                  className={'combo-opt' + (o.id === value ? ' on' : '')}
+                  onClick={() => pick(o.id)}>
+                  <span>{o.name}</span>
+                  {o.sub ? <span className="combo-sub">{o.sub}</span> : null}
+                </button>)}
+        </div>
+      : null}
+  </div>;
+
+  return label ? <Field label={label}>{control}</Field> : control;
+}
+
 export const Empty = ({ic='—',children}) => <div className="empty"><div className="ic">{ic}</div>{children}</div>;
 
 export const Stat = ({label,v,d,c,on,onClick}) =>
