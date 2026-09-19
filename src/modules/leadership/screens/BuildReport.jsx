@@ -697,6 +697,12 @@ function CitePicker({ picker, setPicker, onCite, catalog, inScope, reports, take
   const set = f => setPicker(p => ({ ...p, ...f }));
   const k = picker.kind;
   const has = pred => taken.some(pred);
+  /* A citation of one of the PICKED_KINDS keeps its id only until the report is
+     saved -- there is no column for it -- so after a reload the label is all
+     there is to compare. Checking both means the "already cited" state is right
+     before AND after a save, and stays right if the lookups are ever added. */
+  const cited = (kind, id, idKey, label) =>
+    has(c => c.kind === kind && ((id && c[idKey] === id) || (!c[idKey] && c.label === label)));
 
   const list = (rows, pick) =>
     <div className="cpick-l">
@@ -808,7 +814,7 @@ function CitePicker({ picker, setPicker, onCite, catalog, inScope, reports, take
         {list(shown.map(p => ({
           id: p.id, n: p.name,
           m: [p.status, p.categoryName, p.specialtyName, p.kpiName].filter(Boolean).join(' · '),
-          taken: has(c => c.kind === 'POC' && c.pocId === p.id),
+          taken: cited('POC', p.id, 'pocId', 'POC: ' + p.name),
         })), p => {
           const src = shown.find(x => x.id === p.id);
           onCite({ kind: 'POC', pocId: src.id, label: 'POC: ' + src.name });
@@ -827,7 +833,7 @@ function CitePicker({ picker, setPicker, onCite, catalog, inScope, reports, take
         {list(shown.map(x => ({
           id: x.id, n: x.name,
           m: [x.level, x.status, x.regionName, x.kpiName].filter(Boolean).join(' · '),
-          taken: has(c => c.kind === 'Strategy' && c.strategyId === x.id),
+          taken: cited('Strategy', x.id, 'strategyId', 'Strategy: ' + x.name),
         })), x => {
           const src = shown.find(y => y.id === x.id);
           onCite({ kind: 'Strategy', strategyId: src.id, label: 'Strategy: ' + src.name });
@@ -842,7 +848,7 @@ function CitePicker({ picker, setPicker, onCite, catalog, inScope, reports, take
       body = <>
         {search('Search BI reports…')}
         {list(shown.map(x => ({ id: x.id, n: x.name,
-          taken: has(c => c.kind === 'BI Report' && c.biId === x.id) })),
+          taken: cited('BI Report', x.id, 'biId', 'BI Report: ' + x.name) })),
           x => onCite({ kind: 'BI Report', biId: x.id, label: 'BI Report: ' + x.n }))}
         <div className="holder" style={{ marginTop: 6 }}>
           {rows.length
@@ -868,7 +874,7 @@ function CitePicker({ picker, setPicker, onCite, catalog, inScope, reports, take
           id: x.id, n: x.name,
           m: [x.status, x.priority, x.assigneeName, x.due ? 'due ' + x.due : null]
                .filter(Boolean).join(' · '),
-          taken: has(c => c.kind === 'Task' && c.taskId === x.id),
+          taken: cited('Task', x.id, 'taskId', 'Task: ' + x.name),
         })), x => {
           const src = shown.find(y => y.id === x.id);
           onCite({ kind: 'Task', taskId: src.id, label: 'Task: ' + src.name });
