@@ -164,7 +164,6 @@ function KpiPanel({k,scope}){
 /* Exported: Build a report/plan and Reports / Plans show the same frame under
    a cited KPI. `bi` is one row of lm_bireportdashboard -- {n, link}. */
 export function BiFrame({bi}){
-  const [loaded,setLoaded] = useState(false);
   /* Remounting the iframe is the only way to retry: changing nothing but the
      key forces a fresh navigation, which is what you want after signing in to
      Power BI in another tab. */
@@ -195,7 +194,6 @@ export function BiFrame({bi}){
   },[]);
 
   const embed = toEmbedUrl(bi.link);
-  const converted = embed !== bi.link;
   return <div style={{marginTop:10}}>
     <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:6}}>
       <b style={{fontSize:12.5}}>{bi.n}</b>
@@ -205,7 +203,7 @@ export function BiFrame({bi}){
       <Btn k="sm pri" onClick={()=>openViewer(embed)}>Open full report ↗</Btn>
       {violation
         ? null
-        : <Btn k="sm" onClick={()=>{ setLoaded(false); setAttempt(a=>a+1); }}>
+        : <Btn k="sm" onClick={()=>setAttempt(a=>a+1)}>
             Retry in page</Btn>}
     </div>
     {/* Once the CSP has refused this origin the frame can never render, so it
@@ -218,7 +216,7 @@ export function BiFrame({bi}){
           <iframe key={attempt} title={bi.n} src={embed} loading="lazy"
             referrerPolicy="strict-origin-when-cross-origin"
             allow="fullscreen; clipboard-write"
-            allowFullScreen onLoad={()=>setLoaded(true)}/>
+            allowFullScreen/>
         </div>}
     {violation
       ? <Note k="err" ic="✕">
@@ -233,20 +231,7 @@ export function BiFrame({bi}){
           Microsoft's to set, not ours. The figures above are drawn from this app's own data
           and are unaffected.
         </Note>
-      : <div className="holder" style={{marginTop:6}}>
-          <b>Blank or a broken-document icon above?</b> No CSP violation was reported, so the
-          frame itself was allowed and Power BI declined it — the viewer is not signed in, the
-          report is not shared with them, or the browser is partitioning third-party cookies
-          (the default in Safari and in Chrome incognito), which stops silent auth inside a
-          frame. Use <b>Open full report ↗</b>: it authenticates normally, and once a session
-          exists <b>Retry in page</b> may then work.
-        </div>}
-    {converted
-      ? <div className="holder" style={{marginTop:4}}>
-          Framed from the embed endpoint, converted from the portal link the catalogue holds —
-          Power BI refuses to frame <code>app.powerbi.com/groups/…</code> itself.</div>
       : null}
-    <div style={{marginTop:4,wordBreak:'break-all',fontSize:11,color:'var(--faint)'}}>{bi.link}</div>
   </div>;
 }
 
@@ -288,7 +273,9 @@ export function ScreenBI(){
   /* A KPI may have more than one dashboard; all of them are offered. */
   const biByKpi = useMemo(()=>{
     const m = new Map();
-    for(const r of biList){
+    /* Read from biRows, not biList: biList is rebuilt every render, so
+       depending on it would defeat the memo. */
+    for(const r of biRows || []){
       if(!r.kpiId) continue;
       if(!m.has(r.kpiId)) m.set(r.kpiId, []);
       m.get(r.kpiId).push(r);
