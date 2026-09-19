@@ -1428,6 +1428,200 @@ const Lm_meetingtemplatedepartmentfunctionsService = dvTable('lm_meetingtemplate
 const Lm_meetingtemplatelinkedreportsesService = dvTable('lm_meetingtemplatelinkedreportses', 'lm_meetingtemplatelinkedreportsid');
 const Lm_meetingattendeeslistsService = dvTable('lm_meetingattendeeslists', 'lm_meetingattendeeslistid');
 const Lm_meetingcategoriesService = dvTable('lm_meetingcategories', 'lm_meetingcategoryid');
+
+/* ========================================================================
+   Strategy execution -- POCs, Strategies, BI reports and Tasks.
+
+   These four are what a report SECTION cites when it rests on something other
+   than a KPI or a Process. Until now all four were typed by hand and saved as
+   a bare label, because none of them had a table in this app. They do now.
+
+   ⚠️ lm_reportsectioncitations still has no lookup column for any of the four
+   -- its only lookups are lm_kpi, lm_process, lm_citedsection,
+   lm_childcitedsection, lm_childreporttemplate and lm_citedreportoccurrence.
+   So the PICKER is governed (you choose a real record) but the CITATION still
+   stores the chosen record's name in lm_name. Adding lm_poc, lm_strategy,
+   lm_bireport and lm_task lookups would make the reference resolvable; the
+   pickers below already carry the ids ready for that day.
+   ======================================================================== */
+const Stf_strategypocsService       = dvTable('stf_strategypocs', 'stf_strategypocid');
+const Stf_executioncategoriesService= dvTable('stf_executioncategories', 'stf_executioncategoryid');
+const Crd04_specialtiesesService    = dvTable('crd04_specialtieses', 'crd04_specialtiesid');
+const Strategy_strategiesService    = dvTable('strategy_strategies', 'strategy_strategyid');
+const Lm_bireportdashboardsService  = dvTable('lm_bireportdashboards', 'lm_bireportdashboardid');
+const Hx_taskesService              = dvTable('hx_taskses', 'hx_tasksid');
+
+/** POC status, read from the live option set stf_stfpocstatus. */
+export const POC_STATUS = { 1:'Active', 2:'Succeeded', 3:'Failed', 4:'Retired' };
+
+/** Every POC, with the five things the picker filters on.
+ *
+ *  Each lookup comes back twice -- the id to filter on and the formatted value
+ *  to show -- so the filter dropdowns can be built from the rows themselves
+ *  rather than from five more reads. */
+/** Users who can be assigned a task -- systemusers, enabled ones only.
+ *  `isdisabled eq false` rather than statecode, which systemuser does not use
+ *  the way a custom table does. */
+export async function fetchAssignableUsers(){
+  const res = await SystemusersService.getAll({
+    select: ['systemuserid', 'fullname', 'internalemailaddress'],
+    filter: 'isdisabled eq false',
+  });
+  return (res?.data ?? [])
+    .filter(r => r.fullname)
+    .map(r => ({ id: r.systemuserid, name: r.fullname, email: r.internalemailaddress || null }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function fetchStrategyPocs(){
+  const res = await Stf_strategypocsService.getAll({
+    select: ['stf_strategypocid','stf_pocname','stf_pocdescription','stf_pocstatus',
+             '_stf_region_value','_stf_poccategory_value','_stf_specialty_value',
+             '_stf_strategykpi_value','stf_successcriteria','stf_target'],
+    filter: 'statecode eq 0',
+  });
+  return (res?.data ?? []).map(r => ({
+    id: r.stf_strategypocid,
+    name: r.stf_pocname || '(unnamed POC)',
+    description: r.stf_pocdescription || null,
+    status: POC_STATUS[r.stf_pocstatus] || null,
+    statusCode: r.stf_pocstatus ?? null,
+    regionId: r._stf_region_value || null,
+    regionName: r['_stf_region_value' + FV] || null,
+    categoryId: r._stf_poccategory_value || null,
+    categoryName: r['_stf_poccategory_value' + FV] || null,
+    specialtyId: r._stf_specialty_value || null,
+    specialtyName: r['_stf_specialty_value' + FV] || null,
+    kpiId: r._stf_strategykpi_value || null,
+    kpiName: r['_stf_strategykpi_value' + FV] || null,
+    successCriteria: r.stf_successcriteria || null,
+    target: r.stf_target ?? null,
+  }));
+}
+
+/** POC Category -- stf_executioncategory. */
+export async function fetchExecutionCategories(){
+  const res = await Stf_executioncategoriesService.getAll({
+    select: ['stf_executioncategoryid','stf_categoryname'],
+    filter: 'statecode eq 0',
+  });
+  return (res?.data ?? [])
+    .map(r => ({ id: r.stf_executioncategoryid, name: r.stf_categoryname || '(unnamed)' }))
+    .sort((a,b)=>a.name.localeCompare(b.name));
+}
+
+/** Specialties -- crd04_specialties. NOT the same table as the Section /
+ *  Specialty list the Setup wizard uses (cr301_specialtyksa_service_hubs);
+ *  this is the one a POC is recorded against. */
+export async function fetchSpecialties(){
+  const res = await Crd04_specialtiesesService.getAll({
+    select: ['crd04_specialtiesid','crd04_title'],
+    filter: 'statecode eq 0',
+  });
+  return (res?.data ?? [])
+    .map(r => ({ id: r.crd04_specialtiesid, name: r.crd04_title || '(untitled)' }))
+    .sort((a,b)=>a.name.localeCompare(b.name));
+}
+
+/** Strategies -- strategy_strategy. The name is strategy_newcolumn, the same
+ *  naming accident the KPI and Process tables carry. */
+export async function fetchStrategies(){
+  const res = await Strategy_strategiesService.getAll({
+    select: ['strategy_strategyid','strategy_newcolumn','strategy_strategydescription',
+             'strategy_strategystatus','strategy_strategylevel','_strategy_region_value',
+             '_strategy_kpi_value'],
+    filter: 'statecode eq 0',
+  });
+  return (res?.data ?? []).map(r => ({
+    id: r.strategy_strategyid,
+    name: r.strategy_newcolumn || '(unnamed strategy)',
+    description: r.strategy_strategydescription || null,
+    status: r['strategy_strategystatus' + FV] || null,
+    level: r['strategy_strategylevel' + FV] || null,
+    regionName: r['_strategy_region_value' + FV] || null,
+    kpiId: r._strategy_kpi_value || null,
+    kpiName: r['_strategy_kpi_value' + FV] || null,
+  })).sort((a,b)=>a.name.localeCompare(b.name));
+}
+
+/** BI reports / dashboards -- lm_bireportdashboard.
+ *
+ *  ⚠️ The table holds a NAME and nothing else: no embed URL, and no link to a
+ *  KPI. A KPI filter was asked for and cannot be built -- there is no column
+ *  to filter on. Adding a strategy_kpis lookup to this table would give both
+ *  that filter and the "which dashboard is behind this measure" link the
+ *  Business intelligence screen wants. */
+export async function fetchBiReportDashboards(){
+  const res = await Lm_bireportdashboardsService.getAll({
+    select: ['lm_bireportdashboardid','lm_reportname'],
+    filter: 'statecode eq 0',
+  });
+  return (res?.data ?? [])
+    .map(r => ({ id: r.lm_bireportdashboardid, name: r.lm_reportname || '(unnamed report)' }))
+    .sort((a,b)=>a.name.localeCompare(b.name));
+}
+
+/* Live option sets on hx_tasks. */
+export const TASK_PRIORITY = { 123200000:'Low', 123200001:'Medium', 123200002:'High', 931940001:'Critical' };
+export const TASK_PRIORITY_KEY = { 'Low':123200000, 'Medium':123200001, 'High':123200002, 'Critical':931940001 };
+export const TASK_STATUS = {
+  123200004:'New', 100000001:'In Progress', 123200005:'Submitted', 100000005:'On Hold',
+  123200002:'Closed', 123200003:'Cancelled', 931940001:'Rejected',
+};
+
+/** Tasks -- hx_tasks. A large shared table; only what a citation needs is read. */
+export async function fetchTasks(){
+  const res = await Hx_taskesService.getAll({
+    select: ['hx_tasksid','hx_tasktitle','hx_taskdescription','hx_status','hx_priority',
+             'hx_duedate','hx_startdate','_hx_assignee_value'],
+    filter: 'statecode eq 0',
+    orderby: 'createdon desc',
+  });
+  return (res?.data ?? []).map(r => ({
+    id: r.hx_tasksid,
+    name: r.hx_tasktitle || '(untitled task)',
+    description: r.hx_taskdescription || null,
+    status: TASK_STATUS[r.hx_status] || null,
+    priority: TASK_PRIORITY[r.hx_priority] || null,
+    due: isoDay(r.hx_duedate),
+    start: isoDay(r.hx_startdate),
+    assigneeName: r['_hx_assignee_value' + FV] || null,
+  }));
+}
+
+/** Raises a Task on hx_tasks.
+ *
+ *  Status is left to Dataverse's own default rather than set here: the option
+ *  set has seven values across three prefixes (hx_, tms_, a 931940001 from a
+ *  fourth), which is the shape of a column several teams have added to, and
+ *  guessing which one means "new" for their process is not this module's call.
+ *
+ *  @param {{title:string, description?:string, action?:string, assigneeId?:string,
+ *           priority?:string, startDate?:string, dueDate?:string}} t
+ */
+export async function createTask(t){
+  const errors = [];
+  const row = {
+    hx_tasktitle: t.title,
+    hx_taskdescription: t.description || null,
+    /* "Action to be taken" has no column of its own; hx_justifications is the
+       free-text field on this table that carries what is to be done and why. */
+    hx_justifications: t.action || null,
+    hx_priority: t.priority ? TASK_PRIORITY_KEY[t.priority] ?? null : null,
+    hx_startdate: t.startDate || null,
+    hx_duedate: t.dueDate || null,
+  };
+  if(t.assigneeId) row['hx_Assignee@odata.bind'] = `/systemusers(${t.assigneeId})`;
+  try{
+    const created = await Hx_taskesService.create(row);
+    const id = created?.data?.hx_tasksid || null;
+    if(!id) errors.push({ table:'hx_taskses', error:new Error('created but no id returned') });
+    return { id, errors };
+  }catch(e){
+    return { id:null, errors:[{ table:'hx_taskses', error:e }] };
+  }
+}
+
 const MEETING_STAGE_KEY = {
   'Stage 1 BU Operational':1, 'Stage 2 Regional Functional':2,
   'Stage 3 Group Functional':3, 'Stage 4 Top Management, COO & CEO':4,

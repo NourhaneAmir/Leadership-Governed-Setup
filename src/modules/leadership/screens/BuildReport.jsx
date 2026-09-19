@@ -21,11 +21,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { use } from '../store.jsx';
 import { Btn, Tag, Note, Empty } from '../../../shared/ui.jsx';
-import { fmtP } from '../../../shared/format.js';
+import { fmtP, TODAY } from '../../../shared/format.js';
 import { DiagChip, rptTagC, matchesQuery } from '../domain.jsx';
 import { fetchReportOccurrenceForEdit, saveReportOccurrenceContent, submitReportOccurrence,
          fetchReportTemplateDetail, fetchKpis, fetchProcesses,
          fetchKpiAchievements, pickAchievement,
+         fetchStrategyPocs, fetchExecutionCategories, fetchSpecialties,
+         fetchStrategies, fetchBiReportDashboards, fetchTasks, createTask,
+         POC_STATUS, TASK_PRIORITY_KEY, fetchAssignableUsers,
          SECTION_ANGLE, SECTION_BREAKDOWN_DIM } from '../../../services/dataverse.js';
 
 /* Dataverse angle labels, and the DiagChip / .dg-seg class each maps onto. */
@@ -38,8 +41,14 @@ const ANGLE_CLS = Object.fromEntries(ANGLES);
    Composition (PROJECT-CONTEXT section 5, 02 Sep). "Paragraph" is left out:
    the only column that could hold a cited section, lm_citedsection, already
    holds the citation's own parent section. */
+/* Resolves to a record through a real lookup column on the citation row. */
 const LIVE_KINDS = ['KPI', 'Breakdown', 'Process', 'Child Report'];
-const LABEL_KINDS = ['POC', 'Project', 'Strategy', 'BI Report', 'Issue', 'Task'];
+/* Chosen from a governed table, but stored as its name: lm_reportsectioncitations
+   has no lookup column for any of these four yet. The citation carries the id
+   regardless, so adding those columns is a save-path change, not a UI one. */
+const PICKED_KINDS = ['POC', 'Strategy', 'BI Report', 'Task'];
+/* Still free text -- no table in this app. */
+const LABEL_KINDS = ['Project', 'Issue'];
 
 const EDITABLE = r => !!r && !r.locked && (r.status === 'Draft' || r.status === 'Returned');
 const BODY_MAX = 4000;
@@ -133,6 +142,10 @@ export function ScreenBuildReport(){
   const [catalog, setCatalog]   = useState({ kpis: null, processes: null });
   const [picker, setPicker]     = useState(null);       // { key, kind, q, kpiId, dim, text }
   const [ach, setAch]           = useState(null);       // achievement rows, or null while reading
+  /* The four governed lists behind PICKED_KINDS, plus the two POC filters that
+     are their own tables. Read once, like the KPI and Process catalogues. */
+  const [exec, setExec]         = useState({ pocs:null, cats:null, specs:null,
+                                             strategies:null, bi:null, tasks:null });
 
   /* The report being built follows the app's selection, so "Edit" elsewhere
      (and a Report link from any screen) can open one here. */
@@ -149,6 +162,27 @@ export function ScreenBuildReport(){
       .then(([kpis, processes]) => { if (live) setCatalog({ kpis, processes }); });
     return () => { live = false; };
   }, []);
+
+  /* What POC, Strategy, BI Report and Task cite. Each falls back to an empty
+     list on failure so one unreadable table cannot stop the others, or the
+     report, from working. */
+  useEffect(() => {
+    let live = true;
+    Promise.all([
+      fetchStrategyPocs().catch(e => { console.warn('[dataverse] POCs:', e); return []; }),
+      fetchExecutionCategories().catch(() => []),
+      fetchSpecialties().catch(() => []),
+      fetchStrategies().catch(e => { console.warn('[dataverse] strategies:', e); return []; }),
+      fetchBiReportDashboards().catch(() => []),
+      fetchTasks().catch(e => { console.warn('[dataverse] tasks:', e); return []; }),
+    ]).then(([pocs, cats, specs, strategies, bi, tasks]) => {
+      if (live) setExec({ pocs, cats, specs, strategies, bi, tasks });
+    });
+    return () => { live = false; };
+  }, []);
+
+  /* A task raised from the picker joins the list without a re-read. */
+  const addTask = t => setExec(x => ({ ...x, tasks: [t, ...(x.tasks || [])] }));
 
   /* Every KPI this report cites, from every section. A KPI cited twice is read
      once. */
@@ -452,7 +486,8 @@ export function ScreenBuildReport(){
                           picker={picker?.key === s.key ? picker : null}
                           setPicker={setPicker} catalog={catalog} inScope={inScope}
                           reports={reports.filter(r => r.id !== recId)}
-                          ach={ach} rec={rec} L={L} nm={nm}/>)}
+                          ach={ach} rec={rec} L={L} nm={nm}
+                          exec={exec} addTask={addTask} toast={toast}/>)}
 
                   <div className="card" style={{ textAlign: 'center' }}>
                     <Btn k="sm pri" disabled={!!busy} onClick={addSection}>+ Add a section</Btn>
@@ -485,7 +520,7 @@ export function ScreenBuildReport(){
    component is otherwise props-only, and because reading them from the wrong
    scope is exactly what broke this screen once already. */
 function SectionEditor({ s, i, total, busy, patch, move, remove, uncite, cite, picker, setPicker,
-                         catalog, inScope, reports, ach, rec, L, nm }){
+                         catalog, inScope, reports, ach, rec, L, nm, exec, addTask, toast }){
   const len = s.body.length;
   return <div className="sec">
     <div className="sec-h">
@@ -537,7 +572,7 @@ function SectionEditor({ s, i, total, busy, patch, move, remove, uncite, cite, p
       </div>
 
       {picker
-        ? <CitePicker picker={picker} setPicker={setPicker} onCite={c => cite(s.key, c)}
+        ? <CitePicker exec={exec} addTask={addTask} toast={toast} rec={rec} picker={picker} setPicker={setPicker} onCite={c => cite(s.key, c)}
             catalog={catalog} inScope={inScope} reports={reports} taken={s.citations}/>
         : null}
     </div>
@@ -545,7 +580,120 @@ function SectionEditor({ s, i, total, busy, patch, move, remove, uncite, cite, p
 }
 
 /* ---- the citation picker ------------------------------------------------- */
-function CitePicker({ picker, setPicker, onCite, catalog, inScope, reports, taken }){
+/* One filter dropdown in the POC picker. Small enough to keep local: it exists
+   so five of these read the same, not as a shared control. */
+function Sel({ v, on, all, opts }){
+  return <select value={v || ''} onChange={e => on(e.target.value)} className="cpick-s">
+    <option value="">{all}</option>
+    {opts.map(o => <option key={o.id} value={o.id}>{o.n}</option>)}
+  </select>;
+}
+
+const TASK_PRIORITIES = ['Low', 'Medium', 'High', 'Critical'];
+
+/* Raise a task without leaving the report.
+   Mirrors the Create Task Decision form: Title, Description, Action to be
+   taken, Assignee, Priority, Start date and Due date. Start date defaults to
+   today, as it does there.
+
+   Title, Assignee and Due date are the three the form marks required, and the
+   button stays disabled until all three are filled -- the same rule, enforced
+   rather than only marked. */
+function NewTaskForm({ subject, onCancel, onDone, toast }){
+  const [f, setF] = useState({
+    title: '', description: '', action: '', assigneeId: '',
+    priority: '', startDate: TODAY, dueDate: '',
+  });
+  const [users, setUsers] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const set = p => setF(x => ({ ...x, ...p }));
+
+  useEffect(() => {
+    let live = true;
+    fetchAssignableUsers()
+      .then(u => { if (live) setUsers(u); })
+      .catch(e => { console.warn('[dataverse] users:', e); if (live) setUsers([]); });
+    return () => { live = false; };
+  }, []);
+
+  const ready = f.title.trim() && f.assigneeId && f.dueDate;
+
+  const submit = async () => {
+    if (!ready || saving) return;
+    setSaving(true);
+    const { id, errors } = await createTask({
+      title: f.title.trim(), description: f.description.trim() || null,
+      action: f.action.trim() || null, assigneeId: f.assigneeId,
+      priority: f.priority || null, startDate: f.startDate || null, dueDate: f.dueDate,
+    });
+    setSaving(false);
+    if (!id) {
+      toast?.('The task could not be created — ' + (errors[0]?.error?.message || 'unknown error'));
+      return;
+    }
+    const who = (users || []).find(u => u.id === f.assigneeId);
+    toast?.('Task raised and cited.');
+    onDone({ id, name: f.title.trim(), status: null, priority: f.priority || null,
+             due: f.dueDate, start: f.startDate, assigneeName: who?.name || null });
+  };
+
+  const row = (label, req, control) => <div className="ntf-r">
+    <label>{label}{req ? <span className="req"> *</span> : null}</label>
+    {control}
+  </div>;
+
+  return <div className="ntf">
+    <div className="ntf-h">
+      <div>
+        <b>Raise a task</b>
+        {subject ? <span className="ntf-sub">{subject}</span> : null}
+      </div>
+      <button type="button" className="cite-x" title="Close" onClick={onCancel}>×</button>
+    </div>
+
+    {row('Title', true,
+      <input value={f.title} maxLength={200} placeholder="Enter task title…"
+        onChange={e => set({ title: e.target.value })}/>)}
+    {row('Description', false,
+      <textarea value={f.description} rows={3} maxLength={2000}
+        placeholder="Describe the task or action required…"
+        onChange={e => set({ description: e.target.value })}/>)}
+    {row('Action to be taken', false,
+      <input value={f.action} maxLength={850} placeholder="Enter action to be taken…"
+        onChange={e => set({ action: e.target.value })}/>)}
+    {row('Assignee', true,
+      users === null
+        ? <input disabled value="Reading users…"/>
+        : <select value={f.assigneeId} onChange={e => set({ assigneeId: e.target.value })}>
+            <option value="">Search for a user…</option>
+            {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+          </select>)}
+    {row('Priority', false,
+      <select value={f.priority} onChange={e => set({ priority: e.target.value })}>
+        <option value="">Select priority…</option>
+        {TASK_PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
+      </select>)}
+    <div className="ntf-2">
+      {row('Start date', false,
+        <input type="date" value={f.startDate} onChange={e => set({ startDate: e.target.value })}/>)}
+      {row('Due date', true,
+        <input type="date" value={f.dueDate} min={f.startDate || undefined}
+          onChange={e => set({ dueDate: e.target.value })}/>)}
+    </div>
+
+    <div className="ntf-f">
+      <Btn k="sm" disabled={saving} onClick={onCancel}>Cancel</Btn>
+      <Btn k="sm pri" disabled={!ready || saving} onClick={submit}>
+        {saving ? 'Raising…' : 'Raise task'}</Btn>
+    </div>
+    <div className="holder" style={{ marginTop: 8 }}>
+      Written to <b>hx_tasks</b> and cited here in one step. Status is left to
+      Dataverse's own default.</div>
+  </div>;
+}
+
+function CitePicker({ picker, setPicker, onCite, catalog, inScope, reports, taken,
+                      exec, addTask, toast, rec }){
   const set = f => setPicker(p => ({ ...p, ...f }));
   const k = picker.kind;
   const has = pred => taken.some(pred);
@@ -622,6 +770,113 @@ function CitePicker({ picker, setPicker, onCite, catalog, inScope, reports, take
       {list(rows, r => onCite({ kind: 'Child Report', citedReportId: r.id, citedReportName: r.n,
                                 label: 'Report: ' + r.n }))}
     </>;
+  } else if (k === 'POC') {
+    const rows = exec.pocs;
+    if (!rows) body = <div className="holder">Reading POCs…</div>;
+    else {
+      /* Region, Specialty and Strategy KPI are offered from the POCs themselves
+         rather than from their own tables: a filter that lists a value no POC
+         carries only ever empties the list. POC Category comes from
+         stf_executioncategory so the governed list shows even where no POC
+         uses a category yet. */
+      const opts = (idKey, nameKey) => {
+        const seen = new Map();
+        for (const p of rows) if (p[idKey]) seen.set(p[idKey], p[nameKey] || '(unnamed)');
+        return [...seen].map(([id, n]) => ({ id, n })).sort((a, b) => a.n.localeCompare(b.n));
+      };
+      const shown = rows.filter(p =>
+        (!picker.region || p.regionId === picker.region) &&
+        (!picker.status || String(p.statusCode) === picker.status) &&
+        (!picker.cat    || p.categoryId === picker.cat) &&
+        (!picker.spec   || p.specialtyId === picker.spec) &&
+        (!picker.kpi    || p.kpiId === picker.kpi) &&
+        matchesQuery(picker.q, [p.name, p.status, p.categoryName, p.specialtyName, p.kpiName]));
+      body = <>
+        {search('Search POCs…')}
+        <div className="cpick-f">
+          <Sel v={picker.region} on={v => set({ region: v })} all="All regions"
+               opts={opts('regionId', 'regionName')}/>
+          <Sel v={picker.status} on={v => set({ status: v })} all="Any status"
+               opts={Object.entries(POC_STATUS).map(([v, n]) => ({ id: v, n }))}/>
+          <Sel v={picker.cat} on={v => set({ cat: v })} all="All categories"
+               opts={(exec.cats || []).map(c => ({ id: c.id, n: c.name }))}/>
+          <Sel v={picker.spec} on={v => set({ spec: v })} all="All specialties"
+               opts={opts('specialtyId', 'specialtyName')}/>
+          <Sel v={picker.kpi} on={v => set({ kpi: v })} all="Any Strategy KPI"
+               opts={opts('kpiId', 'kpiName')}/>
+        </div>
+        {list(shown.map(p => ({
+          id: p.id, n: p.name,
+          m: [p.status, p.categoryName, p.specialtyName, p.kpiName].filter(Boolean).join(' · '),
+          taken: has(c => c.kind === 'POC' && c.pocId === p.id),
+        })), p => {
+          const src = shown.find(x => x.id === p.id);
+          onCite({ kind: 'POC', pocId: src.id, label: 'POC: ' + src.name });
+        })}
+        <div className="holder" style={{ marginTop: 6 }}>
+          {shown.length} of {rows.length} POCs. Filters narrow each other — clear them to see everything.</div>
+      </>;
+    }
+  } else if (k === 'Strategy') {
+    const rows = exec.strategies;
+    if (!rows) body = <div className="holder">Reading strategies…</div>;
+    else {
+      const shown = rows.filter(x => matchesQuery(picker.q, [x.name, x.status, x.level, x.kpiName]));
+      body = <>
+        {search('Search strategies…')}
+        {list(shown.map(x => ({
+          id: x.id, n: x.name,
+          m: [x.level, x.status, x.regionName, x.kpiName].filter(Boolean).join(' · '),
+          taken: has(c => c.kind === 'Strategy' && c.strategyId === x.id),
+        })), x => {
+          const src = shown.find(y => y.id === x.id);
+          onCite({ kind: 'Strategy', strategyId: src.id, label: 'Strategy: ' + src.name });
+        })}
+      </>;
+    }
+  } else if (k === 'BI Report') {
+    const rows = exec.bi;
+    if (!rows) body = <div className="holder">Reading BI reports…</div>;
+    else {
+      const shown = rows.filter(x => matchesQuery(picker.q, [x.name]));
+      body = <>
+        {search('Search BI reports…')}
+        {list(shown.map(x => ({ id: x.id, n: x.name,
+          taken: has(c => c.kind === 'BI Report' && c.biId === x.id) })),
+          x => onCite({ kind: 'BI Report', biId: x.id, label: 'BI Report: ' + x.n }))}
+        <div className="holder" style={{ marginTop: 6 }}>
+          {rows.length
+            ? <>A KPI filter was asked for and is not here: <b>lm_bireportdashboard</b> holds a
+                report name and nothing else, so there is no KPI to filter on. A
+                <b> strategy_kpis</b> lookup on that table would give both this filter and the
+                dashboard link the Business intelligence screen wants.</>
+            : <><b>No BI reports recorded yet.</b> The table exists but is empty.</>}</div>
+      </>;
+    }
+  } else if (k === 'Task') {
+    const rows = exec.tasks;
+    if (!rows) body = <div className="holder">Reading tasks…</div>;
+    else if (picker.newTask) {
+      body = <NewTaskForm subject={rec?.name || null} onCancel={() => set({ newTask: false })}
+        onDone={t => { addTask(t); onCite({ kind: 'Task', taskId: t.id, label: 'Task: ' + t.name }); }}
+        toast={toast}/>;
+    } else {
+      const shown = rows.filter(x => matchesQuery(picker.q, [x.name, x.status, x.assigneeName]));
+      body = <>
+        {search('Search tasks…')}
+        {list(shown.map(x => ({
+          id: x.id, n: x.name,
+          m: [x.status, x.priority, x.assigneeName, x.due ? 'due ' + x.due : null]
+               .filter(Boolean).join(' · '),
+          taken: has(c => c.kind === 'Task' && c.taskId === x.id),
+        })), x => {
+          const src = shown.find(y => y.id === x.id);
+          onCite({ kind: 'Task', taskId: src.id, label: 'Task: ' + src.name });
+        })}
+        <Btn k="sm pri" style={{ marginTop: 8 }} onClick={() => set({ newTask: true })}>
+          + Raise a new task</Btn>
+      </>;
+    }
   } else {
     body = <>
       <div style={{ display: 'flex', gap: 6 }}>
@@ -639,9 +894,11 @@ function CitePicker({ picker, setPicker, onCite, catalog, inScope, reports, take
   return <div className="cpick">
     <div className="flbl" style={{ marginBottom: 8 }}>What do you want to cite?</div>
     <div className="cpick-k">
-      {[...LIVE_KINDS, ...LABEL_KINDS].map(x =>
+      {[...LIVE_KINDS, ...PICKED_KINDS, ...LABEL_KINDS].map(x =>
         <Btn key={x} k={'sm' + (k === x ? ' pri' : '')}
-          onClick={() => set({ kind: x, q: '', text: '', kpiId: '', dim: '' })}>{x}</Btn>)}
+          onClick={() => set({ kind: x, q: '', text: '', kpiId: '', dim: '',
+                               region: '', status: '', cat: '', spec: '', kpi: '',
+                               newTask: false })}>{x}</Btn>)}
     </div>
     {body}
   </div>;

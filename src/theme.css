@@ -1250,3 +1250,32 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
   border-radius:10px;overflow:hidden;background:var(--surface)}
 .bi-frame iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
 @media(max-width:760px){.bi-frame{height:320px}}
+
+/* ---- POC filter row, and the Raise-a-task form in the citation picker ----
+   Both live inside .cpick, which is already a bordered panel, so neither
+   draws its own frame -- they are sections of one control, not cards. */
+.cpick-f{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px }
+.cpick-s{
+  flex:1 1 130px; min-width:0; font-family:inherit; font-size:12px;
+  border:1px solid var(--border-d); border-radius:7px; padding:5px 8px;
+  background:#fff; color:var(--ink);
+}
+.ntf{ display:flex; flex-direction:column; gap:10px }
+.ntf-h{ display:flex; align-items:flex-start; gap:10px }
+.ntf-h b{ font-size:13.5px; color:var(--ink); display:block }
+.ntf-sub{ display:block; font-size:11.5px; color:var(--muted); margin-top:2px }
+.ntf-h .cite-x{ margin-left:auto; position:static }
+.ntf-r{ display:flex; flex-direction:column; gap:4px; flex:1 1 140px; min-width:0 }
+.ntf-r label{
+  font-size:9.5px; font-weight:700; letter-spacing:.06em;
+  text-transform:uppercase; color:var(--muted);
+}
+.ntf-r label .req{ color:var(--red) }
+.ntf-r input, .ntf-r textarea, .ntf-r select{
+  width:100%; font-family:inherit; font-size:12.5px; color:var(--ink);
+  border:1px solid var(--border-d); border-radius:7px; padding:6px 9px; background:#fff;
+}
+.ntf-r textarea{ resize:vertical; min-height:56px }
+.ntf-r input:disabled{ background:var(--surface); color:var(--muted) }
+.ntf-2{ display:flex; gap:10px; flex-wrap:wrap }
+.ntf-f{ display:flex; gap:6px; justify-content:flex-end; margin-top:2px }
