@@ -74,20 +74,49 @@ export function ScreenHierarchy(){
   const bareName = t => String(t||'').replace(/^\s*(child|report)\s*:\s*/i,'').trim();
   const norm = t => bareName(t).toLowerCase().replace(/\s+/g,' ');
 
-  /* Name -> the one occurrence carrying it. A name held by more than one is
-     dropped: an edge to the wrong report is worse than no edge. */
-  const idByName = useMemo(()=>{
-    const count = new Map(), first = new Map();
+  /* Seeded Child Report citations name a TEMPLATE, with the Report Type
+     appended -- "…Relations Report Conclusion" for the template "…Relations
+     Report". They do not name an occurrence, and occurrence names are not
+     unique anyway, so the label is resolved template-first.
+
+     Longest name first, so "… Report (copy)" is not beaten by "… Report"
+     being a prefix of it. Only templates that actually have an occurrence are
+     listed, which is the only set an edge can point into. */
+  const templatesByName = useMemo(()=>{
+    const seen = new Map();
     for(const r of reports){
-      const k = norm(r.name);
-      if(!k) continue;
-      count.set(k,(count.get(k)||0)+1);
-      if(!first.has(k)) first.set(k, r.id);
+      if(!r.templateId) continue;
+      const n = nm(L.rptTpl, r.templateId);
+      if(n) seen.set(norm(n), r.templateId);
     }
-    const out = new Map();
-    for(const [k,n] of count) if(n===1) out.set(k, first.get(k));
-    return out;
-  },[reports]);
+    return [...seen].sort((a,b)=>b[0].length - a[0].length);
+  },[reports, L]);
+
+  const templateForLabel = label => {
+    const t = norm(label);
+    if(!t) return null;
+    for(const [n,id] of templatesByName) if(t === n || t.startsWith(n)) return id;
+    return null;
+  };
+
+  /* One occurrence of that template to hang the edge on. A report rests on one
+     that already exists, so the newest at or before the parent's period wins;
+     scope narrows first, because the same template runs in many units. */
+  const pickOccurrence = (templateId, parent) => {
+    const all = reports.filter(r=>r.templateId===templateId && r.id!==parent?.id);
+    if(!all.length) return null;
+    const inScope = all.filter(r=>
+         (parent?.businessUnitId ? r.businessUnitId===parent.businessUnitId
+          : parent?.regionId ? r.regionId===parent.regionId : true)
+      && (!parent?.departmentId || !r.departmentId || r.departmentId===parent.departmentId));
+    const pool = inScope.length ? inScope : all;
+    const byPeriod = [...pool].sort((a,b)=>String(b.period||'').localeCompare(String(a.period||'')));
+    const earlier = parent?.period
+      ? byPeriod.filter(r=>String(r.period||'') <= String(parent.period)) : [];
+    return (earlier[0] || byPeriod[0] || null)?.id || null;
+  };
+
+  const byId = useMemo(()=>new Map(reports.map(r=>[r.id,r])),[reports]);
 
   const {sectionsByReport, citesBySection, childIds, parentIds, edgeStats} = useMemo(()=>{
     const secs = {}, cites = {}, kids = {}, parents = {};
@@ -117,7 +146,8 @@ export function ScreenHierarchy(){
       let child = c.citedReportId;
       if(child) byLookup++;
       else {
-        child = idByName.get(norm(c.label)) || null;
+        const tpl = templateForLabel(c.label);
+        child = tpl ? pickOccurrence(tpl, byId.get(parent)) : null;
         if(child) byName++; else if(c.kind === 'Child Report') unresolved++;
       }
       if(!parent || !child || parent === child) continue;
@@ -130,7 +160,7 @@ export function ScreenHierarchy(){
       parentIds: id => [...(parents[id] || [])],
       edgeStats: { byLookup, byName, unresolved },
     };
-  },[content, idByName]);
+  },[content, templatesByName, byId]);
 
   const sectionsOf = r => sectionsByReport[r.id] || [];
   const citesOf    = s => citesBySection[s.id] || [];
@@ -280,10 +310,11 @@ export function ScreenHierarchy(){
           <b>{linkedCount}</b> of {reports.length} report{reports.length===1?'':'s'} sit in a tree
           with another{filtersOn ? <> · <b>{matchCount}</b> match the filters</> : null}.
           {edgeStats.byName>0
-            ? <> {edgeStats.byName} link{edgeStats.byName===1?'':'s'} {edgeStats.byName===1?'was':'were'} matched
-                by name: those citations name a child report but leave{' '}
-                <code>lm_citedreportoccurrence</code> empty, so the tree would otherwise be flat.
-                Citing through the picker fills it in.</>
+            ? <> {edgeStats.byName} link{edgeStats.byName===1?'':'s'} {edgeStats.byName===1?'was':'were'} resolved
+                from the citation's text, which names a <b>Report Template</b> rather than one
+                occurrence — <code>lm_citedreportoccurrence</code> is empty on those rows. The
+                occurrence shown is the closest match in this report's own scope and period. Citing
+                through the picker records the exact one instead.</>
             : null}
           {edgeStats.unresolved>0
             ? <> {edgeStats.unresolved} Child Report citation{edgeStats.unresolved===1?'':'s'} could

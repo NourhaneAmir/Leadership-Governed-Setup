@@ -322,7 +322,10 @@ export function ScreenBI(){
   const matches = loading ? [] : kpis.filter(k=>
        (!fProc  || k.processId===fProc)
     && (!fOwner || k.dept===fOwner)
-    && (!fBi    || k.bi===fBi)
+    /* Which dashboards sit behind this KPI comes from lm_bireportdashboard.lm_kpi
+       now, not from a `bi` field on the KPI -- a live KPI has no such field, so
+       this used to empty the list whenever a report was chosen. */
+    && (!fBi    || (biByKpi.get(k.id)||[]).some(b=>b.id===fBi))
     && matchesQuery(q,[k.name, k.id, k.processName, k.deptName]));
 
   const anyFilter = fProc||fOwner||fBi||q.trim();
