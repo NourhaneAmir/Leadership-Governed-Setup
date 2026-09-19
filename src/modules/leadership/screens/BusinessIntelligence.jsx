@@ -7,13 +7,13 @@
    LeadershipApp.jsx, so this file can move to another module (or another
    app) without dragging the execution module behind it.
    ========================================================================= */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { use } from '../store.jsx';
 import { Btn, Tag, Note, Empty, Field, Bar } from '../../../shared/ui.jsx';
 import { PERIOD, fmtP } from '../../../shared/format.js';
-import { BI_REPORTS, BIR, achFor, achPct, achCls, bdDims,
+import { achFor, achPct, achCls, bdDims,
          matchesQuery } from '../domain.jsx';
-import { fetchKpis, fetchProcesses } from '../../../services/dataverse.js';
+import { fetchKpis, fetchProcesses, fetchBiReportDashboards } from '../../../services/dataverse.js';
 
 /* The Power BI embed.
 
@@ -161,7 +161,9 @@ function KpiPanel({k,scope}){
   </div>;
 }
 
-function BiFrame({bi}){
+/* Exported: Build a report/plan and Reports / Plans show the same frame under
+   a cited KPI. `bi` is one row of lm_bireportdashboard -- {n, link}. */
+export function BiFrame({bi}){
   const [loaded,setLoaded] = useState(false);
   /* Remounting the iframe is the only way to retry: changing nothing but the
      key forces a fresh navigation, which is what you want after signing in to
@@ -271,6 +273,28 @@ function SearchSelect({ label, value, onChange, options, allLabel, searchPlaceho
 
 /* ---- 1. Business intelligence ------------------------------------------ */
 export function ScreenBI(){
+  /* The dashboards, and which KPI each sits behind. Read here rather than at
+     app start: only this screen and the two report screens need them. */
+  const [biRows,setBiRows] = useState(null);
+  useEffect(()=>{
+    let live = true;
+    fetchBiReportDashboards()
+      .then(r=>{ if(live) setBiRows(r); })
+      .catch(e=>{ console.warn('[dataverse] fetchBiReportDashboards() failed:', e);
+                  if(live) setBiRows([]); });
+    return ()=>{ live = false; };
+  },[]);
+  const biList = biRows || [];
+  /* A KPI may have more than one dashboard; all of them are offered. */
+  const biByKpi = useMemo(()=>{
+    const m = new Map();
+    for(const r of biList){
+      if(!r.kpiId) continue;
+      if(!m.has(r.kpiId)) m.set(r.kpiId, []);
+      m.get(r.kpiId).push(r);
+    }
+    return m;
+  },[biRows]);
   const {bu, dvLookup} = use();
   const deptList = dvLookup?.deptList || [];
   const [fProc,setFProc]   = useState('');
@@ -320,7 +344,7 @@ export function ScreenBI(){
         <Field label="BI report">
           <select value={fBi} onChange={e=>setFBi(e.target.value)}>
             <option value="">Any BI report</option>
-            {BI_REPORTS.map(b=><option key={b.id} value={b.id}>{b.n}</option>)}
+            {biList.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
           </select></Field>
       </div>
       <div className="btn-row" style={{marginTop:4}}>
@@ -332,12 +356,9 @@ export function ScreenBI(){
           ? <Btn k="sm" onClick={()=>{setFProc('');setFOwner('');setFBi('');setQ('');}}>Clear</Btn>
           : null}
       </div>
-      {/* No live table links a KPI to a BI report yet -- BI_REPORTS is still
-          the seeded catalogue, so this filter (and every "Open the BI
-          report" button below) only ever matches when nothing does. Kept
-          rather than removed: it stops looking broken once that link exists,
-          and until then every live KPI correctly falls into the "no BI
-          report linked" branch below instead of silently matching nothing. */}
+      {/* lm_bireportdashboard.lm_kpi is what links the two, added 20 Sep. A KPI
+          with no dashboard recorded against it still reads "No BI report
+          linked" -- which is now a fact about the data, not a missing table. */}
     </div>
 
     <div className="card flush">
@@ -351,7 +372,10 @@ export function ScreenBI(){
         ? <div style={{padding:'8px 17px 17px'}}><Empty>No KPI matches this combination.</Empty></div>
         : <div style={{padding:'4px 17px 17px'}}>
             {matches.map(k=>{
-              const bi = BIR(k.bi);
+              /* Every dashboard recorded against this KPI. The first is the
+                 one framed when the card is opened; the rest are named. */
+              const bis = biByKpi.get(k.id) || [];
+              const bi  = bis[0] || null;
               const a  = achFor(k, bu, PERIOD);
               const pct2 = a ? achPct(k,a) : null;
               const isOpen = open===k.id;
@@ -365,7 +389,9 @@ export function ScreenBI(){
                   {pct2!=null
                     ? <Tag c={achCls(pct2)}>{pct2}% of target</Tag>
                     : <Tag c="grey">No figure for this period</Tag>}
-                  {bi ? <Tag c="teal">{bi.n}</Tag> : <Tag c="red">No BI report linked</Tag>}
+                  {bi
+                    ? <Tag c="teal">{bi.name}{bis.length>1?` +${bis.length-1}`:''}</Tag>
+                    : <Tag c="red">No BI report linked</Tag>}
                 </div>
                 {a ? <div className="t-sub" style={{marginTop:4}}>
                   Target {a.target}{k.unit} · Actual {a.actual}{k.unit}
@@ -382,7 +408,7 @@ export function ScreenBI(){
                 </div>
                 {isOpen ? <>
                     <KpiPanel k={k} scope={{bu, period:PERIOD}}/>
-                    {bi ? <BiFrame bi={bi}/> : null}
+                    {bis.map(b=><BiFrame key={b.id} bi={{n:b.name, link:b.link}}/>)}
                   </> : null}
               </div>;
             })}

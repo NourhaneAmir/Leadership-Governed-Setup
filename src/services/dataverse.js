@@ -1546,19 +1546,42 @@ export async function fetchStrategies(){
 
 /** BI reports / dashboards -- lm_bireportdashboard.
  *
- *  ⚠️ The table holds a NAME and nothing else: no embed URL, and no link to a
- *  KPI. A KPI filter was asked for and cannot be built -- there is no column
- *  to filter on. Adding a strategy_kpis lookup to this table would give both
- *  that filter and the "which dashboard is behind this measure" link the
- *  Business intelligence screen wants. */
+ *  lm_dashboardlink is the report's URL as copied out of Power BI; converting
+ *  a portal link to the embeddable one is the BI screen's job, not this
+ *  layer's. lm_kpi points at strategy_kpis -- the same table the app's KPIs
+ *  come from -- so "which dashboard is behind this measure" is a lookup, not
+ *  a guess. */
 export async function fetchBiReportDashboards(){
   const res = await Lm_bireportdashboardsService.getAll({
-    select: ['lm_bireportdashboardid','lm_reportname'],
+    select: ['lm_bireportdashboardid','lm_reportname','lm_dashboardlink','_lm_kpi_value'],
     filter: 'statecode eq 0',
   });
   return (res?.data ?? [])
-    .map(r => ({ id: r.lm_bireportdashboardid, name: r.lm_reportname || '(unnamed report)' }))
+    .map(r => ({
+      id: r.lm_bireportdashboardid,
+      name: r.lm_reportname || '(unnamed report)',
+      link: r.lm_dashboardlink || null,
+      kpiId: r._lm_kpi_value || null,
+      kpiName: r['_lm_kpi_value' + FV] || null,
+    }))
     .sort((a,b)=>a.name.localeCompare(b.name));
+}
+
+/** The BI reports behind each KPI, keyed by KPI id.
+ *
+ *  A KPI can have more than one dashboard, so the value is an array -- taking
+ *  only the first would silently hide the rest. Reports with no KPI are left
+ *  out: they exist, and the BI screen lists them, but nothing cites them
+ *  through a measure. */
+export async function fetchBiReportsByKpi(){
+  const rows = await fetchBiReportDashboards();
+  const map = new Map();
+  for(const r of rows){
+    if(!r.kpiId) continue;
+    if(!map.has(r.kpiId)) map.set(r.kpiId, []);
+    map.get(r.kpiId).push(r);
+  }
+  return map;
 }
 
 /* Live option sets on hx_tasks. */

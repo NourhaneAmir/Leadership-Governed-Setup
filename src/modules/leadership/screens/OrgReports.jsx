@@ -22,7 +22,22 @@ import { use } from '../store.jsx';
 import { Btn, Tag, Note, Empty } from '../../../shared/ui.jsx';
 import { fmtD, fmtP, MONTHS } from '../../../shared/format.js';
 import { DiagChip, rptTagC, matchesQuery } from '../domain.jsx';
-import { fetchReportOccurrenceContent, fetchKpiAchievements } from '../../../services/dataverse.js';
+import { fetchReportOccurrenceContent, fetchKpiAchievements,
+         fetchBiReportsByKpi } from '../../../services/dataverse.js';
+import { BiFrame } from './BusinessIntelligence.jsx';
+
+/* The dashboards behind a cited KPI. Collapsed by default -- a report citing
+   eight KPIs would otherwise mount eight Power BI frames at once, each
+   authenticating separately. */
+function KpiDashboards({ bis }){
+  const [open, setOpen] = useState(false);
+  if (!bis.length) return null;
+  return <div style={{ marginTop: 6 }}>
+    <Btn k="sm" onClick={() => setOpen(o => !o)}>
+      {open ? 'Hide' : 'Show'} {bis.length === 1 ? 'the BI report' : `${bis.length} BI reports`}</Btn>
+    {open ? bis.map(b => <BiFrame key={b.id} bi={{ n: b.name, link: b.link }}/>) : null}
+  </div>;
+}
 
 const sameText = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
 
@@ -62,6 +77,16 @@ export function ScreenOrgReports(){
   const [content, setContent]   = useState(null);    // { sections, citations } once read
   const [contentErr, setContentErr] = useState(null);
   const [tick, setTick]         = useState(0);       // bump to re-read
+  const [biByKpi, setBiByKpi]   = useState(new Map()); // KPI id -> its dashboards
+
+  /* Which dashboards sit behind each cited KPI -- lm_bireportdashboard.lm_kpi. */
+  useEffect(() => {
+    let live = true;
+    fetchBiReportsByKpi()
+      .then(m => { if (live) setBiByKpi(m); })
+      .catch(e => { console.warn('[dataverse] fetchBiReportsByKpi() failed:', e); });
+    return () => { live = false; };
+  }, []);
 
   /* Sections and citations are read here, when the tab opens, rather than at
      app start -- nothing else in the app needs them, and the bodies are long. */
@@ -314,6 +339,9 @@ export function ScreenOrgReports(){
                                                 <div style={{ fontFamily: 'var(--mono)', fontWeight: 650 }}>{ach.baseline ?? '—'}</div></div>
                                             </div>;
                                           })() : null}
+                                          {c.kind === 'KPI' || c.kind === 'Breakdown'
+                                            ? <KpiDashboards bis={biByKpi.get(c.kpiId) || []}/>
+                                            : null}
                                           {c.citedReportId && reports.some(r => r.id === c.citedReportId)
                                             ? <div style={{ marginTop: 6 }}>
                                                 <Btn k="sm" onClick={() => { setDir('all'); setQ('');

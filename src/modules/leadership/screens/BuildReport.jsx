@@ -23,12 +23,13 @@ import { use } from '../store.jsx';
 import { Btn, Tag, Note, Empty } from '../../../shared/ui.jsx';
 import { fmtP, TODAY } from '../../../shared/format.js';
 import { DiagChip, rptTagC, matchesQuery } from '../domain.jsx';
+import { BiFrame } from './BusinessIntelligence.jsx';
 import { fetchReportOccurrenceForEdit, saveReportOccurrenceContent, submitReportOccurrence,
          fetchReportTemplateDetail, fetchKpis, fetchProcesses,
          fetchKpiAchievements, pickAchievement,
          fetchStrategyPocs, fetchExecutionCategories, fetchSpecialties,
          fetchStrategies, fetchBiReportDashboards, fetchTasks, createTask,
-         POC_STATUS, TASK_PRIORITY_KEY, fetchAssignableUsers,
+         POC_STATUS, TASK_PRIORITY_KEY, fetchAssignableUsers, fetchBiReportsByKpi,
          SECTION_ANGLE, SECTION_BREAKDOWN_DIM } from '../../../services/dataverse.js';
 
 /* Dataverse angle labels, and the DiagChip / .dg-seg class each maps onto. */
@@ -127,6 +128,19 @@ function KpiFigures({ kpiId, rows, rec, L, nm }){
   </div>;
 }
 
+/* The dashboards behind a cited KPI. Collapsed by default: a report citing
+   eight KPIs would otherwise mount eight Power BI frames at once, each
+   authenticating separately. */
+function KpiDashboards({ bis }){
+  const [open, setOpen] = useState(false);
+  if (!bis.length) return null;
+  return <div style={{ marginTop: 6 }}>
+    <Btn k="sm" onClick={() => setOpen(o => !o)}>
+      {open ? 'Hide' : 'Show'} {bis.length === 1 ? 'the BI report' : `${bis.length} BI reports`}</Btn>
+    {open ? bis.map(b => <BiFrame key={b.id} bi={{ n: b.name, link: b.link }}/>) : null}
+  </div>;
+}
+
 export function ScreenBuildReport(){
   const { dvReportOccs, dvLoading, dvLookup, sel, setSel, refreshOccurrences, toast, go } = use();
   const L = dvLookup || {};
@@ -148,6 +162,7 @@ export function ScreenBuildReport(){
   const [catalog, setCatalog]   = useState({ kpis: null, processes: null });
   const [picker, setPicker]     = useState(null);       // { key, kind, q, kpiId, dim, text }
   const [ach, setAch]           = useState(null);       // achievement rows, or null while reading
+  const [biByKpi, setBiByKpi]   = useState(new Map());  // KPI id -> its dashboards
   /* The four governed lists behind PICKED_KINDS, plus the two POC filters that
      are their own tables. Read once, like the KPI and Process catalogues. */
   const [exec, setExec]         = useState({ pocs:null, cats:null, specs:null,
@@ -166,6 +181,15 @@ export function ScreenBuildReport(){
     let live = true;
     Promise.all([fetchKpis().catch(() => []), fetchProcesses().catch(() => [])])
       .then(([kpis, processes]) => { if (live) setCatalog({ kpis, processes }); });
+    return () => { live = false; };
+  }, []);
+
+  /* Which dashboards sit behind each cited KPI. */
+  useEffect(() => {
+    let live = true;
+    fetchBiReportsByKpi()
+      .then(m => { if (live) setBiByKpi(m); })
+      .catch(e => { console.warn('[dataverse] fetchBiReportsByKpi() failed:', e); });
     return () => { live = false; };
   }, []);
 
@@ -492,7 +516,7 @@ export function ScreenBuildReport(){
                           picker={picker?.key === s.key ? picker : null}
                           setPicker={setPicker} catalog={catalog} inScope={inScope}
                           reports={reports.filter(r => r.id !== recId)}
-                          ach={ach} rec={rec} L={L} nm={nm}
+                          ach={ach} rec={rec} L={L} nm={nm} biByKpi={biByKpi}
                           exec={exec} addTask={addTask} toast={toast}/>)}
 
                   <div className="card" style={{ textAlign: 'center' }}>
@@ -526,7 +550,8 @@ export function ScreenBuildReport(){
    component is otherwise props-only, and because reading them from the wrong
    scope is exactly what broke this screen once already. */
 function SectionEditor({ s, i, total, busy, patch, move, remove, uncite, cite, picker, setPicker,
-                         catalog, inScope, reports, ach, rec, L, nm, exec, addTask, toast }){
+                         catalog, inScope, reports, ach, rec, L, nm, exec, addTask, toast,
+                         biByKpi }){
   const len = s.body.length;
   return <div className="sec">
     <div className="sec-h">
@@ -563,7 +588,10 @@ function SectionEditor({ s, i, total, busy, patch, move, remove, uncite, cite, p
               </div>
               {c.label && c.label !== citeTarget(c) ? <div className="cite-m">{c.label}</div> : null}
               {c.kind === 'KPI' || c.kind === 'Breakdown'
-                ? <KpiFigures kpiId={c.kpiId} rows={ach} rec={rec} L={L} nm={nm}/>
+                ? <>
+                    <KpiFigures kpiId={c.kpiId} rows={ach} rec={rec} L={L} nm={nm}/>
+                    <KpiDashboards bis={biByKpi.get(c.kpiId) || []}/>
+                  </>
                 : null}
               <button type="button" className="cite-x" title="Remove this citation" disabled={busy}
                 onClick={() => uncite(s.key, c.key)}>×</button>
@@ -849,18 +877,30 @@ function CitePicker({ picker, setPicker, onCite, catalog, inScope, reports, take
     const rows = exec.bi;
     if (!rows) body = <div className="holder">Reading BI reports…</div>;
     else {
-      const shown = rows.filter(x => matchesQuery(picker.q, [x.name]));
+      /* The KPI filter, offered from the dashboards themselves so it never
+         lists a measure no dashboard is recorded against. */
+      const kpiOpts = (() => {
+        const seen = new Map();
+        for (const b of rows) if (b.kpiId) seen.set(b.kpiId, b.kpiName || '(unnamed KPI)');
+        return [...seen].map(([id, n]) => ({ id, n })).sort((a, b) => a.n.localeCompare(b.n));
+      })();
+      const shown = rows
+        .filter(x => !picker.kpi || x.kpiId === picker.kpi)
+        .filter(x => matchesQuery(picker.q, [x.name, x.kpiName]));
       body = <>
         {search('Search BI reports…')}
-        {list(shown.map(x => ({ id: x.id, n: x.name,
+        {kpiOpts.length
+          ? <div className="cpick-f">
+              <Sel v={picker.kpi} on={v => set({ kpi: v })} all="Any KPI" opts={kpiOpts}/>
+            </div>
+          : null}
+        {list(shown.map(x => ({ id: x.id, n: x.name, m: x.kpiName || null,
           taken: cited('BI Report', x.id, 'biId', 'BI Report: ' + x.name) })),
           x => onCite({ kind: 'BI Report', biId: x.id, label: 'BI Report: ' + x.n }))}
         <div className="holder" style={{ marginTop: 6 }}>
           {rows.length
-            ? <>A KPI filter was asked for and is not here: <b>lm_bireportdashboard</b> holds a
-                report name and nothing else, so there is no KPI to filter on. A
-                <b> strategy_kpis</b> lookup on that table would give both this filter and the
-                dashboard link the Business intelligence screen wants.</>
+            ? <>{shown.length} of {rows.length}. A dashboard with no KPI recorded against it is
+                still listed — it just cannot be reached from a measure.</>
             : <><b>No BI reports recorded yet.</b> The table exists but is empty.</>}</div>
       </>;
     }
