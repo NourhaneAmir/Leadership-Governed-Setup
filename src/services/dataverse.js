@@ -3924,20 +3924,30 @@ export async function requestMoreInfoOnReport(id, { actorPositionId, reason } = 
    legacy "Common Data Service" connector rather than the direct CDS
    database binding every MEETING_/REPORT_ table above uses, so its choice
    columns (Decision Status, Review Status, Escalation Result) are decoded
-   from the `_xxx_label` sibling fields the connector returns -- not a
-   hand-maintained numeric map like MEETING_OCC_STATUS above. The numeric
-   values behind each label were never surfaced by the CLI/schema without
-   an extra live metadata call, and the label is all display needs;
+   from their FORMATTED VALUE, not from a hand-maintained numeric map like
+   MEETING_OCC_STATUS above.
+
+   ⚠️ There is no `_xxx_label` field. This read used to ask for three of them
+   and returned 400 for the whole query -- `_x_value` is a LOOKUP's id, and a
+   CHOICE's display text is an annotation, never a selectable column. The
+   annotation is already on every row: getAll sends PREFER_PAGED, which asks
+   for odata.include-annotations, so the label arrives without being selected.
+   Same rule, same mistake, as strategy_departmentname on fetchKpis.
+
+   The numeric values behind each label were never surfaced by the CLI/schema
+   without an extra live metadata call, and the label is all display needs;
    createWorkLogDecision() below leaves status unset on create for the
    same reason, so Dataverse's own option-set default applies. */
 export async function fetchWorkLogDecisions(){
   const res = await Wlog_decisionsService.getAll({
     filter: 'statecode eq 0',
+    /* The three choice columns are selected by their own names only; their
+       display text rides along as a formatted-value annotation. */
     select: ['wlog_decisionid','wlog_name','wlog_decisiontaken','wlog_expectedoutput',
-             'wlog_managernote','wlog_evidenceurl','wlog_decisionstatus','_wlog_decisionstatus_label',
-             'wlog_reviewstatus','_wlog_reviewstatus_label','wlog_reviewedon',
+             'wlog_managernote','wlog_evidenceurl','wlog_decisionstatus',
+             'wlog_reviewstatus','wlog_reviewedon',
              'wlog_escalatedon','wlog_escalationreason','wlog_escalationreply',
-             'wlog_escalationresolvedon','wlog_escalationresult','_wlog_escalationresult_label',
+             'wlog_escalationresolvedon','wlog_escalationresult',
              'createdon','modifiedon'],
   });
   return (res?.data ?? []).map(d => ({
@@ -3947,14 +3957,14 @@ export async function fetchWorkLogDecisions(){
     expectedOutput: d.wlog_expectedoutput || null,
     managerNote: d.wlog_managernote || null,
     evidenceUrl: d.wlog_evidenceurl || null,
-    status: d._wlog_decisionstatus_label || null,
-    reviewStatus: d._wlog_reviewstatus_label || null,
+    status: d['wlog_decisionstatus' + FV] || null,
+    reviewStatus: d['wlog_reviewstatus' + FV] || null,
     reviewedOn: isoDay(d.wlog_reviewedon),
     escalatedOn: isoDay(d.wlog_escalatedon),
     escalationReason: d.wlog_escalationreason || null,
     escalationReply: d.wlog_escalationreply || null,
     escalationResolvedOn: isoDay(d.wlog_escalationresolvedon),
-    escalationResult: d._wlog_escalationresult_label || null,
+    escalationResult: d['wlog_escalationresult' + FV] || null,
     created: d.createdon || null,
     updated: d.modifiedon || d.createdon || null,
   })).sort((a,b)=> (b.created||'').localeCompare(a.created||''));

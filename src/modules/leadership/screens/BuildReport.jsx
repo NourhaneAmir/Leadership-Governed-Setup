@@ -451,7 +451,8 @@ export function ScreenBuildReport(){
                           patch={patch} move={move} remove={remove} uncite={uncite} cite={cite}
                           picker={picker?.key === s.key ? picker : null}
                           setPicker={setPicker} catalog={catalog} inScope={inScope}
-                          reports={reports.filter(r => r.id !== recId)}/>)}
+                          reports={reports.filter(r => r.id !== recId)}
+                          ach={ach} rec={rec} L={L} nm={nm}/>)}
 
                   <div className="card" style={{ textAlign: 'center' }}>
                     <Btn k="sm pri" disabled={!!busy} onClick={addSection}>+ Add a section</Btn>
@@ -479,8 +480,12 @@ export function ScreenBuildReport(){
 }
 
 /* ---- one section --------------------------------------------------------- */
+/* `ach`, `rec`, `L` and `nm` are only used by the KPI figures panel on a
+   citation. They are passed down rather than read from context because this
+   component is otherwise props-only, and because reading them from the wrong
+   scope is exactly what broke this screen once already. */
 function SectionEditor({ s, i, total, busy, patch, move, remove, uncite, cite, picker, setPicker,
-                         catalog, inScope, reports }){
+                         catalog, inScope, reports, ach, rec, L, nm }){
   const len = s.body.length;
   return <div className="sec">
     <div className="sec-h">

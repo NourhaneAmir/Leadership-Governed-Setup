@@ -13,7 +13,9 @@
    What does NOT: anything that reads app state. `CiteCard` is the one
    component, and it takes everything it needs through props plus `use()`.
    ========================================================================= */
-import React from 'react';
+/* useState is used by BIEmbed below. It was missing until 19 Sep, which made
+   BIEmbed throw the moment a KPI citation carrying a BI link rendered. */
+import React, { useState } from 'react';
 import { use } from './store.jsx';
 import { Btn, Tag, Bar } from '../../shared/ui.jsx';
 import { fmtD, fmtDS, fmtP, pct, TODAY } from '../../shared/format.js';
