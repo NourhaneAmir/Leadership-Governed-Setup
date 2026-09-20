@@ -861,3 +861,16 @@
   font-size:12px; color:var(--muted); min-width:0;
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
+
+/* ---- a derived, read-only field value ------------------------------------
+   Reads as a filled control rather than as prose: same box as an input, but
+   plainly not editable. The empty state is dashed and quiet -- it is a field
+   waiting on another answer, not an error. */
+.gov-root .dest-v{
+  padding:7px 10px; border-radius:8px; font-size:12.5px;
+  background:var(--surface); border:1px solid var(--border);
+  color:var(--ink); overflow-wrap:anywhere;
+}
+.gov-root .dest-v.empty{
+  border-style:dashed; color:var(--muted); font-style:italic;
+}

@@ -1085,10 +1085,16 @@ function validateReport(s, all){
   /* The destination is no longer typed or picked -- it resolves from the Team
      Channel chosen per unit. So the rule is that one has to resolve, not that
      a Site/Library/Folder or a link was filled in. */
-  if(!destinationOf(s))
-    r.push({field:'f-sourceLink', step:3,
-      msg:'No destination resolves yet. Choose a Team and Channel for a unit in Setup per unit — '+
-          'the Channel’s SharePoint path becomes the destination.'});
+  /* Reported against the first unit with no resolvable Channel rather than
+     against the step that only displays the result -- 'u-<key>' is what
+     unitIssueCount() counts to mark a unit card, so the error lands on the
+     card whose Channel is missing. */
+  if(!destinationOf(s)){
+    const firstKey = (scopeKeys(s) || [])[0];
+    r.push({field: firstKey ? 'u-'+firstKey : 'u-dest', step:4,
+      msg:'No destination yet. Choose a Team and Channel for a unit — the Channel’s '+
+          'SharePoint path becomes the destination.'});
+  }
   /* A Template defines what a submission must contain, so it needs at least one
      Section -- and a Section with no heading defines nothing. Both are checked:
      an untitled Section used to pass validation and then be dropped silently at
@@ -2358,11 +2364,20 @@ function UnitSetup({s,set,issues,shared,intro}){
                      moment it is displayed and again when it is saved, so there
                      is no second copy of it to keep in sync. */
                   onChange={v=>setUnit(k,{channel:v})}/>
-                {report && u.channel && channelPath(u.channel)
-                  ? <div className="holder">SharePoint path: {channelPath(u.channel)}</div>
-                  : null}
               </Field>
             </div>
+
+            {/* The destination this unit submits to. Read-only on purpose: it
+                is derived from the Channel above by destinationOf(), so there
+                is nothing to type and no second copy to fall out of step. */}
+            {report
+              ? <Field id={'u-dest-'+k} label="Destination" req
+                  hint="Filled from the Team Channel above — its SharePoint path. Nothing to type here.">
+                  {channelPath(u.channel)
+                    ? <div className="dest-v mono">{channelPath(u.channel)}</div>
+                    : <div className="dest-v empty">Choose a Channel above and its SharePoint path appears here</div>}
+                </Field>
+              : null}
 
             {report
               ? <>
@@ -2825,17 +2840,9 @@ function ReportWizard({rec,onClose}){
         return <div className="card">
           <h2>Destination and content</h2>
           
-          {(()=>{ const dest=destinationOf(s);
-            return <Field id="f-sourceLink" label="Destination"
-              hint="Taken from the Team Channel chosen for each unit in Setup per unit — the first
-                    Channel with a SharePoint path is used. There is nothing to type here.">
-              {dest
-                ? <div className="holder mono" style={{overflowWrap:'anywhere'}}>{dest}</div>
-                : <div className="err" role="alert">
-                    No destination yet — choose a Team and Channel for a unit in
-                    <b> Setup per unit</b>, and the Channel’s SharePoint path becomes the destination.
-                  </div>}
-            </Field>; })()}
+          {/* Destination moved to Submission per unit (20 Sep). It is filled by
+              that step's Team Channel, so showing it here meant an error on a
+              step where nothing could be done about it. */}
           <Field id="f-templateFile" label="Template file"
             hint="The template file itself (Word, Excel, PDF…) — uploaded and stored on this Report
                   Template. Saving as Draft or Publishing uploads it; picking a new file replaces
