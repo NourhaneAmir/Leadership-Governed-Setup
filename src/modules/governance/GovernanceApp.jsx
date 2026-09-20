@@ -1166,6 +1166,27 @@ const LockNote=()=><span className="tx-lock" title="Taxonomy-owned. Read-only in
     <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
   Taxonomy-owned</span>;
 
+/* A file input that looks like a button.
+
+   The native control renders as the browser's own "Choose File / No file
+   chosen", which on this ground reads as disabled text. It cannot be restyled
+   directly, so the input is visually hidden inside a <label> that carries the
+   look of "+ Add section" -- a label activates its own control, so this needs
+   no handler and stays keyboard-reachable.
+
+   `name` is the chosen file shown back to the reader: once the input is
+   hidden, the browser's own filename text goes with it. */
+function FilePick({id,label='Choose a file…',name,onPick,accept}){
+  /* The input is NESTED, so the label activates it on its own. No htmlFor as
+     well: a label that both wraps its control and points at it can fire the
+     click twice in some browsers, opening the file dialog two deep. */
+  return <label className="file-pick">
+    <span className="fp-btn">{label}</span>
+    <span className="fp-name">{name || 'No file chosen'}</span>
+    <input id={id} type="file" accept={accept} className="fp-input" onChange={onPick}/>
+  </label>;
+}
+
 function Field({id,label,req,hint,children,when=true}){
   if(when===false) return null;
   return <div className="f" id={id?id+'-wrap':undefined}>
@@ -1700,7 +1721,7 @@ function SectionRowEditor({sec,index,templateId,onPatch,onRemove}){
           ⚠ Every save rewrites this section's citations, so a file already attached here
           must be picked again each time this Setup is edited and saved — it is not carried
           forward automatically.</div>
-        <input type="file" onChange={e=>{
+        <FilePick id={'sec-file-'+sec.id} label="Choose a file to attach…" onPick={e=>{
           const file=e.target.files && e.target.files[0];
           if(!file) return;
           if(file.size>25*1024*1024){
@@ -1712,6 +1733,9 @@ function SectionRowEditor({sec,index,templateId,onPatch,onRemove}){
             PENDING_SECTION_ITEM_FILE.set(id, {name:file.name, base64});
             addItem({id, type:'File', fileName:file.name});
           }).catch(err=>alert('Could not read that file: '+(err?.message||err)));
+          /* The picker adds the citation and closes; clearing the input means
+             the same file can be attached again to another section. */
+          e.target.value='';
         }}/>
       </>}
 
@@ -2816,8 +2840,10 @@ function ReportWizard({rec,onClose}){
             hint="The template file itself (Word, Excel, PDF…) — uploaded and stored on this Report
                   Template. Saving as Draft or Publishing uploads it; picking a new file replaces
                   whatever was there before.">
-            <input id="f-templateFile" type="file"
-              onChange={e=>{
+            <FilePick id="f-templateFile"
+              label={s.templateFileName||s.hasTemplateFile ? 'Replace the file…' : 'Choose a template file…'}
+              name={s.templateFileName}
+              onPick={e=>{
                 const file=e.target.files && e.target.files[0];
                 if(!file) return;
                 if(file.size>25*1024*1024){

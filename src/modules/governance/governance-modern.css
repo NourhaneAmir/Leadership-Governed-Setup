@@ -825,3 +825,39 @@
 @media(max-width:760px){
   .gov-root .lists table.data td{ overflow-wrap:normal; word-break:normal }
 }
+
+/* ---- file picker --------------------------------------------------------
+   The native <input type="file"> renders as the browser's own grey "Choose
+   File / No file chosen", which on this ground reads as disabled text. It
+   cannot be restyled directly, so it is visually hidden inside this label and
+   .fp-btn carries the look of .sec-add. Hidden by clip, not display:none --
+   the latter would take the control out of the tab order. */
+.gov-root .file-pick{
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  cursor:pointer; margin-top:2px;
+}
+.gov-root .fp-input{
+  position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+  overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0;
+}
+.gov-root .fp-btn{
+  flex:0 0 auto; padding:7px 14px; border-radius:999px;
+  border:1.5px dashed var(--border-d); background:transparent;
+  font-size:12.5px; font-weight:600; color:var(--muted);
+  transition:border-color .15s, color .15s, background .15s;
+}
+.gov-root .file-pick:hover .fp-btn{
+  border-color:var(--teal); color:var(--teal-d); background:var(--teal-ll);
+}
+/* The focus ring has to follow the hidden input, since that is what is
+   actually focused when the control is reached by keyboard. :focus-within on
+   the label is the only selector that reaches it -- a sibling combinator
+   cannot, because the input sits AFTER .fp-btn in the markup. */
+.gov-root .file-pick:focus-within .fp-btn{
+  outline:2px solid var(--teal); outline-offset:2px;
+  border-color:var(--teal); color:var(--teal-d);
+}
+.gov-root .fp-name{
+  font-size:12px; color:var(--muted); min-width:0;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
