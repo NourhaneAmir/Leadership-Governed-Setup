@@ -279,27 +279,75 @@ export async function uploadFileColumn(entitySet, recordId, fieldName, fileName,
    and the same connector, so a preview reads whatever environment DATA_ORG
    points at just like every other call in this file.
 
-   Returns base64, matching what the upload takes. The connector carries
-   binary over a JSON transport, and there are three shapes it is known to
-   come back as, so all three are normalised here rather than at each call
-   site: a bare base64 string, a data: URI, and the Power Platform
-   `{$content-type, $content}` envelope used for binary responses.
+   Returns base64, matching what the upload takes.
 
    ⚠️ `Range` is the FIRST positional argument and the generated signature
-   types it as a required string, but it is an HTTP Range header -- omitting
-   it is what asks for the whole file. It is passed as undefined (which
-   JSON.stringify drops) and retried as an explicit full range only if the
-   gateway rejects that, because a wrong guess here fails with a transport
-   error that says nothing about the cause.
+   types it as a required string, but it is an HTTP Range header: omitting it
+   is what asks for the whole file. A gateway that insists on one does NOT
+   fail -- it answers 200 with an empty body. So the fallback has to trigger
+   on an empty result as well as on a failed one. The first version retried
+   only on failure, which meant the retry written for this exact case could
+   never run; the live symptom was "came back empty" on a call that reported
+   success.
    ========================================================================= */
-function fileContentToBase64(data) {
-  if (!data) return '';
-  /* The binary envelope. $content is already base64. */
-  if (typeof data === 'object') return String(data.$content ?? data.content ?? '');
-  const str = String(data);
-  /* data:<mime>;base64,<payload> -- keep only the payload. */
-  const comma = str.startsWith('data:') ? str.indexOf(',') : -1;
-  return comma === -1 ? str : str.substring(comma + 1);
+
+/* Bytes -> base64, in chunks. String.fromCharCode.apply with a whole file
+   as arguments overflows the call stack somewhere around a hundred kB. */
+function bytesToBase64(bytes) {
+  let bin = '';
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(bin);
+}
+
+/* Whatever the connector hands back, reduced to base64.
+
+   The transport is JSON, but the SDK has been observed to surface binary as
+   a bare base64 string, a data: URI, the Power Platform
+   `{$content-type, $content}` envelope, and a plain `{value}` wrapper --
+   and a fetch-based client can surface it as a Blob or ArrayBuffer. An
+   unrecognised shape returns '' and the CALLER reports what it actually
+   got; it must never be swallowed silently, which is what hid the original
+   bug. */
+async function toBase64(data) {
+  if (data == null) return '';
+
+  if (typeof data === 'string') {
+    /* data:<mime>;base64,<payload> -- keep only the payload. */
+    const comma = data.startsWith('data:') ? data.indexOf(',') : -1;
+    return comma === -1 ? data : data.substring(comma + 1);
+  }
+
+  if (typeof Blob !== 'undefined' && data instanceof Blob) {
+    return bytesToBase64(new Uint8Array(await data.arrayBuffer()));
+  }
+  if (data instanceof ArrayBuffer) return bytesToBase64(new Uint8Array(data));
+  if (ArrayBuffer.isView(data)) {
+    return bytesToBase64(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+  }
+
+  if (typeof data === 'object') {
+    for (const k of ['$content', 'content', 'value', 'body', 'fileContent', 'documentBody']) {
+      if (data[k] != null) return toBase64(data[k]);
+    }
+  }
+  return '';
+}
+
+/* What came back, in a form safe to put in an error message. Without this
+   an unhandled envelope is indistinguishable from an empty file. */
+function describePayload(data) {
+  if (data === undefined) return 'undefined';
+  if (data === null) return 'null';
+  if (typeof data === 'string') return `string(length ${data.length})`;
+  if (typeof data !== 'object') return typeof data;
+  const ctor = (data.constructor && data.constructor.name) || 'Object';
+  if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) {
+    return `${ctor}(${data.byteLength} bytes)`;
+  }
+  return `${ctor}{${Object.keys(data).slice(0, 12).join(', ')}}`;
 }
 
 export async function downloadFileColumn(entitySet, recordId, fieldName) {
@@ -307,24 +355,39 @@ export async function downloadFileColumn(entitySet, recordId, fieldName) {
     range, DATA_ORG, entitySet, recordId, fieldName, undefined
   );
 
-  let res = await call(undefined);
-  if (!res?.success) {
-    /* Second and last attempt, with an explicit whole-file range. If this
-       fails too the error is real and is reported as-is. */
-    const first = res?.error;
-    res = await call('bytes=0-');
-    if (!res?.success) {
-      const e = res?.error ?? first;
-      throw new Error(
-        e?.message || String(e) ||
-        `Download failed on ${entitySet}.${fieldName} in ${DATA_ORG}`
-      );
+  /* Omitting Range first, because that is the documented "whole file".
+     `bytes=0-` says the same thing explicitly, for a gateway that requires
+     the header to be present. */
+  const RANGES = [undefined, 'bytes=0-'];
+  const tried = [];
+  let lastData;
+
+  for (const range of RANGES) {
+    let res;
+    try {
+      res = await call(range);
+    } catch (e) {
+      tried.push(`Range=${range ?? '(omitted)'}: threw ${e?.message || e}`);
+      continue;
     }
+    if (!res?.success) {
+      const e = res?.error;
+      tried.push(`Range=${range ?? '(omitted)'}: ${e?.message || JSON.stringify(e ?? {})}`);
+      continue;
+    }
+    lastData = res.data;
+    const b64 = await toBase64(res.data);
+    if (b64) return b64;
+    tried.push(`Range=${range ?? '(omitted)'}: succeeded but yielded no content ` +
+               `(payload was ${describePayload(res.data)})`);
   }
 
-  const b64 = fileContentToBase64(res.data);
-  if (!b64) throw new Error(`${entitySet}.${fieldName} came back empty`);
-  return b64;
+  console.warn('[xenv] downloadFileColumn failed', {
+    entitySet, recordId, fieldName, org: DATA_ORG, lastData, tried,
+  });
+  throw new Error(
+    `Could not read ${entitySet}.${fieldName} for ${recordId}. ` + tried.join(' | ')
+  );
 }
 
 /* =========================================================================

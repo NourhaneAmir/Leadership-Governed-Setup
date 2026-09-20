@@ -2056,6 +2056,52 @@ It is now `"error"` in `.oxlintrc.json`, with `env: {browser, es2024}` declared
 alongside — without that the one real finding drowns in ~300 window/console
 hits. `src/` is clean under it; `npm run lint` fails on the next one.
 
+### 20 Sep: "came back empty" — two defects in the first download
+
+Live symptom on a Section's File citation:
+`lm_reporttemplatesectionitemses.lm_attachementfile came back empty`.
+
+**The entity set was NOT the problem** (checked first, because the
+double-pluralised name invites suspicion). `power.config.json` confirms
+`logicalName lm_reporttemplatesectionitems` ->
+`entitySetName lm_reporttemplatesectionitemses`, and the upload writes through
+the same name. The message was mine, and the call had SUCCEEDED.
+
+⚠️ **Defect 1 — the retry could never fire.** The `bytes=0-` fallback ran only
+when the call FAILED. But a gateway that requires the Range header does not
+fail: it answers **200 with an empty body**. So the retry written for exactly
+this case was unreachable. **An empty result must retry, not just an errored
+one.** Now both do, over a `[undefined, 'bytes=0-']` ladder.
+
+⚠️ **Defect 2 — the error destroyed its own evidence.** The normaliser
+returned `''` for any object shape it did not recognise, so an unhandled
+envelope and a genuinely empty file produced the identical message. There was
+no way to tell which had happened. `toBase64()` now also accepts `{value}`,
+`{body}`, `{fileContent}`, `{documentBody}`, `Blob`, `ArrayBuffer` and typed
+arrays (recursing, so a nested envelope resolves), and on failure the thrown
+error **names what actually arrived** via `describePayload()` —
+`Object{a, b}`, `ArrayBuffer(11 bytes)`, `string(length 3)` — plus every
+Range attempted and how each one failed.
+
+**General rule this is an instance of:** a normaliser that silently returns
+"nothing" for an unrecognised input turns a shape bug into an indistinguishable
+data bug. Either handle the shape or report it; never collapse the two.
+
+⚠️ **`String.fromCharCode.apply` overflows the call stack** somewhere around
+a hundred kB of arguments, so bytes are converted to base64 in 0x8000 chunks.
+A 3 MB payload is in the test below; the naive one-shot form crashes on it.
+
+**Verified in Node against the REAL source** (the test extracts the helper
+text out of `xenv.js` rather than restating it, so it cannot pass against a
+drifted copy): all 11 carrying shapes yield the file, the 4 empty/unknown
+shapes yield `''` so the caller reports, and 3 MB converts without
+overflowing. Run it with
+`node scripts/test-tobase64.mjs`.
+
+⚠️ Still **unconfirmed which of the two defects was the live cause** — the fix
+covers both, and if it recurs the new error names the payload shape and the
+Range attempts, which settles it in one click.
+
 ### 20 Sep: the Review panel on both Details tabs, restyled
 
 Same source as the register restyle -- the `setup-detail` Summary tab in
