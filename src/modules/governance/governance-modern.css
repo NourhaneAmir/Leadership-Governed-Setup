@@ -296,13 +296,46 @@
 .gov-root .ph h1{ font-size:20px; letter-spacing:-.01em }
 .gov-root .ph .sub{ font-size:12.5px; line-height:1.5 }
 
-/* stat cards */
+/* stat cards -----------------------------------------------------------
+   A 3px accent bar across the top, and the design's lift-on-hover. The bar
+   is drawn with ::before rather than border-top so it sits INSIDE the
+   rounded corner -- a border-top would square the card's top edge off. */
 .gov-root .stat{
+  position:relative; overflow:hidden;
   border-radius:14px;
-  transition:border-color .16s,box-shadow .16s,transform .16s;
+  transition:border-color .24s cubic-bezier(.22,1,.36,1),
+             box-shadow   .24s cubic-bezier(.22,1,.36,1),
+             transform    .24s cubic-bezier(.22,1,.36,1);
 }
-.gov-root .stat:hover{ transform:translateY(-1px) }
-.gov-root .stat .v{ font-size:24px }
+/* Only a card given an accent draws a bar; `.stat` with no accent class is
+   unchanged, so this cannot alter a stat block on another screen. Listed
+   explicitly rather than matched as [class*="sc-"]: that substring form also
+   matches an unrelated class that merely CONTAINS "sc-" (`desc-`, and the
+   Leadership star-picker's own `sc-pick`), which is a stray 3px bar waiting
+   to happen. */
+.gov-root .stat.sc-green::before,
+.gov-root .stat.sc-gold::before,
+.gov-root .stat.sc-amber::before,
+.gov-root .stat.sc-alert::before,
+.gov-root .stat.sc-grey::before{
+  content:''; position:absolute; top:0; left:0; right:0; height:3px;
+}
+.gov-root .stat.sc-green::before{ background:linear-gradient(135deg,#49604C 0%,#A3B189 100%) }
+.gov-root .stat.sc-gold::before { background:var(--grad-gold) }
+/* Draft -> Under Review -> Expired reads as a worsening sequence, so this
+   one warms from amber towards red rather than sitting flat. */
+.gov-root .stat.sc-amber::before{ background:linear-gradient(90deg,var(--amber),#EF4444) }
+.gov-root .stat.sc-alert::before{ background:var(--red) }
+.gov-root .stat.sc-grey::before { background:var(--grey-bd) }
+
+.gov-root .stat:hover{
+  transform:translateY(-2px);
+  border-color:#F0C893;
+  box-shadow:0 4px 12px rgba(33,28,30,.07);
+}
+/* The count is ink in every card now -- the colour moved to the bar, so a
+   large coloured number would double the signal and read as a status. */
+.gov-root .stat .v{ font-size:24px; color:var(--ink) }
 
 /* filter bar becomes a contained toolbar instead of loose floating controls */
 .gov-root .fltr{
@@ -310,11 +343,20 @@
   border-radius:12px; padding:11px 14px; gap:8px 14px;
   box-shadow:0 1px 2px rgba(33,28,30,.04);
 }
-/* A label and its control are one unwrappable unit; the 14px column gap on
-   .fltr then separates fields, while the 8px here separates a label from its
-   own control. min-width:0 lets a field shrink rather than force a wrap. */
+/* Each filter is now just its select plus a chevron. The wrapper survives
+   as the positioning context for that chevron -- it is absolutely placed, so
+   without a relative ancestor it would fly to the page corner. */
 .gov-root .fltr .fltr-f{
-  display:flex; align-items:center; gap:8px; min-width:0;
+  position:relative; display:flex; align-items:center; min-width:0;
+}
+/* The browser's own arrow is removed so the control matches across
+   platforms; the padding is what stops a long option running under ours. */
+.gov-root .fltr .fltr-f select{
+  appearance:none; -webkit-appearance:none; padding-right:26px; cursor:pointer;
+}
+.gov-root .fltr .sel-arrow{
+  position:absolute; right:9px; top:50%; transform:translateY(-50%);
+  font-size:9px; color:var(--faint); pointer-events:none;
 }
 
 .gov-root .fltr select,.gov-root .fltr input{
@@ -895,3 +937,27 @@
   background:var(--surface); border:1px solid var(--border); color:var(--body);
 }
 .gov-root .det-sec-items .pill b{ color:var(--muted); font-weight:600 }
+
+/* ---- Setup Register: the approved design's table rhythm -----------------
+   Roomier rows than the app's default table, matching the design. Scoped to
+   .reg-table so no other table on this screen or any other picks it up. */
+.gov-root table.reg-table thead th{
+  padding:10px 14px; letter-spacing:.085em;
+}
+.gov-root table.reg-table td{ padding:12px 14px; vertical-align:middle }
+/* The name cell stays top-aligned: it is the only one that can carry a
+   second line (a Report Template's type and category), and centring it
+   against a one-line neighbour reads as misalignment. */
+.gov-root table.reg-table td:first-child{ vertical-align:top }
+
+/* The design gives its cards a hover too. Applied only to the register's
+   table card -- putting it on every `.card` would make the wizard's form
+   panels twitch as the pointer crosses them. */
+.gov-root .card.reg-card{
+  transition:border-color .24s cubic-bezier(.22,1,.36,1),
+             box-shadow   .24s cubic-bezier(.22,1,.36,1);
+}
+.gov-root .card.reg-card:hover{
+  border-color:#F0C893;
+  box-shadow:0 4px 12px rgba(33,28,30,.07);
+}

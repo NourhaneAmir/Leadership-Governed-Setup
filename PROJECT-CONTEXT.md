@@ -2056,6 +2056,58 @@ It is now `"error"` in `.oxlintrc.json`, with `env: {browser, es2024}` declared
 alongside — without that the one real finding drowns in ~300 window/console
 hits. `src/` is clean under it; `npm run lint` fails on the next one.
 
+### 20 Sep, later still: Setup Register restyled to the approved design
+
+Source of truth is **`leadership-practice (2).html`** in the repo root (the
+`#gov-setups` panel), supplied as a screenshot. Applied: a 3px accent bar
+across the top of each stat card, the design's lift-on-hover, label-less
+filters resting on "All ...", a chevron on each select, and the register
+table's roomier row rhythm.
+
+**The mockup has FEWER controls than the shipped app, and those were KEPT.**
+This is the one judgement call in the change, and it is deliberate -- "apply
+the UI style" is not an instruction to delete working features:
+
+| In the app | In the mockup | Decision |
+|---|---|---|
+| **Expired** stat card (5 cards) | absent (4 cards) | kept, given a grey bar |
+| **Status** filter | absent | kept -- the most-used filter on this screen |
+| **Stage** column | absent | kept |
+| row **actions** (Open / Duplicate / Expire) | absent | kept |
+| "Under Review" | "Under Revision" | kept **Under Review** -- it is a real `LIFECYCLE` value, used by the Status filter and the status pills; renaming only the card would desynchronise the label from the data |
+
+⚠️ **The trap in label-less filters: pin `value="All"`.** Every filter tests
+`fKind !== 'All'` and friends. The design replaces the option's TEXT with
+"All Kinds" / "All Setup Types" / "All Categories" / "All Stages". Changing
+the text *without* writing `<option value="All">` changes the option's VALUE
+too (it defaults to its text), so every filter would read as permanently
+engaged and the register would show nothing. All five are pinned.
+
+⚠️ **Removing a visible `<label>` removes the accessible name.** A bare
+`<select>` is announced as "combo box" and nothing else. Each control now
+carries an `aria-label`; the resting "All ..." text is a visual affordance,
+not an accessible name.
+
+**`Stat`'s `c` prop changed meaning:** it used to colour the DIGIT
+(`style={{color:'var(--'+c+')'}}`); it now names an accent class (`sc-green`,
+`sc-gold`, `sc-amber`, `sc-alert`, `sc-grey`) and the number is always ink.
+`Stat` is used **only** on this screen (5 call sites), so nothing else moved.
+
+⚠️ **All of this is scoped `.gov-root` in `governance-modern.css`, NOT
+`theme.css`.** `.stat`, `.stats`, `.fltr` and `table.data` all exist in BOTH
+apps; an unscoped rule in the shared sheet would have restyled Leadership too.
+**Verified after building both**: Leadership's built stylesheet contains zero
+`stat.sc-*` rules. This is the `.combo-*` collision lesson applied in advance
+rather than debugged afterwards.
+
+⚠️ **Do not write `[class*="sc-"]`.** The first version of the accent rule
+used that substring form; it also matches any class merely CONTAINING `sc-`
+-- `desc-`, and Leadership's own `.sc-pick` star rating -- which is a stray
+3px bar waiting to happen. The five classes are listed explicitly.
+
+The accent bar is `::before`, not `border-top`: a border would square off the
+card's rounded top corners.
+
 ### 20 Sep, later: attached files can be READ, not just replaced
 
 Files could be uploaded and replaced but never opened. The only way to learn

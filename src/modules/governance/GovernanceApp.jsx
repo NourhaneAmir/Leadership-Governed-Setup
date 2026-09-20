@@ -1157,9 +1157,18 @@ const Btn=({k='',children,...r})=><button type="button" className={'btn '+k} {..
 const Note=({k='info',ic,children})=>
   <div className={'note '+k}>{ic?<span className="ic">{ic}</span>:null}<div>{children}</div></div>;
 const Empty=({ic,children})=><div className="empty">{ic?<div className="ic">{ic}</div>:null}{children}</div>;
+/* `c` names the card's accent. It used to colour the DIGIT; in the approved
+   design the number is always ink and the colour is a 3px bar across the top
+   of the card, which reads as a category marker instead of making the count
+   itself look like a status. */
 const Stat=({label,v,d,c})=>
-  <div className="stat"><label>{label}</label>
-    <div className="v" style={c?{color:'var(--'+c+')'}:null}>{v}</div>{d?<div className="d">{d}</div>:null}</div>;
+  <div className={'stat'+(c?' sc-'+c:'')}><label>{label}</label>
+    <div className="v">{v}</div>{d?<div className="d">{d}</div>:null}</div>;
+
+/* The chevron for a filter select. The select paints none of its own
+   (appearance:none) so the control matches the design across browsers;
+   aria-hidden because it is decoration, not information. */
+const SelArrow=()=><span className="sel-arrow" aria-hidden="true">▼</span>;
 
 const STATUS_C={'Draft':'grey','Active / Approved':'green','Under Review':'amber','Expired':'muted'};
 const StatusPill=({s})=> s==='Expired'
@@ -3850,65 +3859,75 @@ function ScreenRegister(){
 
     <div className="stats">
       <Stat label="Available for use" v={available} d="Active / Approved" c="green"/>
-      <Stat label="Draft" v={countAll(x=>x.status==='Draft')} d="not yet published" c="amber"/>
+      <Stat label="Draft" v={countAll(x=>x.status==='Draft')} d="not yet published" c="gold"/>
       <Stat label="Under Review" v={countAll(x=>x.status==='Under Review')}
             d="pending approval" c="amber"/>
-      <Stat label="Expired" v={countAll(x=>x.status==='Expired')} d="create no occurrences"/>
-      <Stat label="Report Templates" v={countAll(x=>x.kind==='Report Template')} d="published and draft"/>
+      {/* Not in the mockup, which shows four cards -- kept because an expired
+          Setup creating no occurrences is a real thing to be able to see. */}
+      <Stat label="Expired" v={countAll(x=>x.status==='Expired')} d="create no occurrences" c="grey"/>
+      <Stat label="Report Templates" v={countAll(x=>x.kind==='Report Template')}
+            d="published and draft" c="alert"/>
     </div>
 
     <div className="fltr">
-      {/* Each label travels inside the same .fltr-f box as the control it
-          names. The toolbar wraps at narrow widths, and as loose siblings a
-          label could end a line with its dropdown starting the next one --
-          which is what put STATUS on its own row. */}
+      {/* No visible labels: each control describes itself through its resting
+          "All ..." value, as in the approved design. That makes aria-label the
+          ONLY accessible name these controls have -- without it a screen
+          reader announces a bare "combo box". The old wrapping note no longer
+          applies; there is no label left to be separated from its control. */}
+      <input id="q-search" type="search" aria-label="Search setup name"
+        value={q} onChange={e=>setQ(e.target.value)}
+        placeholder="Search setup name…" style={{minWidth:190}}/>
       <div className="fltr-f">
-        <label htmlFor="q-search">Search</label>
-        <input id="q-search" type="search" value={q} onChange={e=>setQ(e.target.value)}
-          placeholder="Setup name…" style={{minWidth:190}}/>
-      </div>
-      <div className="fltr-f">
-        <label htmlFor="q-kind">Kind</label>
-        <select id="q-kind" value={fKind} onChange={e=>setFKind(e.target.value)}>
-          <option>All</option><option>Committee / Meeting</option><option>Report Template</option></select>
+        {/* WARNING: value stays "All". Every filter tests `!== 'All'`, so
+            renaming the option's TEXT without pinning its value would silently
+            leave the register permanently filtered to nothing. Same on all five. */}
+        <select id="q-kind" aria-label="Kind" value={fKind} onChange={e=>setFKind(e.target.value)}>
+          <option value="All">All Kinds</option>
+          <option>Committee / Meeting</option><option>Report Template</option></select>
+        <SelArrow/>
       </div>
       {/* Both of these columns show a Meeting's field or a Report's, depending
           on the row, so both dropdowns carry both sets — grouped, since a
           value only ever applies to one kind. */}
       <div className="fltr-f">
-        <label htmlFor="q-type">Type</label>
-        <select id="q-type" value={fType} onChange={e=>setFType(e.target.value)}>
-          <option>All</option>
+        <select id="q-type" aria-label="Setup type" value={fType} onChange={e=>setFType(e.target.value)}>
+          <option value="All">All Setup Types</option>
           <optgroup label="Committee / Meeting">
             {SETUP_TYPES.map(t=><option key={t}>{t}</option>)}</optgroup>
           <optgroup label="Report Template">
             {REPORT_TYPES.map(t=><option key={t}>{t}</option>)}</optgroup>
         </select>
+        <SelArrow/>
       </div>
       <div className="fltr-f">
-        <label htmlFor="q-cat">Category</label>
-        <select id="q-cat" value={fCat} onChange={e=>setFCat(e.target.value)}>
-          <option>All</option>
+        <select id="q-cat" aria-label="Category" value={fCat} onChange={e=>setFCat(e.target.value)}>
+          <option value="All">All Categories</option>
           <optgroup label="Committee / Meeting">
             {CATEGORIES.map(c=><option key={c}>{c}</option>)}</optgroup>
           <optgroup label="Report Template">
             {REPORT_CATEGORIES.map(c=><option key={c}>{c}</option>)}</optgroup>
         </select>
+        <SelArrow/>
       </div>
       <div className="fltr-f">
-        <label htmlFor="q-stage">Stage</label>
-        <select id="q-stage" value={fStage} onChange={e=>setFStage(e.target.value)}>
-          <option>All</option>{STAGES.map(s=><option key={s}>{s}</option>)}</select>
+        <select id="q-stage" aria-label="Stage" value={fStage} onChange={e=>setFStage(e.target.value)}>
+          <option value="All">All Stages</option>
+          {STAGES.map(s=><option key={s}>{s}</option>)}</select>
+        <SelArrow/>
       </div>
+      {/* Not in the mockup either. Status is the register's most-used filter
+          -- dropping it would mean scrolling to find the one Draft. */}
       <div className="fltr-f">
-        <label htmlFor="q-status">Status</label>
-        <select id="q-status" value={fStatus} onChange={e=>setFStatus(e.target.value)}>
-          <option>All</option>{LIFECYCLE.map(s=><option key={s}>{s}</option>)}</select>
+        <select id="q-status" aria-label="Status" value={fStatus} onChange={e=>setFStatus(e.target.value)}>
+          <option value="All">All Statuses</option>
+          {LIFECYCLE.map(s=><option key={s}>{s}</option>)}</select>
+        <SelArrow/>
       </div>
       {filtered?<Btn k="sm" onClick={clearAll}>Clear</Btn>:null}
     </div>
 
-    <div className="card flush">
+    <div className="card flush reg-card">
       <div className="t-wrap"><table className="data reg-table">
         <thead><tr><th>Setup name</th><th>Kind</th><th>Type</th><th>Category</th><th>Stage</th>
           <th>Scope and units</th><th>Frequency</th><th>Status</th><th className="reg-th-num">Ver</th><th>Updated</th>
