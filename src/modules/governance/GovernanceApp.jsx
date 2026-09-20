@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useLayoutEffect, useRef, createCon
 import { createPortal } from 'react-dom';
 import { ClipboardList, ListChecks, ArrowUpRight, FileText, CalendarDays, Check, MoreHorizontal } from 'lucide-react';
 import { fetchRegions, fetchBusinessUnits, fetchDepartments, fetchFunctions, fetchProcesses, fetchKpis, fetchSections, fetchPositions, departmentBuIndex, fetchTeamsChannels, fetchMicrosoftGroupMembers, fetchMeetingCategories, fetchCurrentUser, saveReportTemplateToDataverse, saveMeetingTemplateToDataverse, updateReportTemplateToDataverse, updateMeetingTemplateToDataverse, updateReportTemplateStatus, updateMeetingTemplateStatus, fetchReportTemplatesList, fetchMeetingTemplatesList, fetchReportTemplateDetail, fetchMeetingTemplateDetail, fetchMeetingOccurrencesByTemplate, fetchReportOccurrencesByTemplate, TEMPLATE_STATUS_LABEL,
-  logSetupActivity, logSetupActivityBatch, fetchSetupActivity } from '../../services/dataverse.js';
+  logSetupActivity, logSetupActivityBatch, fetchSetupActivity, uploadReportTemplateFile } from '../../services/dataverse.js';
 import './governance-modern.css';
 
 
@@ -672,7 +672,7 @@ const BLANK_REPORT={
   qualifier:'',
   stage:null, regions:[], businessUnits:[], lines:[], units:[],
   delivery:'Source link', site:null, library:null, folder:null, sourceLink:'', sourceLinkAuto:false,
-  fileAttachment:'',
+  fileAttachment:'', templateFileName:'', hasTemplateFile:false,
   secondDayOfWeek:null, secondDayOfMonth:null, monthInSemester:null, month:null,
   checklist:[], processes:[], kpis:[],
   frequency:null, dayOfWeek:null, dayOfMonth:null, monthInQuarter:null,
@@ -1457,6 +1457,7 @@ const SECTION_ITEM_KINDS = [
   {v:'Breakdown',      label:'KPI breakdown'},
   {v:'Process',        label:'Process'},
   {v:'Child Template', label:'Child report/plan'},
+  {v:'File',           label:'Uploaded file'},
 ];
 /* Fixed list from lm_breakdowndimension. Offered in full for any KPI rather
    than filtered to the dimensions that KPI actually holds data for -- the
@@ -1470,10 +1471,10 @@ const SECTION_BREAKDOWN_DIMS = ['Account','Payment Type','Physician','Department
    these classes are used nowhere else and the stylesheet is shared with the
    execution module. Tokens are the app's own semantic colours. */
 const SEC_ITEM_CLASS = {
-  'KPI':'k-kpi', 'Breakdown':'k-bd', 'Process':'k-proc', 'Child Template':'k-child',
+  'KPI':'k-kpi', 'Breakdown':'k-bd', 'Process':'k-proc', 'Child Template':'k-child', 'File':'k-file',
 };
 const SEC_ITEM_LABEL = {
-  'KPI':'KPI', 'Breakdown':'Breakdown', 'Process':'Process', 'Child Template':'Child report/plan',
+  'KPI':'KPI', 'Breakdown':'Breakdown', 'Process':'Process', 'Child Template':'Child report/plan', 'File':'File',
 };
 
 /* Scope filters shared by all three pickers.
@@ -1577,11 +1578,12 @@ function SectionRowEditor({sec,index,templateId,onPatch,onRemove}){
     })
     .map(t=>({id:t.id, name:t.name||'(unnamed template)'}));
 
-  const addItem = it => { onPatch({items:[...items, {id:uid('si'), ...it}]}); setPicking(null); setBdKpi(''); };
+  const addItem = it => { onPatch({items:[...items, {...it, id:it.id||uid('si')}]}); setPicking(null); setBdKpi(''); };
   const label = it => it.type==='Breakdown'
     ? `${it.kpi||'KPI'} · by ${it.dimension||'—'}`
     : it.type==='Process' ? it.process
     : it.type==='Child Template' ? it.childTemplate
+    : it.type==='File' ? (it.fileName||'File')
     : it.kpi;
 
   return <div className="sec-card">
@@ -1593,10 +1595,6 @@ function SectionRowEditor({sec,index,templateId,onPatch,onRemove}){
       <button type="button" className="icon-btn" title="Remove this section"
         onClick={onRemove}>✕</button>
     </div>
-
-    <input type="text" value={sec.fileAttachment||''} placeholder="File attachment link (optional)"
-      style={{marginBottom:8}}
-      onChange={e=>onPatch({fileAttachment:e.target.value})}/>
 
     {items.length>0
       ? <div className="sec-chips">
@@ -1613,7 +1611,7 @@ function SectionRowEditor({sec,index,templateId,onPatch,onRemove}){
 
     <button type="button" className="sec-add"
       onClick={()=>setPicking(picking?null:'KPI')}>
-      {picking?'✕ Close':'+ Add KPI, breakdown, Process or child report/plan'}</button>
+      {picking?'✕ Close':'+ Add KPI, breakdown, Process, child report/plan or file'}</button>
 
     {picking && <div className="sec-pick">
       <div className="sec-kinds" role="group" aria-label="What to cite">
@@ -1624,7 +1622,7 @@ function SectionRowEditor({sec,index,templateId,onPatch,onRemove}){
             <span className="dot"/>{k.label}</button>)}
       </div>
 
-      {picking!=='Child Template' && <>
+      {picking!=='Child Template' && picking!=='File' && <>
         <ScopeFilter bu={buF} region={regionF} dept={deptF}
           setBu={setBuF} setRegion={setRegionF} setDept={setDeptF}/>
         {(buF||regionF||deptF) &&
@@ -1693,6 +1691,29 @@ function SectionRowEditor({sec,index,templateId,onPatch,onRemove}){
           empty={(DV_REPORTS.current||[]).length
             ? 'No other Report Template matches this scope.'
             : 'No Report Template has been saved to Dataverse yet — only a saved Template can be cited.'}/>}
+
+      {picking==='File' && <>
+        <div className="holder" style={{marginBottom:6}}>
+          Attach a file as this section's citation — uploaded and stored on this Section
+          when the Setup is saved (as Draft or Published).</div>
+        <div className="holder" style={{marginBottom:6,color:'var(--amber)'}}>
+          ⚠ Every save rewrites this section's citations, so a file already attached here
+          must be picked again each time this Setup is edited and saved — it is not carried
+          forward automatically.</div>
+        <input type="file" onChange={e=>{
+          const file=e.target.files && e.target.files[0];
+          if(!file) return;
+          if(file.size>25*1024*1024){
+            alert('That file is larger than 25 MB — pick a smaller one.');
+            e.target.value=''; return;
+          }
+          const id=uid('si');
+          fileToBase64(file).then(base64=>{
+            PENDING_SECTION_ITEM_FILE.set(id, {name:file.name, type:file.type||'application/octet-stream', base64});
+            addItem({id, type:'File', fileName:file.name});
+          }).catch(err=>alert('Could not read that file: '+(err?.message||err)));
+        }}/>
+      </>}
 
       {/* A Breakdown is two picks: the KPI, then the dimension. The KPI half
           used to be a bare <select>, which is unusable once the KPI list is
@@ -2791,10 +2812,27 @@ function ReportWizard({rec,onClose}){
                     <b> Setup per unit</b>, and the Channel’s SharePoint path becomes the destination.
                   </div>}
             </Field>; })()}
-          <Field id="f-fileAttachment" label="File Attachment"
-            hint="A link to a reference or example file for this Report Template as a whole — optional.">
-            <input id="f-fileAttachment" type="text" value={s.fileAttachment||''}
-              onChange={e=>set({fileAttachment:e.target.value})}/></Field>
+          <Field id="f-templateFile" label="Template file"
+            hint="The template file itself (Word, Excel, PDF…) — uploaded and stored on this Report
+                  Template. Saving as Draft or Publishing uploads it; picking a new file replaces
+                  whatever was there before.">
+            <input id="f-templateFile" type="file"
+              onChange={e=>{
+                const file=e.target.files && e.target.files[0];
+                if(!file) return;
+                if(file.size>25*1024*1024){
+                  alert('That file is larger than 25 MB — pick a smaller one.');
+                  e.target.value=''; return;
+                }
+                PENDING_TEMPLATE_FILE.set(s.id, file);
+                set({templateFileName:file.name});
+              }}/>
+            {s.templateFileName
+              ? <div className="holder">Will upload on save: <b>{s.templateFileName}</b></div>
+              : s.hasTemplateFile
+                ? <div className="holder">A template file is already attached. Choose a file above to replace it.</div>
+                : <div className="holder">No template file attached yet.</div>}
+          </Field>
           <Field id="f-checklist" label="Expected Content Checklist" req
             hint="The sections a submission must contain each period. Each section can name a
                   diagnostic angle and carry any number of KPIs, KPI breakdowns, Processes or a
@@ -2966,8 +3004,23 @@ function buildReportTemplatePayload(f){
         if(it.type==='Child Template')
           return { type:'Child Template', label:`Child: ${it.childTemplate}`,
                    childTemplateId: it.childTemplateId };
+        /* No lookup to resolve -- the pending file (if the user just picked
+           one this session) lives in PENDING_SECTION_ITEM_FILE, keyed by
+           this item's own local id, never on the Setup/sessionStorage
+           itself. Re-editing an item that already has a file in Dataverse
+           but wasn't re-picked this session has no pending entry, so no
+           fileBase64 -- it still creates the row (label carries the old
+           file's name forward) but uploads nothing; see the picker's own
+           warning about this. */
+        if(it.type==='File'){
+          const pending = PENDING_SECTION_ITEM_FILE.get(it.id);
+          if(pending) PENDING_SECTION_ITEM_FILE.delete(it.id);
+          return { type:'File', label:`File: ${it.fileName||pending?.name||'file'}`,
+                   fileName: it.fileName||pending?.name,
+                   fileBase64: pending?.base64, fileType: pending?.type };
+        }
         return null;
-      }).filter(it=>it && (it.kpiId || it.processId || it.childTemplateId)),
+      }).filter(it=>it && (it.kpiId || it.processId || it.childTemplateId || it.type==='File')),
     })),
     lines: linesOf(f).map(l=>({
       departmentId: DEPARTMENTS.find(d=>d.name===l.department)?.id,
@@ -3362,6 +3415,7 @@ function dataverseReportToSetup(detail){
     confidentiality:byCode1(DV_CONFIDENTIALITY,p.lm_confidentiality),
     delivery:'Source link', sourceLink:p.lm_destinationsharepointlink||'',
     fileAttachment:p.lm_fileattachement||'',
+    hasTemplateFile:!!p.lm_attachementfile, templateFileName:'',
     /* Sections hydrate back into the same display-name shape the editor writes,
        so an edit round-trips without the form ever seeing a GUID. */
     checklist:(detail.checklist||[]).slice().sort((a,b)=>(a.lm_checklistitemstep||0)-(b.lm_checklistitemstep||0))
@@ -3384,6 +3438,12 @@ function dataverseReportToSetup(detail){
                || (it.label||'').replace(/^Child:\s*/,'') || '(template not found)')
             : undefined,
           dimension:it.dimension||undefined,
+          /* A File citation has no lookup to resolve -- its display name is
+             just whatever lm_sectionitemname was written as (the file's own
+             name at upload time). hasFile flags that content already exists
+             in Dataverse, so the picker's re-upload warning is meaningful. */
+          fileName:it.type==='File' ? (it.label||'file') : undefined,
+          hasFile:!!it.hasFile,
         })).filter(it=>it.type),
       })),
     lines:(detail.lines||[]).map(l=>({
@@ -3902,6 +3962,44 @@ const settledDataverseId = async (localId, knownId) => {
   const fresh = pending ? await pending : null;
   return fresh || knownId || null;
 };
+
+/* A File the user picked in the wizard's "Template file" control, keyed by
+   LOCAL Setup id, waiting for a Dataverse id to upload against -- a File
+   column has nothing to attach content to until its row exists, and a raw
+   File object cannot be stored on the Setup itself (it goes through `set()`
+   into a plain object that gets JSON'd for sessionStorage; File does not
+   survive that). Read once by writeTemplateToDataverse's success callback,
+   then discarded either way -- same lifecycle as PENDING_DV_WRITE above, but
+   for a browser object instead of a promise. */
+const PENDING_TEMPLATE_FILE = new Map();
+
+/* Same idea as PENDING_TEMPLATE_FILE, one level down: a File chosen for a
+   Section's "File" citation (lm_reporttemplatesectionitems.lm_attachementfile),
+   keyed by the ITEM's local id. Converted to base64 immediately on pick
+   (see fileToBase64 below) rather than deferred to save time, because the
+   item's local id is generated at pick time and there is no later moment
+   equivalent to the parent Report Template's "the create just resolved an
+   id" hook to convert lazily against -- buildReportTemplatePayload() reads
+   this map synchronously and embeds the base64 directly into the outgoing
+   item object, which createSectionItems() (dataverse.js) uploads right
+   after creating that item's row. Never written into `s`/sessionStorage --
+   only the file's name is (a plain string, safe to persist; see
+   templateFileName above for the same split). */
+const PENDING_SECTION_ITEM_FILE = new Map();
+
+/* FileReader -> base64, for uploadReportTemplateFile() (dataverse.js), which
+   expects the connector's own convention for a binary body on this JSON
+   transport: a base64 string, not raw bytes. */
+const fileToBase64 = file => new Promise((resolve, reject) => {
+  const r = new FileReader();
+  r.onload = () => {
+    const s = String(r.result || '');
+    const i = s.indexOf(',');
+    resolve(i >= 0 ? s.slice(i + 1) : s);
+  };
+  r.onerror = () => reject(r.error || new Error('Could not read the file.'));
+  r.readAsDataURL(file);
+});
 
 const REVISING = new Map();
 const markRevising   = (id, fromVersion) => REVISING.set(id, fromVersion || 1);
@@ -4667,6 +4765,24 @@ function App({onSwitch}){
             console.warn(`[dataverse] Report Template ${isUpdate?'updated':'saved'} with some child rows failing:`, errors);
             toast(`Report Template ${isUpdate?'updated':'saved'}, with gaps`,
               `${errors.length} related row(s) (${errors.map(e=>e.table).join(', ')}) failed to save. Check the console for details.`,'warn');
+          }
+          /* A file the user picked in this Setup's "Template file" control,
+             still waiting on the id that only just landed above. Upload it
+             now against a row that definitely exists. */
+          const pendingFile = PENDING_TEMPLATE_FILE.get(f.id);
+          if(pendingFile){
+            PENDING_TEMPLATE_FILE.delete(f.id);
+            fileToBase64(pendingFile)
+              .then(b64 => uploadReportTemplateFile(id, pendingFile.name, b64, pendingFile.type || 'application/octet-stream'))
+              .then(()=>{
+                mut(n=>{ const i=n.setups.findIndex(x=>x.id===f.id);
+                  if(i>=0) n.setups[i]={...n.setups[i], hasTemplateFile:true, templateFileName:''}; });
+              })
+              .catch(e=>{
+                console.warn('[dataverse] Template file upload failed:', e);
+                toast('Template file not uploaded',
+                  `${displayName(f)} saved, but its template file failed to upload: ${e?.message||e}`,'err');
+              });
           }
           // Refresh so the register and the Linked Report Templates picker
           // pick up the new/updated row instead of the snapshot from mount.

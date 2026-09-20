@@ -81,7 +81,7 @@ function rowsOrThrow(res){
    read from each generated service's create() signature -- which lets
    create() supply the new row's GUID itself; see xenv.js.
    --------------------------------------------------------------------- */
-import { dvTable } from './xenv.js';
+import { dvTable, uploadFileColumn } from './xenv.js';
 
 const BusinessunitsService = dvTable('businessunits');
 const Crd04_regionsesService = dvTable('crd04_regionses');
@@ -762,9 +762,24 @@ export const SECTION_BREAKDOWN_DIM_KEY = {
 
 /* Writes the citation items belonging to one Section (checklist row).
    Each item is its own row, which is what makes a Section able to carry any
-   number of KPIs, Breakdowns, Processes and child Templates at once. A
-   Breakdown stores the KPI plus a dimension -- there is no column for a
-   specific member, so the members resolve when the Report is actually built. */
+   number of KPIs, Breakdowns, Processes, child Templates and (20 Sep) files
+   at once. A Breakdown stores the KPI plus a dimension -- there is no column
+   for a specific member, so the members resolve when the Report is actually
+   built.
+
+   A File item is a citation whose content is an uploaded file rather than a
+   lookup -- lm_reporttemplatesectionitems gained its own lm_attachementfile
+   File column (confirmed via `pac modelbuilder build -enf
+   lm_reporttemplatesectionitems`, same shape as lm_report_templates'; see
+   PROJECT-CONTEXT.md §6). lm_itemtype (lm_reportsectionitemtype) has ONLY
+   four values -- KPI/Breakdown/Process/ChildTemplate, confirmed live, no
+   File value exists -- so a File item writes lm_itemtype null (the ?? null
+   fallback below already does this, since 'File' has no entry in
+   SECTION_ITEM_TYPE_KEY) and is recognised on read purely by having content
+   in lm_attachementfile. it.fileBase64 is populated by
+   GovernanceApp.jsx's payload builder from a module-level pending-file map,
+   NOT stored on the Setup itself -- same reasoning as the Report Template's
+   own pending-file map, see PENDING_TEMPLATE_FILE there. */
 async function createSectionItems(checklistId, items, errors){
   const bind = `/lm_reporttemplatecontentchecklists(${checklistId})`;
   for(const it of (items||[])){
@@ -785,7 +800,17 @@ async function createSectionItems(checklistId, items, errors){
         row['lm_Process@odata.bind'] = `/strategy_processes(${it.processId})`;
       if(it.type==='Child Template' && it.childTemplateId)
         row['lm_ChildReportTemplate@odata.bind'] = `/lm_report_templates(${it.childTemplateId})`;
-      await Lm_reporttemplatesectionitemsesService.create(row);
+      const created = await Lm_reporttemplatesectionitemsesService.create(row);
+      /* The row must exist before a File column has anything to attach
+         content to -- same reason the parent Report Template's own upload
+         is deferred until after its create/update resolves an id. */
+      if(it.type==='File' && it.fileBase64){
+        const itemId = created?.data?.lm_reporttemplatesectionitemsid;
+        if(itemId){
+          await uploadFileColumn('lm_reporttemplatesectionitemses', itemId, 'lm_attachementfile',
+            it.fileName || 'file', it.fileBase64, it.fileType);
+        }
+      }
     }catch(e){ errors.push({ table:'lm_reporttemplatesectionitemses', error:e }); }
   }
 }
@@ -2259,13 +2284,29 @@ export async function fetchMeetingTemplatesList(){
   }));
 }
 
+/** Uploads a file's content into `lm_report_templates.lm_attachementfile` --
+ *  a native Dataverse File column, added after `lm_fileattachement` (the
+ *  plain-text link column, still present but no longer editable in the UI --
+ *  see PROJECT-CONTEXT.md §5, "remove the url field for now"). The Report
+ *  Template row must already exist in Dataverse; a File column has nothing
+ *  to attach content to on a row that hasn't been created yet, so this is
+ *  called only after a create/update returns a real id.
+ *  @param {string} templateId lm_report_templateid of an EXISTING row
+ *  @param {string} fileName original file name, shown back by Dataverse
+ *  @param {string} base64Content the file's bytes, base64-encoded
+ *  @param {string} [contentType] defaults to application/octet-stream
+ */
+export async function uploadReportTemplateFile(templateId, fileName, base64Content, contentType){
+  return uploadFileColumn('lm_report_templates', templateId, 'lm_attachementfile', fileName, base64Content, contentType);
+}
+
 export async function fetchReportTemplateDetail(id){
   const parentRes = await Lm_report_templatesService.get(id, {
     select: ['lm_report_templateid','lm_newcolumn','lm_objective','lm_reporttype','lm_reportcategory',
       'lm_submissiontiming',
       'lm_frequency','lm_dayoftheweek','lm_dayofthemonth','lm_monthofthequarter',
       'lm_seconddayoftheweek','lm_seconddayofthemonth','lm_monthofthesemester','lm_month','lm_confidentiality',
-      'lm_destinationsharepointlink','lm_fileattachement','lm_reportstatus','lm_version','lm_stage','modifiedon','createdon',
+      'lm_destinationsharepointlink','lm_fileattachement','lm_attachementfile','lm_reportstatus','lm_version','lm_stage','modifiedon','createdon',
       // Group-wide (Stage 3/4) Owner/Submitting Position, Team Channel and
       // Speciality -- see reportTemplateParentPayload()'s comment for why
       // these live here instead of on a per-unit child row.
@@ -2318,7 +2359,7 @@ export async function fetchReportTemplateDetail(id){
       filter: `_lm_sectionchecklistitem_value eq ${c.lm_reporttemplatecontentchecklistid}`,
       select: ['lm_reporttemplatesectionitemsid','lm_sectionitemname','lm_itemtype',
                'lm_breakdowndimension','_lm_kpi_value','_lm_process_value',
-               '_lm_childreporttemplate_value'],
+               '_lm_childreporttemplate_value','lm_attachementfile'],
     }).then(r=>r?.data??[]).catch(e=>{
       console.warn('[dataverse] section items fetch failed:', e); return []; })));
 
@@ -2328,12 +2369,16 @@ export async function fetchReportTemplateDetail(id){
       ...c,
       items: itemLists[i].map(it => ({
         id: it.lm_reporttemplatesectionitemsid,
-        type: SECTION_ITEM_TYPE[it.lm_itemtype] || null,
+        /* lm_itemtype has no File value (see createSectionItems' comment) --
+           a File citation is recognised by having content in
+           lm_attachementfile instead, with lm_itemtype left null. */
+        type: SECTION_ITEM_TYPE[it.lm_itemtype] || (it.lm_attachementfile ? 'File' : null),
         label: it.lm_sectionitemname || '',
         kpiId: it._lm_kpi_value || null,
         processId: it._lm_process_value || null,
         childTemplateId: it._lm_childreporttemplate_value || null,
         dimension: SECTION_BREAKDOWN_DIM[it.lm_breakdowndimension] || null,
+        hasFile: !!it.lm_attachementfile,
       })),
     })),
     lines: linesRes?.data ?? [],

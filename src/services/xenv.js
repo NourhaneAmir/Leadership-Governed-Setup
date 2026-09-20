@@ -212,6 +212,42 @@ export function dvTable(entitySet, pkField) {
 }
 
 /* =========================================================================
+   File/Image column upload -- a native Dataverse File column (added to
+   lm_report_templates as lm_attachementfile), NOT the SharePoint dead end
+   documented in PROJECT-CONTEXT.md's §6 ("SharePoint file upload"). This
+   goes through the same generic commondataserviceforapps connector as
+   dvTable() above, via its dedicated 'Upload a file or image to selected
+   environment' action -- so it works cross-environment the same way every
+   other read/write in this file does.
+
+   The connector's own schema declares the body as `{format:"binary",
+   type:"string"}` under `consumes: application/octet-stream` -- the
+   standard Power Platform connector convention for a binary body carried
+   over this JSON-based invoke transport is a base64 string, so callers
+   here pass base64 (see dataverse.js's uploadReportTemplateFile(), which
+   does the FileReader -> base64 step). UNVERIFIED against live Dataverse --
+   this is the first time this codebase has attempted a real binary upload;
+   confirm the round-trip (upload, then re-download or check the column in
+   the maker portal) the first time this runs for real. */
+export async function uploadFileColumn(entitySet, recordId, fieldName, fileName, base64Content, contentType) {
+  const res = await DV.UpdateEntityFileImageFieldContentWithOrganization(
+    contentType || 'application/octet-stream',
+    DATA_ORG,
+    entitySet,
+    recordId,
+    fieldName,
+    base64Content,
+    fileName
+  );
+  if (!res?.success) {
+    throw new Error(
+      res?.error?.message || String(res?.error) || `Upload failed on ${entitySet}.${fieldName}`
+    );
+  }
+  return true;
+}
+
+/* =========================================================================
    Smoke test -- answers the one open question before any conversion.
 
    Creates a throwaway row, reports whether the new record's GUID came back

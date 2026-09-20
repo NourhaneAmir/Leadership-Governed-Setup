@@ -2109,6 +2109,157 @@ cd /c/tmp/cad-exec && "$PA" push
 Pushes still time out intermittently (§8); one app can fail repeatedly while
 the other succeeds, and spacing retries about a minute apart works.
 
+### 20 Sep: real file upload for the Report Template, via a genuine Dataverse File column — not the SharePoint dead end
+
+Per an explicit ask to add an upload control for "the template file" and drop
+the old URL field. First step was `pac modelbuilder build -enf
+lm_report_template` (singular logical name, given directly) to see the
+table's current real schema before touching anything — found a column that
+didn't exist the last time this table was inspected: **`lm_attachementfile`**,
+a getter-only `Guid?` property on the generated entity. That shape (nullable
+Guid, no setter) is the modelbuilder signature of a **native Dataverse File
+column** — a completely different thing from `lm_fileattachement` (plain
+text, item 11 in this section's 17 Sep entries) and from the
+`shared_sharepointonline` dead end (item 14, same date): a File column stores
+real binary content Dataverse itself hosts, no SharePoint site involved.
+
+**This changes the SharePoint entry's conclusion, but only for THIS path.**
+That entry is still correct about `pac code add-data-source`-registered
+connectors never exposing a "create with content" action — a native
+Dataverse File *column*, reached through the Dataverse connector's own
+dedicated upload action, was never inside that limitation to begin with.
+
+**The action exists, cross-environment, on the same generic connector
+`dvTable()` already uses.** `MicrosoftDataverseService` (the generated
+wrapper `xenv.js` calls) already had
+`UpdateEntityFileImageFieldContentWithOrganization` /
+`GetEntityFileImageFieldContentWithOrganization` — upload/download for a
+File or Image column, organization-scoped like every other operation in that
+file — sitting unused since the connector was first registered. New
+`uploadFileColumn(entitySet, recordId, fieldName, fileName, base64Content,
+contentType)` in `xenv.js` wraps the upload half, same `fail()`-on-`!success`
+convention as `dvTable()`. New `uploadReportTemplateFile(templateId,
+fileName, base64Content, contentType)` in `dataverse.js` calls it against
+`lm_report_templates`/`lm_attachementfile` specifically.
+
+**The body format is inferred, not confirmed against a real upload yet.**
+The connector's own cached schema declares the `item` parameter `{in:
+"body", schema: {format: "binary", type: "string"}}` under `consumes:
+application/octet-stream` — standard Power Platform connector shape for
+binary content carried over this SDK's JSON-based `executeAsync` transport,
+which by convention means a **base64** string, not raw bytes. `fileToBase64()`
+(`GovernanceApp.jsx`) does `FileReader.readAsDataURL` and strips the
+`data:...;base64,` prefix. ⚠️ **Not yet proven against live Dataverse** — the
+SDK's own binary handling lives in a runtime object injected by the Power
+Apps host (`getPowerSdkInstance`), invisible to static inspection from this
+repo, so base64 is the documented connector convention, not something
+confirmed by a successful upload. **First real test: pick a file in the
+Setup wizard, save, then check in the maker portal (or re-download via
+`GetEntityFileImageFieldContentWithOrganization`) that the column actually
+holds that file's bytes, not a corrupted/empty blob.** If it fails, suspect
+the encoding step first.
+
+**A File column has nothing to attach to until the row exists**, so the
+upload cannot happen inside the normal create/update payload the way every
+other field does — `lm_attachementfile` doesn't even have a setter on the
+generated entity. Wired into `writeTemplateToDataverse`'s existing Report
+Template success callback (`GovernanceApp.jsx`), right after a create or
+update resolves a real id: a File the user picked is held in a new
+module-level `PENDING_TEMPLATE_FILE` map (Setup-id → the raw `File` object)
+rather than on the Setup itself, because `set()` merges into a plain object
+that gets JSON'd for sessionStorage (§5, 07 Sep) and a `File` does not
+survive that regardless of where it's stored. Same lifecycle idea as the
+pre-existing `PENDING_DV_WRITE` map, just for a browser object instead of a
+promise.
+
+**The old text field is removed from the UI, not deleted from the schema or
+the data layer, per "remove the url field for now."** The wizard's
+"Destination and content" step no longer shows the `lm_fileattachement`
+text input; `BLANK_REPORT`, the hydrate (`dataverseReportToSetup`), the
+payload builder and `TRACKED`'s audit entry for it are all untouched, so a
+Setup that already had a value there keeps it (just not editable from this
+screen) and re-adding the input later is a small, isolated change. A new
+`hasTemplateFile` flag (hydrated from `!!p.lm_attachementfile` on read) lets
+the field say "a template file is already attached" without needing to
+resolve or expose the file's actual name — Dataverse doesn't hand that back
+on a plain `$select` of the column.
+
+**Not built, scope was kept to the ask:** no download/preview control (the
+connector action for it exists — `GetEntityFileImageFieldContentWithOrganization`
+— and would be a small follow-up), no upload for the per-Section
+`lm_fileattachement` link on `lm_reporttemplatecontentchecklists` (the ask
+named `lm_report_template` specifically), and no client-side size floor
+beyond a 25 MB guard against hanging the tab on `FileReader` — Dataverse's
+own file-column limits weren't looked up.
+
+### 20 Sep, same day: the same File-upload capability added one level down — a Section Item can now cite an uploaded file, and the per-Section URL field is removed too
+
+Per a follow-up ask, refreshed `lm_reporttemplatesectionitems` (`pac
+modelbuilder build -enf lm_reporttemplatesectionitems`, plural — this one
+IS the plural form, per §6's own inconsistency table) and found it carries
+the **exact same shape of new column** as the parent: `lm_attachementfile`,
+a getter-only nullable Guid, i.e. another native Dataverse File column, this
+time on the CITATION row rather than the Template row. `lm_itemtype`
+(`lm_reportsectionitemtype`) was refreshed alongside it and is **still only
+four values** — KPI=1, Breakdown=2, Process=3, ChildTemplate=4, confirmed
+live — no fifth value for a File citation exists in Dataverse.
+
+**Decision, not confirmed with the user: a File citation writes `lm_itemtype`
+null.** `SECTION_ITEM_TYPE_KEY` has no `'File'` entry, so the existing `??
+null` fallback in `createSectionItems()` already does this with no code
+change needed for that line. A File-type row is recognised on READ purely by
+`lm_attachementfile` being populated (`type: SECTION_ITEM_TYPE[it.lm_itemtype]
+|| (it.lm_attachementfile ? 'File' : null)` in `fetchReportTemplateDetail`).
+This was the pragmatic option over asking Dataverse admin to add a fifth
+choice value first — flagging it here so it's easy to revisit if a real
+`File` option is ever added to `lm_reportsectionitemtype`, at which point
+this fallback-by-presence trick should be replaced with the real code.
+
+**New citation kind "Uploaded file" in the Section editor**
+(`GovernanceApp.jsx`), alongside KPI / Breakdown / Process / Child
+report-plan — same picker panel, same coloured-chip language (new `k-file`
+class, using the until-now-unused `--grey`/`--grey-bg`/`--grey-bd` theme
+tokens, since the other four semantic colours were all already spoken for).
+Picking a file reads it via `fileToBase64()` (already built for the parent
+upload, reused as-is) **immediately on pick**, not deferred to save time —
+unlike the parent Report Template's file, a Section Item's local id is
+generated at pick time with no later "the create just resolved an id" hook
+to convert lazily against. The result is stashed in a new module-level
+`PENDING_SECTION_ITEM_FILE` map (item-id → `{name, type, base64}`), same
+"never touches `s`/sessionStorage" discipline as `PENDING_TEMPLATE_FILE`.
+`buildReportTemplatePayload()` reads this map synchronously when building
+the outgoing item object, so no extra async plumbing was needed in the
+already-synchronous `saveDraft`/`publish` call chain; `createSectionItems()`
+(`dataverse.js`) uploads the content right after creating that item's row,
+the same "row must exist first" reasoning as the parent.
+
+⚠️ **Real, so far unavoidable limitation: editing and re-saving a Setup
+loses a Section Item's file unless it is re-picked.** `updateReportTemplateToDataverse`
+deletes and fully recreates EVERY checklist row and EVERY section item on
+every edit (confirmed by reading the function, not assumed) — this is not
+new behaviour introduced here, every other citation kind already loses
+nothing only because a KPI/Process/Child-Template citation is just a
+lookup, trivially rewritten from the same picked name/id every time. A
+File's binary content cannot be reconstructed the same way; the old
+row (and its uploaded bytes) is gone, and the freshly recreated row has
+nothing to upload unless `PENDING_SECTION_ITEM_FILE` has a fresh entry for
+it. The picker shows an explicit amber warning about this at pick time. A
+real fix would mean downloading the old content
+(`GetEntityFileImageFieldContentWithOrganization`) and re-uploading it
+automatically when a File item survives an edit unchanged — not built,
+flagged here as the natural next step if this limitation turns out to
+matter in practice.
+
+**The per-Section URL field is removed from the UI the same way the
+parent's was** — `lm_reporttemplatecontentchecklists.lm_fileattachement`'s
+text input (`SectionRowEditor`'s header, "File attachment link (optional)")
+is gone; `BLANK_REPORT`'s checklist-row shape, the payload builder, the
+hydrate and `dataverseReportToSetup` all keep reading/writing it untouched,
+so nothing is lost, only the editing surface. Not the same column as the
+new Section Item File citation above — this was the OLD per-Section link
+field the 17 Sep entries already built and are now retiring "for now,"
+exactly like the parent Report Template's equivalent field earlier today.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### NEW this session: group-wide (Stage 3/4) roles now live on the parent row
@@ -3495,6 +3646,39 @@ quorum definition, Decision↔Meeting/Report linking (§7.7, deferred on purpose
 ---
 
 ## 10. Reference
+
+**`Data-Dictionary.xlsx` and `Data-Dictionary.md` (repo root, added 20 Sep)**
+— every Dataverse table `src/services/dataverse.js` actually reads or
+writes (56 tables, 428 columns), with each table's purpose and each
+column's datatype and purpose. Scope is deliberately narrow: only columns
+this app's code references, standard system columns
+(createdon/modifiedby/statecode/etc.) omitted once rather than per table.
+Built from `dataverse.js`'s own comments, the cached connector schema JSON
+under `apps/governance/.power/schemas/`, and fresh `pac modelbuilder build`
+pulls for the 8 tables added straight through `xenv.js` with no cached
+schema (`lm_meetingcategories`, `stf_strategypocs`,
+`stf_executioncategories`, `crd04_specialtieses`, `strategy_strategies`,
+`lm_bireportdashboards`, `hx_taskses`, `and_microsoftgroupmembers`).
+
+The `.xlsx` (rebuilt 20 Sep with `exceljs`, not the plain `xlsx` package, for
+real styling) has **four** sheets: **Read Me** (scope/conventions/colour
+key), **Overview** (one row per table, colour-tagged by area), **Data
+Dictionary** (one row per column, flat and filterable — the search-across-
+everything view), and **By Table** (one coloured, banner-headed section per
+table with its own column list underneath, an index of hyperlinks at the
+top jumping to each section — the read-top-to-bottom/printable view). The
+`.md` mirrors the same content as headed Markdown sections with a linked
+table of contents, for viewing in an editor or on GitHub without Excel.
+
+**Untracked so far — not yet committed**, since generating it didn't need
+committing to be useful; ask before adding either to git if that's wanted.
+Regenerate rather than hand-edit if the schema moves again: the approach (5
+JSON fact-files, one per area of the schema, merged into both outputs by
+one script) is fast to redo, but the generation script itself wasn't kept
+as a checked-in tool. ⚠️ **Closing the file in Excel before regenerating is
+required** — an open `Data-Dictionary.xlsx` holds a lock that blocks
+overwriting it (hit once already this session; no `~$...` lock file
+appears, so don't rely on that as a signal that it's safe to write).
 
 Four working documents were produced alongside an earlier version of this file:
 

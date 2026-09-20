@@ -622,6 +622,7 @@
 .gov-root .sec-kind.on.k-bd    { background:var(--purple-bg); border-color:var(--purple); color:var(--purple) }
 .gov-root .sec-kind.on.k-proc  { background:var(--green-bg);  border-color:var(--green);  color:var(--green) }
 .gov-root .sec-kind.on.k-child { background:var(--amber-bg);  border-color:var(--amber);  color:var(--amber) }
+.gov-root .sec-kind.on.k-file  { background:var(--grey-bg);   border-color:var(--grey);   color:var(--grey) }
 
 /* --- dimension picker: the same oval language, tinted to Breakdown ------ */
 .gov-root .sec-dims{ display:flex; gap:7px; flex-wrap:wrap }
@@ -656,6 +657,7 @@
 .gov-root .sec-chip.k-bd    { background:var(--purple-bg); border-color:var(--purple);    color:var(--purple) }
 .gov-root .sec-chip.k-proc  { background:var(--green-bg);  border-color:var(--green-bd);  color:var(--green) }
 .gov-root .sec-chip.k-child { background:var(--amber-bg);  border-color:var(--amber-bd);  color:var(--amber) }
+.gov-root .sec-chip.k-file  { background:var(--grey-bg);   border-color:var(--grey-bd);   color:var(--grey) }
 
 /* --- the picker panel -------------------------------------------------- */
 .gov-root .sec-pick{
