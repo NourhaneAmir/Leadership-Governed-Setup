@@ -66,27 +66,27 @@ export function Combo({label, value, onChange, opts = [], all = 'Any', placehold
 
   const pick = id => { onChange(id); setOpen(false); setQ(''); };
 
-  const control = <div className="combo" ref={box}>
-    <button type="button" className="combo-btn" disabled={disabled}
+  const control = <div className="cmb" ref={box}>
+    <button type="button" className="cmb-btn" disabled={disabled}
       aria-expanded={open} aria-haspopup="listbox"
       onClick={() => { if(!disabled){ setOpen(o => !o); setQ(''); } }}>
-      <span className={chosen ? 'combo-v' : 'combo-v none'}>{chosen ? chosen.name : all}</span>
-      <span className="combo-cv" aria-hidden="true">▾</span>
+      <span className={chosen ? 'cmb-v' : 'cmb-v none'}>{chosen ? chosen.name : all}</span>
+      <span className="cmb-cv" aria-hidden="true">▾</span>
     </button>
     {open
-      ? <div className="combo-pop" role="listbox">
-          <input ref={find} type="search" className="combo-q" value={q}
+      ? <div className="cmb-pop" role="listbox">
+          <input ref={find} type="search" className="cmb-q" value={q}
             placeholder={placeholder} onChange={e => setQ(e.target.value)}/>
-          <button type="button" className={'combo-opt' + (value ? '' : ' on')}
+          <button type="button" className={'cmb-opt' + (value ? '' : ' on')}
             onClick={() => pick('')}>{all}</button>
           {shown.length === 0
-            ? <div className="combo-empty">Nothing matches that search.</div>
+            ? <div className="cmb-empty">Nothing matches that search.</div>
             : shown.map(o =>
                 <button type="button" key={o.id} role="option" aria-selected={o.id === value}
-                  className={'combo-opt' + (o.id === value ? ' on' : '')}
+                  className={'cmb-opt' + (o.id === value ? ' on' : '')}
                   onClick={() => pick(o.id)}>
                   <span>{o.name}</span>
-                  {o.sub ? <span className="combo-sub">{o.sub}</span> : null}
+                  {o.sub ? <span className="cmb-sub">{o.sub}</span> : null}
                 </button>)}
         </div>
       : null}

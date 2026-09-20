@@ -1284,41 +1284,41 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 /* ---- Combo: a dropdown you can type in ----------------------------------
    Sits in ordinary cards, so the panel is absolutely positioned rather than
    portalled -- nothing here clips it. */
-.combo{ position:relative; width:100% }
-.combo-btn{
+.cmb{ position:relative; width:100% }
+.cmb-btn{
   width:100%; display:flex; align-items:center; gap:8px; text-align:left;
   background:#fff; border:1px solid var(--border-d); border-radius:8px;
   padding:7px 10px; font-family:inherit; font-size:13px; color:var(--ink);
   cursor:pointer; transition:border-color .15s;
 }
-.combo-btn:hover:not(:disabled){ border-color:var(--teal) }
-.combo-btn:focus-visible{ outline:2px solid var(--teal); outline-offset:1px }
-.combo-btn:disabled{ background:var(--surface); cursor:not-allowed; opacity:.7 }
-.combo-v{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
-.combo-v.none{ color:var(--muted) }
-.combo-cv{ flex:0 0 auto; font-size:10px; color:var(--muted) }
+.cmb-btn:hover:not(:disabled){ border-color:var(--teal) }
+.cmb-btn:focus-visible{ outline:2px solid var(--teal); outline-offset:1px }
+.cmb-btn:disabled{ background:var(--surface); cursor:not-allowed; opacity:.7 }
+.cmb-v{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.cmb-v.none{ color:var(--muted) }
+.cmb-cv{ flex:0 0 auto; font-size:10px; color:var(--muted) }
 
-.combo-pop{
+.cmb-pop{
   position:absolute; z-index:60; top:calc(100% + 4px); left:0; right:0;
   background:#fff; border:1px solid var(--border-d); border-radius:9px;
   box-shadow:0 10px 28px rgba(15,30,60,.14);
   padding:5px; max-height:280px; overflow-y:auto;
 }
-.combo-q{
+.cmb-q{
   width:100%; border:1px solid var(--border-d); border-radius:6px;
   padding:6px 8px; font-size:12.5px; font-family:inherit; margin-bottom:5px;
 }
-.combo-opt{
+.cmb-opt{
   width:100%; display:flex; flex-direction:column; gap:1px; text-align:left;
   background:transparent; border:0; border-radius:6px; cursor:pointer;
   padding:6px 8px; font-family:inherit; font-size:12.5px; color:var(--ink);
   line-height:1.35;
 }
-.combo-opt:hover{ background:var(--teal-ll) }
-.combo-opt.on{ background:var(--teal-l); font-weight:600 }
-.combo-opt:focus-visible{ outline:2px solid var(--teal); outline-offset:-2px }
-.combo-sub{ font-size:11px; color:var(--muted) }
-.combo-empty{ padding:8px; font-size:12px; color:var(--muted); font-style:italic }
+.cmb-opt:hover{ background:var(--teal-ll) }
+.cmb-opt.on{ background:var(--teal-l); font-weight:600 }
+.cmb-opt:focus-visible{ outline:2px solid var(--teal); outline-offset:-2px }
+.cmb-sub{ font-size:11px; color:var(--muted) }
+.cmb-empty{ padding:8px; font-size:12px; color:var(--muted); font-style:italic }
 
 /* A cited report: named by a section, with no occurrence behind it yet. Drawn
    so the branch is visible, dashed so it is never mistaken for a record. */
