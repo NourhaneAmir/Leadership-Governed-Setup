@@ -2591,6 +2591,57 @@ had been registered before and still only accept the singular form.
 `Lm_reportoccurrencesectionsesService`, `Lm_reporttemplatesectionitemsesService`,
 `Lm_reportsectioncitationsesService`. Cosmetic, but that is the import name.
 
+### Dataverse File columns: reading one, and what its name is
+
+Three columns hold real binary content: `lm_report_templates.lm_attachementfile`,
+`lm_reporttemplatesectionitems.lm_attachementfile`, and
+`lm_reportoccurrence.lm_attachementfile` (which also has a separate
+`lm_filename`). All are native Dataverse File columns — modelbuilder emits them
+as getter-only `Guid?`, which is the signature.
+
+**Both directions go through the Dataverse connector, not a per-table service:**
+
+| Direction | Operation | Wrapper |
+|---|---|---|
+| write | `UpdateEntityFileImageFieldContentWithOrganization` | `uploadFileColumn()` |
+| read | `GetEntityFileImageFieldContentWithOrganization` | `downloadFileColumn()` |
+
+Both are in `src/services/xenv.js`, both take the organization, so both work
+cross-environment. Both carry base64 over the JSON transport.
+
+⚠️ **On the READ, `Range` is the first positional argument and the generated
+signature types it as a required `string`** — but it is an HTTP Range header,
+and *omitting* it is what asks for the whole file. Passed as `undefined`
+(which `JSON.stringify` drops), with one retry at `'bytes=0-'`.
+
+⚠️ **The read's response has three known shapes** and all three are
+normalised in `fileContentToBase64()`: a bare base64 string, a `data:` URI,
+and the Power Platform `{$content-type, $content}` binary envelope.
+
+⚠️ **The filename is `<column>_name`, and where you can ask for it differs:**
+
+| Route | Returns `lm_attachementfile_name`? |
+|---|---|
+| FetchXML (`pac org fetch`) | **yes** |
+| OData `$select` | **no — do not put it there** |
+| `pac modelbuilder` | never emits it as an attribute |
+
+It is runtime-projected, not declared, so selecting it explicitly risks the
+400 that killed the whole Decisions read. Select the file column itself and
+the name rides along.
+
+⚠️ **FetchXML entity names for these tables are not the entity sets.**
+`lm_report_template` is singular, but `lm_reporttemplatesectionitems` is
+already plural — `lm_reporttemplatesectionitem` does **not** exist and fails
+with a MetadataCache error. The Report Template's primary name column is
+**`lm_newcolumn`**.
+
+**What a browser can actually render** (see `src/shared/FilePreview.jsx`):
+spreadsheets via SheetJS, PDFs/images via a `blob:` URL, plain text. **Word
+and PowerPoint cannot be shown** — the Office Online viewer needs a publicly
+reachable URL, and neither a `blob:` nor the authenticated Dataverse URL is
+one. Don't try to resurrect that; the UI says "Download" for those types.
+
 ### A column can be added to a table under a DIFFERENT publisher prefix
 `wlog_decisions` gained **`_lm_citedreportsection_value`** — an `lm_`-prefixed
 lookup on a `wlog_` table. A diff filtered on the table's own prefix reports
@@ -2611,7 +2662,15 @@ Two different stores, easy to confuse:
 
 `dvId` exists only on the register *display* rows built by `dvFace()`. Reading a
 local Setup's `.id` gives a session id like `su-8`, which Dataverse rejects as a
-lookup. **Anything citing a Template must source from `DV_REPORTS`**, capture the
+lookup.
+
+⚠️ **Amended 20 Sep — there is now a SECOND, unrelated `dvId`.** A checklist
+Section's *items* each carry `dvId`, their own
+`lm_reporttemplatesectionitemsid`, added so a File citation can address its
+file (§5, the read-only file viewer). It is **not** the register's `dvId` and
+**not** a Setup's `_dataverseId`; it identifies a child row, not a Template.
+The rule above is unchanged for Templates — this is a third thing, named the
+same way, and the three must not be substituted for one another. **Anything citing a Template must source from `DV_REPORTS`**, capture the
 id at pick time, and never resolve it back by name — the Meeting side's Linked
 Report Templates picker already did this correctly and is the pattern to copy.
 
@@ -3346,6 +3405,13 @@ original single-environment wiring and no longer gates anything.
    storage should mean (SharePoint upload? a longer URL column? something else)
    is intentionally on hold while reporting behaviour is being rethought — don't
    build further on this until asked.
+   **Still paused, but one input is now settled (20 Sep):** File *columns* are
+   fully solved in both directions — upload and download, cross-environment,
+   with a read-only viewer (§6, "Dataverse File columns"). So "store the file
+   in Dataverse itself" is a live option for this decision rather than a
+   theory, and `lm_reportoccurrence.lm_attachementfile` already exists to hold
+   it. This does **not** unpause the decision; it only means the option no
+   longer needs proving.
 7. **How does a live Decision link to the Meeting Agenda Item / Report that raised
    it?** `wlog_decisions` (§6) has no lookup column for either today. Deferred by
    explicit instruction (2026-08-31): the link is added later, base read/create
