@@ -1683,6 +1683,15 @@ as before, confirmed still live via `pac connection list`) in each fresh
 folder, `dist/` copied in, `power-apps push`. Both pushed successfully on
 the **first** attempt — no `generateResourceStorage` timeout this time.
 
+> ### ⛔ SUPERSEDED 20 Sep — read §5's "Deployment, settled" entry instead
+>
+> This entry is kept for its root-cause analysis, which is still correct and
+> still worth reading. **Its conclusion is not.** `C:\tmp\cad-gov` and
+> `C:\tmp\cad-exec` exist again and are the folders every deploy since 18 Sep
+> has used. The apps this session pushes to are the ORIGINALS —
+> `4912152c…` and `83db0ef8…` — not the `(2)` duplicates below. It is the
+> `786c1b14…` / `d61c6237…` pair that is now unused.
+
 ⚠️ **The three old apps (`4912152c…`, `83db0ef8…`, and the unrelated
 `2ffd8322…` "Andalusia Pulse" seen in the same `list-codeapps` output) are
 now stale duplicates sitting in Code App Development, not deleted** — this
@@ -1968,6 +1977,137 @@ still has it; only the two above were converted, and only because they were
 the ones actually reported broken.
 
 ---
+
+### 19-20 Sep: live tables behind four more screens, and the deployment settled
+
+Twenty-two commits, `f446662`..`b0b5104`. Grouped by what they touched rather
+than in order.
+
+**Meeting Setup — attendees, Category, Classification.**
+`lm_meetingattendeeslists` gained `lm_isgroup` and `lm_microsoftgroup`, a
+lookup to `and_microsoftgroupmember` (relationship
+`lm_meetingattendeeslist_MicrosoftGroup_and_microsoftgroupmember`). An
+Attendee can now BE a Microsoft Group: the card offers "+ Add Microsoft Group"
+and the group's members are listed beneath it, read live rather than copied.
+`and_microsoftgroupmembers` is flat — one row per (group, member) pair, no row
+that IS the group — so each group nominates its lowest-id membership row as
+the representative the lookup binds to.
+
+Two defects fixed in the same write, because the payload they travelled in was
+being reshaped anyway: **Core/Supportive was discarded on save** (every row
+written as Core), and **dropped again on read**, so reopening a Setup
+downgraded its Supportive attendees. `attendeePositionIds: string[]` became
+`attendees: {positionId|groupRowId, groupName?, type}[]`.
+
+`lm_meetingcategory` (set `lm_meetingcategories`) arrived with exactly the
+schema §7's proposal called for, and 73 rows were bulk-uploaded from
+`lm_meetingcategory-bulk-upload.xlsx` (checked into the repo root, generated
+from taxonomy §05). `lm_meetingtemplate` gained `lm_Category` and
+`lm_Category_Name` — **both are written**: a Setup renamed in the Taxonomy app
+would otherwise restate every historical Setup and drift out of step with
+occurrences already generated. **Stage moved from wizard step 2 to step 1**,
+because the cascade needs it before Classification and it sat one step after.
+
+Type / Classification is now narrowed by Stage, and the allowed set is
+**derived from the uploaded Category rows** rather than held as a second list,
+so the two cannot disagree. Team of Teams is deliberately exempt — see §7.
+
+`lm_meetingclassification` 124330001 was relabelled *Performance Monitoring
+Meeting* → *Monitoring Meeting*. The CODE did not change, so nothing stored
+moved; 11 spellings across four files did.
+
+**Report Setup.** `lm_report_template.lm_SubmissionTiming` (global option set
+`lm_submissiontiming`: 1 within same Month, 2 After Month) was wired — field,
+conditional rule, save AND read-back.
+
+**Build a report/plan.** POC, Strategy, BI Report and Task stopped being free
+text. Six tables, none needing registration (see §8): `stf_strategypocs`,
+`stf_executioncategories`, `crd04_specialtieses`, `strategy_strategies`,
+`lm_bireportdashboards`, `hx_taskses`. POC carries five filters; Task can also
+raise one into `hx_tasks`. `lm_reportsectioncitations` then gained `lm_POC`,
+`lm_Strategy`, `lm_BIReport` and `lm_Task`, so those citations are now real
+links rather than names — wired in the write and BOTH reads.
+
+A cited KPI shows Baseline / Actual / Target from `pm_kpiachievments`, and the
+BI dashboard behind it, framed.
+
+**Reporting hierarchy — now live, after three attempts at the wrong problem.**
+Rebuilt on `lm_reportoccurrences` + `lm_reportsectioncitations`, edges from
+Child Report citations. It stayed flat, and the reason took three passes to
+find; the finding is in §6.
+
+**Business intelligence.** `lm_bireportdashboard` gained `lm_dashboardlink` and
+`lm_kpi` (→ `strategy_kpis`), so the screen reads the table and the KPI filter
+that could not be built now can be.
+
+**Communication & execution — a whole new screen**, the one §9 recorded as
+entirely missing. Inbox and Sent run on `lm_reportoccurrenceshare` (registered
+long ago, never read by any screen) rather than the prototype's seeded COMMS
+array; Tasks runs on `hx_tasks`.
+
+**Three crashes of one shape, and the guard that ends them.** `ach is not
+defined` (a component boundary), a 400 on `_wlog_decisionstatus_label` (no such
+column — see §6), and `domain.jsx`'s `BIEmbed` calling `useState` that the file
+never imported. Neither the build nor `undef-scan.py` can see these: the build
+because an out-of-scope identifier is a RUNTIME error, the scan because it
+works at file level and the identifier exists elsewhere in the file. **oxlint's
+`no-undef` sees all three and was already installed, merely switched off.**
+It is now `"error"` in `.oxlintrc.json`, with `env: {browser, es2024}` declared
+alongside — without that the one real finding drowns in ~300 window/console
+hits. `src/` is clean under it; `npm run lint` fails on the next one.
+
+### Deployment, settled — pushing to the SAME link and the SAME app id
+
+**This supersedes the 17 Sep "re-registered from scratch" entry above.** The
+live pair is the ORIGINAL pair.
+
+| App | App id | Staging folder | Link |
+|---|---|---|---|
+| Governance Setup | `4912152c-b5c8-4beb-bb74-c9f43550405b` | `C:\tmp\cad-gov` | `https://apps.powerapps.com/play/e/cd78a59b-e16f-e4aa-b0a1-8e450a70ed56/app/4912152c-b5c8-4beb-bb74-c9f43550405b` |
+| Leadership Execution | `83db0ef8-4c62-4eef-84ac-dadab326b704` | `C:\tmp\cad-exec` | `https://apps.powerapps.com/play/e/cd78a59b-e16f-e4aa-b0a1-8e450a70ed56/app/83db0ef8-4c62-4eef-84ac-dadab326b704` |
+
+Both live in environment **Code App Development**
+(`cd78a59b-e16f-e4aa-b0a1-8e450a70ed56`, `org998df960.crm4.dynamics.com`) and
+both READ AND WRITE **DT New** (`org319b4ea9.crm4.dynamics.com`) through the
+cross-environment adapter — see `src/services/xenv.js` and §8.
+
+**The whole procedure, from a clean tree:**
+
+```bash
+cd "<repo root>"
+npx vite build --config apps/governance/vite.config.js
+npx vite build --config apps/leadership/vite.config.js
+
+rm -rf /c/tmp/cad-gov/dist /c/tmp/cad-exec/dist
+cp -r apps/governance/dist /c/tmp/cad-gov/dist
+cp -r apps/leadership/dist /c/tmp/cad-exec/dist
+
+PA="<repo root>/node_modules/.bin/power-apps"
+cd /c/tmp/cad-gov  && "$PA" push
+cd /c/tmp/cad-exec && "$PA" push
+```
+
+**Four things that will otherwise cost an hour each:**
+
+1. **`power-apps` is NOT on PATH.** It is a local devDependency
+   (`@microsoft/power-apps-cli`), so it must be called by absolute path out of
+   `node_modules/.bin/`, or through `npx` from the repo root. A push script
+   that just says `power-apps push` fails with *command not found* — and the
+   failure is easy to misread as a sign-in problem.
+2. **The app id comes from the staging folder's `power.config.json`, nothing
+   else.** `push` has no flag to target an app. Lose the folder and there is no
+   way back to the same link — which is exactly what produced the orphaned
+   `(2)` pair on 17 Sep. **These two folders are still outside the repo.**
+3. **`dist/` must be replaced, not merged.** `rm -rf` first: Vite's hashed
+   filenames mean a stale bundle survives a plain copy and ships alongside the
+   new one.
+4. **A failed push can still exit 0.** A DNS failure on
+   `generateResourceStorage` printed its error and returned success on 20 Sep.
+   Read the output for *"App pushed successfully"* — do not trust the exit
+   code. Retrying immediately worked.
+
+Pushes still time out intermittently (§8); one app can fail repeatedly while
+the other succeeds, and spacing retries about a minute apart works.
 
 ## 6. Schema facts that are expensive to rediscover
 
@@ -2647,6 +2787,77 @@ and hands this app back a link) — the same wall applies to any other
 connector's "create with content" action, not just this one.
 
 ---
+
+### Confirmed 19-20 Sep (each of these cost a wrong turn first)
+
+**There is no `_xxx_label` column. Ever.** A 400 took out the whole Decisions
+read because the `$select` asked for `_wlog_decisionstatus_label` and two
+siblings. `_x_value` is a **lookup's** id; a **choice's** display text is an
+annotation, `x@OData.Community.Display.V1.FormattedValue`. The adapter already
+asks for annotations on every list read (`PREFER_PAGED`), so the label arrives
+without being selected. This is the same failure as `strategy_departmentname`
+on `fetchKpis` in September — **one unknown column fails the entire query.**
+
+**`pm_kpiachievments`, both unknowns closed.** `pm_month` runs **1..12 in
+calendar order**, and **`pm_kpi` targets `strategy_kpis`** (relationship
+`pm_kpiachievment_kpi`) — the same table the app's KPIs come from, so the join
+is sound. `stf_department` and `stf_function` are **plain text**, so scope
+matching is by name, case-insensitively, in the browser: an OData equality on
+them is exact and silently returns nothing for "Quality" vs "quality".
+⚠️ The table currently holds **test data only** — 1-3 rows per year, Business
+Unit "test", every figure `100.0000`, years scattered 2025-2096.
+
+**Why the Reporting hierarchy was flat — three wrong turns before the answer.**
+All 30 Child Report citations are label-only (`lm_citedreportoccurrence` null
+on every one). Attempt 1 matched their labels against **occurrence** names —
+wrong, and occurrence names are not unique either ("23/9 Daily BU Report"
+belongs to four rows). Attempt 2 matched them against **template** names —
+right target, still no edges. The actual reason:
+
+> Every one of those citations names *"Weekly Regional Engineering and
+> Corporate & Community Relations Report"*, and **only two templates have any
+> occurrence at all** — `Daily BU Report` (30) and `Weekly Group Digital
+> Transformation Report` (2). The cited template has none. **There was no
+> record to point an edge at.**
+
+And the source of those labels: `insertTemplate` in `BuildReport.jsx` turned
+every Child Template item into a bare label, with a comment saying so. That is
+fixed, but **rows written before 20 Sep still carry only the label** — the
+screen draws them as dashed "cited" nodes, and the citation row offers "Attach
+an occurrence" to repair them one at a time.
+
+**Entity-set plurals that bite.** Confirmed by `EntitySetName` in generated
+code, not guessed: `crd04_specialties` → **`crd04_specialtieses`**, `hx_tasks`
+→ **`hx_taskses`**, `wlog_decision` → **`wlog_decisions`** (note the SINGULAR
+logical name — `modelbuilder -enf wlog_decisions` returns "Read 0 Entities").
+`lm_meetingcategory` → `lm_meetingcategories`, which is NOT double-plural.
+
+**Lookup targets confirmed from relationship names**, all via
+`pac modelbuilder build -enf "<a>;<b>"` — a relationship is only emitted when
+BOTH entities are in the generation set, which is the whole trick:
+
+| Column | Targets | Relationship |
+|---|---|---|
+| `lm_meetingattendeeslist.lm_microsoftgroup` | `and_microsoftgroupmember` | `lm_meetingattendeeslist_MicrosoftGroup_and_microsoftgroupmember` |
+| `lm_reportsectioncitations.lm_POC` | `stf_strategypoc` | `lm_reportsectioncitations_POC_stf_strategypoc` |
+| `lm_reportsectioncitations.lm_Task` | `hx_tasks` | `lm_reportsectioncitations_Task_hx_tasks` |
+| `lm_bireportdashboard.lm_kpi` | `strategy_kpis` | `lm_bireportdashboard_KPI_strategy_kpis` |
+| `wlog_decision.lm_citedreportsection` | `lm_reportoccurrencesections` | `lm_wlog_decision_CitedReportSection_lm_reportoccurrencesections` |
+| `hx_tasks.hx_assignee` | `systemuser` | `hx_tasks_Assignee_systemuser` |
+
+**`wlog_decision` is a live table owned by another process.** 26 rows —
+Pending 19, Waiting 4, Completed 3. **12** hang off a Work Log
+(`wlog_worklog`); **16** have been escalated; **0** use
+`lm_citedreportsection`, the one `lm_` column added for this app. Its columns
+span three prefixes (`wlog_`, `pms_`, one `lm_`). Treat it as something to
+read and contribute one link to, not to redesign.
+
+**No data source needs registering any more.** The cross-environment adapter
+addresses a table by its entity-set name, so adding one is a single
+`dvTable('<entityset>', '<pkid>')` line — no `pac code add-data-source`, no
+`power.config.json` edit. Six tables were added this way on 19 Sep. The
+`databaseReferences` block in `power.config.json` is a leftover from the
+original single-environment wiring and no longer gates anything.
 
 ## 7. Open decisions — these block work
 
