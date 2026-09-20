@@ -672,7 +672,7 @@ const BLANK_REPORT={
   qualifier:'',
   stage:null, regions:[], businessUnits:[], lines:[], units:[],
   delivery:'Source link', site:null, library:null, folder:null, sourceLink:'', sourceLinkAuto:false,
-  fileAttachment:'', templateFileName:'', hasTemplateFile:false,
+  fileAttachment:'', templateFileName:'', templateFileStoredName:'', hasTemplateFile:false,
   secondDayOfWeek:null, secondDayOfMonth:null, monthInSemester:null, month:null,
   checklist:[], processes:[], kpis:[],
   frequency:null, dayOfWeek:null, dayOfMonth:null, monthInQuarter:null,
@@ -2910,7 +2910,8 @@ function ReportWizard({rec,onClose}){
             {s.templateFileName
               ? <div className="holder">Will upload on save: <b>{s.templateFileName}</b></div>
               : s.hasTemplateFile
-                ? <div className="holder">A template file is already attached. Choose a file above to replace it.</div>
+                ? <div className="holder">Attached: <b>{s.templateFileStoredName||'a template file'}</b>
+                    {' '}— choose a file above to replace it.</div>
                 : <div className="holder">No template file attached yet.</div>}
           </Field>
           <Field id="f-checklist" label="Expected Content Checklist" req
@@ -2986,6 +2987,14 @@ function ReportSummary({s}){
             linesOf(s).length?linesOf(s).map(lineLabel).join(' · '):'None — Stage 4 sits above them']]}/>
         <SumBlock title="Destination" items={[
           ['Destination',dest||'— no Channel chosen yet'],
+          /* The template file itself. hasTemplateFile says one is stored;
+             the name comes from the File column's own `_name`, so a row
+             saved before that was read back still reports honestly. */
+          ['Template file', s.templateFileName
+            ? s.templateFileName+' (not uploaded yet)'
+            : s.hasTemplateFile
+              ? (s.templateFileStoredName||'attached')
+              : '— none attached'],
           ['Sections',(s.checklist||[]).length+' section(s)']]}/>
         <SumBlock title="Submission" items={[
           ['Sections',keys.length+' — one per '+(LEVEL_WORD[stageLevel(s)]||'unit')]]}/>
@@ -3495,7 +3504,15 @@ function dataverseReportToSetup(detail){
     confidentiality:byCode1(DV_CONFIDENTIALITY,p.lm_confidentiality),
     delivery:'Source link', sourceLink:p.lm_destinationsharepointlink||'',
     fileAttachment:p.lm_fileattachement||'',
-    hasTemplateFile:!!p.lm_attachementfile, templateFileName:'',
+    hasTemplateFile:!!p.lm_attachementfile,
+    /* Dataverse sends a File column's filename beside its id as
+       `<column>_name`. It is NOT in the $select -- modelbuilder does not emit
+       it as an attribute, and selecting an undeclared property is what 400'd
+       the Decisions read. The file column is selected, the name rides along,
+       and this degrades to '' if that ever stops being true. */
+    templateFileStoredName:p.lm_attachementfile_name||'',
+    /* Stays empty on load: it means "picked this session, uploads on save". */
+    templateFileName:'',
     /* Sections hydrate back into the same display-name shape the editor writes,
        so an edit round-trips without the form ever seeing a GUID. */
     checklist:(detail.checklist||[]).slice().sort((a,b)=>(a.lm_checklistitemstep||0)-(b.lm_checklistitemstep||0))

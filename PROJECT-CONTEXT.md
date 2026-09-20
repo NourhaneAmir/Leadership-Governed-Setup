@@ -2056,6 +2056,41 @@ It is now `"error"` in `.oxlintrc.json`, with `env: {browser, es2024}` declared
 alongside — without that the one real finding drowns in ~300 window/console
 hits. `src/` is clean under it; `npm run lint` fails on the next one.
 
+### 20 Sep: the attached template file, named, on the Details tab
+
+The Details tab never mentioned the Template's own file, and the wizard only
+said "a template file is already attached" without saying which. Both now name
+it.
+
+**A Dataverse File column returns its filename as `<column>_name`.**
+`lm_report_templates.lm_attachementfile` is a File column (`Nullable<Guid>`);
+selecting it also yields `lm_attachementfile_name` — confirmed against a live
+row, which came back as `Untitled spreadsheet (1).xlsx`.
+
+⚠️ **It is NOT in the `$select`, deliberately.** `pac modelbuilder` emits only
+`lm_attachementfile` as an attribute, so `_name` is a runtime-projected
+property rather than a declared column — and selecting an undeclared property
+is exactly what 400'd the whole Decisions read (`_wlog_decisionstatus_label`,
+§6). The file column is already selected and the name rides along with it, so
+it is read opportunistically and degrades to `''` if that ever changes.
+
+⚠️ **Two columns on `lm_report_template` differ by one transposition and mean
+different things:**
+
+| Column | Type | Holds |
+|---|---|---|
+| `lm_attachementfile` | File (Guid) | the uploaded file itself |
+| `lm_fileattachement` | Text | a plain text/URL pointer, max 2000 |
+
+Both are selected and both are read. `lm_reportoccurrence` carries the same
+`lm_attachementfile` plus a separate `lm_filename`, and its section items have
+their own `lm_attachementfile` too.
+
+The stored name is kept under `templateFileStoredName`, not `templateFileName`.
+The latter means "picked this session, uploads on save" and the wizard prints
+"Will upload on save: …" from it — filling it from the stored name would have
+claimed a pending upload that is not pending.
+
 ### 20 Sep, later: environment groundwork, and four UI fixes
 
 `053d0e6`, `d7d9510`, `424666e`, `06e0967` and the file-picker commit.
