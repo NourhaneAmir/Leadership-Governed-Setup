@@ -1546,6 +1546,58 @@ function ScopeFilter({bu,region,dept,setBu,setRegion,setDept}){
   </div>;
 }
 
+/* How one citation inside a Section reads. Shared by the editor and by the
+   Details tab, so the same row cannot be described two different ways. */
+const sectionItemLabel = it => it.type==='Breakdown'
+  ? `${it.kpi||'KPI'} · by ${it.dimension||'—'}`
+  : it.type==='Process' ? it.process
+  : it.type==='Child Template' ? it.childTemplate
+  : it.type==='File' ? (it.fileName||'File')
+  : it.kpi;
+
+/* The Expected Content Checklist, read-only -- what a submission against this
+   Template has to contain. The Details tab used to report only a count, so
+   the one thing a Report Template actually defines could only be seen by
+   opening the wizard, which meant putting the Setup into edit mode to read
+   it. */
+function SectionsBlock({sections}){
+  const secs = sections || [];
+  return <div className="card">
+    <div className="card-hd" style={{display:'flex',alignItems:'baseline',gap:10}}>
+      <h2 style={{flex:1}}>Expected Content Checklist</h2>
+      <span className="t-sub" style={{fontWeight:400}}>
+        {secs.length} section{secs.length===1?'':'s'}</span>
+    </div>
+    <div style={{padding:'4px 17px 17px'}}>
+      {secs.length===0
+        ? <Empty>No section is defined on this Template yet.</Empty>
+        : secs.map((sec,i)=>{
+            const items = sec.items || [];
+            return <div key={sec.id||i} className="det-sec">
+              <div className="det-sec-h">
+                <span className="det-sec-n">{i+1}</span>
+                <span className="det-sec-t">{sec.text || '(untitled section)'}</span>
+                {sec.angle && sec.angle!=='Untyped'
+                  ? <Tag c="teal">{sec.angle}</Tag>
+                  : <Tag c="grey">Untyped</Tag>}
+              </div>
+              {sec.fileAttachment
+                ? <div className="holder" style={{marginTop:4}}>File: {sec.fileAttachment}</div>
+                : null}
+              {items.length===0
+                ? <div className="holder" style={{marginTop:4}}>
+                    Nothing cited — this section is free text.</div>
+                : <div className="det-sec-items">
+                    {items.map((it,j)=>
+                      <span key={it.id||j} className={'pill k-'+String(it.type||'').toLowerCase().replace(/[^a-z]/g,'')}>
+                        <b>{it.type}</b> {sectionItemLabel(it) || '—'}</span>)}
+                  </div>}
+            </div>;
+          })}
+    </div>
+  </div>;
+}
+
 /* One Section of the Expected Content Checklist: a heading, a Diagnostic Angle,
    and any number of cited KPIs / breakdowns / Processes / child templates.
    Each citation becomes its own lm_reporttemplatesectionitems row on save,
@@ -1606,12 +1658,7 @@ function SectionRowEditor({sec,index,templateId,onPatch,onRemove}){
     .map(t=>({id:t.id, name:t.name||'(unnamed template)'}));
 
   const addItem = it => { onPatch({items:[...items, {...it, id:it.id||uid('si')}]}); setPicking(null); setBdKpi(''); };
-  const label = it => it.type==='Breakdown'
-    ? `${it.kpi||'KPI'} · by ${it.dimension||'—'}`
-    : it.type==='Process' ? it.process
-    : it.type==='Child Template' ? it.childTemplate
-    : it.type==='File' ? (it.fileName||'File')
-    : it.kpi;
+  const label = sectionItemLabel;
 
   return <div className="sec-card">
     <div className="sec-head">
@@ -2947,6 +2994,7 @@ function ReportSummary({s}){
           ['Processes',(s.processes||[]).length+' linked'],['KPIs',(s.kpis||[]).length+' linked']]}/>
       </div>
     </div>
+    <SectionsBlock sections={s.checklist}/>
     <UnitsTable s={s}/>
   </>;
 }
