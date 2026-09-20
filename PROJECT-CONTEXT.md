@@ -2056,6 +2056,67 @@ It is now `"error"` in `.oxlintrc.json`, with `env: {browser, es2024}` declared
 alongside — without that the one real finding drowns in ~300 window/console
 hits. `src/` is clean under it; `npm run lint` fails on the next one.
 
+### 20 Sep: the real cause — the file content arrives DOUBLE base64-encoded
+
+The preview rendered one cell holding a long base64 string. That is the whole
+diagnosis: `XLSX.read()` never received a workbook. It received ASCII base64
+TEXT and fell back to parsing it as CSV.
+
+⚠️ **This also corrects the entry above.** That entry reasoned "the Download
+button only appears once SheetJS has parsed the workbook, therefore the bytes
+were a valid .xlsx". **The premise is false: SheetJS does not fail on text.**
+It treats anything it cannot identify as CSV and succeeds. So a decoding bug
+presented as a rendering bug, and the blob-URL fix, while correct in itself
+(it was a genuine second defect), was not the cause of the corrupt download.
+**Never treat "the parser did not throw" as evidence that the input was
+valid** — especially not with a lenient parser.
+
+**What actually happens:** the connector returns base64 of content that is
+ITSELF base64, so one decode yields base64 text rather than the file.
+
+`decodeFile()` in `FilePreview.jsx` peels one layer, but only when all three
+hold: the extension says what the leading bytes must be, they do not match,
+and after decoding again they do. So an unrecognised file is passed through
+untouched and a .txt or .csv — which have no signature — is never
+second-guessed, even when its content happens to be valid base64.
+
+Signatures used: ZIP `50 4B 03 04` (xlsx/xlsm/docx/pptx), OLE2
+`D0 CF 11 E0` (xls), `%PDF`, PNG, GIF, JPG, BMP.
+
+**The sheet branch now REFUSES to render** when the bytes do not carry the
+signature the extension promises, instead of handing them to SheetJS. Silent
+garbage is worse than an error, and it is precisely what hid this.
+
+**Verified in Node against the REAL source** (`node scripts/test-decodefile.mjs`,
+which extracts the helpers out of `FilePreview.jsx` rather than restating
+them): correctly-encoded xlsx and pdf pass through untouched; double-encoded
+xlsx and pdf are peeled back to their signatures; and the four that must NOT
+be peeled are not — a .txt whose content is valid base64, a .csv of
+base64-looking words, a genuinely corrupt .xlsx, and base64 of a non-zip.
+
+⚠️ **STILL OPEN — where the extra layer comes from.** Two candidates, not yet
+distinguished:
+
+1. **The UPLOAD stores base64 text as the file content.** `uploadFileColumn()`
+   sends base64 and the gateway may store that string verbatim rather than
+   decoding it. If so **the files in Dataverse are genuinely wrong** —
+   anything reading them outside this app (the maker portal, a Flow, a user
+   downloading from a model-driven form) gets base64 text — and the peel is
+   only a read-side workaround.
+2. **The transport double-encodes on the way out**, in which case storage is
+   fine and the peel is the correct permanent fix.
+
+⚠️ The §5 upload entry's claim that the base64 body was "CONFIRMED against
+live Dataverse" only ever confirmed that the CALL SUCCEEDED and a filename
+appeared — **it never verified the stored bytes**. Treat it as unproven.
+
+**How to settle it:** open the record in the maker portal / a model-driven
+form and download the file from Dataverse's own UI. Base64 text means (1) and
+the upload must be fixed; a working spreadsheet means (2).
+
+`pac org fetch` cannot help here: it crashes in its text-grid renderer on
+`fileattachment` whatever columns are requested, and there is no `--json`.
+
 ### 20 Sep: "Excel cannot open the file" — a revoked blob URL, not a bad file
 
 Downloading the Section citation's file produced an .xlsx Excel rejected as

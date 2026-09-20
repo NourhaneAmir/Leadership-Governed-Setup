@@ -60,6 +60,56 @@ function b64ToBytes(b64){
   return out;
 }
 
+/* Leading bytes that identify a file. xlsx/xlsm/docx/pptx are ZIP
+   containers; .xls is an OLE2 compound file. */
+const MAGIC = {
+  zip :[0x50,0x4B,0x03,0x04], ole2:[0xD0,0xCF,0x11,0xE0],
+  pdf :[0x25,0x50,0x44,0x46], png :[0x89,0x50,0x4E,0x47],
+  gif :[0x47,0x49,0x46,0x38], jpg :[0xFF,0xD8,0xFF], bmp:[0x42,0x4D],
+};
+/* What each extension's bytes must start with. An extension absent here --
+   txt, csv, json -- has no signature to check, and is never second-guessed. */
+const EXPECTED = {
+  xlsx:['zip'], xlsm:['zip'], docx:['zip'], pptx:['zip'], xlsb:['zip','ole2'],
+  xls:['ole2','zip'], pdf:['pdf'], png:['png'], gif:['gif'],
+  jpg:['jpg'], jpeg:['jpg'], bmp:['bmp'],
+};
+const matchesAny = (bytes, names) =>
+  (names||[]).some(n=>MAGIC[n].every((b,i)=>bytes[i]===b));
+
+/* ⚠️ The connector can return content that is ITSELF base64 -- i.e.
+   base64(base64(file)) -- so a single decode yields ASCII base64 TEXT, not
+   the file.
+
+   This is nastier than it sounds, because nothing throws. SheetJS accepts
+   the text and falls back to parsing it as CSV, producing one cell
+   containing the whole base64 string; on screen that reads as a broken
+   renderer rather than a broken decode. A downloaded copy is likewise a
+   text file wearing an .xlsx name, which Excel rejects as corrupt.
+
+   The extra layer is peeled ONLY when all three hold: the extension tells
+   us what the leading bytes should be, they do not match, and after
+   decoding again they do. So a file that is merely unrecognised is passed
+   through untouched, and a text file is never mangled. */
+function decodeFile(b64, name){
+  const first = b64ToBytes(b64);
+  const want = EXPECTED[extOf(name)];
+  if(!want || matchesAny(first, want)) return first;
+
+  try{
+    /* latin1: every byte maps to one char, so nothing is lost the way a
+       UTF-8 decode would lose a malformed sequence. */
+    const text = new TextDecoder('latin1').decode(first).replace(/\s+/g,'');
+    const peeled = b64ToBytes(text);   // atob throws if it is not base64
+    if(matchesAny(peeled, want)){
+      console.info('[FilePreview] content arrived double base64-encoded; peeled one layer',
+        {name, received:first.length, actual:peeled.length});
+      return peeled;
+    }
+  }catch{ /* not base64 after all -- fall through with what we had */ }
+  return first;
+}
+
 /* Trailing empty rows and columns are an artefact of how Excel stores a
    used range, not content, and they make a small sheet render as a field
    of blank cells. */
@@ -105,34 +155,47 @@ export function FilePreview({entitySet, recordId, field, name}){
       if(!alive) return;
       const kind = previewKind(name);
       const ext  = extOf(name);
+      /* Decoded ONCE, here, and carried as bytes -- the preview, the
+         download and the type check all have to agree on the content. */
+      const bytes = decodeFile(b64, name);
 
       if(kind === 'sheet'){
+        /* ⚠️ Refuse rather than render. SheetJS treats anything it
+           cannot identify as CSV, so handing it a non-workbook produces a
+           grid of one cell holding the raw text instead of an error -- which
+           is exactly how the double-encoding bug hid. */
+        if(EXPECTED[ext] && !matchesAny(bytes, EXPECTED[ext])){
+          throw new Error(
+            `This does not contain a readable ${ext.toUpperCase()} file. ` +
+            `Its first bytes are not a ${ext === 'xls' ? 'compound document' : 'ZIP container'}, ` +
+            `which every ${ext.toUpperCase()} begins with.`);
+        }
         /* Loaded on demand. SheetJS is a large dependency and a preview is
            rare, so bundling it into the app's main chunk would make every
            page load pay for a screen most people never open. */
         const XLSX = await import('xlsx');
-        const wb = XLSX.read(b64ToBytes(b64), {type:'array'});
+        const wb = XLSX.read(bytes, {type:'array'});
         const sheets = wb.SheetNames.map(n=>({
           name: n,
           rows: trimGrid(XLSX.utils.sheet_to_json(wb.Sheets[n], {header:1, defval:''})),
         }));
-        if(alive) setSt({phase:'ready', kind, b64, sheets});
+        if(alive) setSt({phase:'ready', kind, bytes, sheets});
         return;
       }
 
       if(kind === 'text'){
-        if(alive) setSt({phase:'ready', kind, b64,
-          text:new TextDecoder().decode(b64ToBytes(b64))});
+        if(alive) setSt({phase:'ready', kind, bytes,
+          text:new TextDecoder().decode(bytes)});
         return;
       }
 
       /* pdf, image, and anything unrecognised all need a URL -- the first
          two to render, the last only so it can be downloaded. */
       const url = URL.createObjectURL(
-        new Blob([b64ToBytes(b64)], {type: MIME[ext] || 'application/octet-stream'}));
+        new Blob([bytes], {type: MIME[ext] || 'application/octet-stream'}));
       if(!alive){ URL.revokeObjectURL(url); return; }
       urlRef.current = url;
-      setSt({phase:'ready', kind, b64, url});
+      setSt({phase:'ready', kind, bytes, url});
     })().catch(e=>{
       if(!alive) return;
       console.warn('[FilePreview]', entitySet, recordId, field, e);
@@ -169,7 +232,7 @@ export function FilePreview({entitySet, recordId, field, name}){
     if(st.phase !== 'ready') return;
     if(!dlRef.current){
       dlRef.current = st.url || URL.createObjectURL(
-        new Blob([b64ToBytes(st.b64)], {type: MIME[extOf(name)] || 'application/octet-stream'}));
+        new Blob([st.bytes], {type: MIME[extOf(name)] || 'application/octet-stream'}));
     }
     const a = document.createElement('a');
     a.href = dlRef.current;
