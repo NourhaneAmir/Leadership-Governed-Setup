@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { ClipboardList, ListChecks, ArrowUpRight, FileText, CalendarDays, Check, MoreHorizontal } from 'lucide-react';
 import { fetchRegions, fetchBusinessUnits, fetchDepartments, fetchFunctions, fetchProcesses, fetchKpis, fetchSections, fetchPositions, departmentBuIndex, fetchTeamsChannels, fetchMicrosoftGroupMembers, fetchMeetingCategories, fetchCurrentUser, saveReportTemplateToDataverse, saveMeetingTemplateToDataverse, updateReportTemplateToDataverse, updateMeetingTemplateToDataverse, updateReportTemplateStatus, updateMeetingTemplateStatus, fetchReportTemplatesList, fetchMeetingTemplatesList, fetchReportTemplateDetail, fetchMeetingTemplateDetail, fetchMeetingOccurrencesByTemplate, fetchReportOccurrencesByTemplate, TEMPLATE_STATUS_LABEL,
   logSetupActivity, logSetupActivityBatch, fetchSetupActivity, uploadReportTemplateFile } from '../../services/dataverse.js';
+import { FilePreview, canPreview } from '../../shared/FilePreview.jsx';
 import './governance-modern.css';
 
 
@@ -1560,7 +1561,7 @@ const sectionItemLabel = it => it.type==='Breakdown'
    the one thing a Report Template actually defines could only be seen by
    opening the wizard, which meant putting the Setup into edit mode to read
    it. */
-function SectionsBlock({sections}){
+function SectionsBlock({sections, onView}){
   const secs = sections || [];
   return <div className="card">
     <div className="card-hd" style={{display:'flex',alignItems:'baseline',gap:10}}>
@@ -1590,7 +1591,16 @@ function SectionsBlock({sections}){
                 : <div className="det-sec-items">
                     {items.map((it,j)=>
                       <span key={it.id||j} className={'pill k-'+String(it.type||'').toLowerCase().replace(/[^a-z]/g,'')}>
-                        <b>{it.type}</b> {sectionItemLabel(it) || '—'}</span>)}
+                        <b>{it.type}</b> {sectionItemLabel(it) || '—'}
+                        {/* Only a File citation whose content is actually in
+                            Dataverse can be shown; one picked this session has
+                            not been uploaded yet and has no row to read. */}
+                        {onView && it.type==='File' && it.hasFile && it.dvId
+                          ? <button type="button" className="fv-link" onClick={()=>onView({
+                              entitySet:'lm_reporttemplatesectionitemses', recordId:it.dvId,
+                              field:'lm_attachementfile', name:it.fileName||'File'})}>
+                              {canPreview(it.fileName) ? 'View' : 'Download'}</button>
+                          : null}</span>)}
                   </div>}
             </div>;
           })}
@@ -2970,6 +2980,10 @@ function ReportWizard({rec,onClose}){
 }
 
 function ReportSummary({s}){
+  /* The file being previewed, or null. One piece of state for both sources
+     (the Template's own file and any Section's File citation) because only
+     one can be open at a time and they render identically. */
+  const [view,setView]=useState(null);
   const dest=destinationOf(s);
   const cad=[s.frequency,s.dayOfWeek,s.dayOfMonth?('day '+s.dayOfMonth):null,s.monthInQuarter]
     .filter(Boolean).join(' · ');
@@ -2993,7 +3007,18 @@ function ReportSummary({s}){
           ['Template file', s.templateFileName
             ? s.templateFileName+' (not uploaded yet)'
             : s.hasTemplateFile
-              ? (s.templateFileStoredName||'attached')
+              ? <span className="fv-row">
+                  {s.templateFileStoredName||'attached'}
+                  {/* A Setup still being created has no row to read from --
+                     the file uploads on save. */}
+                  {s._dataverseId
+                    ? <button type="button" className="fv-link" onClick={()=>setView({
+                        entitySet:'lm_report_templates', recordId:s._dataverseId,
+                        field:'lm_attachementfile',
+                        name:s.templateFileStoredName||'Template file'})}>
+                        {canPreview(s.templateFileStoredName) ? 'View' : 'Download'}</button>
+                    : null}
+                </span>
               : '— none attached'],
           ['Sections',(s.checklist||[]).length+' section(s)']]}/>
         <SumBlock title="Submission" items={[
@@ -3003,8 +3028,15 @@ function ReportSummary({s}){
           ['Processes',(s.processes||[]).length+' linked'],['KPIs',(s.kpis||[]).length+' linked']]}/>
       </div>
     </div>
-    <SectionsBlock sections={s.checklist}/>
+    <SectionsBlock sections={s.checklist} onView={setView}/>
     <UnitsTable s={s}/>
+    {view
+      ? <Modal wide title={view.name}
+          sub="Read-only — this shows the stored file and does not change it."
+          onClose={()=>setView(null)}>
+          <FilePreview {...view}/>
+        </Modal>
+      : null}
   </>;
 }
 
@@ -3541,6 +3573,11 @@ function dataverseReportToSetup(detail){
              in Dataverse, so the picker's re-upload warning is meaningful. */
           fileName:it.type==='File' ? (it.label||'file') : undefined,
           hasFile:!!it.hasFile,
+          /* The item's own Dataverse id, kept ONLY so its file can be read
+             back -- `id` above is a fresh local uid because the editor needs
+             a stable key it can mint for new rows too. Without this a File
+             citation knows a file exists but has no way to address it. */
+          dvId:it.id||null,
         })).filter(it=>it.type),
       })),
     lines:(detail.lines||[]).map(l=>({
@@ -4964,7 +5001,13 @@ function App({onSwitch}){
       regions:(src.regions||[]).slice(),
       businessUnits:(src.businessUnits||[]).slice(),
       lines:(src.lines||[]).map(l=>({...l,id:uid('ln')})),
-      checklist:(src.checklist||[]).map(c=>({...c,id:uid('ck')})),
+      /* Items are re-mapped, not carried by reference: dvId and hasFile
+         describe rows that belong to the ORIGINAL. Left in place, the copy
+         would offer to preview the original's file as if it were its own --
+         and hasFile would claim content that duplicating never copies
+         (createSectionItems only uploads a file picked this session). */
+      checklist:(src.checklist||[]).map(c=>({...c,id:uid('ck'),
+        items:(c.items||[]).map(it=>({...it, id:uid('si'), dvId:null, hasFile:false}))})),
       agenda:(src.agenda||[]).map(a=>({...a,id:uid('ag')})),
       supportive:(src.supportive||[]).slice(),
       kpis:(src.kpis||[]).slice(),

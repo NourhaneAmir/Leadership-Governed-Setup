@@ -2056,6 +2056,89 @@ It is now `"error"` in `.oxlintrc.json`, with `env: {browser, es2024}` declared
 alongside — without that the one real finding drowns in ~300 window/console
 hits. `src/` is clean under it; `npm run lint` fails on the next one.
 
+### 20 Sep, later: attached files can be READ, not just replaced
+
+Files could be uploaded and replaced but never opened. The only way to learn
+what a Template actually asks for was to have been the person who uploaded it.
+`src/shared/FilePreview.jsx` now shows a stored file read-only, wired into the
+Details tab in two places (the Template's own file, and any Section's File
+citation).
+
+**The connector has a download operation, and nobody had used it.**
+`GetEntityFileImageFieldContentWithOrganization` sits right beside the upload
+in the generated `MicrosoftDataverseService` -- same connector, same
+cross-environment shape, so a preview reads whatever `DATA_ORG` points at.
+Wrapped as `downloadFileColumn()` in `xenv.js`, symmetric with
+`uploadFileColumn()`.
+
+⚠️ **`Range` is the first positional argument and the generated signature
+types it as a required `string`** -- but it is an HTTP Range header, and
+OMITTING it is what asks for the whole file. It is passed `undefined` (which
+`JSON.stringify` drops) with a single retry at `'bytes=0-'`, because a wrong
+guess fails with a transport error that says nothing about the cause.
+
+**The response has three known shapes**, all normalised in
+`fileContentToBase64()`: a bare base64 string, a `data:` URI, and the Power
+Platform `{$content-type, $content}` binary envelope.
+
+**What can and cannot be shown:**
+
+| Type | How | Status |
+|---|---|---|
+| `.xlsx .xlsm .xlsb .xls .csv` | SheetJS -> `sheet_to_json` -> React table | ✅ the live case |
+| `.pdf` | blob URL in an `<iframe>` | ⚠️ untested -- no PDF exists yet, and `frame-src` in the host CSP is unverified |
+| images | blob URL in `<img>` | untested |
+| `.txt .md .json .xml .log` | `TextDecoder` -> `<pre>` | untested |
+| `.docx .pptx` | **cannot** | honest "cannot be shown", Download offered |
+
+⚠️ **Office documents have no browser renderer available here.** The Office
+Online viewer (`view.officeapps.live.com/op/embed.aspx?src=`) needs a
+PUBLICLY reachable URL; a `blob:` URL is local to the tab and the Dataverse
+URL needs auth. Do not try to resurrect this -- the button reads "Download"
+rather than "View" for those types, via the exported `canPreview()`.
+
+**SheetJS is loaded with a dynamic `import()`**, and the build confirms the
+split: `xlsx-*.js` is its own 492 kB chunk, so the main bundle did not grow.
+Bundling it statically would make every page load pay for a screen most
+people never open.
+
+⚠️ **The grid is built from `sheet_to_json` + React elements, deliberately
+NOT `sheet_to_html` + `dangerouslySetInnerHTML`.** That would mean injecting
+markup derived from an uploaded file into the governance app; React escapes
+every cell for free and there is no reason to take that on for a grid of
+values.
+
+**A latent data-integrity bug, fixed on the way.** Section items hydrate with
+`id:uid('si')` -- the editor needs a key it can mint for new rows -- so the
+item's Dataverse id was **discarded**, and a File citation knew a file existed
+(`hasFile`) with no way to address it. It is now carried as `dvId`. But
+`duplicateFrom()` spread checklist rows with `{...c}`, sharing the `items`
+array *by reference*, so a duplicate would have pointed at the ORIGINAL's file
+and shown it as its own. Items are now re-mapped with `dvId:null,
+hasFile:false` -- which is also the truth, since `createSectionItems()` only
+uploads a file picked in the current session and duplicating never copies
+file content.
+
+**Live file inventory (20 Sep)** -- only two files exist in DT New, both
+`.xlsx`, which is why the spreadsheet path is the one that matters:
+
+| Row | File |
+|---|---|
+| `lm_report_template` `test_Bio Medical_Core_Monthly` | `Untitled spreadsheet (1).xlsx` |
+| one `lm_reporttemplatesectionitems` row | `lm_MeetingCategory (1789744418443) (1).xlsx` |
+| `lm_reportoccurrence` | none -- no occurrence has a file yet |
+
+⚠️ FetchXML entity names for these: `lm_report_template` (singular) but
+`lm_reporttemplatesectionitems` (already plural-ish); `lm_reporttemplate`
+`sectionitem` singular does NOT exist. The Template's primary name column is
+`lm_newcolumn`. FetchXML **does** return `lm_attachementfile_name`, unlike
+modelbuilder (see the previous entry).
+
+The `.fv-` CSS prefix was checked unused across `src/` before being chosen and
+verified in the BUILT stylesheet afterwards -- all 18 classes present, the
+only scoped selectors the two intended ones. See the `.combo-*` collision for
+why that check is not optional.
+
 ### 20 Sep: the attached template file, named, on the Details tab
 
 The Details tab never mentioned the Template's own file, and the wizard only

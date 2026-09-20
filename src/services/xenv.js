@@ -275,6 +275,59 @@ export async function uploadFileColumn(entitySet, recordId, fieldName, fileName,
 }
 
 /* =========================================================================
+   File/Image column DOWNLOAD -- the read side of uploadFileColumn() above,
+   and the same connector, so a preview reads whatever environment DATA_ORG
+   points at just like every other call in this file.
+
+   Returns base64, matching what the upload takes. The connector carries
+   binary over a JSON transport, and there are three shapes it is known to
+   come back as, so all three are normalised here rather than at each call
+   site: a bare base64 string, a data: URI, and the Power Platform
+   `{$content-type, $content}` envelope used for binary responses.
+
+   ⚠️ `Range` is the FIRST positional argument and the generated signature
+   types it as a required string, but it is an HTTP Range header -- omitting
+   it is what asks for the whole file. It is passed as undefined (which
+   JSON.stringify drops) and retried as an explicit full range only if the
+   gateway rejects that, because a wrong guess here fails with a transport
+   error that says nothing about the cause.
+   ========================================================================= */
+function fileContentToBase64(data) {
+  if (!data) return '';
+  /* The binary envelope. $content is already base64. */
+  if (typeof data === 'object') return String(data.$content ?? data.content ?? '');
+  const str = String(data);
+  /* data:<mime>;base64,<payload> -- keep only the payload. */
+  const comma = str.startsWith('data:') ? str.indexOf(',') : -1;
+  return comma === -1 ? str : str.substring(comma + 1);
+}
+
+export async function downloadFileColumn(entitySet, recordId, fieldName) {
+  const call = range => DV.GetEntityFileImageFieldContentWithOrganization(
+    range, DATA_ORG, entitySet, recordId, fieldName, undefined
+  );
+
+  let res = await call(undefined);
+  if (!res?.success) {
+    /* Second and last attempt, with an explicit whole-file range. If this
+       fails too the error is real and is reported as-is. */
+    const first = res?.error;
+    res = await call('bytes=0-');
+    if (!res?.success) {
+      const e = res?.error ?? first;
+      throw new Error(
+        e?.message || String(e) ||
+        `Download failed on ${entitySet}.${fieldName} in ${DATA_ORG}`
+      );
+    }
+  }
+
+  const b64 = fileContentToBase64(res.data);
+  if (!b64) throw new Error(`${entitySet}.${fieldName} came back empty`);
+  return b64;
+}
+
+/* =========================================================================
    Preflight -- "will this app work against this environment?"
 
    Reads one row from every table the app has registered and classifies the

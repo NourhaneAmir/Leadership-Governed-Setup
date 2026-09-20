@@ -1336,3 +1336,69 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
   line-height:1.5; text-align:center; vertical-align:middle;
 }
 .nb-badge.red{ background:var(--red) }
+
+/* ---- FilePreview: a stored file, shown, never edited ---------------------
+   Lives in the shared stylesheet because the component is shared. The `fv-`
+   prefix is unique across src/ -- see the .combo-* collision in
+   PROJECT-CONTEXT for why that matters more than specificity. */
+.fv-root{ display:flex; flex-direction:column; gap:10px; min-width:0 }
+
+/* The one bar that says what this is and what can be done with it. */
+.fv-bar{ display:flex; align-items:center; gap:9px; flex-wrap:wrap;
+  padding-bottom:9px; border-bottom:1px solid var(--border) }
+.fv-name{ flex:1; min-width:0; font-size:13px; font-weight:600; color:var(--ink);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.fv-ro{ flex:0 0 auto; font-size:11px; font-weight:600; letter-spacing:.03em;
+  text-transform:uppercase; padding:2px 8px; border-radius:999px;
+  background:var(--grey-bg); color:var(--muted); border:1px solid var(--grey-bd) }
+
+.fv-msg{ font-size:13px; color:var(--ink-2); padding:14px 2px }
+.fv-msg b{ color:var(--ink) }
+.fv-detail{ margin-top:5px; font-size:12.5px; color:var(--muted); line-height:1.5 }
+.fv-err{ background:var(--red-bg); border:1px solid var(--red-bd);
+  border-radius:8px; padding:12px 14px }
+.fv-err b{ color:var(--red) }
+.fv-clip{ padding:8px 2px 0; font-size:12.5px; color:var(--muted) }
+
+/* Sheet tabs -- only rendered when a workbook has more than one. */
+.fv-tabs{ display:flex; gap:4px; flex-wrap:wrap }
+.fv-tab{ font:inherit; font-size:12px; padding:4px 11px; border-radius:7px;
+  border:1px solid var(--border); background:var(--surface); color:var(--ink-2);
+  cursor:pointer }
+.fv-tab:hover{ border-color:var(--border-d) }
+.fv-tab.on{ background:var(--teal-l); border-color:var(--teal); color:var(--teal-d);
+  font-weight:600 }
+
+/* The grid scrolls inside itself so the modal body does not scroll in two
+   directions at once. */
+.fv-scroll{ overflow:auto; max-height:56vh; border:1px solid var(--border);
+  border-radius:8px; background:var(--panel) }
+.fv-grid{ border-collapse:collapse; font-size:12.5px; color:var(--ink);
+  font-variant-numeric:tabular-nums }
+.fv-grid td,.fv-grid th{ border:1px solid var(--border); padding:4px 9px;
+  text-align:left; vertical-align:top; white-space:pre-wrap;
+  max-width:340px; word-break:break-word }
+/* The row number is furniture, not data: it stays put when the grid scrolls
+   sideways and never competes with a real cell for attention. */
+.fv-grid .fv-rn{ position:sticky; left:0; z-index:1;
+  background:var(--surface); color:var(--faint); font-weight:500;
+  text-align:right; font-size:11px; min-width:34px }
+
+.fv-frame{ width:100%; height:62vh; border:1px solid var(--border);
+  border-radius:8px; background:var(--panel) }
+.fv-imgwrap{ display:flex; justify-content:center; padding:8px;
+  border:1px solid var(--border); border-radius:8px; background:var(--surface) }
+.fv-imgwrap img{ max-width:100%; max-height:60vh; object-fit:contain }
+.fv-text{ margin:0; padding:12px 14px; max-height:58vh; overflow:auto;
+  border:1px solid var(--border); border-radius:8px; background:var(--panel);
+  font-family:var(--mono); font-size:12px; line-height:1.55; color:var(--ink);
+  white-space:pre-wrap; word-break:break-word }
+
+/* The "View" affordance, used inside a summary row and inside a citation
+   pill. A button, not a link: it opens a panel, it does not navigate. */
+.fv-row{ display:inline-flex; align-items:baseline; gap:8px; flex-wrap:wrap }
+.fv-link{ font:inherit; font-size:11.5px; font-weight:600; line-height:1.4;
+  padding:1px 8px; border-radius:999px; cursor:pointer;
+  border:1px solid var(--teal); background:transparent; color:var(--teal-d) }
+.fv-link:hover{ background:var(--teal-l) }
+.det-sec-items .fv-link{ margin-left:6px }
