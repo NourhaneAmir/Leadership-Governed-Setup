@@ -17,5 +17,8 @@
   "env": {
     "browser": true,
     "es2024": true
+  },
+  "globals": {
+    "__DATA_ORG__": "readonly"
   }
 }

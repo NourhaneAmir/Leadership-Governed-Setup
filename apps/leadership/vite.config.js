@@ -20,6 +20,20 @@ const here = path.dirname(fileURLToPath(import.meta.url))
 const repo = path.resolve(here, '../..')
 
 export default defineConfig({
+  /* WHICH ENVIRONMENT THIS APP READS AND WRITES.
+
+     Not where it is hosted -- the cross-environment adapter
+     (src/services/xenv.js) takes the org per call, so a build deployed to
+     Code App Development can read DT New. This is the one place that
+     decides which.
+
+     It lives per app on purpose: open decision 9 moves Governance Setup to
+     the IT environment (https://org2f45e702.crm4.dynamics.com) and leaves
+     Leadership on DT New. While DATA_ORG was a single shared constant that
+     was impossible. Change this line in ONE app to move ONE app. */
+  define: {
+    __DATA_ORG__: JSON.stringify('https://org319b4ea9.crm4.dynamics.com'),
+  },
   root: here,
   base: './', // required for Power Apps Code Apps: assets are hosted under a
               // per-environment content URL, not the domain root, so paths

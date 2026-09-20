@@ -31,7 +31,19 @@ import { MicrosoftDataverseService as DV } from '@generated/services/MicrosoftDa
    are hosted in DT New, Amr Space, or anywhere else. Set it to the app's own
    environment and behaviour is identical to the old per-table services.
    ------------------------------------------------------------------------- */
-export const DATA_ORG = 'https://org319b4ea9.crm4.dynamics.com';
+/* Set per app at build time by vite.config.js's `define`. The fallback is DT
+   New, so a build without the define behaves exactly as before -- and so that
+   `npm run dev` and any tooling that imports this file outside Vite still
+   resolve to something real.
+
+   This exists because the two apps are expected to diverge: open decision 9
+   moves Governance Setup to the IT environment and leaves Leadership on DT
+   New. While this was a single shared constant, that move was impossible
+   without taking both apps with it. */
+export const DATA_ORG =
+  (typeof __DATA_ORG__ === 'string' && __DATA_ORG__)
+    ? __DATA_ORG__
+    : 'https://org319b4ea9.crm4.dynamics.com';
 
 /* The connector wants the table's ENTITY SET (plural) name, e.g.
    `lm_setupactivities`, not the logical name `lm_setupactivity`. Both are in
@@ -98,7 +110,13 @@ const newGuid = () =>
  * @param {string} [pkField] the primary key column, e.g. `lm_report_templateid`.
  *   When given, create() supplies the new row's GUID itself -- see create().
  */
+/* Every entity set dvTable() has been asked for, in call order.
+   preflight() sweeps this rather than a hand-kept list: a hand-kept list
+   drifts the first time someone adds a table and forgets. */
+const REGISTERED = new Map();
+
 export function dvTable(entitySet, pkField) {
+  if (!REGISTERED.has(entitySet)) REGISTERED.set(entitySet, pkField || null);
   return {
     /** Every matching row, following pagination to the end. */
     async getAll(options) {
@@ -257,6 +275,85 @@ export async function uploadFileColumn(entitySet, recordId, fieldName, fileName,
 }
 
 /* =========================================================================
+   Preflight -- "will this app work against this environment?"
+
+   Reads one row from every table the app has registered and classifies the
+   result. Run it from the browser console of the running app:
+
+       await window.__xenvPreflight()
+
+   and read the printed table. `out.blocked` is the list to hand whoever
+   administers the target environment.
+
+   Why this exists: establishing the same thing for the IT environment by hand
+   took 45 separate CLI calls and produced two wrong conclusions before the
+   right one (see PROJECT-CONTEXT open decision 9). Doing it from inside the
+   app also tests the thing that actually matters -- the app's own connection
+   and user, not whoever is signed in to the CLI.
+
+   DENIED vs ABSENT matters and is easy to confuse: a table you cannot read
+   and a table that is not there both return nothing useful, but only one of
+   them is fixed by a security role. Dataverse names the missing privilege in
+   the first case, which is what this keys on.
+   ========================================================================= */
+export async function preflight({ verbose = true, org = DATA_ORG } = {}) {
+  /* `org` defaults to this build's own environment, but any org the signed-in
+     user can reach may be passed. That is the point: the IT environment can be
+     checked from the app running today, without rebuilding or deploying
+     anything, because the adapter takes the organization per call --
+         await window.__xenvPreflight({ org: 'https://org2f45e702.crm4.dynamics.com' })
+     answers "would this app work there yet?" in one line. */
+  const out = { org, checked: 0, ok: [], empty: [], denied: [], absent: [], failed: [] };
+  const rows = [];
+
+  for (const [entitySet, pkField] of REGISTERED) {
+    out.checked++;
+    let status, detail = '';
+    try {
+      const res = await DV.ListRecordsWithOrganization(
+        org, entitySet, PREFER_PAGED, JSON_ACCEPT,
+        undefined, undefined,
+        pkField ? pkField : undefined,      // $select -- one column is enough
+        undefined, undefined, undefined, undefined,
+        1,                                  // $top -- one row, this is a probe
+        undefined, undefined
+      );
+      if (res?.success) {
+        const n = Array.isArray(res.data?.value) ? res.data.value.length : 0;
+        status = n > 0 ? 'ok' : 'empty';
+      } else {
+        const msg = String(res?.error?.message || res?.error || '');
+        detail = msg.slice(0, 200);
+        status = /missing prv|PrivilegeDenied|is missing .*privilege/i.test(msg) ? 'denied'
+               : /does not exist|not found in the MetadataCache|Could not find entity/i.test(msg) ? 'absent'
+               : 'failed';
+      }
+    } catch (e) {
+      detail = String(e?.message || e).slice(0, 200);
+      status = 'failed';
+    }
+    out[status].push(entitySet);
+    rows.push({ table: entitySet, status, detail });
+  }
+
+  /* The one list worth acting on: what an administrator has to grant or
+     create before this app can run here. */
+  out.blocked = [...out.denied, ...out.absent];
+  out.verdict = out.blocked.length === 0
+    ? `READY -- all ${out.checked} tables reachable in ${org}`
+    : `NOT READY -- ${out.blocked.length} of ${out.checked} tables blocked in ${org}`;
+
+  if (verbose && typeof console !== 'undefined') {
+    console.log(out.verdict);
+    if (console.table) console.table(rows);
+    if (out.denied.length) console.warn('Denied (needs a security role):', out.denied);
+    if (out.absent.length) console.warn('Absent (table does not exist here):', out.absent);
+    if (out.failed.length) console.warn('Failed for another reason:', out.failed);
+  }
+  return out;
+}
+
+/* =========================================================================
    Smoke test -- answers the one open question before any conversion.
 
    Creates a throwaway row, reports whether the new record's GUID came back
@@ -319,4 +416,14 @@ export async function smokeTestCreate() {
     catch (e) { out.cleanedUp = false; out.cleanupError = String(e); }
   }
   return out;
+}
+
+/* Both helpers are documented as `window.__xenv*` and, until 20 Sep, neither
+   was ever attached -- so the smoke test had never actually been runnable the
+   way its own comment describes. Attached here, guarded so importing this
+   module outside a browser (a test runner, a build step) stays harmless. */
+if (typeof window !== 'undefined') {
+  window.__xenvPreflight = preflight;
+  window.__xenvSmokeTest = smokeTestCreate;
+  window.__xenvOrg = () => DATA_ORG;
 }
