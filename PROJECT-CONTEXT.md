@@ -2928,16 +2928,61 @@ as getter-only `Guid?`, which is the signature.
 | read | `GetEntityFileImageFieldContentWithOrganization` | `downloadFileColumn()` |
 
 Both are in `src/services/xenv.js`, both take the organization, so both work
-cross-environment. Both carry base64 over the JSON transport.
+cross-environment.
+
+⚠️ **The two directions are NOT symmetric, and this cost most of a day.**
+The write takes base64. The **read returns base64 of content that is itself
+base64** — one decode yields ASCII base64 TEXT, not the file.
+`decodeFile()` in `src/shared/FilePreview.jsx` peels the extra layer.
+
+The peel needs `cleanBase64Text()` first: the inner payload arrives inside a
+wrapper that makes `atob()` throw — a BOM, surrounding quotes, a `data:`
+prefix, or the base64url alphabet (`-_` for `+/`). **A peel that does not
+strip those fails**, which is exactly what happened on the first attempt and
+caused a correct diagnosis to be abandoned.
+
+Peeling is gated on file signatures (ZIP `50 4B 03 04` for
+xlsx/xlsm/docx/pptx, OLE2 `D0 CF 11 E0` for xls, `%PDF`, PNG/GIF/JPG/BMP):
+the extension must say what the leading bytes should be, they must not match,
+and after decoding again they must. A `.txt` or `.csv`, having no signature,
+is never second-guessed.
+
+⚠️ **Never hand unverified bytes to SheetJS to find out whether they are a
+workbook.** It treats anything it cannot identify as CSV and SUCCEEDS,
+rendering one cell holding the raw text. That turned a decoding bug into what
+looked like a rendering bug and hid it for two rounds. Check the signature
+first and refuse.
+
+⚠️ **STILL OPEN:** whether Dataverse *stores* base64 text (upload defect —
+every file then wrong for anything reading it outside this app) or the
+transport re-encodes on the way out (read-side only, and now handled).
+Downloading the file from the maker portal settles it. The older claim that
+the upload was "CONFIRMED against live Dataverse" only ever confirmed that
+the CALL SUCCEEDED and a filename appeared — it never verified stored bytes.
 
 ⚠️ **On the READ, `Range` is the first positional argument and the generated
 signature types it as a required `string`** — but it is an HTTP Range header,
 and *omitting* it is what asks for the whole file. Passed as `undefined`
-(which `JSON.stringify` drops), with one retry at `'bytes=0-'`.
+(which `JSON.stringify` drops), then retried at `'bytes=0-'`.
 
-⚠️ **The read's response has three known shapes** and all three are
-normalised in `fileContentToBase64()`: a bare base64 string, a `data:` URI,
-and the Power Platform `{$content-type, $content}` binary envelope.
+⚠️ **The retry must fire on an EMPTY result, not only on a rejected one.** A
+gateway that requires the header answers **200 with an empty body**, so a
+retry conditioned on failure can never run — which is precisely the defect
+that produced "came back empty" on a call that reported success.
+
+⚠️ **The read's response shape varies** and `toBase64()` normalises all of
+them (**not** `fileContentToBase64()` — that name is gone): a bare base64
+string, a `data:` URI, the Power Platform `{$content-type, $content}` binary
+envelope, `{value}` / `{body}` / `{fileContent}` / `{documentBody}` wrappers,
+and `Blob` / `ArrayBuffer` / typed arrays. It recurses, so a nested envelope
+resolves. An unrecognised shape returns `''` and the CALLER reports what
+arrived — `describePayload()` names it. **Never let a normaliser swallow an
+unknown shape silently**: that makes an unhandled envelope indistinguishable
+from an empty file.
+
+Covered by `node scripts/test-decodefile.mjs` and
+`node scripts/test-tobase64.mjs`, both of which extract the helpers from the
+real source rather than restating them.
 
 ⚠️ **The filename is `<column>_name`, and where you can ask for it differs:**
 
@@ -3851,8 +3896,17 @@ today, changing it moves both apps at once.
 
 **How any of this was checked, for repeating it:**
 `pac org select --environment <GUID>`, then `pac org fetch --xmlFile`.
-⚠️ Two traps that cost time: **non-aggregate fetches crash this CLI against
-that org** with a bare .NET stack trace (use
+⚠️ Two traps that cost time. The first: **`pac org fetch` crashes with a bare
+.NET stack trace** on some results.
+
+**Corrected 20 Sep — the earlier diagnosis here was wrong.** It is not that
+"non-aggregate fetches crash against that org". The stack trace names
+`bolt.system.GridOutput.ToTextGrid()`: it is the CLI's own **text-grid
+renderer** failing on the result, not the query. The query succeeds and the
+data comes back. An aggregate query avoids it only because it returns a
+small, narrow result. There is **no `--json` flag** on `pac org fetch`, so
+the way round it is to request fewer or shorter columns — and some tables
+(`fileattachment`) crash the renderer whatever columns are asked for. Use
 `<fetch aggregate="true"><attribute name="createdon" alias="n"
 aggregate="count"/>` to count, which also surfaces the privilege error
 cleanly), and a table list generated by a Python `print()` on Windows carries
