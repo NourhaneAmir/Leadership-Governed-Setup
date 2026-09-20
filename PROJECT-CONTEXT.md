@@ -2056,6 +2056,50 @@ It is now `"error"` in `.oxlintrc.json`, with `env: {browser, es2024}` declared
 alongside — without that the one real finding drowns in ~300 window/console
 hits. `src/` is clean under it; `npm run lint` fails on the next one.
 
+### 20 Sep: it renders — the double-encoding was real, the peel was too strict
+
+**Resolved.** The tolerant peel fixed it, which settles the open question from
+the two entries below: the content **is** delivered double base64-encoded.
+The first peel failed only because `atob()` rejected a WRAPPER around the
+inner payload — a BOM, surrounding quotes, a `data:` prefix or the base64url
+alphabet, all of which `cleanBase64Text()` now strips. So theory 2 was right
+and its implementation was too strict; the theory was discarded a round too
+early on the strength of its own failed attempt.
+
+⚠️ Which wrapper specifically was present was NOT identified. If this needs
+narrowing later, `decodeFile()` logs on every successful peel.
+
+⚠️ **The upload question is still open** and unchanged: whether Dataverse
+STORES base64 text (in which case every file is wrong for anything reading it
+outside this app) or the transport re-encodes on the way out. Downloading the
+file from the maker portal still settles it.
+
+**Then the grid was unreadable** — every heading wrapped one character per
+line.
+
+⚠️ **A `<table>` shrinks to fit its container**, and with
+`word-break:break-word` it will reduce a column to a SINGLE CHARACTER to
+manage it. 25 columns in a 900px modal rendered each heading as a vertical
+stack of letters. `width:max-content` plus horizontal scroll is the fix —
+**do not reintroduce `width:100%`** on `.fv-grid`.
+
+Cells are now clipped with an ellipsis rather than wrapped, so every row is
+one line high and the grid stays scannable; the full value rides on `title=`.
+
+The first row is promoted to a sticky `<thead>` when `looksLikeHeader()`
+says so — at least two non-empty cells, all non-numeric strings. **Detected,
+not assumed**: a sheet that starts straight into data would otherwise lose
+its first row into a header. Body rows keep the SHEET's own numbering (they
+start at 2 when a header was lifted out), so what is on screen still matches
+the file.
+
+Numbers are right-aligned with tabular figures, including numeric strings,
+since Excel stores plenty of numbers as text.
+
+The modal widens to `min(1400px, 96vw)` but only when it contains a preview,
+via `.gov-root .modal.wide:has(.fv-root)`. Where `:has()` is unsupported the
+modal simply stays 900px.
+
 ### 20 Sep: stop guessing at the payload — make it identify itself
 
 The peel did not fix it. That is now **two** theories inferred rather than

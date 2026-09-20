@@ -1371,13 +1371,35 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 
 /* The grid scrolls inside itself so the modal body does not scroll in two
    directions at once. */
-.fv-scroll{ overflow:auto; max-height:56vh; border:1px solid var(--border);
-  border-radius:8px; background:var(--panel) }
-.fv-grid{ border-collapse:collapse; font-size:12.5px; color:var(--ink);
+.fv-sheetbar{ display:flex; align-items:center; gap:10px; flex-wrap:wrap }
+.fv-sheetname{ font-size:12px; font-weight:600; color:var(--ink-2) }
+.fv-count{ margin-left:auto; font-size:11.5px; color:var(--muted);
   font-variant-numeric:tabular-nums }
-.fv-grid td,.fv-grid th{ border:1px solid var(--border); padding:4px 9px;
-  text-align:left; vertical-align:top; white-space:pre-wrap;
-  max-width:340px; word-break:break-word }
+
+.fv-scroll{ overflow:auto; max-height:60vh; border:1px solid var(--border);
+  border-radius:8px; background:var(--panel) }
+/* ⚠️ width:max-content is what makes this readable. A <table> shrinks to
+   fit its container by default, and with break-word it will happily reduce a
+   column to ONE CHARACTER to do it -- 25 columns in a 900px modal rendered
+   every heading as a vertical stack of letters. Sizing to content and
+   scrolling sideways is the fix; do not put a width:100% back. */
+.fv-grid{ border-collapse:separate; border-spacing:0; width:max-content;
+  min-width:100%; font-size:12.5px; color:var(--ink) }
+/* Clipped with an ellipsis rather than wrapped, so every row is one line
+   high and the grid stays scannable; the full text is on title=. */
+.fv-grid td,.fv-grid th{ border-bottom:1px solid var(--border);
+  border-right:1px solid var(--border); padding:6px 10px;
+  text-align:left; vertical-align:middle; white-space:nowrap;
+  max-width:280px; overflow:hidden; text-overflow:ellipsis }
+.fv-grid td.fv-num{ text-align:right; font-variant-numeric:tabular-nums }
+/* The header stays put while the body scrolls under it -- a 25-column sheet
+   is unreadable once the column names are gone. */
+.fv-grid thead th{ position:sticky; top:0; z-index:2;
+  background:var(--surface); color:var(--ink); font-weight:650;
+  border-bottom:2px solid var(--border-d) }
+.fv-grid thead th.fv-rn{ z-index:3 }
+.fv-grid tbody tr:nth-child(even) td{ background:rgba(33,28,30,.018) }
+.fv-grid tbody tr:hover td{ background:var(--teal-ll) }
 /* The row number is furniture, not data: it stays put when the grid scrolls
    sideways and never competes with a real cell for attention. */
 .fv-grid .fv-rn{ position:sticky; left:0; z-index:1;

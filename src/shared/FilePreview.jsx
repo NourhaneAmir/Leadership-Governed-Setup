@@ -316,37 +316,82 @@ export function FilePreview({entitySet, recordId, field, name}){
    uploaded file into the governance app with dangerouslySetInnerHTML, and
    there is no reason to take that on for a grid of values. React escapes
    every cell for free. */
+/* Whether the first row names the columns. Detected, not assumed: a sheet
+   that starts straight into data keeps its first row AS data rather than
+   losing it into a header. Labels are non-numeric strings, which is what
+   separates "Status, Region, Stage" from "1, 2, 3". */
+function looksLikeHeader(rows){
+  if(rows.length < 2) return false;
+  const first = rows[0].filter(c=>c !== '' && c != null);
+  if(first.length < 2) return false;
+  return first.every(c=>typeof c === 'string' && !/^-?[\d.]/.test(c.trim()));
+}
+
+/* Numbers are right-aligned so their digits line up down a column. A string
+   of digits counts -- Excel stores plenty of numbers as text. */
+const isNum = c => typeof c === 'number'
+  || (typeof c === 'string' && c.trim() !== '' && !Number.isNaN(Number(c)));
+
 function SheetView({sheets, at, onSheet}){
   const s = sheets[at] || {rows:[]};
-  const rows = s.rows.slice(0, MAX_ROWS);
-  const clipped = s.rows.length - rows.length;
+  const all = s.rows;
+  const header = looksLikeHeader(all) ? all[0] : null;
+  const body = (header ? all.slice(1) : all).slice(0, MAX_ROWS);
+  const total = header ? all.length - 1 : all.length;
+  const clipped = total - body.length;
+  /* Every row padded to the widest, so a short row does not pull the grid
+     out of alignment with its own header. */
+  const cols = all.reduce((m,r)=>Math.max(m, r.length), 0);
 
   return <>
-    {sheets.length > 1
-      ? <div className="fv-tabs">
-          {sheets.map((sh,i)=>
-            <button type="button" key={sh.name+i}
-              className={'fv-tab'+(i===at?' on':'')} onClick={()=>onSheet(i)}>
-              {sh.name}</button>)}
-        </div>
-      : null}
-    {rows.length === 0
+    <div className="fv-sheetbar">
+      {sheets.length > 1
+        ? <div className="fv-tabs">
+            {sheets.map((sh,i)=>
+              <button type="button" key={sh.name+i}
+                className={'fv-tab'+(i===at?' on':'')} onClick={()=>onSheet(i)}>
+                {sh.name}</button>)}
+          </div>
+        : <span className="fv-sheetname">{s.name}</span>}
+      <span className="fv-count">
+        {total.toLocaleString()} row{total===1?'':'s'} · {cols} column{cols===1?'':'s'}</span>
+    </div>
+    {body.length === 0
       ? <div className="fv-msg">This sheet is empty.</div>
       : <div className="fv-scroll">
           <table className="fv-grid">
+            {header
+              ? <thead><tr>
+                  <th className="fv-rn" aria-label="Row"/>
+                  {Array.from({length:cols},(_,j)=>{
+                    const c = header[j] ?? '';
+                    /* title= carries the full text: cells are clipped with
+                       an ellipsis rather than wrapped, so a long heading
+                       has to stay reachable on hover. */
+                    return <th key={j} title={c===''?undefined:String(c)}>
+                      {c===''?'':String(c)}</th>;
+                  })}
+                </tr></thead>
+              : null}
             <tbody>
-              {rows.map((r,i)=>
+              {body.map((r,i)=>
                 <tr key={i}>
-                  <th className="fv-rn">{i+1}</th>
-                  {r.map((c,j)=><td key={j}>{c === '' ? '' : String(c)}</td>)}
+                  {/* The sheet's own row number, so it still matches the
+                      file after a header row is lifted out. */}
+                  <th className="fv-rn">{header ? i+2 : i+1}</th>
+                  {Array.from({length:cols},(_,j)=>{
+                    const c = r[j] ?? '';
+                    return <td key={j} className={isNum(c)?'fv-num':undefined}
+                      title={c===''?undefined:String(c)}>{c===''?'':String(c)}</td>;
+                  })}
                 </tr>)}
             </tbody>
           </table>
         </div>}
     {clipped > 0
       ? <div className="fv-msg fv-clip">
-          Showing the first {MAX_ROWS} rows — {clipped} more are in the file.
-          Download it to see all of them.</div>
+          Showing the first {MAX_ROWS.toLocaleString()} rows — {clipped.toLocaleString()} more
+          are in the file. Download it to see all of them.</div>
       : null}
   </>;
 }

@@ -992,3 +992,9 @@
   font-family:var(--mono); font-size:11.5px; font-weight:500;
   color:var(--teal-d); word-break:break-all;
 }
+
+/* A spreadsheet needs room: 900px is the standard wide modal, which is fine
+   for a form and hostile to a 25-column grid. Only a modal that actually
+   contains a preview is widened. :has() is unsupported in nothing this app
+   runs on, and where it were, the modal simply stays its normal width. */
+.gov-root .modal.wide:has(.fv-root){ max-width:min(1400px, 96vw) }
