@@ -29,7 +29,7 @@ import { fetchReportOccurrenceForEdit, saveReportOccurrenceContent, submitReport
          fetchKpiAchievements, pickAchievement,
          fetchStrategyPocs, fetchExecutionCategories, fetchSpecialties,
          fetchStrategies, fetchBiReportDashboards, fetchTasks, createTask,
-         POC_STATUS, TASK_PRIORITY_KEY, fetchAssignableUsers, fetchBiReportsByKpi,
+         POC_STATUS, fetchAssignableUsers, fetchBiReportsByKpi,
          SECTION_ANGLE, SECTION_BREAKDOWN_DIM } from '../../../services/dataverse.js';
 
 /* Dataverse angle labels, and the DiagChip / .dg-seg class each maps onto. */
@@ -141,6 +141,51 @@ function KpiDashboards({ bis }){
   </div>;
 }
 
+/* A Child Report citation that names a report but points at none.
+
+   It knows its child template when the Template put it there. Citations
+   written before that carry only the label, so the template is recovered from
+   the name -- the label reads "Child: <template name>", which is how the
+   generator wrote them. */
+function AttachChild({ cite, occsOfTemplate, tplChildren, onAttach, busy, nm, L }){
+  const [open, setOpen] = useState(false);
+
+  /* The template this citation is waiting for: the one it was given, or the
+     one whose name its label carries. */
+  const bare = String(cite.label || '').replace(/^\s*(child|report)\s*:\s*/i, '').trim().toLowerCase();
+  const tid = cite.childTemplateId
+    || tplChildren.find(t => String(nm(L.rptTpl, t) || '').trim().toLowerCase() === bare)
+    || null;
+
+  const opts = tid ? occsOfTemplate(tid) : [];
+  const tplName = tid ? nm(L.rptTpl, tid) : null;
+
+  return <div style={{ marginTop: 6 }}>
+    <Btn k="sm" disabled={busy} onClick={() => setOpen(o => !o)}>
+      {open ? 'Cancel' : 'Attach an occurrence'}</Btn>
+    {open
+      ? <div style={{ marginTop: 6 }}>
+          <div className="holder" style={{ marginBottom: 6 }}>
+            {tplName
+              ? <>Occurrences of <b>{tplName}</b>.</>
+              : <>This citation names a report but not which template, so nothing can be
+                  offered automatically — cite the report directly instead.</>}
+          </div>
+          {opts.length === 0
+            ? <Note k="info" ic="i">{tplName
+                ? 'No occurrence of that template exists yet.'
+                : 'Nothing to attach.'}</Note>
+            : opts.map(o =>
+                <div key={o.id} className="sched-r" style={{ cursor: 'default' }}>
+                  <div className="sched-t"><div className="n">{o.name}</div>
+                    <div className="m">{fmtP(o.period)} · {o.status}</div></div>
+                  <Btn k="sm pri" onClick={() => { onAttach(o); setOpen(false); }}>Attach</Btn>
+                </div>)}
+        </div>
+      : null}
+  </div>;
+}
+
 export function ScreenBuildReport(){
   const { dvReportOccs, dvLoading, dvLookup, sel, setSel, refreshOccurrences, toast, go } = use();
   const L = dvLookup || {};
@@ -163,6 +208,9 @@ export function ScreenBuildReport(){
   const [picker, setPicker]     = useState(null);       // { key, kind, q, kpiId, dim, text }
   const [ach, setAch]           = useState(null);       // achievement rows, or null while reading
   const [biByKpi, setBiByKpi]   = useState(new Map());  // KPI id -> its dashboards
+  /* The child templates this report's own Template declares in its sections --
+     what the Setup said this report rests on. Read once per report. */
+  const [tplChildren, setTplChildren] = useState([]);
   /* The four governed lists behind PICKED_KINDS, plus the two POC filters that
      are their own tables. Read once, like the KPI and Process catalogues. */
   const [exec, setExec]         = useState({ pocs:null, cats:null, specs:null,
@@ -183,6 +231,40 @@ export function ScreenBuildReport(){
       .then(([kpis, processes]) => { if (live) setCatalog({ kpis, processes }); });
     return () => { live = false; };
   }, []);
+
+  useEffect(() => {
+    if (!rec?.templateId) { setTplChildren([]); return; }
+    let live = true;
+    fetchReportTemplateDetail(rec.templateId)
+      .then(t => {
+        if (!live) return;
+        const ids = [...new Set((t?.checklist || [])
+          .flatMap(c => (c.items || []))
+          .filter(it => it.type === 'Child Template' && it.childTemplateId)
+          .map(it => it.childTemplateId))];
+        setTplChildren(ids);
+      })
+      .catch(e => { console.warn('[dataverse] child templates:', e); if (live) setTplChildren([]); });
+    return () => { live = false; };
+  }, [rec?.templateId]);
+
+  /* An occurrence of `templateId` this report could rest on: its own Business
+     Unit or Region and Department first, then the most recent at or before its
+     own period -- a report rests on one that already exists. */
+  const occurrenceFor = templateId => {
+    const all = reports.filter(r => r.templateId === templateId && r.id !== recId);
+    if (!all.length) return null;
+    const scoped = all.filter(r =>
+         (rec?.businessUnitId ? r.businessUnitId === rec.businessUnitId
+          : rec?.regionId ? r.regionId === rec.regionId : true)
+      && (!rec?.departmentId || !r.departmentId || r.departmentId === rec.departmentId));
+    const pool = scoped.length ? scoped : all;
+    const byPeriod = [...pool].sort((a, b) =>
+      String(b.period || '').localeCompare(String(a.period || '')));
+    const earlier = rec?.period
+      ? byPeriod.filter(r => String(r.period || '') <= String(rec.period)) : [];
+    return earlier[0] || byPeriod[0] || null;
+  };
 
   /* Which dashboards sit behind each cited KPI. */
   useEffect(() => {
@@ -291,6 +373,16 @@ export function ScreenBuildReport(){
       ? { ...s, citations: [...s.citations, { ...c, id: null, key: newKey() }] } : s)));
     setPicker(p => (p ? { ...p, q: '', text: '' } : p));
   };
+  /* Fills in an occurrence on a citation that named a child template without
+     one. The citation keeps its place in the section. */
+  const attachCite = (key, ckey, occ) =>
+    setSections(ss => ss.map(s => (s.key === key
+      ? { ...s, citations: s.citations.map(c => (c.key === ckey
+          ? { ...c, citedReportId: occ.id, citedReportName: occ.name,
+              label: 'Report: ' + occ.name }
+          : c)) }
+      : s)));
+
   const uncite = (key, ckey) =>
     setSections(ss => ss.map(s => (s.key === key
       ? { ...s, citations: s.citations.filter(c => c.key !== ckey) } : s)));
@@ -322,8 +414,20 @@ export function ScreenBuildReport(){
           if (it.type === 'Process')
             return { key: newKey(), id: null, kind: 'Process', processId: it.processId,
                      processName: procName(it.processId), label: it.label || 'Process: ' + (procName(it.processId) || '') };
-          /* a child TEMPLATE has no occurrence to point at yet -- keep it as a label */
-          return { key: newKey(), id: null, kind: 'Child Report', label: it.label || 'Child report' };
+          /* A child TEMPLATE. Bind a real occurrence of it where one exists --
+             otherwise this citation is a sentence about a report rather than a
+             link to it, which is what left the hierarchy with no edges. The
+             template id is kept either way, so an unresolved one can be
+             attached later instead of being an orphan string. */
+          const occ = it.childTemplateId ? occurrenceFor(it.childTemplateId) : null;
+          const tplName = nm(L.rptTpl, it.childTemplateId);
+          return occ
+            ? { key: newKey(), id: null, kind: 'Child Report', citedReportId: occ.id,
+                citedReportName: occ.name, childTemplateId: it.childTemplateId,
+                label: 'Report: ' + occ.name }
+            : { key: newKey(), id: null, kind: 'Child Report',
+                childTemplateId: it.childTemplateId || null,
+                label: it.label || (tplName ? 'Child: ' + tplName : 'Child report') };
         }),
       })));
       toast('Template sections inserted',
@@ -517,7 +621,9 @@ export function ScreenBuildReport(){
                           setPicker={setPicker} catalog={catalog} inScope={inScope}
                           reports={reports.filter(r => r.id !== recId)}
                           ach={ach} rec={rec} L={L} nm={nm} biByKpi={biByKpi}
-                          exec={exec} addTask={addTask} toast={toast}/>)}
+                          exec={exec} addTask={addTask} toast={toast}
+                          tplChildren={tplChildren} attachCite={attachCite}
+                          occsOfTemplate={tid => reports.filter(r => r.templateId === tid && r.id !== recId)}/>)}
 
                   <div className="card" style={{ textAlign: 'center' }}>
                     <Btn k="sm pri" disabled={!!busy} onClick={addSection}>+ Add a section</Btn>
@@ -551,7 +657,7 @@ export function ScreenBuildReport(){
    scope is exactly what broke this screen once already. */
 function SectionEditor({ s, i, total, busy, patch, move, remove, uncite, cite, picker, setPicker,
                          catalog, inScope, reports, ach, rec, L, nm, exec, addTask, toast,
-                         biByKpi }){
+                         biByKpi, tplChildren, attachCite, occsOfTemplate }){
   const len = s.body.length;
   return <div className="sec">
     <div className="sec-h">
@@ -593,6 +699,10 @@ function SectionEditor({ s, i, total, busy, patch, move, remove, uncite, cite, p
                     <KpiDashboards bis={biByKpi.get(c.kpiId) || []}/>
                   </>
                 : null}
+              {c.kind === 'Child Report' && !c.citedReportId
+                ? <AttachChild cite={c} occsOfTemplate={occsOfTemplate} tplChildren={tplChildren}
+                    nm={nm} L={L} onAttach={occ => attachCite(s.key, c.key, occ)} busy={busy}/>
+                : null}
               <button type="button" className="cite-x" title="Remove this citation" disabled={busy}
                 onClick={() => uncite(s.key, c.key)}>×</button>
             </div>)
@@ -606,7 +716,7 @@ function SectionEditor({ s, i, total, busy, patch, move, remove, uncite, cite, p
       </div>
 
       {picker
-        ? <CitePicker exec={exec} addTask={addTask} toast={toast} rec={rec} picker={picker} setPicker={setPicker} onCite={c => cite(s.key, c)}
+        ? <CitePicker exec={exec} addTask={addTask} toast={toast} rec={rec} tplChildren={tplChildren} picker={picker} setPicker={setPicker} onCite={c => cite(s.key, c)}
             catalog={catalog} inScope={inScope} reports={reports} taken={s.citations}/>
         : null}
     </div>
@@ -729,7 +839,7 @@ export function NewTaskForm({ subject, onCancel, onDone, toast }){
 }
 
 function CitePicker({ picker, setPicker, onCite, catalog, inScope, reports, taken,
-                      exec, addTask, toast, rec }){
+                      exec, addTask, toast, rec, tplChildren = [] }){
   const set = f => setPicker(p => ({ ...p, ...f }));
   const k = picker.kind;
   const has = pred => taken.some(pred);
@@ -803,13 +913,31 @@ function CitePicker({ picker, setPicker, onCite, catalog, inScope, reports, take
       </>;
     }
   } else if (k === 'Child Report') {
-    const rows = reports.filter(r => matchesQuery(picker.q, [r.name, r.status, r.period]))
-      .map(r => ({ id: r.id, n: r.name, m: `${r.status} · ${fmtP(r.period)}`,
+    const fromSetup = new Set(tplChildren);
+    const rank = r => fromSetup.has(r.templateId) ? 0 : 1;
+    const rows = reports
+      .filter(r => matchesQuery(picker.q, [r.name, r.status, r.period]))
+      .sort((a, b) => rank(a) - rank(b)
+        || String(b.period || '').localeCompare(String(a.period || '')))
+      .map(r => ({ id: r.id, n: r.name,
+                   m: `${r.status} · ${fmtP(r.period)}`
+                      + (fromSetup.has(r.templateId) ? ' · declared in this report’s Setup' : ''),
                    taken: has(c => c.citedReportId === r.id) }));
+    const declared = rows.filter(r => r.m.includes('Setup')).length;
     body = <>
       {search('Search reports…')}
       {list(rows, r => onCite({ kind: 'Child Report', citedReportId: r.id, citedReportName: r.n,
                                 label: 'Report: ' + r.n }))}
+      <div className="holder" style={{ marginTop: 6 }}>
+        {tplChildren.length
+          ? declared
+            ? <>Occurrences of the {tplChildren.length} child template{tplChildren.length===1?'':'s'} this
+                report’s Setup declares are listed first. Anything else is still offered — a report may
+                rest on something the Setup did not anticipate.</>
+            : <>This report’s Setup declares {tplChildren.length} child
+                template{tplChildren.length===1?'':'s'}, but no occurrence of
+                {tplChildren.length===1?' it':' them'} exists yet.</>
+          : <>This report’s Setup declares no child report.</>}</div>
     </>;
   } else if (k === 'POC') {
     const rows = exec.pocs;
