@@ -2943,6 +2943,84 @@ a `||` fallback string) as a free identifier — checked by eye, it is the
 same single-quoted-string false positive the scanner is documented to
 produce, not a real bug (see §8's own note on the scanner's known limits).
 
+**Both apps rebuilt and pushed to Code App Development with this change,
+same recipe as "Deployment, settled" below** — `4912152c…` Governance and
+`83db0ef8…` Leadership, the live pair, not the 17 Sep orphans. Both pushed
+successfully on the **first** attempt, no `generateResourceStorage` retry
+needed this time. Governance carries this change too (the shared `src/`
+edit — the new `fetchReportTemplateHierarchyContent()` in `dataverse.js` —
+touches the Template detail file only by adding two columns to existing
+selects; nothing in Governance Setup's own screens changed).
+
+**Report Templates made the default view, same day, per explicit ask.**
+`view` initialises to `'tpl'` instead of `'occ'` — one line
+(`useState('tpl')`). The Occurrences tree's own fetch was already
+unconditional on mount, so nothing there changes; the Templates fetch was
+already gated on `view==='tpl'`, so it now simply fires immediately instead
+of on first toggle. Not yet redeployed as of this note — see whether a push
+after this entry actually shipped it before assuming the running apps open
+on Templates.
+
+### 21 Sep, later: the Report Templates detail modal can now VIEW the attached file, not just say it exists
+
+Per an explicit ask to match what Governance Setup's own Template Details
+tab already does (`ReportSummary`/`SectionsBlock` in `GovernanceApp.jsx`,
+built 20 Sep — see the "attached files can be READ" entry above). The detail
+modal from the 21 Sep entry above used to just say a file was attached and
+point at Governance Setup to go look at it; it now opens the same read-only
+`FilePreview` component Governance uses, straight from `Hierarchy.jsx`.
+
+**Reused, not reimplemented.** `src/shared/FilePreview.jsx` is already
+app-agnostic — it takes `{entitySet, recordId, field, name}` and reads
+through `downloadFileColumn()` in `xenv.js`, which goes through the same
+cross-environment adapter every other read in this app uses. There was
+nothing Governance-specific to port: the Template's own file is
+`{entitySet:'lm_report_templates', recordId:<template id>, field:
+'lm_attachementfile'}`; a Section's File citation is
+`{entitySet:'lm_reporttemplatesectionitemses', field:'lm_attachementfile'}`
+with the Section Item's own id — the exact two call shapes
+`ReportSummary`/`SectionsBlock` already use, copied as-is. One piece of
+state (`tplFileView`) holds whichever of the two is open, same "only one can
+be open at a time, they render identically" reasoning `ReportSummary`
+documents for its own `view` state; a `useEffect` clears it whenever
+`tplDetail` changes, so a stale preview can't survive onto a different
+Template. The preview opens as a **second, stacked** `Modal` on top of the
+detail modal (matching Governance's own nested "Setup Detail → file
+preview" shape) rather than swapping the detail modal's content in place —
+the one known cost of that choice is that **Escape closes both** layers at
+once, since each `Modal` instance registers its own listener; harmless, not
+fixed, since it is the same shape Governance already ships.
+
+⚠️ **A real regression, found and fixed in the same pass: importing
+`FilePreview.jsx` collided with an existing STATIC `import * as XLSX from
+'xlsx'` already in `LeadershipApp.jsx`** (the Excel-reading proof of concept
+wired into `NewReportModal`'s file field, §5's 04-05 Sep entries — itself
+currently unreachable from any nav path, since that modal is still the
+orphaned one from 02 Sep, §7.8). `FilePreview.jsx` loads `xlsx` with a
+dynamic `import()` specifically so the ~500kB library ships in its own
+chunk, paid for only when a preview actually opens (documented in
+`FilePreview.jsx`'s own comments, and in the "attached files can be READ"
+§5 entry). Rollup cannot split a module into a lazy chunk while something
+else in the same bundle imports it statically, so the two collapsed into
+one addition to the Leadership app's **main** chunk — confirmed in the
+build output: `747.78 kB` → `1,251.37 kB` in one JS file, plus a Rollup
+`INEFFECTIVE_DYNAMIC_IMPORT` warning naming exactly this. Governance was
+unaffected — it has no such static import, so its own `FilePreview` usage
+(the 20 Sep entry) always split correctly, which is why this went unnoticed
+until Leadership got a `FilePreview` call site too.
+
+**Fixed by converting `readExcelComponents()`'s import to dynamic as well**
+(`LeadershipApp.jsx`) — `const XLSX = await import('xlsx')` inside the
+function, matching `FilePreview.jsx`'s own convention, rather than scoping
+or deferring `FilePreview`'s import instead. `XLSX` was referenced nowhere
+else in the file, so the top-level static import was removed outright.
+Confirmed by the rebuilt output: `xlsx-DwRHmDrW.js` (492.52 kB) is its own
+chunk again, and the main chunk is `757.60 kB` — roughly +10 kB over the
+pre-`FilePreview` baseline (`747.78 kB`), which is `FilePreview.jsx`'s own
+code, not the library.
+
+**Not yet deployed** — built and green (both apps), not pushed.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### NEW this session: group-wide (Stage 3/4) roles now live on the parent row

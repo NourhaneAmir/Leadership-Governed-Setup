@@ -35,6 +35,7 @@ import { use } from '../store.jsx';
 import { Btn, Tag, Modal, Empty, Note, Combo } from '../../../shared/ui.jsx';
 import { fmtP } from '../../../shared/format.js';
 import { DiagChip } from '../domain.jsx';
+import { FilePreview, canPreview } from '../../../shared/FilePreview.jsx';
 import { fetchReportOccurrenceContent, fetchReportTemplateHierarchyContent,
          REPORT_TYPE, REPORT_CATEGORY } from '../../../services/dataverse.js';
 
@@ -52,7 +53,7 @@ export function ScreenHierarchy(){
   const L  = useMemo(()=>dvLookup || {}, [dvLookup]);
   const nm = (fn, id) => (id && typeof fn === 'function' ? fn(id) : null);
 
-  const [view,setView]     = useState('occ');   // 'occ' | 'tpl'
+  const [view,setView]     = useState('tpl');   // 'occ' | 'tpl' -- Templates is the default
 
   const [q,setQ]           = useState('');
   const [type,setType]     = useState('');
@@ -332,6 +333,14 @@ export function ScreenHierarchy(){
   const [ttype,setTtype]     = useState('');
   const [tplFocus,setTplFocus]   = useState(null);
   const [tplDetail,setTplDetail] = useState(null);
+  /* The file being previewed inside the detail modal, or null -- one piece
+     of state for both sources (the Template's own file and any Section's
+     File citation), same shape Governance Setup's Template Details tab
+     already uses for the identical choice. Reset whenever the detail modal
+     itself changes, so a stale preview can't survive onto a different
+     Template. */
+  const [tplFileView,setTplFileView] = useState(null);
+  useEffect(()=>{ setTplFileView(null); },[tplDetail]);
 
   const templates = useMemo(()=>tplContent?.templates || [], [tplContent]);
   const tplById = useMemo(()=>new Map(templates.map(t=>[t.id,t])), [templates]);
@@ -639,8 +648,15 @@ export function ScreenHierarchy(){
           sub={[tplTypeLabel(tplDet), tplCategoryLabel(tplDet)].filter(Boolean).join(' · ')}
           footer={<Btn onClick={()=>setTplDetail(null)}>Close</Btn>}>
           {tplDet.hasFile
-            ? <Note k="info" ic="📎">Template file attached{tplDet.fileStoredName?': '+tplDet.fileStoredName:''}.
-                Open this Setup in Governance Setup to view or replace it.</Note>
+            ? <Note k="info" ic="📎">
+                <span className="fv-row">
+                  Template file attached{tplDet.fileStoredName?': '+tplDet.fileStoredName:''}.
+                  <button type="button" className="fv-link" onClick={()=>setTplFileView({
+                    entitySet:'lm_report_templates', recordId:tplDet.id,
+                    field:'lm_attachementfile', name:tplDet.fileStoredName||'Template file'})}>
+                    {canPreview(tplDet.fileStoredName) ? 'View' : 'Download'}</button>
+                </span>
+              </Note>
             : null}
           <div className="flbl" style={{marginBottom:6,marginTop:tplDet.hasFile?12:0}}>Sections</div>
           {tplSectionsOf(tplDet).length===0
@@ -657,11 +673,27 @@ export function ScreenHierarchy(){
                         {childItems.map(it=>tplName(it.childTemplateId)).join(', ')}</div>
                     : null}
                   {fileItems.length
-                    ? <div className="csub" style={{marginBottom:0}}>
-                        📎 {fileItems.map(it=>it.fileStoredName || it.label || 'file').join(', ')}</div>
+                    ? <div className="csub" style={{marginBottom:0,display:'flex',flexDirection:'column',gap:3}}>
+                        {fileItems.map(it=>
+                          <span key={it.id} className="fv-row">
+                            📎 {it.fileStoredName || it.label || 'File'}
+                            <button type="button" className="fv-link" onClick={()=>setTplFileView({
+                              entitySet:'lm_reporttemplatesectionitemses', recordId:it.id,
+                              field:'lm_attachementfile', name:it.fileStoredName||it.label||'File'})}>
+                              {canPreview(it.fileStoredName) ? 'View' : 'Download'}</button>
+                          </span>)}
+                      </div>
                     : null}
                 </div>;
               })}
+        </Modal>
+      : null}
+
+    {tplFileView
+      ? <Modal wide title={tplFileView.name}
+          sub="Read-only — this shows the stored file and does not change it."
+          onClose={()=>setTplFileView(null)}>
+          <FilePreview {...tplFileView}/>
         </Modal>
       : null}
     </>}

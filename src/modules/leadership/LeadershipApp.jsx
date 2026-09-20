@@ -21,7 +21,6 @@ import { PEOPLE, P, RPT_SETUPS, RS, DIAG, DiagChip, PROC_REG, PR, BI_REPORTS, BI
   STRAT, ST, PM_ENTRIES, PME, ISSUES, ISS, rptName } from './domain.jsx';
 import { Tag, Btn, Note, OD, Bar, Field, Empty, Stat, KVBlock, Rail,
          Modal, Pills, ScoreHero } from '../../shared/ui.jsx';
-import * as XLSX from 'xlsx';
 import { fetchMeetingOccurrences, fetchReportOccurrences, createMeetingOccurrence,
          createReportOccurrence, updateReportOccurrenceFile,
          updateMeetingOccurrenceStatus, updateMeetingOccurrenceAttendance, updateMeetingOccurrence,
@@ -4281,6 +4280,15 @@ const fmtFileSize = b => b<1024?b+' B' : b<1048576?(b/1024).toFixed(1)+' KB' : (
    enough to locate a checklist's required content before wiring this to
    Dataverse. Nothing here is uploaded or saved. */
 async function readExcelComponents(file){
+  /* Loaded on demand, same reasoning FilePreview.jsx already documents for
+     its own copy of this import: xlsx is a large dependency and this proof
+     of concept is rare, so a static import would make every page load pay
+     for it. A static import here also defeated FilePreview's own dynamic
+     one -- Rollup cannot split a module into its own lazy chunk while
+     something else in the same bundle imports it statically, so the two
+     copies collapsed into one ~500kB addition to the MAIN chunk instead of
+     a chunk loaded only when a file preview actually opens. */
+  const XLSX = await import('xlsx');
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, {type:'array'});
   const names = wb.Workbook?.Names || [];
