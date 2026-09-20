@@ -2260,6 +2260,110 @@ new Section Item File citation above — this was the OLD per-Section link
 field the 17 Sep entries already built and are now retiring "for now,"
 exactly like the parent Report Template's equivalent field earlier today.
 
+### 20 Sep, later: Project graduates from a label-only citation to a real link, via `cr603_projects`
+
+Per an explicit ask: refresh `lm_reportsectioncitations` (`pac modelbuilder
+build -enf lm_reportsectioncitations` — this one resolves on the plural
+form directly, no singular/plural guessing needed) and found a new
+`lm_project` lookup column, added the same way `lm_POC`/`lm_Strategy`/
+`lm_BIReport`/`lm_Task` were on 19-20 Sep. `lm_kind`'s citation-kind choice
+already had `Project = 5` from the original 10-kind vocabulary (02 Sep) —
+only the lookup was missing, exactly the same gap those four closed. The
+table the lookup targets was given directly (`cr603_projects`), confirmed
+by generating it alongside the citations table in the same modelbuilder
+call (a relationship only emits when both entities are in the generation
+set — the same trick documented in §6 for the 19-20 Sep lookups).
+
+**`cr603_projects` is a large, pre-existing table (entity set
+`cr603_projectses` — the same doubled-`s` publisher convention as
+`cr603_chklst_departmentses`/`crd04_specialtieses`) owned by another
+module**, with dozens of columns (dates, SPI/variance scoring, corporate
+theme, hold/cancel workflow, a `project_` prefix in addition to `cr603_`).
+Only seven are read: `cr603_projectname` (primary name), `cr603_projectstatus`
+and `cr603_projectcategory` (both small governed choice lists, decoded via
+new `PROJECT_STATUS`/`PROJECT_CATEGORY` maps in `dataverse.js`, codes
+confirmed live), and `_cr603_region_value`/`_cr603_bu_value`/
+`_cr603_department_value` (three org lookups, kept as id+formatted-name
+pairs). New `fetchProjects()` mirrors `fetchStrategyPocs()`'s shape exactly.
+
+**Wired exactly like POC**, in both files that already carry the other four
+picked kinds:
+- `dataverse.js`: `_lm_project_value` added to both citation reads
+  (`fetchReportOccurrenceContent`'s inline select and
+  `EDIT_CITATION_SELECT`), `projectId`/`projectName` added to both
+  citation-mapping blocks, and `reportCitationRow()` gained
+  `if(c.projectId) row['lm_Project@odata.bind'] = '/cr603_projectses(' + c.projectId + ')';`
+  alongside the other four.
+- `BuildReport.jsx`: `Project` moved from `LABEL_KINDS` to `PICKED_KINDS`
+  (`LABEL_KINDS` is now just `['Issue']` — Project was the only other one
+  left); new `fetchProjects()` call joins the existing
+  POC/Strategy/BIReport/Task `Promise.all`; `citeTarget()` gained
+  `c.projectName`; a new `k === 'Project'` branch in `CitePicker` — **the
+  "any project filter or dropdown" half of the ask** — offers **five**
+  filters (Region, Business Unit, Department, Status, Category), one more
+  than POC's own picker. Region/BU/Department are derived from the fetched
+  Projects themselves (same reasoning already used for POC's Region/
+  Specialty/KPI filters: a filter listing a value nothing carries only ever
+  empties the list); Status and Category use the full governed option sets
+  instead, so every real status/category shows even where no Project
+  currently uses it. `crefCls('Project')` already returned the same 'str'
+  style POC/Strategy use — added when those were wired, evidently in
+  anticipation of this — so no styling change was needed.
+
+Not built: `cr603_projects` is read-only here, same as every other picked
+kind (POC/Strategy/BI Report) — this app cites a Project, it does not create
+or edit one.
+
+### 20 Sep, later still: the File-column upload bug found, real fix confirmed live — it was the `content-type` header, not the base64 body
+
+The two File-upload features built earlier today (Report Template's own
+"Template file", and a Section's "Uploaded file" citation) failed on every
+real attempt, with no useful reason visible until the error-surfacing fix
+in this same entry made it show up: **"The request entity's media type
+'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' is not
+supported for this resource"** (and the equivalent for `.xls`,
+`application/vnd.ms-excel`).
+
+**Root cause: the `content-type` header was set to the file's own real MIME
+type** (`file.type` from the browser's File API), but the connector's
+"Upload a file or image to selected environment" action only *consumes*
+one literal value — `application/octet-stream` — per its own cached
+schema. Sending anything else is rejected outright by the gateway before
+it ever reaches Dataverse. **The base64-encoding assumption documented
+this morning was correct all along** — once the header was fixed, the
+upload succeeded on the first retry with no other change.
+
+**Fix:** `uploadFileColumn()` (`xenv.js`) now hardcodes
+`'application/octet-stream'` as the header, unconditionally, and no longer
+accepts a `contentType` parameter at all — the per-file MIME type
+(`pendingFile.type` / `it.fileType`) was threaded all the way from the
+`<input type="file">` handlers down to this call and has been removed
+everywhere along that path, since nothing downstream ever needs it: the
+file's real name and extension still travel correctly via the separate
+`fileName` parameter, which is what Dataverse and anything downloading the
+file later actually go by. **Do not reintroduce a per-file content-type
+here** — it is the one thing in this whole feature that is confirmed to
+break the upload.
+
+**How this was actually diagnosed, worth repeating for the next
+mystery failure:** the first two attempts to explain the reported "nothing
+saved" produced no evidence either way, because the error was being
+correctly thrown but only ever reported as a generic "N related row(s)
+failed to save — check the console," which said nothing about a file being
+involved at all. Splitting a Section Item's file-upload failure into its
+own tagged error (`what: 'file upload for "<name>"'`, separate from a
+row-creation failure, since by the time the upload runs the citation row
+itself has already saved) and putting that failure's real `error.message`
+directly in the toast — instead of just the table name — is what actually
+surfaced the fix. **The same generic "N related rows failed, check
+console" pattern still exists on the Meeting Template branch and on
+`duplicateFrom`'s error handling** (`GovernanceApp.jsx`, the other two
+`.map(e=>e.table)` toasts) — neither has been reported broken, so neither
+was touched, but the same fix is one line away if either ever needs it.
+
+Both Code App Development apps (`786c1b14…` Governance, `d61c6237…`
+Leadership) rebuilt and re-pushed with this fix.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### NEW this session: group-wide (Stage 3/4) roles now live on the parent row

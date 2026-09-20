@@ -29,6 +29,7 @@ import { fetchReportOccurrenceForEdit, saveReportOccurrenceContent, submitReport
          fetchKpiAchievements, pickAchievement,
          fetchStrategyPocs, fetchExecutionCategories, fetchSpecialties,
          fetchStrategies, fetchBiReportDashboards, fetchTasks, createTask,
+         fetchProjects, PROJECT_STATUS, PROJECT_CATEGORY,
          POC_STATUS, fetchAssignableUsers, fetchBiReportsByKpi,
          SECTION_ANGLE, SECTION_BREAKDOWN_DIM } from '../../../services/dataverse.js';
 
@@ -44,12 +45,12 @@ const ANGLE_CLS = Object.fromEntries(ANGLES);
    holds the citation's own parent section. */
 /* Resolves to a record through a real lookup column on the citation row. */
 const LIVE_KINDS = ['KPI', 'Breakdown', 'Process', 'Child Report'];
-/* Chosen from a governed table, but stored as its name: lm_reportsectioncitations
-   has no lookup column for any of these four yet. The citation carries the id
-   regardless, so adding those columns is a save-path change, not a UI one. */
-const PICKED_KINDS = ['POC', 'Strategy', 'BI Report', 'Task'];
+/* Chosen from a governed table and saved as a real lookup on
+   lm_reportsectioncitations. Project joined this list later than the other
+   four (its lm_Project lookup was added afterwards) but works identically. */
+const PICKED_KINDS = ['POC', 'Strategy', 'BI Report', 'Task', 'Project'];
 /* Still free text -- no table in this app. */
-const LABEL_KINDS = ['Project', 'Issue'];
+const LABEL_KINDS = ['Issue'];
 
 const EDITABLE = r => !!r && !r.locked && (r.status === 'Draft' || r.status === 'Returned');
 const BODY_MAX = 4000;
@@ -77,7 +78,7 @@ const fingerprint = (name, sections) => JSON.stringify([
    lookups existed have. */
 const citeTarget = c =>
   c.kpiName || c.processName || c.citedReportName ||
-  c.pocName || c.strategyName || c.biName || c.taskName ||
+  c.pocName || c.strategyName || c.biName || c.taskName || c.projectName ||
   c.label || '(no target recorded)';
 
 const crefCls = kind =>
@@ -211,10 +212,10 @@ export function ScreenBuildReport(){
   /* The child templates this report's own Template declares in its sections --
      what the Setup said this report rests on. Read once per report. */
   const [tplChildren, setTplChildren] = useState([]);
-  /* The four governed lists behind PICKED_KINDS, plus the two POC filters that
-     are their own tables. Read once, like the KPI and Process catalogues. */
+  /* The governed lists behind PICKED_KINDS, plus the two POC filters that are
+     their own tables. Read once, like the KPI and Process catalogues. */
   const [exec, setExec]         = useState({ pocs:null, cats:null, specs:null,
-                                             strategies:null, bi:null, tasks:null });
+                                             strategies:null, bi:null, tasks:null, projects:null });
 
   /* The report being built follows the app's selection, so "Edit" elsewhere
      (and a Report link from any screen) can open one here. */
@@ -275,9 +276,9 @@ export function ScreenBuildReport(){
     return () => { live = false; };
   }, []);
 
-  /* What POC, Strategy, BI Report and Task cite. Each falls back to an empty
-     list on failure so one unreadable table cannot stop the others, or the
-     report, from working. */
+  /* What POC, Strategy, BI Report, Task and Project cite. Each falls back to
+     an empty list on failure so one unreadable table cannot stop the others,
+     or the report, from working. */
   useEffect(() => {
     let live = true;
     Promise.all([
@@ -287,8 +288,9 @@ export function ScreenBuildReport(){
       fetchStrategies().catch(e => { console.warn('[dataverse] strategies:', e); return []; }),
       fetchBiReportDashboards().catch(() => []),
       fetchTasks().catch(e => { console.warn('[dataverse] tasks:', e); return []; }),
-    ]).then(([pocs, cats, specs, strategies, bi, tasks]) => {
-      if (live) setExec({ pocs, cats, specs, strategies, bi, tasks });
+      fetchProjects().catch(e => { console.warn('[dataverse] projects:', e); return []; }),
+    ]).then(([pocs, cats, specs, strategies, bi, tasks, projects]) => {
+      if (live) setExec({ pocs, cats, specs, strategies, bi, tasks, projects });
     });
     return () => { live = false; };
   }, []);
@@ -1058,6 +1060,56 @@ function CitePicker({ picker, setPicker, onCite, catalog, inScope, reports, take
           + Raise a new task</Btn>
       </>;
     }
+  } else if (k === 'Project') {
+    const rows = exec.projects;
+    if (!rows) body = <div className="holder">Reading projects…</div>;
+    else {
+      /* Region, Business Unit and Department are offered from the projects
+         themselves, same reasoning as the POC picker's filters -- a filter
+         listing a value no project carries only ever empties the list.
+         Status and Category come from the full governed option sets, so
+         they show even where no project yet uses a given value. */
+      const opts = (idKey, nameKey) => {
+        const seen = new Map();
+        for (const p of rows) if (p[idKey]) seen.set(p[idKey], p[nameKey] || '(unnamed)');
+        return [...seen].map(([id, n]) => ({ id, n })).sort((a, b) => a.n.localeCompare(b.n));
+      };
+      const shown = rows.filter(p =>
+        (!picker.region || p.regionId === picker.region) &&
+        (!picker.bu     || p.buId === picker.bu) &&
+        (!picker.dept   || p.deptId === picker.dept) &&
+        (!picker.status || String(p.statusCode) === picker.status) &&
+        (!picker.cat    || String(p.categoryCode) === picker.cat) &&
+        matchesQuery(picker.q, [p.name, p.status, p.category, p.regionName, p.buName, p.deptName]));
+      body = <>
+        {search('Search projects…')}
+        <div className="cpick-f">
+          <Sel v={picker.region} on={v => set({ region: v })} all="All regions"
+               opts={opts('regionId', 'regionName')}/>
+          <Sel v={picker.bu} on={v => set({ bu: v })} all="All business units"
+               opts={opts('buId', 'buName')}/>
+          <Sel v={picker.dept} on={v => set({ dept: v })} all="All departments"
+               opts={opts('deptId', 'deptName')}/>
+          <Sel v={picker.status} on={v => set({ status: v })} all="Any status"
+               opts={Object.entries(PROJECT_STATUS).map(([v, n]) => ({ id: v, n }))}/>
+          <Sel v={picker.cat} on={v => set({ cat: v })} all="All categories"
+               opts={Object.entries(PROJECT_CATEGORY).map(([v, n]) => ({ id: v, n }))}/>
+        </div>
+        {list(shown.map(p => ({
+          id: p.id, n: p.name,
+          m: [p.status, p.category, p.regionName || p.buName, p.deptName].filter(Boolean).join(' · '),
+          taken: cited('Project', p.id, 'projectId', 'Project: ' + p.name),
+        })), p => {
+          const src = shown.find(x => x.id === p.id);
+          onCite({ kind: 'Project', projectId: src.id, label: 'Project: ' + src.name });
+        })}
+        <div className="holder" style={{ marginTop: 6 }}>
+          {rows.length
+            ? <>{shown.length} of {rows.length} projects. Filters narrow each other — clear them to see
+                everything.</>
+            : <><b>No projects recorded yet.</b> The table exists but is empty.</>}</div>
+      </>;
+    }
   } else {
     body = <>
       <div style={{ display: 'flex', gap: 6 }}>
@@ -1079,7 +1131,7 @@ function CitePicker({ picker, setPicker, onCite, catalog, inScope, reports, take
         <Btn key={x} k={'sm' + (k === x ? ' pri' : '')}
           onClick={() => set({ kind: x, q: '', text: '', kpiId: '', dim: '',
                                region: '', status: '', cat: '', spec: '', kpi: '',
-                               newTask: false })}>{x}</Btn>)}
+                               bu: '', dept: '', newTask: false })}>{x}</Btn>)}
     </div>
     {body}
   </div>;

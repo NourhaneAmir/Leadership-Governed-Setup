@@ -784,6 +784,7 @@ async function createSectionItems(checklistId, items, errors){
   const bind = `/lm_reporttemplatecontentchecklists(${checklistId})`;
   for(const it of (items||[])){
     if(!it?.type) continue;
+    let itemId = null;
     try{
       const row = {
         lm_sectionitemname: (it.label || it.type).slice(0,100),
@@ -801,17 +802,25 @@ async function createSectionItems(checklistId, items, errors){
       if(it.type==='Child Template' && it.childTemplateId)
         row['lm_ChildReportTemplate@odata.bind'] = `/lm_report_templates(${it.childTemplateId})`;
       const created = await Lm_reporttemplatesectionitemsesService.create(row);
-      /* The row must exist before a File column has anything to attach
-         content to -- same reason the parent Report Template's own upload
-         is deferred until after its create/update resolves an id. */
-      if(it.type==='File' && it.fileBase64){
-        const itemId = created?.data?.lm_reporttemplatesectionitemsid;
-        if(itemId){
-          await uploadFileColumn('lm_reporttemplatesectionitemses', itemId, 'lm_attachementfile',
-            it.fileName || 'file', it.fileBase64, it.fileType);
-        }
+      itemId = created?.data?.lm_reporttemplatesectionitemsid;
+    }catch(e){ errors.push({ table:'lm_reporttemplatesectionitemses', error:e }); continue; }
+    /* The row must exist before a File column has anything to attach content
+       to -- same reason the parent Report Template's own upload is deferred
+       until after its create/update resolves an id. Tagged with its own
+       `what` and kept OUT of the try/catch above: the citation row itself
+       already saved successfully by this point, so a failed upload here is
+       "the file didn't attach", not "the row failed to save" -- lumping the
+       two together under one generic table-name error hid exactly which
+       part failed and why (see PROJECT-CONTEXT.md §5, 20 Sep). */
+    if(it.type==='File' && it.fileBase64 && itemId){
+      try{
+        await uploadFileColumn('lm_reporttemplatesectionitemses', itemId, 'lm_attachementfile',
+          it.fileName || 'file', it.fileBase64);
+      }catch(e){
+        errors.push({ table:'lm_reporttemplatesectionitemses', error:e,
+          what:`file upload for "${it.fileName || 'file'}"` });
       }
-    }catch(e){ errors.push({ table:'lm_reporttemplatesectionitemses', error:e }); }
+    }
   }
 }
 const Lm_reporttemplatedepartmentfunctionsService = dvTable('lm_reporttemplatedepartmentfunctions', 'lm_reporttemplatedepartmentfunctionid');
@@ -1475,6 +1484,11 @@ const Crd04_specialtiesesService    = dvTable('crd04_specialtieses', 'crd04_spec
 const Strategy_strategiesService    = dvTable('strategy_strategies', 'strategy_strategyid');
 const Lm_bireportdashboardsService  = dvTable('lm_bireportdashboards', 'lm_bireportdashboardid');
 const Hx_taskesService              = dvTable('hx_taskses', 'hx_tasksid');
+/* cr603_projects -- entity set cr603_projectses (double-s, same publisher
+   convention as cr603_chklst_departmentses/crd04_specialtieses), confirmed
+   via `pac modelbuilder build -enf cr603_projects`. Read-only: this app
+   only cites a Project, never creates or edits one. */
+const Cr603_projectsesService       = dvTable('cr603_projectses');
 
 /** POC status, read from the live option set stf_stfpocstatus. */
 export const POC_STATUS = { 1:'Active', 2:'Succeeded', 3:'Failed', 4:'Retired' };
@@ -1566,6 +1580,45 @@ export async function fetchStrategies(){
     regionName: r['_strategy_region_value' + FV] || null,
     kpiId: r._strategy_kpi_value || null,
     kpiName: r['_strategy_kpi_value' + FV] || null,
+  })).sort((a,b)=>a.name.localeCompare(b.name));
+}
+
+/** Project status, read from the live option set cr603_projectstatus. */
+export const PROJECT_STATUS = {
+  322020000:'In Progress', 322020001:'Completed', 322020002:'Not Started',
+  322020003:'Delayed', 322020004:'Cancelled', 322020005:'Pending',
+  322020006:'On Schedule', 819930001:'On Hold',
+};
+/** Project category, read from the live option set cr603_projectcategories. */
+export const PROJECT_CATEGORY = {
+  322020000:'Revenue Generating', 322020001:'Non-Revenue Generating', 322020002:'Cost Saving',
+};
+
+/** Projects -- cr603_projects. A large pre-existing table (not owned by this
+ *  app, dozens of columns spanning several prefixes) -- only what a citation
+ *  and its filters need is read. Region/Business Unit/Department are offered
+ *  from the projects themselves in the picker rather than from their own
+ *  tables, same reasoning as fetchStrategyPocs' filters: a filter listing a
+ *  value no Project carries only ever empties the list. */
+export async function fetchProjects(){
+  const res = await Cr603_projectsesService.getAll({
+    select: ['cr603_projectsid','cr603_projectname','cr603_projectstatus','cr603_projectcategory',
+             '_cr603_region_value','_cr603_bu_value','_cr603_department_value'],
+    filter: 'statecode eq 0',
+  });
+  return (res?.data ?? []).map(r => ({
+    id: r.cr603_projectsid,
+    name: r.cr603_projectname || '(unnamed project)',
+    status: PROJECT_STATUS[r.cr603_projectstatus] || null,
+    statusCode: r.cr603_projectstatus ?? null,
+    category: PROJECT_CATEGORY[r.cr603_projectcategory] || null,
+    categoryCode: r.cr603_projectcategory ?? null,
+    regionId: r._cr603_region_value || null,
+    regionName: r['_cr603_region_value' + FV] || null,
+    buId: r._cr603_bu_value || null,
+    buName: r['_cr603_bu_value' + FV] || null,
+    deptId: r._cr603_department_value || null,
+    deptName: r['_cr603_department_value' + FV] || null,
   })).sort((a,b)=>a.name.localeCompare(b.name));
 }
 
@@ -2294,10 +2347,9 @@ export async function fetchMeetingTemplatesList(){
  *  @param {string} templateId lm_report_templateid of an EXISTING row
  *  @param {string} fileName original file name, shown back by Dataverse
  *  @param {string} base64Content the file's bytes, base64-encoded
- *  @param {string} [contentType] defaults to application/octet-stream
  */
-export async function uploadReportTemplateFile(templateId, fileName, base64Content, contentType){
-  return uploadFileColumn('lm_report_templates', templateId, 'lm_attachementfile', fileName, base64Content, contentType);
+export async function uploadReportTemplateFile(templateId, fileName, base64Content){
+  return uploadFileColumn('lm_report_templates', templateId, 'lm_attachementfile', fileName, base64Content);
 }
 
 export async function fetchReportTemplateDetail(id){
@@ -2751,7 +2803,8 @@ export async function fetchReportOccurrenceContent(){
       select: ['lm_reportsectioncitationsid','lm_name','lm_kind','lm_breakdowndimension',
                '_lm_citedsection_value','_lm_kpi_value','_lm_process_value',
                '_lm_citedreportoccurrence_value',
-               '_lm_poc_value','_lm_strategy_value','_lm_bireport_value','_lm_task_value'],
+               '_lm_poc_value','_lm_strategy_value','_lm_bireport_value','_lm_task_value',
+               '_lm_project_value'],
     }),
   ]);
   assertSuccess(secRes);
@@ -2788,6 +2841,8 @@ export async function fetchReportOccurrenceContent(){
     biName: c['_lm_bireport_value' + FV] || null,
     taskId: c._lm_task_value || null,
     taskName: c['_lm_task_value' + FV] || null,
+    projectId: c._lm_project_value || null,
+    projectName: c['_lm_project_value' + FV] || null,
   }));
 
   return { sections, citations };
@@ -2808,7 +2863,7 @@ const EDIT_SECTION_SELECT = ['lm_reportoccurrencesectionsid','lm_heading','lm_bo
   'lm_sequence','lm_source','_lm_reportoccurrence_value','_createdby_value','createdon'];
 const EDIT_CITATION_SELECT = ['lm_reportsectioncitationsid','lm_name','lm_kind','lm_breakdowndimension',
   '_lm_citedsection_value','_lm_kpi_value','_lm_process_value','_lm_citedreportoccurrence_value',
-  '_lm_poc_value','_lm_strategy_value','_lm_bireport_value','_lm_task_value'];
+  '_lm_poc_value','_lm_strategy_value','_lm_bireport_value','_lm_task_value','_lm_project_value'];
 
 /**
  * One Report Occurrence's Sections, in order, each carrying its Citations --
@@ -2862,6 +2917,8 @@ export async function fetchReportOccurrenceForEdit(occurrenceId){
       biName: c['_lm_bireport_value' + FV] || null,
       taskId: c._lm_task_value || null,
       taskName: c['_lm_task_value' + FV] || null,
+      projectId: c._lm_project_value || null,
+      projectName: c['_lm_project_value' + FV] || null,
     });
   }
 
@@ -2892,13 +2949,14 @@ function reportCitationRow(c, sectionId){
   if(c.kpiId)         row['lm_KPI@odata.bind'] = `/strategy_kpises(${c.kpiId})`;
   if(c.processId)     row['lm_Process@odata.bind'] = `/strategy_processes(${c.processId})`;
   if(c.citedReportId) row['lm_CitedReportOccurrence@odata.bind'] = `/lm_reportoccurrences(${c.citedReportId})`;
-  /* The four added 20 Sep. Targets confirmed from the relationship names in
-     live metadata. Bound only when set, like every lookup above -- an empty
-     bind path is a 400. */
+  /* Four added 20 Sep, a fifth (Project) added later the same week. Targets
+     confirmed from the relationship names in live metadata. Bound only when
+     set, like every lookup above -- an empty bind path is a 400. */
   if(c.pocId)         row['lm_POC@odata.bind'] = `/stf_strategypocs(${c.pocId})`;
   if(c.strategyId)    row['lm_Strategy@odata.bind'] = `/strategy_strategies(${c.strategyId})`;
   if(c.biId)          row['lm_BIReport@odata.bind'] = `/lm_bireportdashboards(${c.biId})`;
   if(c.taskId)        row['lm_Task@odata.bind'] = `/hx_taskses(${c.taskId})`;
+  if(c.projectId)     row['lm_Project@odata.bind'] = `/cr603_projectses(${c.projectId})`;
   if(c.breakdown && SECTION_BREAKDOWN_DIM_KEY[c.breakdown])
     row.lm_breakdowndimension = SECTION_BREAKDOWN_DIM_KEY[c.breakdown];
   return row;

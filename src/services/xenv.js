@@ -225,13 +225,22 @@ export function dvTable(entitySet, pkField) {
    standard Power Platform connector convention for a binary body carried
    over this JSON-based invoke transport is a base64 string, so callers
    here pass base64 (see dataverse.js's uploadReportTemplateFile(), which
-   does the FileReader -> base64 step). UNVERIFIED against live Dataverse --
-   this is the first time this codebase has attempted a real binary upload;
-   confirm the round-trip (upload, then re-download or check the column in
-   the maker portal) the first time this runs for real. */
-export async function uploadFileColumn(entitySet, recordId, fieldName, fileName, base64Content, contentType) {
+   does the FileReader -> base64 step). CONFIRMED against live Dataverse
+   (20 Sep): the base64 body was correct on the first try -- the only real
+   bug was the content-type header (see below).
+
+   ⚠️ The `content-type` header MUST be exactly "application/octet-stream",
+   never the file's own real MIME type. The connector's `consumes` list
+   names only that one value, and the gateway rejects anything else with
+   "The request entity's media type '...' is not supported for this
+   resource" -- confirmed live for both .xlsx and .xls. This is a transport
+   requirement only: the file's real name and extension still travel
+   correctly via the separate `fileName` parameter below (Dataverse and
+   anything downloading the file later go by that, not by this header), so
+   forcing it loses nothing. Do not resurrect a per-file content-type here. */
+export async function uploadFileColumn(entitySet, recordId, fieldName, fileName, base64Content) {
   const res = await DV.UpdateEntityFileImageFieldContentWithOrganization(
-    contentType || 'application/octet-stream',
+    'application/octet-stream',
     DATA_ORG,
     entitySet,
     recordId,

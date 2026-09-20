@@ -1709,7 +1709,7 @@ function SectionRowEditor({sec,index,templateId,onPatch,onRemove}){
           }
           const id=uid('si');
           fileToBase64(file).then(base64=>{
-            PENDING_SECTION_ITEM_FILE.set(id, {name:file.name, type:file.type||'application/octet-stream', base64});
+            PENDING_SECTION_ITEM_FILE.set(id, {name:file.name, base64});
             addItem({id, type:'File', fileName:file.name});
           }).catch(err=>alert('Could not read that file: '+(err?.message||err)));
         }}/>
@@ -3016,8 +3016,7 @@ function buildReportTemplatePayload(f){
           const pending = PENDING_SECTION_ITEM_FILE.get(it.id);
           if(pending) PENDING_SECTION_ITEM_FILE.delete(it.id);
           return { type:'File', label:`File: ${it.fileName||pending?.name||'file'}`,
-                   fileName: it.fileName||pending?.name,
-                   fileBase64: pending?.base64, fileType: pending?.type };
+                   fileName: it.fileName||pending?.name, fileBase64: pending?.base64 };
         }
         return null;
       }).filter(it=>it && (it.kpiId || it.processId || it.childTemplateId || it.type==='File')),
@@ -4763,8 +4762,16 @@ function App({onSwitch}){
           flushActivity(f.id, id, f.kind, f.version);
           if(errors.length){
             console.warn(`[dataverse] Report Template ${isUpdate?'updated':'saved'} with some child rows failing:`, errors);
+            /* The first error's real message, not just its table name -- a
+               table name alone doesn't say whether a row failed to save at
+               all or (for a File citation) saved fine but its upload
+               failed. `what` (set by createSectionItems for a file-upload
+               failure) names which; its own error message is the actual
+               Dataverse rejection reason. */
+            const first = errors[0];
+            const detail = `${first.what || first.table}: ${first.error?.message || first.error}`;
             toast(`Report Template ${isUpdate?'updated':'saved'}, with gaps`,
-              `${errors.length} related row(s) (${errors.map(e=>e.table).join(', ')}) failed to save. Check the console for details.`,'warn');
+              `${detail}${errors.length>1?` (+ ${errors.length-1} more — check the console)`:''}`,'warn');
           }
           /* A file the user picked in this Setup's "Template file" control,
              still waiting on the id that only just landed above. Upload it
@@ -4773,7 +4780,7 @@ function App({onSwitch}){
           if(pendingFile){
             PENDING_TEMPLATE_FILE.delete(f.id);
             fileToBase64(pendingFile)
-              .then(b64 => uploadReportTemplateFile(id, pendingFile.name, b64, pendingFile.type || 'application/octet-stream'))
+              .then(b64 => uploadReportTemplateFile(id, pendingFile.name, b64))
               .then(()=>{
                 mut(n=>{ const i=n.setups.findIndex(x=>x.id===f.id);
                   if(i>=0) n.setups[i]={...n.setups[i], hasTemplateFile:true, templateFileName:''}; });
