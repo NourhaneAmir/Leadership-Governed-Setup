@@ -1319,3 +1319,11 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 .combo-opt:focus-visible{ outline:2px solid var(--teal); outline-offset:-2px }
 .combo-sub{ font-size:11px; color:var(--muted) }
 .combo-empty{ padding:8px; font-size:12px; color:var(--muted); font-style:italic }
+
+/* A cited report: named by a section, with no occurrence behind it yet. Drawn
+   so the branch is visible, dashed so it is never mistaken for a record. */
+.tnodebox.cited{
+  border-style:dashed; background:var(--surface); cursor:default;
+}
+.tnodebox.cited .tn-t{ color:var(--muted) }
+.tnodebox.cited:hover{ box-shadow:none }

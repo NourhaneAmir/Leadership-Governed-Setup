@@ -122,9 +122,10 @@ export function ScreenHierarchy(){
 
   const byId = useMemo(()=>new Map(reports.map(r=>[r.id,r])),[reports]);
 
-  const {sectionsByReport, citesBySection, childIds, parentIds, edgeStats} = useMemo(()=>{
+  const {sectionsByReport, citesBySection, childIds, parentIds, citedNames, edgeStats} = useMemo(()=>{
     const secs = {}, cites = {}, kids = {}, parents = {};
     const ownerOfSection = {};
+    const citedNames = {};
     let byLookup = 0, byName = 0, unresolved = 0;
     for(const s of content?.sections || []){
       if(!s.reportId) continue;
@@ -152,7 +153,18 @@ export function ScreenHierarchy(){
       else {
         const tpl = templateForLabel(c.label);
         child = tpl ? pickOccurrence(tpl, byId.get(parent)) : null;
-        if(child) byName++; else if(c.kind === 'Child Report') unresolved++;
+        if(child) byName++;
+        else {
+          /* Nothing to point at -- most often because the cited report has no
+             occurrence yet. The citation still says this report rests on that
+             one, so the claim is drawn rather than dropped, as a cited node
+             carrying the name the author wrote. */
+          const nice = bareName(c.label);
+          if(!nice) continue;
+          child = 'cite:' + norm(c.label);
+          citedNames[child] = nice;
+          unresolved++;
+        }
       }
       if(!parent || !child || parent === child) continue;
       (kids[parent]    = kids[parent]    || new Set()).add(child);
@@ -162,13 +174,21 @@ export function ScreenHierarchy(){
       sectionsByReport: secs, citesBySection: cites,
       childIds:  id => [...(kids[id] || [])],
       parentIds: id => [...(parents[id] || [])],
+      citedNames,
       edgeStats: { byLookup, byName, unresolved },
     };
   },[content, templatesByName, byId]);
 
   const sectionsOf = r => sectionsByReport[r.id] || [];
   const citesOf    = s => citesBySection[s.id] || [];
-  const childrenOf = r => childIds(r.id).map(rep).filter(Boolean);
+
+  /* A node key is either an occurrence id or "cite:<name>". nodeOf() turns
+     either into something the tree can draw; `cited` marks the ones with no
+     record behind them. */
+  const nodeOf = key => key.startsWith('cite:')
+    ? { id: key, name: citedNames[key] || '(cited report)', cited: true }
+    : rep(key);
+  const childrenOf = n => childIds(n.id).map(nodeOf).filter(Boolean);
 
   /* A report nothing else cites is a top of the tree. Reports with no content
      read at all are still roots — they simply have nothing under them. */
@@ -186,10 +206,13 @@ export function ScreenHierarchy(){
   const related = focus ? relatedTo(focus) : null;
 
   const filtersOn = !!(q.trim() || type || dept);
-  const matches = r =>
-    (!q.trim() || nameOf(r).toLowerCase().includes(q.trim().toLowerCase())) &&
-    (!type || typeOf(r)===type) &&
-    (!dept || deptOf(r)===dept);
+  /* A cited node has a name and nothing else, so only the text search applies
+     to it -- it has no template or department to match on. */
+  const matches = r => r?.cited
+    ? (!q.trim() || nameOf(r).toLowerCase().includes(q.trim().toLowerCase()))
+    : (!q.trim() || nameOf(r).toLowerCase().includes(q.trim().toLowerCase())) &&
+      (!type || typeOf(r)===type) &&
+      (!dept || deptOf(r)===dept);
 
   /* A branch survives a filter when anything in it matches, so a match deep
      down still pulls its ancestors into view -- otherwise filtering would hide
@@ -201,7 +224,9 @@ export function ScreenHierarchy(){
       if(memo.has(id)) return memo.get(id);
       if(trail.has(id)) return false;          // a cycle contributes nothing
       trail.add(id);
-      const r = rep(id);
+      const r = id.startsWith('cite:')
+        ? { name: citedNames[id] || '', cited: true }
+        : rep(id);
       let hit = !!r && matches(r);
       if(!hit) for(const k of childIds(id)) if(walk(k, trail)){ hit = true; break; }
       trail.delete(id);
@@ -234,13 +259,23 @@ export function ScreenHierarchy(){
     /* Dim means "context, not result": a node kept only because something
        under it matched, or one outside the focused branch. */
     const dim   = (related && !related.has(r.id)) || (filtersOn && !matches(r));
-    const secs  = sectionsOf(r);
 
     if(seen.includes(r.id))
       return <li><div className="tnodebox dim repeat">
         <span className="tn-t">↺ {nameOf(r)}</span>
         <span className="tn-m">already shown higher up</span></div></li>;
 
+    /* A cited report: named by a section, with no occurrence behind it. Drawn
+       as a box so the branch is visible, but not clickable -- there is no
+       record to open. */
+    if(r.cited)
+      return <li><div className={'tnodebox cited'+(dim?' dim':'')}>
+        <span className="tn-t">{r.name}</span>
+        <span className="tn-m">Cited report</span>
+        <span className="tn-m">not generated yet</span>
+      </div></li>;
+
+    const secs = sectionsOf(r);
     return <li>
       <button type="button"
         className={'tnodebox'+(dim?' dim':'')+(focus===r.id?' focused':'')}
@@ -317,9 +352,10 @@ export function ScreenHierarchy(){
                 through the picker records the exact one instead.</>
             : null}
           {edgeStats.unresolved>0
-            ? <> {edgeStats.unresolved} Child Report citation{edgeStats.unresolved===1?'':'s'} could
-                not be resolved to a report at all — no lookup, and the name matches nothing in the
-                register (or matches more than one).</>
+            ? <> {edgeStats.unresolved} cited report{edgeStats.unresolved===1?' is':'s are'} shown as
+                a dashed box: a section names {edgeStats.unresolved===1?'it':'them'}, but no
+                occurrence of that report exists yet, so there is nothing to open. The branch is
+                drawn because the citation is real.</>
             : null}
         </div>
       : null}
