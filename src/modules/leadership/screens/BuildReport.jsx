@@ -633,7 +633,9 @@ const TASK_PRIORITIES = ['Low', 'Medium', 'High', 'Critical'];
    Title, Assignee and Due date are the three the form marks required, and the
    button stays disabled until all three are filled -- the same rule, enforced
    rather than only marked. */
-function NewTaskForm({ subject, onCancel, onDone, toast }){
+/* Exported: Communication & execution raises tasks with the same form, so the
+   field set and the required-before-enabled rule stay in one place. */
+export function NewTaskForm({ subject, onCancel, onDone, toast }){
   const [f, setF] = useState({
     title: '', description: '', action: '', assigneeId: '',
     priority: '', startDate: TODAY, dueDate: '',

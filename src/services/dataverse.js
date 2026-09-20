@@ -1608,6 +1608,7 @@ export async function fetchTasks(){
     priority: TASK_PRIORITY[r.hx_priority] || null,
     due: isoDay(r.hx_duedate),
     start: isoDay(r.hx_startdate),
+    assigneeId: r._hx_assignee_value || null,
     assigneeName: r['_hx_assignee_value' + FV] || null,
   }));
 }
@@ -2434,6 +2435,53 @@ const Lm_reportoccurrencehistoriesService = dvTable('lm_reportoccurrencehistorie
 const Lm_reportoccurrencesectionsesService = dvTable('lm_reportoccurrencesectionses', 'lm_reportoccurrencesectionsid');
 const Lm_reportsectioncitationsesService   = dvTable('lm_reportsectioncitationses', 'lm_reportsectioncitationsid');
 const Wlog_decisionsService = dvTable('wlog_decisions', 'wlog_decisionid');
+const Lm_reportoccurrencesharesService =
+  dvTable('lm_reportoccurrenceshares', 'lm_reportoccurrenceshareid');
+
+/** Every Report Occurrence share -- who sent what to whom, and when.
+ *
+ *  Read whole rather than filtered by the signed-in user: the tab shows both
+ *  directions, so one read serves Inbox and Sent, and the table is small.
+ *  `createdby` is the sender; lm_shareduser is the recipient. */
+export async function fetchReportShares(){
+  const res = await Lm_reportoccurrencesharesService.getAll({
+    select: ['lm_reportoccurrenceshareid','lm_name','lm_sharedon',
+             '_lm_reportoccurrence_value','_lm_shareduser_value',
+             '_createdby_value','createdon'],
+    orderby: 'createdon desc',
+  });
+  return (res?.data ?? []).map(r => ({
+    id: r.lm_reportoccurrenceshareid,
+    name: r.lm_name || null,
+    reportId: r._lm_reportoccurrence_value || null,
+    reportName: r['_lm_reportoccurrence_value' + FV] || null,
+    toUserId: r._lm_shareduser_value || null,
+    toUserName: r['_lm_shareduser_value' + FV] || null,
+    fromUserId: r._createdby_value || null,
+    fromUserName: r['_createdby_value' + FV] || null,
+    sharedOn: isoDay(r.lm_sharedon) || isoDay(r.createdon),
+    created: r.createdon || null,
+  }));
+}
+
+/** Sends a Report Occurrence to someone. lm_sharedon is stamped here rather
+ *  than left to createdon, because the two mean different things the moment a
+ *  share is ever edited. */
+export async function shareReportOccurrence({ reportOccurrenceId, userId, name }){
+  try{
+    const row = {
+      'lm_ReportOccurrence@odata.bind': `/lm_reportoccurrences(${reportOccurrenceId})`,
+      'lm_SharedUser@odata.bind': `/systemusers(${userId})`,
+      lm_sharedon: new Date().toISOString(),
+    };
+    if(name) row.lm_name = String(name).slice(0, 850);
+    const created = await Lm_reportoccurrencesharesService.create(row);
+    const id = idOrThrow(created, 'lm_reportoccurrenceshareid');
+    return { id, errors: [] };
+  }catch(e){
+    return { id: null, errors: [{ table:'lm_reportoccurrenceshares', error:e }] };
+  }
+}
 
 export const MEETING_OCC_STATUS = { 1:'Scheduled', 2:'Held', 3:'Cancelled' };
 export const MEETING_OCC_STATUS_KEY = { 'Scheduled':1, 'Held':2, 'Cancelled':3 };

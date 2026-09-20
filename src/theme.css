@@ -1327,3 +1327,12 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 }
 .tnodebox.cited .tn-t{ color:var(--muted) }
 .tnodebox.cited:hover{ box-shadow:none }
+
+/* Count on a section tab in Communication & execution. Sized to sit inside a
+   .seg-ctl button without changing its height. */
+.nb-badge{
+  display:inline-block; min-width:17px; padding:1px 5px; border-radius:999px;
+  background:var(--teal); color:#fff; font-size:10px; font-weight:700;
+  line-height:1.5; text-align:center; vertical-align:middle;
+}
+.nb-badge.red{ background:var(--red) }

@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { ArrowUpRight, BarChart3, CalendarDays, CheckSquare, ClipboardCheck, ClipboardList,
-         Gauge, Layers, LineChart, Menu, Network, PenLine, UsersRound, X } from 'lucide-react';
+         Gauge, Layers, LineChart, Menu, MessagesSquare, Network, PenLine, UsersRound, X }
+  from 'lucide-react';
 /* Dates, the working calendar and number formatting now live in src/shared so
    a screen lifted out of this file keeps working without it. */
 import { ymd, TODAY, PERIOD, HOLIDAYS, isNonWorking, isWeekend,
@@ -14,6 +15,7 @@ import { Ctx, use } from './store.jsx';
 import { ScreenBI } from './screens/BusinessIntelligence.jsx';
 import { ScreenOrgReports } from './screens/OrgReports.jsx';
 import { ScreenHierarchy } from './screens/Hierarchy.jsx';
+import { ScreenComms } from './screens/Communication.jsx';
 import { ScreenBuildReport } from './screens/BuildReport.jsx';
 import { PEOPLE, P, RPT_SETUPS, RS, DIAG, DiagChip, PROC_REG, PR, BI_REPORTS, BIR, KPI_CAT, KPIC, findKpi, bdDims, achFor, achPct, achCls, CITE_KINDS, citeKind, citeId, citeCls, canSeeReport, rptCfg, rptTagC, matchesQuery, CiteCard,
   STRAT, ST, PM_ENTRIES, PME, ISSUES, ISS, rptName } from './domain.jsx';
@@ -1388,6 +1390,9 @@ const SCREENS = [
   {id:'bi',   group:'Artifact',      label:'Business intelligence',  Icon:LineChart,      wide:true,
    Screen:ScreenBI,
    hint:'The BI report behind each measure — find it by Process, owning department or report.'},
+  {id:'comms', group:'Exchange',     label:'Communication & execution', Icon:MessagesSquare, wide:true,
+   Screen:ScreenComms,
+   hint:'Reports sent to you and by you, and the tasks you are accountable for.'},
   {id:'hier', group:'Artifact',      label:'Reporting hierarchy',    Icon:Network,        wide:true,
    Screen:ScreenHierarchy,
    hint:'Every report/plan and every child it references, as one tree.'},
