@@ -2872,6 +2872,77 @@ was touched, but the same fix is one line away if either ever needs it.
 Both Code App Development apps (`786c1b14…` Governance, `d61c6237…`
 Leadership) rebuilt and re-pushed with this fix.
 
+### 21 Sep: Reporting hierarchy gets a second, independent tree — Report Templates
+
+Per an explicit ask: the existing tree (`ScreenHierarchy`, live since 20 Sep)
+reads `lm_reportoccurrences` — real, generated reports, with a Child Report
+citation as the edge. That is an **execution-side** fact: it says nothing
+about a Template that has never been filed. The ask was to also read
+**Report Templates** and their own Sections/Section Items — a **design-time**
+fact — and draw a Template when it has an attached file of its own, a
+Section Item citing a child Report Template, or a Section Item that itself
+carries an uploaded file.
+
+**Kept as a second tree, not merged into the first.** A Template's "child" is
+a citation its author picked at design time; an Occurrence's "child" is a
+citation the report actually shipped with — different claims, over different
+id spaces (`lm_report_templateid` vs `lm_reportoccurrenceid`), so conflating
+them into one tree would blur exactly the distinction the rest of this file
+is careful to keep (see the "Annual scheduling" / occurrence-vs-template
+notes elsewhere in §6). `ScreenHierarchy` now opens on a `seg-ctl` toggle —
+**Occurrences** (unchanged, default) / **Report Templates** (new) — same
+`.seg-ctl` class `Communication.jsx` already uses, so no new CSS.
+
+**New reader, deliberately not `fetchReportTemplateDetail()`.**
+`fetchReportTemplateHierarchyContent()` (`dataverse.js`, right after
+`fetchReportOccurrenceContent()`) is three **unfiltered** bulk reads — every
+Report Template, every `lm_reporttemplatecontentchecklists` row, every
+`lm_reporttemplatesectionitems` row — the same "two reads, no per-record
+fan-out" shape as the Occurrences side. `fetchReportTemplateDetail(id)`
+(Governance Setup's per-Template editor) was **not** reused: it fans out per
+Template into review chains, related KPIs/Processes and BU/Region scope rows
+this view has no use for, so calling it once per Template would turn a
+2-request screen open into `2 + 5×N` requests for N Templates. The Template
+row itself now also selects `lm_attachementfile` (the File column;
+`fetchReportTemplatesList()`, used by the Setup register, was left alone —
+this is its own reader) and the checklist row now selects
+`lm_checklistitemstep`, neither of which the existing Template-detail select
+needed changing.
+
+**Qualifying rule, read straight off the fetch, computed in the screen, not
+the service layer:** a Template earns a node when `hasFile` is true (own
+`lm_attachementfile`), or when it has ≥1 Section Item of type **Child
+Template** (`lm_itemtype=4`, `lm_ChildReportTemplate` set — the edge), or
+≥1 Section Item of type **File** (`lm_itemtype` null,
+`lm_attachementfile` on the *item* populated — same "recognised by presence,
+not a real choice value" convention `fetchReportTemplateDetail()` already
+uses, see §6's "File-column upload" entries). **A cited child that does not
+itself qualify is still drawn** — the edge pointing at it is real even when
+it has nothing of its own — resolved by a queue that walks every
+`tplChildIds()` edge outward from the qualifying set. Unlike the Occurrences
+tree's `cite:`-prefixed placeholder nodes (a citation naming something with
+no live row behind it), every Template-side child is a real, resolvable
+Template row, because `lm_ChildReportTemplate` is a lookup with no
+name-matching fallback needed.
+
+Node badges: type (`REPORT_TYPE`) and category (`REPORT_CATEGORY`, both
+already exported from `dataverse.js`) instead of the Occurrence tree's
+period; a 📎 line with the stored file name when the Template's own file is
+attached; a second 📎 line with a count when any Section carries a file
+citation. The detail modal lists each Section's child-Template citations (by
+name) and file citations (by stored name), plus a note pointing at
+Governance Setup for anyone who wants to actually open the file — this
+screen has no file preview/download built for it, on purpose, to keep the
+change to what was asked.
+
+⚠️ **Not yet verified against live Dataverse** — built and green against a
+build only; no Report Template in DT New is known to currently have an
+attached file or a child-Template citation to check the graph against.
+`python scripts/undef-scan.py` flags one line in this file (`'file'` inside
+a `||` fallback string) as a free identifier — checked by eye, it is the
+same single-quoted-string false positive the scanner is documented to
+produce, not a real bug (see §8's own note on the scanner's known limits).
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### NEW this session: group-wide (Stage 3/4) roles now live on the parent row
@@ -4343,9 +4414,16 @@ quorum definition, Decision↔Meeting/Report linking (§7.7, deferred on purpose
 - [ ] **Paragraph citations and report sharing** are not supported in Build (§5):
       the first needs a target-section column on `lm_reportsectioncitations`, the
       second needs `lm_reportoccurrenceshare`'s columns inspected.
-- [ ] **Reporting hierarchy is still seeded.** It derives parent/child from seeded
-      `RPT:` paragraph citations; the live equivalent is `lm_reportsectioncitations`
-      of kind Child Report with `lm_CitedReportOccurrence` set.
+- [x] ~~Reporting hierarchy is still seeded.~~ **Stale — gone live 19-20 Sep**
+      (§5), reading `lm_reportoccurrences` + `lm_reportsectioncitations` of
+      kind Child Report. This line was never updated when that landed; left
+      as a marker that this checklist can drift behind §5, not as current
+      state. **21 Sep:** a second, independent tree was added on top —
+      Report Templates, reading `lm_reporttemplatecontentchecklists` +
+      `lm_reporttemplatesectionitems` — via a `seg-ctl` toggle on the same
+      screen. See §5's 21 Sep entry. Not yet verified against live Dataverse
+      (no known Template in DT New has a child-Template citation or file yet
+      to check the graph against).
 - [ ] **The DT New-hosted apps lack every 16–17 Sep fix** (Governance `7caa2fb2…`,
       Execution `0f077a0a…`). Only the Code App Development copies are current.
 - [ ] **Confirm the Code App Development deployments against DT New** — now

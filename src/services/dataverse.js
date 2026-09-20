@@ -2853,6 +2853,74 @@ export async function fetchReportOccurrenceContent(){
   return { sections, citations };
 }
 
+/**
+ * Every Report Template, plus every checklist Section and Section Item on
+ * every Template, for the Reporting hierarchy's Templates view. Three bulk
+ * reads, run together -- unlike fetchReportTemplateDetail() (Governance
+ * Setup's per-Template editor), this does not fan out per template into
+ * review chains, related KPIs/Processes or scope rows this view has no use
+ * for, so it stays cheap regardless of how many Templates exist.
+ *
+ * A Template is worth drawing in that graph when it has an attached file of
+ * its own, a Section Item that cites a child Report Template, or a Section
+ * Item that itself carries an uploaded file -- the screen decides which;
+ * this just hands back the raw shape, the same division of labour as
+ * fetchReportOccurrenceContent() above.
+ */
+export async function fetchReportTemplateHierarchyContent(){
+  const [tplRes, checklistRes, itemsRes] = await Promise.all([
+    Lm_report_templatesService.getAll({
+      select: ['lm_report_templateid','lm_newcolumn','lm_reporttype','lm_reportcategory','lm_reportstatus','lm_attachementfile'],
+    }),
+    Lm_reporttemplatecontentchecklistsService.getAll({
+      select: ['lm_reporttemplatecontentchecklistid','lm_checklistitemname','lm_checklistitemstep','lm_diagnosticangle','_lm_reporttemplate_value'],
+    }),
+    Lm_reporttemplatesectionitemsesService.getAll({
+      select: ['lm_reporttemplatesectionitemsid','lm_sectionitemname','lm_itemtype',
+               '_lm_childreporttemplate_value','lm_attachementfile','_lm_sectionchecklistitem_value'],
+    }),
+  ]);
+  assertSuccess(tplRes);
+  assertSuccess(checklistRes);
+  assertSuccess(itemsRes);
+
+  const templates = (tplRes.data ?? []).map(t => ({
+    id: t.lm_report_templateid,
+    name: t.lm_newcolumn || '(untitled)',
+    typeCode: t.lm_reporttype ?? null,
+    categoryCode: t.lm_reportcategory ?? null,
+    statusCode: t.lm_reportstatus ?? null,
+    /* Same File-column convention as everywhere else in this file: the name
+       rides along with the column once it's selected, and is never itself
+       put in $select. See "Dataverse File columns" in PROJECT-CONTEXT.md §6. */
+    hasFile: !!t.lm_attachementfile,
+    fileStoredName: t.lm_attachementfile_name || '',
+  }));
+
+  const checklist = (checklistRes.data ?? []).map(c => ({
+    id: c.lm_reporttemplatecontentchecklistid,
+    templateId: c._lm_reporttemplate_value || null,
+    heading: c.lm_checklistitemname || '(untitled section)',
+    step: c.lm_checklistitemstep ?? null,
+    angle: SECTION_ANGLE[c.lm_diagnosticangle] || 'Untyped',
+  }));
+
+  const items = (itemsRes.data ?? []).map(it => ({
+    id: it.lm_reporttemplatesectionitemsid,
+    checklistId: it._lm_sectionchecklistitem_value || null,
+    label: it.lm_sectionitemname || '',
+    /* lm_itemtype has no File value -- a File citation is recognised by
+       having content in lm_attachementfile instead. Same rule
+       fetchReportTemplateDetail() already applies. */
+    type: SECTION_ITEM_TYPE[it.lm_itemtype] || (it.lm_attachementfile ? 'File' : null),
+    childTemplateId: it._lm_childreporttemplate_value || null,
+    hasFile: !!it.lm_attachementfile,
+    fileStoredName: it.lm_attachementfile_name || '',
+  }));
+
+  return { templates, checklist, items };
+}
+
 /* =========================================================================
    Build a report/plan -- editing one Report Occurrence's content.
    ========================================================================= */

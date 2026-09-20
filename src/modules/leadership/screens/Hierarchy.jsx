@@ -18,13 +18,25 @@
    tables: lm_reportoccurrences for the nodes, and lm_reportsectioncitations
    for the edges — a citation of kind "Child Report" IS an edge, which is the
    same rule the seeded version used, against records instead of strings.
+
+   TWO VIEWS (21 Sep). "Occurrences" is everything above — real, generated
+   reports. "Report Templates" is a second, independent tree over the
+   design-time Setups instead: it reads every Report Template's checklist
+   Sections and Section Items, and draws a Template only when it has
+   something worth showing — its own attached file, a Section Item that
+   cites a child Report Template, or a Section Item that itself carries an
+   uploaded file. A Template's "child" here is a structural citation another
+   Template's author picked at design time, not a fact about which reports
+   actually got filed — a different claim from the Occurrences tree, so the
+   two are kept as separate trees rather than merged into one.
    ========================================================================= */
 import React, { useState, useEffect, useMemo } from 'react';
 import { use } from '../store.jsx';
 import { Btn, Tag, Modal, Empty, Note, Combo } from '../../../shared/ui.jsx';
 import { fmtP } from '../../../shared/format.js';
 import { DiagChip } from '../domain.jsx';
-import { fetchReportOccurrenceContent } from '../../../services/dataverse.js';
+import { fetchReportOccurrenceContent, fetchReportTemplateHierarchyContent,
+         REPORT_TYPE, REPORT_CATEGORY } from '../../../services/dataverse.js';
 
 /* DiagChip is keyed by the class, not the label, and a Section's angle comes
    back from Dataverse as the label. Same map Build a report/plan keeps. */
@@ -39,6 +51,8 @@ export function ScreenHierarchy(){
      on each keystroke in the search box. */
   const L  = useMemo(()=>dvLookup || {}, [dvLookup]);
   const nm = (fn, id) => (id && typeof fn === 'function' ? fn(id) : null);
+
+  const [view,setView]     = useState('occ');   // 'occ' | 'tpl'
 
   const [q,setQ]           = useState('');
   const [type,setType]     = useState('');
@@ -296,11 +310,185 @@ export function ScreenHierarchy(){
   const det = detail ? rep(detail) : null;
   const loading = content === null;
 
+  /* ---- Report Templates view -------------------------------------------
+     A second, independent tree over the design-time Setups. Fetched only
+     once the user actually switches here -- nothing on the Occurrences view
+     needs it, and a Templates sweep is its own pair of unfiltered reads. */
+  const [tplContent,setTplContent] = useState(null);
+  const [tplErr,setTplErr]         = useState(null);
+  useEffect(()=>{
+    if(view!=='tpl' || tplContent || tplErr) return;
+    let live = true;
+    fetchReportTemplateHierarchyContent()
+      .then(c=>{ if(live) setTplContent(c); })
+      .catch(e=>{
+        console.warn('[dataverse] Report template hierarchy read failed:', e);
+        if(live){ setTplErr(e); setTplContent({templates:[], checklist:[], items:[]}); }
+      });
+    return ()=>{ live = false; };
+  },[view, tplContent, tplErr]);
+
+  const [tq,setTq]           = useState('');
+  const [ttype,setTtype]     = useState('');
+  const [tplFocus,setTplFocus]   = useState(null);
+  const [tplDetail,setTplDetail] = useState(null);
+
+  const templates = useMemo(()=>tplContent?.templates || [], [tplContent]);
+  const tplById = useMemo(()=>new Map(templates.map(t=>[t.id,t])), [templates]);
+  const tplName = id => tplById.get(id)?.name || '(untitled)';
+  const tplTypeLabel = t => REPORT_TYPE[t?.typeCode] || 'Report / Plan';
+  const tplCategoryLabel = t => REPORT_CATEGORY[t?.categoryCode] || null;
+
+  /* Sections grouped by their owning Template, and Section Items grouped by
+     their owning Section -- same two-level shape the Occurrences tree uses,
+     just over lm_reporttemplatecontentchecklists / lm_reporttemplatesectionitems
+     instead of the occurrence-side tables. */
+  const {tplSectionsByTemplate, tplItemsBySection, tplChildIds, tplParentIds,
+         tplFileItemCount, tplQualifies} = useMemo(()=>{
+    const secs = {}, items = {}, kids = {}, parents = {};
+    const fileCount = {};      // templateId -> count of Section Items that are a File citation
+    const childCount = {};     // templateId -> count of Section Items that cite a child Template
+    const ownerTemplate = {};  // checklistId -> templateId
+
+    for(const c of tplContent?.checklist || []){
+      if(!c.templateId) continue;
+      (secs[c.templateId] = secs[c.templateId] || []).push(c);
+      ownerTemplate[c.id] = c.templateId;
+    }
+    for(const k in secs){
+      secs[k].sort((a,b)=>(a.step ?? 1e9) - (b.step ?? 1e9));
+    }
+    for(const it of tplContent?.items || []){
+      if(!it.checklistId) continue;
+      (items[it.checklistId] = items[it.checklistId] || []).push(it);
+      const owner = ownerTemplate[it.checklistId];
+      if(!owner) continue;
+      if(it.type==='Child Template' && it.childTemplateId){
+        (kids[owner]    = kids[owner]    || new Set()).add(it.childTemplateId);
+        (parents[it.childTemplateId] = parents[it.childTemplateId] || new Set()).add(owner);
+        childCount[owner] = (childCount[owner]||0) + 1;
+      }
+      if(it.type==='File' && it.hasFile){
+        fileCount[owner] = (fileCount[owner]||0) + 1;
+      }
+    }
+    /* A Template earns a place in this graph on its own merit -- an attached
+       file of its own, a child-Template citation in one of its sections, or a
+       section-level file citation. A Template that is only ever the TARGET of
+       one of those child-Template citations is still drawn (below), because
+       the edge pointing at it is real, even if it has nothing of its own. */
+    const qualifies = id => {
+      const t = tplById.get(id);
+      return !!(t?.hasFile || childCount[id] || fileCount[id]);
+    };
+    return {
+      tplSectionsByTemplate: secs,
+      tplItemsBySection: items,
+      tplChildIds:  id => [...(kids[id]    || [])],
+      tplParentIds: id => [...(parents[id] || [])],
+      tplFileItemCount: fileCount,
+      tplQualifies: qualifies,
+    };
+  },[tplContent, tplById]);
+
+  const tplSectionsOf = t => tplSectionsByTemplate[t.id] || [];
+  const tplItemsOf    = s => tplItemsBySection[s.id] || [];
+
+  /* The node set: every qualifying Template, plus anything reachable as a
+     child from one -- a cited child is drawn even when it has nothing of its
+     own to qualify on, same reasoning as the Occurrences tree's cited nodes,
+     except here the target is always a real, resolvable Template row. */
+  const tplVisibleIds = useMemo(()=>{
+    const set = new Set();
+    for(const t of templates) if(tplQualifies(t.id)) set.add(t.id);
+    const queue = [...set];
+    while(queue.length){
+      const id = queue.pop();
+      for(const k of tplChildIds(id)) if(!set.has(k)){ set.add(k); queue.push(k); }
+    }
+    return set;
+  },[templates, tplQualifies, tplChildIds]);
+
+  const tplRoots = templates.filter(t=>
+    tplVisibleIds.has(t.id) && tplParentIds(t.id).filter(p=>tplVisibleIds.has(p)).length===0);
+
+  const tplRelatedTo = id => {
+    const seen = new Set();
+    const up   = x => { if(seen.has(x)) return; seen.add(x); tplParentIds(x).forEach(up); };
+    const down = x => { if(seen.has(x)) return; seen.add(x); tplChildIds(x).forEach(down); };
+    up(id); down(id);
+    return seen;
+  };
+  const tplRelated = tplFocus ? tplRelatedTo(tplFocus) : null;
+
+  const tplFiltersOn = !!(tq.trim() || ttype);
+  const tplMatches = t => (!tq.trim() || tplName(t.id).toLowerCase().includes(tq.trim().toLowerCase()))
+    && (!ttype || tplTypeLabel(t)===ttype);
+
+  const tplBranchHasMatch = useMemo(()=>{
+    const memo = new Map();
+    const walk = (id, trail) => {
+      if(memo.has(id)) return memo.get(id);
+      if(trail.has(id)) return false;
+      trail.add(id);
+      const t = tplById.get(id);
+      let hit = !!t && tplMatches(t);
+      if(!hit) for(const k of tplChildIds(id)) if(walk(k, trail)){ hit = true; break; }
+      trail.delete(id);
+      memo.set(id, hit);
+      return hit;
+    };
+    return id => walk(id, new Set());
+  },[tplContent, tq, ttype, templates]);
+
+  const tplVisible = t => !tplFiltersOn || tplBranchHasMatch(t.id);
+  const tplMatchCount = tplFiltersOn ? templates.filter(tplMatches).length : tplVisibleIds.size;
+  const tplTypes = [...new Set(templates.filter(t=>tplVisibleIds.has(t.id)).map(tplTypeLabel))].sort();
+
+  const TplNode = ({t,seen}) => {
+    const kids = tplChildIds(t.id).filter(id=>tplVisibleIds.has(id)).map(id=>tplById.get(id)).filter(Boolean).filter(tplVisible);
+    const dim  = (tplRelated && !tplRelated.has(t.id)) || (tplFiltersOn && !tplMatches(t));
+    const fileHits = tplFileItemCount[t.id] || 0;
+
+    if(seen.includes(t.id))
+      return <li><div className="tnodebox dim repeat">
+        <span className="tn-t">↺ {tplName(t.id)}</span>
+        <span className="tn-m">already shown higher up</span></div></li>;
+
+    return <li>
+      <button type="button"
+        className={'tnodebox'+(dim?' dim':'')+(tplFocus===t.id?' focused':'')}
+        onClick={()=>{ setTplFocus(t.id); setTplDetail(t.id); }}>
+        <span className="tn-t">{tplName(t.id)}</span>
+        <span className="tn-m">{tplTypeLabel(t)}{tplCategoryLabel(t)?' · '+tplCategoryLabel(t):''}</span>
+        <span className="tn-m">{tplSectionsOf(t).length} section{tplSectionsOf(t).length===1?'':'s'}
+          {kids.length?` · ${kids.length} child${kids.length===1?'':'ren'}`:''}</span>
+        {t.hasFile ? <span className="tn-m">📎 {t.fileStoredName || 'File attached'}</span> : null}
+        {fileHits ? <span className="tn-m">📎 {fileHits} section attachment{fileHits===1?'':'s'}</span> : null}
+      </button>
+      {kids.length
+        ? <ul>{kids.map(k=><TplNode key={k.id} t={k} seen={[...seen,t.id]}/>)}</ul>
+        : null}
+    </li>;
+  };
+
+  const tplShownRoots = tplRoots.filter(tplVisible);
+  const tplDet = tplDetail ? tplById.get(tplDetail) : null;
+  const tplLoading = view==='tpl' && tplContent === null;
+
   return <>
     <div className="ph"><h1>Reporting hierarchy</h1>
       <div className="sub">Every report/plan and every child it references, as one tree. Click a
         report to focus its branch; click again to see what’s inside it.</div></div>
 
+    <div className="seg-ctl" role="group" aria-label="Hierarchy view" style={{marginBottom:12}}>
+      <button type="button" className={view==='occ'?'on':''} aria-pressed={view==='occ'}
+        onClick={()=>setView('occ')}>Occurrences</button>
+      <button type="button" className={view==='tpl'?'on':''} aria-pressed={view==='tpl'}
+        onClick={()=>setView('tpl')}>Report Templates</button>
+    </div>
+
+    {view==='occ' ? <>
     {err
       ? <Note k="warn" ic="⚠">The sections and citations could not be read, so the tree shows every
           report/plan as a top-level one. Nothing is missing from the register — only the links
@@ -392,5 +580,90 @@ export function ScreenHierarchy(){
             : null}
         </Modal>
       : null}
+    </> : <>
+    {tplErr
+      ? <Note k="warn" ic="⚠">The Report Templates' sections and citations could not be read, so
+          this view is empty. Nothing is missing from the Setup register — only the links between
+          Templates.</Note>
+      : null}
+
+    <div className="card" style={{padding:14}}>
+      <div className="flbl">Filter Report Templates</div>
+      <div style={{display:'flex',gap:8,marginTop:6,flexWrap:'wrap',alignItems:'center'}}>
+        <input type="search" value={tq} onChange={e=>setTq(e.target.value)}
+          style={{flex:'1 1 240px',minWidth:0}}
+          placeholder="Search Report Template name…"/>
+        <Combo value={ttype} onChange={setTtype} all="Any type"
+          placeholder="Search types…" opts={tplTypes.map(t=>({id:t, name:t}))}/>
+      </div>
+      {tplFocus
+        ? <div className="csub" style={{marginTop:8,marginBottom:0}}>
+            Focused on <b>{tplName(tplFocus)}</b> —{' '}
+            <a style={{cursor:'pointer',textDecoration:'underline'}}
+              onClick={()=>{setTplFocus(null);setTplDetail(null);}}>clear focus</a>
+          </div>
+        : null}
+    </div>
+
+    <div className="card hier-canvas">
+      {tplLoading
+        ? <Empty ic="…">Reading Report Template sections and citations…</Empty>
+        : tplVisibleIds.size===0
+        ? <Empty>{templates.length
+            ? 'No Report Template has an attached file, a child-Template citation or a section '+
+              'file attachment yet, so there is nothing to draw here.'
+            : 'No Report Template exists yet.'}</Empty>
+        : tplShownRoots.length===0
+        ? <Empty>No Report Template matches those filters.</Empty>
+        : <div className="org-tree">
+            <ul>{tplShownRoots.map(t=><TplNode key={t.id} t={t} seen={[]}/>)}</ul>
+          </div>}
+    </div>
+
+    {!tplLoading && !tplErr
+      ? <div className="cnote" style={{marginTop:0}}>
+          <b>{tplVisibleIds.size}</b> of {templates.length} Report Template{templates.length===1?'':'s'} carry
+          an attached file, a child-Template citation or a section file attachment, and appear
+          above{tplFiltersOn ? <> · <b>{tplMatchCount}</b> match the filters</> : null}.
+        </div>
+      : null}
+
+    <div className="cnote">This is the design-time picture: what a Template's author cited when
+      building it — a <b>Child Template</b> citation in a Section, plus any attached file (the
+      Template's own, or one attached to a Section). It does not depend on whether either Template
+      has ever actually been filed as a report — that's the <b>Occurrences</b> view.</div>
+
+    {tplDet
+      ? <Modal onClose={()=>setTplDetail(null)}
+          title={tplName(tplDet.id)}
+          sub={[tplTypeLabel(tplDet), tplCategoryLabel(tplDet)].filter(Boolean).join(' · ')}
+          footer={<Btn onClick={()=>setTplDetail(null)}>Close</Btn>}>
+          {tplDet.hasFile
+            ? <Note k="info" ic="📎">Template file attached{tplDet.fileStoredName?': '+tplDet.fileStoredName:''}.
+                Open this Setup in Governance Setup to view or replace it.</Note>
+            : null}
+          <div className="flbl" style={{marginBottom:6,marginTop:tplDet.hasFile?12:0}}>Sections</div>
+          {tplSectionsOf(tplDet).length===0
+            ? <div className="holder">This Report Template has no sections yet.</div>
+            : tplSectionsOf(tplDet).map(s=>{
+                const its = tplItemsOf(s);
+                const childItems = its.filter(it=>it.type==='Child Template');
+                const fileItems  = its.filter(it=>it.type==='File' && it.hasFile);
+                return <div key={s.id} className="hier-sec">
+                  <div className="h"><b>{s.heading}</b><DiagChip d={ANGLE_CLS[s.angle]}/></div>
+                  {childItems.length
+                    ? <div className="csub" style={{marginBottom:0}}>
+                        Cites child Template{childItems.length===1?'':'s'}:{' '}
+                        {childItems.map(it=>tplName(it.childTemplateId)).join(', ')}</div>
+                    : null}
+                  {fileItems.length
+                    ? <div className="csub" style={{marginBottom:0}}>
+                        📎 {fileItems.map(it=>it.fileStoredName || it.label || 'file').join(', ')}</div>
+                    : null}
+                </div>;
+              })}
+        </Modal>
+      : null}
+    </>}
   </>;
 }
