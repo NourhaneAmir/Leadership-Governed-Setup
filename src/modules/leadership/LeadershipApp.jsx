@@ -45,7 +45,8 @@ import { fetchMeetingOccurrences, fetchReportOccurrences, createMeetingOccurrenc
          requestMoreInfoOnReport,
          MEETING_SETUP_TYPE, MEETING_CATEGORY, MEETING_FREQUENCY, MEETING_DAY_OF_WEEK,
          MEETING_MONTH_IN_QUARTER,
-         ATTENDEE_TYPE, REPORT_TYPE, REPORT_CATEGORY, REPORT_FREQUENCY } from '../../services/dataverse.js';
+         ATTENDEE_TYPE, REPORT_TYPE, REPORT_CATEGORY, REPORT_FREQUENCY,
+         fetchMeetingUnitRoles, fetchReportUnitRoles } from '../../services/dataverse.js';
 
 /* =========================================================================
    REFERENCE DATA + SEED
@@ -1633,11 +1634,87 @@ function DvOccurrenceModal({item,onClose}){
   </Modal>;
 }
 
+/* Scoped to this screen only, per an explicit ask -- Workspace's own
+   calendar-derived widgets (CalendarWebpart, the counts on My Workspace)
+   keep reading the unfiltered `cal` from context unchanged. */
 function ScreenCalendar(){
-  const {cal,go,openMeeting,dvError,openDvRec} = use();
+  const {cal:calAll,go,openMeeting,dvError,openDvRec,dvLookup,currentUser} = use();
   const [view,setView] = useState('month');   /* month | week | list */
   const [kind,setKind] = useState('All');
   const [ym,setYm]     = useState(TODAY.slice(0,7));
+
+  /* ⚠️ TEMPORARY -- testing only, per explicit ask 22 Sep. Bypasses the
+     21 Sep role filter below entirely so every occurrence can be checked
+     against what used to show, without needing a second Dataverse user to
+     sign in as. Remove this state, the toggle button in the header, and
+     the `showAll ? calAll :` branch once testing is done -- the role
+     filter itself is not what's being questioned here. */
+  const [showAll,setShowAll] = useState(false);
+
+  /* Co-Chairman (Meetings) and Owner Position / Review Chain (Reports) both
+     live on the SETUP, not the occurrence -- see fetchMeetingUnitRoles()/
+     fetchReportUnitRoles()'s own comments for why. Read once, here, rather
+     than at app start: only this screen needs them. */
+  const [meetingRoles,setMeetingRoles] = useState(null);
+  const [reportRoles,setReportRoles]   = useState(null);
+  useEffect(()=>{
+    let live = true;
+    Promise.all([fetchMeetingUnitRoles(), fetchReportUnitRoles()])
+      .then(([m,r])=>{ if(live){ setMeetingRoles(m); setReportRoles(r); } })
+      .catch(e=>{
+        console.warn('[dataverse] Calendar role lookups failed:', e);
+        if(live){
+          setMeetingRoles({forOccurrence:()=>null});
+          setReportRoles({forOccurrence:()=>({ownerId:null,reviewerIds:new Set()})});
+        }
+      });
+    return ()=>{ live = false; };
+  },[]);
+  const rolesLoading = meetingRoles===null || reportRoles===null;
+
+  /* Which Positions the signed-in user holds -- same match the sidebar's
+     user card and every other "is this mine" screen already use. */
+  const mine = useMemo(()=>new Set(dvLookup?.myPositionIds || []), [dvLookup]);
+
+  /* A Meeting shows only when the user is its Chairman, Co-Chairman,
+     Organizer/Facilitator, or a named Attendee -- an occurrence with none
+     of those matching this user's Positions is left out entirely, per an
+     explicit ask, rather than shown dimmed or unfiltered. Attendee match is
+     against a Position directly on the row; a Microsoft-Group Attendee
+     (19-20 Sep) is not expanded to its members here. */
+  const meetingVisible = o => {
+    if(o.chairPositionId && mine.has(o.chairPositionId)) return true;
+    if(o.facilitatorPositionId && mine.has(o.facilitatorPositionId)) return true;
+    const coChair = meetingRoles?.forOccurrence(o);
+    if(coChair && mine.has(coChair)) return true;
+    return (o.attendees||[]).some(a=>a.positionId && mine.has(a.positionId));
+  };
+  /* A Report shows only when the user created it (Submitter), holds the
+     Setup's Owner Position for its scope, or sits in its Review Chain --
+     and a reviewer only counts once the report has actually been
+     submitted, not while it is still Draft (nothing to review yet). */
+  const reportVisible = r => {
+    if(r.creatorPositionId && mine.has(r.creatorPositionId)) return true;
+    const roles = reportRoles?.forOccurrence(r);
+    if(roles?.ownerId && mine.has(roles.ownerId)) return true;
+    if(r.status!=='Draft' && roles?.reviewerIds?.size){
+      for(const id of roles.reviewerIds) if(mine.has(id)) return true;
+    }
+    return false;
+  };
+
+  const cal = useMemo(()=>{
+    if(showAll) return calAll;   // ⚠️ TEMPORARY testing bypass, see above
+    if(rolesLoading || !mine.size) return [];
+    return calAll.filter(i=>{
+      /* MOM Due is meeting-shaped (its _rec is the Meeting Occurrence, see
+         dvMomDueCalItem) -- gated the same way, since a write-up deadline
+         for a meeting you hold no role in isn't yours to track either. */
+      if(i.kind==='Meeting' || i.kind==='MOM') return meetingVisible(i._rec);
+      if(i.kind==='Report') return reportVisible(i._rec);
+      return true;
+    });
+  },[calAll, meetingRoles, reportRoles, mine, rolesLoading, showAll]);
 
   const vis = kind==='All' ? cal : cal.filter(i=>i.kind===kind);
   /* A live Dataverse row has no seeded record behind it, so it opens the
@@ -1693,7 +1770,9 @@ function ScreenCalendar(){
   return <>
     <div className="ph ph-row">
       <div style={{flex:1}}><h1>Calendar</h1>
-        <div className="sub">Every Meeting Occurrence and Report Occurrence, on one timeline.</div></div>
+        <div className="sub">Meetings and reports you hold a role on — Chairman, Co-Chairman,
+          Organizer/Facilitator or Attendee for a Meeting; Submitter, Owner, or a Reviewer once it's
+          been submitted, for a Report.</div></div>
       <div className="seg seg-gold">
         {['month','week','list'].map(v=>
           <button key={v} className={view===v?'on':''} onClick={()=>setView(v)}>
@@ -1702,6 +1781,26 @@ function ScreenCalendar(){
     </div>
 
     {dvError && <Note k="warn" ic="⚠">{dvError}</Note>}
+
+    {/* ⚠️ TEMPORARY -- testing only, see the showAll state declaration above.
+        Remove this whole Note once testing is done. */}
+    <Note k="warn" ic="🧪">
+      <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer'}}>
+        <input type="checkbox" checked={showAll} onChange={e=>setShowAll(e.target.checked)}/>
+        <span><b>Testing:</b> show all users' occurrences, ignoring the role filter below.
+          {showAll ? ' — ON, everyone’s Meetings and Reports are showing.' : ''}</span>
+      </label>
+    </Note>
+
+    {!showAll && (rolesLoading
+      ? <Note k="info" ic="…">Reading which Meetings and Reports you hold a role on…</Note>
+      : !mine.size
+      ? <Note k="warn" ic="⚠">{currentUser?.fullName
+          ? <>You ({currentUser.fullName}) are not linked to any Position in Dataverse, so nothing
+              can be matched to a role you hold — the calendar below will stay empty.</>
+          : <>You are not linked to a Dataverse user in this session, so nothing can be matched to a
+              role you hold — the calendar below will stay empty.</>}</Note>
+      : null)}
 
     <div className="fltr" style={{justifyContent:'space-between'}}>
       <div style={{display:'flex',gap:8,alignItems:'center'}}>
@@ -2713,11 +2812,28 @@ function App({onSwitch}){
 
   /* Name lookups, and which Positions the signed-in user holds, for screens
      that live in their own files and so cannot reach the module-level DV_*
-     tables above. A Position is "mine" when its holder's name matches the
-     signed-in user's -- the same match the sidebar's user card already uses. */
-  const myPositionIds = currentUser?.fullName
+     tables above.
+
+     A Position is "mine" by ID, not by matching text: fetchPositions()
+     resolves each Position's current holder back through the Organization
+     Structure's own Current Employee lookup to a real systemuserid
+     (holderUserId), the same identity fetchCurrentUser() resolves the
+     signed-in user to -- see dataverse.js's fetchEmployeeIndex() comment
+     for the exact chain. Matching by id rather than by name avoids the
+     usual traps (case, a shortened or differently-ordered name, two people
+     sharing one) that a text comparison can't tell apart.
+
+     The old name match is kept as a fallback, not removed: it only runs
+     when the id match finds nothing, covering a Position whose holder
+     chain doesn't resolve to a systemuser for some reason (hr_User blank,
+     or an Organization Structure row Current Employee never filled in). */
+  const myPositionIdsById = currentUser?.systemUserId
+    ? DV_POS_LIST.filter(p => p.holderUserId && p.holderUserId === currentUser.systemUserId).map(p => p.id)
+    : [];
+  const myPositionIdsByName = (!myPositionIdsById.length && currentUser?.fullName)
     ? DV_POS_LIST.filter(p => p.holder && p.holder.toLowerCase() === currentUser.fullName.toLowerCase()).map(p => p.id)
     : [];
+  const myPositionIds = myPositionIdsById.length ? myPositionIdsById : myPositionIdsByName;
   const dvLookup = { bu:dvBu, region:dvRegion, pos:dvPos, dept:dvDept, func:dvFunc, rptTpl:dvRptTpl, myPositionIds,
                      deptList:DV_DEPT_LIST };
   const ctx = {db,setDb,mut,me,bu,setBu,businessUnits,navOpen,setNavOpen,currentUser,screen,go,openMeeting,openWork,sel,setSel,

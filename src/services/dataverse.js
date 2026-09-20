@@ -465,27 +465,42 @@ async function fetchUserNameMap(){
  *                       (cr603_OrganizationStructure), so a Position whose
  *                       Current Employee is blank can still be resolved.
  *
+ *  hr_User is a further lookup, Employee -> systemusers -- titled plainly
+ *  "User" in Dataverse, target unconfirmed by pac modelbuilder (no CLI
+ *  access from here), but systemusers is the only real candidate for a
+ *  field with that name and shape. byEmployeeIdUser/byPositionIdUser mirror
+ *  the two name indexes above, but resolve to a systemuserid instead of a
+ *  display string -- what "is this Position mine" needs to compare against
+ *  the signed-in user's own systemUserId (fetchCurrentUser()) by id, not by
+ *  matching text.
+ *
  *  hr_fullname is a read-only calculated column and Dataverse rejects some such
  *  fields in a plain $select, so the name is composed from the writable parts. */
 async function fetchEmployeeIndex(){
   try{
     const res = await Hr_employeesService.getAll({
-      select: ['hr_employeeid', '_cr603_organizationstructure_value',
+      select: ['hr_employeeid', '_cr603_organizationstructure_value', '_hr_user_value',
                'hr_firstname', 'hr_secondname', 'hr_lastname'],
     });
     const rows = res?.data ?? [];
-    const byEmployeeId = {}, byPositionId = {};
+    const byEmployeeId = {}, byPositionId = {}, byEmployeeIdUser = {}, byPositionIdUser = {};
     rows.forEach(e => {
       const name = [e.hr_firstname, e.hr_secondname, e.hr_lastname].filter(Boolean).join(' ').trim();
-      if(!name) return;
-      if(e.hr_employeeid) byEmployeeId[e.hr_employeeid] = name;
+      const userId = e._hr_user_value || null;
       const posId = e._cr603_organizationstructure_value;
-      if(posId && !byPositionId[posId]) byPositionId[posId] = name;
+      if(e.hr_employeeid){
+        if(name)   byEmployeeId[e.hr_employeeid] = name;
+        if(userId) byEmployeeIdUser[e.hr_employeeid] = userId;
+      }
+      if(posId){
+        if(name   && !byPositionId[posId])     byPositionId[posId] = name;
+        if(userId && !byPositionIdUser[posId]) byPositionIdUser[posId] = userId;
+      }
     });
-    return { byEmployeeId, byPositionId };
+    return { byEmployeeId, byPositionId, byEmployeeIdUser, byPositionIdUser };
   }catch(e){
     console.warn('[dataverse] fetchEmployeeIndex() failed -- Position holders will be unresolved:', e);
-    return { byEmployeeId:{}, byPositionId:{} };
+    return { byEmployeeId:{}, byPositionId:{}, byEmployeeIdUser:{}, byPositionIdUser:{} };
   }
 }
 
@@ -518,6 +533,14 @@ export async function fetchPositions(){
       || (currentEmployeeId && userMap[currentEmployeeId])
       || employees.byPositionId[posId]
       || null;
+    /* Same three routes, but landing on a systemuserid instead of a name --
+       route 2 doesn't need a further lookup: if userMap already resolved
+       currentEmployeeId as a systemuser, that id IS the systemuserid. */
+    const holderUserId =
+         (currentEmployeeId && employees.byEmployeeIdUser[currentEmployeeId])
+      || (currentEmployeeId && userMap[currentEmployeeId] ? currentEmployeeId : null)
+      || employees.byPositionIdUser[posId]
+      || null;
     return {
       id: posId,
       name: r.cr603_name,
@@ -525,6 +548,7 @@ export async function fetchPositions(){
       dept: r._cr18c_departments_lkp_value ?? null,
       fn: r._hr_funtion_value ?? null,
       holder,
+      holderUserId,
     };
   });
 }
@@ -2733,6 +2757,54 @@ export async function fetchMeetingOccurrences(){
   });
 }
 
+/**
+ * Resolves the Co-Chairman behind a Meeting Occurrence's scope, for every
+ * Meeting Template's every unit at once -- three bulk reads, no per-
+ * occurrence fan-out. Chairman and Facilitator are already on the
+ * occurrence itself (lm_ChairmanPosition/lm_FacilitatorPosition -- an
+ * occurrence can override the Setup's default for either), but Co-Chairman
+ * has no column of its own there at all, so it can only ever be read from
+ * the Setup: the per-unit row for a Business-Unit- or Region-scoped
+ * occurrence, or the Template's own parent row for a group-wide one (no
+ * Business Unit or Region set on the occurrence at all).
+ *
+ * Returns { forOccurrence(o) => coChairPositionId|null }, so a caller never
+ * has to know which of the three sources answered it.
+ */
+export async function fetchMeetingUnitRoles(){
+  const [buRes, rgRes, tplRes] = await Promise.all([
+    Lm_meetingtemplatebusinessunitsesService.getAll({
+      select: ['_lm_meetingtemplate_value','_lm_businessunit_value','_lm_meetingcochairman_value'],
+    }),
+    Lm_meetingtemplateregionsService.getAll({
+      select: ['_lm_meetingtemplate_value','_lm_region_value','_lm_meetingcochairman_value'],
+    }),
+    Lm_meetingtemplatesService.getAll({
+      select: ['lm_meetingtemplateid','_lm_meetingcochairman_value'],
+    }),
+  ]);
+  const byBu = new Map(), byRegion = new Map(), byTemplate = new Map();
+  (buRes?.data ?? []).forEach(r => {
+    if(!r._lm_meetingtemplate_value || !r._lm_businessunit_value) return;
+    byBu.set(r._lm_meetingtemplate_value+':'+r._lm_businessunit_value, r._lm_meetingcochairman_value||null);
+  });
+  (rgRes?.data ?? []).forEach(r => {
+    if(!r._lm_meetingtemplate_value || !r._lm_region_value) return;
+    byRegion.set(r._lm_meetingtemplate_value+':'+r._lm_region_value, r._lm_meetingcochairman_value||null);
+  });
+  (tplRes?.data ?? []).forEach(r => {
+    byTemplate.set(r.lm_meetingtemplateid, r._lm_meetingcochairman_value||null);
+  });
+  return {
+    forOccurrence(o){
+      if(!o.templateId) return null;
+      if(o.businessUnitId) return byBu.get(o.templateId+':'+o.businessUnitId) || null;
+      if(o.regionId)       return byRegion.get(o.templateId+':'+o.regionId) || null;
+      return byTemplate.get(o.templateId) || null;
+    },
+  };
+}
+
 /** Every Report Occurrence. One request -- this table has no child tables the
  *  calendar needs (its history lives in lm_reportoccurrencehistories). */
 export async function fetchReportOccurrences(){
@@ -2767,6 +2839,90 @@ export async function fetchReportOccurrences(){
     creatorPositionId: r._lm_creatorposition_value || null,
     updated: r.modifiedon || r.createdon || null,
   }));
+}
+
+/**
+ * Resolves the Owner Position and Review Chain behind a Report Occurrence's
+ * scope, for every Report Template's every unit at once -- four bulk reads,
+ * no per-occurrence fan-out (unlike fetchReportTemplateDetail(), which reads
+ * one Template's chain at a time for Governance Setup's editor).
+ *
+ * A Report Occurrence has no per-occurrence reviewer table of its own (see
+ * PROJECT-CONTEXT.md §6, "A Report Occurrence has no per-occurrence
+ * reviewer table") -- the chain is read from the Template for that unit,
+ * same as everywhere else in this app that needs it. The Owner Position is
+ * the same either/or shape: a per-unit row for a Business-Unit- or Region-
+ * scoped occurrence, or the Template's own parent row for a group-wide one.
+ *
+ * Returns { forOccurrence(o) => {ownerId, reviewerIds: Set<string>} }.
+ */
+export async function fetchReportUnitRoles(){
+  const [buRes, rgRes, tplRes, chainRes] = await Promise.all([
+    Lm_reporttemplatebusinessunitsesService.getAll({
+      select: ['lm_reporttemplatebusinessunitsid','_lm_reporttemplate_value','_lm_businessunit_value','_lm_ownerposition_value'],
+    }),
+    Lm_reporttemplateregionsService.getAll({
+      select: ['lm_reporttemplateregionid','_lm_reporttemplate_value','_lm_region_value','_lm_ownerposition_value'],
+    }),
+    Lm_report_templatesService.getAll({
+      select: ['lm_report_templateid','_lm_ownerposition_value'],
+    }),
+    Lm_reporttemplatereviewchainsService.getAll({
+      select: ['_lm_reviewerposition_value','_lm_reporttemplate_value',
+               '_lm_reporttemplateperbusinessunit_value','_lm_reporttemplateperregion_value',
+               '_lm_meetingtemplateperbusinessunit_value','_lm_meetingtemplateperregion_value'],
+    }),
+  ]);
+
+  const byBu = new Map(), byRegion = new Map(), byTemplate = new Map();
+  (buRes?.data ?? []).forEach(r => {
+    if(!r._lm_reporttemplate_value || !r._lm_businessunit_value) return;
+    byBu.set(r._lm_reporttemplate_value+':'+r._lm_businessunit_value,
+      { unitRowId: r.lm_reporttemplatebusinessunitsid, ownerId: r._lm_ownerposition_value||null });
+  });
+  (rgRes?.data ?? []).forEach(r => {
+    if(!r._lm_reporttemplate_value || !r._lm_region_value) return;
+    byRegion.set(r._lm_reporttemplate_value+':'+r._lm_region_value,
+      { unitRowId: r.lm_reporttemplateregionid, ownerId: r._lm_ownerposition_value||null });
+  });
+  (tplRes?.data ?? []).forEach(r => {
+    byTemplate.set(r.lm_report_templateid, { unitRowId: null, ownerId: r._lm_ownerposition_value||null });
+  });
+
+  /* Every reviewer Position, grouped by the SAME key a unit lookup above
+     resolves to -- a per-unit row's own id (either lookup pair, per
+     unitChainFilter()'s own reasoning: writes use the newer
+     lm_ReportTemplatePerBusinessUnit/PerRegion pair, but a chain saved
+     before 06 Sep still sits on the Meeting module's pair), or the
+     Template id directly for a group-wide chain (all four per-unit lookups
+     null on that row). */
+  const reviewersByUnitRow = new Map(), reviewersByTemplate = new Map();
+  (chainRes?.data ?? []).forEach(r => {
+    const pos = r._lm_reviewerposition_value; if(!pos) return;
+    const unitRowId = r._lm_reporttemplateperbusinessunit_value || r._lm_reporttemplateperregion_value
+      || r._lm_meetingtemplateperbusinessunit_value || r._lm_meetingtemplateperregion_value || null;
+    if(unitRowId){
+      if(!reviewersByUnitRow.has(unitRowId)) reviewersByUnitRow.set(unitRowId, new Set());
+      reviewersByUnitRow.get(unitRowId).add(pos);
+    } else if(r._lm_reporttemplate_value){
+      const t = r._lm_reporttemplate_value;
+      if(!reviewersByTemplate.has(t)) reviewersByTemplate.set(t, new Set());
+      reviewersByTemplate.get(t).add(pos);
+    }
+  });
+
+  return {
+    forOccurrence(r){
+      if(!r.templateId) return { ownerId:null, reviewerIds:new Set() };
+      const unit = r.businessUnitId ? byBu.get(r.templateId+':'+r.businessUnitId)
+        : r.regionId ? byRegion.get(r.templateId+':'+r.regionId)
+        : byTemplate.get(r.templateId);
+      const ownerId = unit?.ownerId || null;
+      const reviewerIds = unit?.unitRowId ? (reviewersByUnitRow.get(unit.unitRowId) || new Set())
+        : (!r.businessUnitId && !r.regionId ? (reviewersByTemplate.get(r.templateId) || new Set()) : new Set());
+      return { ownerId, reviewerIds };
+    },
+  };
 }
 
 /* lm_kind on lm_reportsectioncitations, in the column's own option order. The

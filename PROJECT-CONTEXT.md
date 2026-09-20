@@ -3234,7 +3234,222 @@ time), so the "reports now findable that weren't before" claim is
 structural/reasoned, not yet confirmed against a real example.
 
 Both apps build clean; Governance's bundle hash is unchanged (this file
-isn't part of that app). Not yet deployed.
+isn't part of that app). Deployed same recipe as always, both succeeding
+on the first attempt.
+
+### 21 Sep, later again: Calendar scoped to the signed-in user's own role — two new bulk role-index reads
+
+Per an explicit ask: the Calendar tab (`ScreenCalendar`, `LeadershipApp.jsx`)
+used to show every Meeting and Report Occurrence to everyone. It now shows
+only what the signed-in user holds a role on — Chairman, Co-Chairman,
+Organizer/Facilitator or Attendee for a Meeting; Submitter, Owner, or a
+Reviewer **once the report has actually been submitted** (not while it's
+still Draft), for a Report. **Scoped to this one screen on purpose** —
+Workspace's own calendar-derived widgets (`CalendarWebpart`, its counts)
+keep reading the unfiltered `cal` from context untouched; the ask named the
+Calendar tab specifically.
+
+**The hard part wasn't the filtering, it was finding the data to filter
+on.** Chairman, Facilitator and (for Reports) Creator/Submitter are already
+columns on the occurrence itself. Everything else is not:
+
+- **A Meeting Occurrence has no Co-Chairman column at all** — confirmed by
+  reading the cached connector schema (`meetingoccurrences.Schema.json`),
+  not assumed: only `lm_chairmanposition`/`lm_facilitatorposition` exist.
+  Co-Chairman lives only on the **Setup** — the per-unit row
+  (`lm_meetingtemplatebusinessunitses`/`...regions`,
+  `_lm_meetingcochairman_value`) for a scoped occurrence, or the Template's
+  own parent row (`lm_meetingtemplates._lm_meetingcochairman_value`) for a
+  group-wide one with neither Business Unit nor Region set.
+- **A Report Occurrence has no Owner Position or reviewer of its own
+  either.** Owner Position is the same either/or shape, on
+  `lm_reporttemplatebusinessunitses`/`...regions`/the Template parent. The
+  Review Chain is the fact already on record in §6 ("A Report Occurrence
+  has no per-occurrence reviewer table... the chain is read from the
+  Template for that unit") — this is the first screen other than Governance
+  Setup's own editor to actually need it.
+
+**Built as two new bulk reads, not per-occurrence fan-out**
+(`fetchMeetingUnitRoles()`, `fetchReportUnitRoles()`, both in
+`dataverse.js`, both returning a `{forOccurrence(o) => …}` resolver so a
+caller never touches the raw maps): each is 3-4 unfiltered `getAll()`
+calls — every per-unit row across every Template, every Review Chain row —
+same "one flat sweep regardless of how much data exists" shape
+`fetchReportTemplateHierarchyContent()` (21 Sep, earlier) already
+established, and deliberately NOT `fetchReportTemplateDetail()`'s per-
+Template fan-out, which would mean one extra round-trip per Report
+Occurrence on a screen that can show dozens at once. The Review Chain
+lookup accepts either lookup-pair Review Chain rows can be bound through
+(the pre-/post-06-Sep pair, per `unitChainFilter()`'s own reasoning) so a
+chain saved before that date still resolves correctly here too.
+
+**Three scope calls worth knowing about, in case this isn't exactly what
+was meant:**
+- **Attendee match is a direct Position only.** A Microsoft-Group Attendee
+  (19-20 Sep) is not expanded to its member list — the signed-in user's own
+  Position has to be the one bound to the Attendee row directly.
+- **"Submitted, not Draft" reads as `status !== 'Draft'`** — which includes
+  `Returned` (was submitted, sent back for changes) as still visible to a
+  Reviewer, on the reasoning that it genuinely was submitted once; only a
+  report that has never left Draft is hidden from its reviewers.
+- **MOM Due items are gated by the same Meeting-visibility rule**, not left
+  unfiltered — a write-up deadline for a meeting the user holds no role on
+  isn't treated as theirs to track either. Not separately asked for, but
+  followed from the same reasoning.
+
+**A holder of no Position sees an empty calendar, with a note saying so**
+rather than a silently blank screen — `mine.size===0` (no
+`dvLookup.myPositionIds`, the same match the sidebar's user card and
+Hierarchy/OrgReports already use) short-circuits every item to hidden, and
+a `Note` names why, distinguishing "not linked to a Dataverse user at all"
+from "linked, but holds no Position." A second, narrower `Note` covers the
+brief window while the two new role reads are still in flight, so the grid
+doesn't flash empty before they land.
+
+**Not yet verified against live Dataverse** — built and green against a
+build only. The one thing most worth checking first: that a Co-Chairman or
+a Review Chain reviewer who holds no OTHER role on an occurrence actually
+sees it appear, since those two paths are the ones with no simpler
+fallback to fall back on if the per-unit lookup ever comes back empty.
+
+Both apps build clean; Governance's bundle hash is unchanged (this screen
+isn't part of that app). Deployed same recipe as always, both succeeding
+on the first attempt.
+
+### 21 Sep, later yet: the OLE2 fix was right, but that specific file turned out to be password-protected — a second, different reason it couldn't be shown
+
+Reported live, straight after the OLE2 fix went out: the same test file
+(`lm_MeetingCategory (1789744418443) (1).xlsx`) now got PAST the signature
+check — no more "not a readable XLSX file" — but failed one step later,
+inside SheetJS itself: *"ECMA-376 Encrypted file missing
+/EncryptionInfo."*
+
+**Read the actual SheetJS source rather than guess again** (`node_modules/
+xlsx/xlsx.mjs`) to find out what this really means, since a second wrong
+theory in a row on the same file would have been worse than the first.
+`read_cfb()` (the function SheetJS calls once it has a parsed CFB
+container) branches on ONE thing: does the container have a stream literally
+named `EncryptedPackage`? If yes, it assumes the workbook was saved with a
+password and hands off to `parse_xlsxcfb()`, which requires a matching
+`EncryptionInfo` stream to actually decrypt it — the one this file's
+container is missing. **So the OLE2 signature fix (previous entry) was
+correct and stays** — this file genuinely is an OLE2/CFB container, just
+not the legacy-`.xls` kind that fix was written for. It is (or was) a
+workbook saved with **Excel's own "Encrypt with Password" feature**, which
+produces exactly this `EncryptedPackage`/`EncryptionInfo` structure. Whether
+the `EncryptionInfo` stream was lost somewhere in this app's own upload/
+storage/download path, or was never intact to begin with, doesn't change
+the outcome either way: **a password-protected workbook was never going to
+be previewable by this viewer regardless of that stream** — there is no
+password prompt anywhere in `FilePreview.jsx`, by design (read-only, no
+picker, no input of any kind).
+
+**Fixed by recognising the error pattern, not by one exact string** — every
+SheetJS message for this family of failure contains either
+`"password-protected"` or `"Encrypted file"` (confirmed by reading every
+throw site in `xlsx.mjs`, six of them, all one of those two phrasings), so
+`FilePreview.jsx` tests `/password-protected|Encrypted file/i` against the
+caught error and, on a match, replaces SheetJS's internal wording with an
+honest, actionable one: *"This file is password-protected, so it can't be
+previewed here… Download it and open it in Excel with the password."* Any
+OTHER `XLSX.read()` failure still surfaces its real message, unrewritten —
+this only softens the one failure mode that has an actual next step for the
+person reading it.
+
+**A real, separate gap fixed alongside it: the error view had NO Download
+button at all**, for any failure, ever — only the success path could
+download anything, because `bytes` was never carried into the error state.
+Worth having regardless of the encryption case: a signature mismatch, a
+corrupt file, or (now) an encrypted one are all still real, still-downloadable
+bytes; only the in-page preview failed. `bytes` now rides on the thrown
+error when available and lands in the error state; `download()`'s guard
+changed from `phase==='ready'` to "do we have bytes or a url", which is the
+actual precondition, not the phase name.
+
+**Not yet verified against live Dataverse** — built and green against a
+build only. Confirming this actually is (or was) password-protected means
+downloading it and having Excel ask for a password; if Excel opens it
+cleanly with no password, the diagnosis above needs revisiting.
+
+### 22 Sep: "my Positions" resolved by ID through the Organization Structure, not by name match
+
+Per an explicit ask about the Calendar's new role filter (21 Sep, above):
+`myPositionIds` — which Positions the signed-in user holds, the set
+everything in that filter and `dvLookup.myPositionIds` elsewhere runs off —
+used to be computed by comparing `currentUser.fullName` against each
+Position's already-resolved holder NAME, case-insensitively. That match is
+exactly as fragile as it sounds (a shortened name, different word order, a
+shared name, a stray space all silently break it) and was never the real
+relationship — it was standing in for one, because `fetchPositions()` only
+ever resolved the holder to a display string, never to an id.
+
+**The real relationship was already half-built.** `cr603_organizationstructures`
+(the Positions table) already carries `hr_CurrentEmployee`, resolved by
+`fetchPositions()`/`fetchEmployeeIndex()` through three fallback routes
+(Position → Employee, Position → systemuser directly, or the reverse
+Employee → Position link) — all already existed, just to produce a NAME.
+**`hr_employees` also carries `hr_User`** (title "User", `LookupType`) — not
+previously read here. The most direct candidate for what it targets is
+`systemusers`, the same table `fetchCurrentUser()` already resolves the
+signed-in user against (`systemUserId`, via their Azure AD object id or
+email) — so the same three routes now resolve a **systemuserid** in
+parallel with the name, and "is this Position mine" is a plain id
+comparison: `p.holderUserId === currentUser.systemUserId`.
+
+⚠️ **`hr_User`'s target table is inferred, not confirmed** — there is no
+`pac modelbuilder`/CLI access from this session to verify it the way this
+file's own convention calls for. It is the only real candidate for a
+`LookupType` field titled plainly "User" on an Employee record, and the
+whole point of the field only makes sense if it points at `systemusers`,
+but this is reasoning from shape, not a confirmed relationship. **If
+`myPositionIds` ever comes back empty for someone who should hold a
+Position, check this first** — either `hr_User` targets something else, or
+it's simply blank on their Employee row.
+
+**Kept as a fallback, not a replacement, for exactly that reason.** The old
+name match still runs, but only when the id match finds nothing
+(`myPositionIdsById.length ? myPositionIdsById : myPositionIdsByName`) — so
+a signed-in user whose `hr_User` link is blank or wrong still resolves the
+same way they always did, and nothing that worked before can regress from
+this change alone.
+
+**Scoped to `myPositionIds` only** — the TopBar's own separate "which
+Position do I show as mine" lookup (`LeadershipApp.jsx`, the sidebar user
+card) still matches by name; it wasn't part of what was asked and is a
+narrower, single-Position display case rather than the "which Positions do
+I hold, plural" set every role filter reads.
+
+Both apps build clean; Governance's bundle hash also changed (it reads
+`fetchPositions()` too, for its own Position pickers) — additive only,
+`holder` (the name) is untouched, `holderUserId` is a new field alongside
+it, so nothing there should behave differently. Deployed to Code App
+Development, same live pair, same recipe, both succeeding on the first
+attempt.
+
+### 22 Sep, later: a TEMPORARY testing toggle on the Calendar — ⚠️ meant to be removed, not a feature
+
+Per an explicit ask, framed as temporary from the start: a checkbox
+("Testing: show all users' occurrences, ignoring the role filter below")
+that bypasses the whole 21 Sep role filter and shows every Meeting/Report
+occurrence again, exactly like before that filter existed — added so the
+filter can be checked against what used to show without needing a second
+Dataverse user to sign in as.
+
+**Deliberately the smallest possible change, and marked to be easy to find
+and remove later**: one `showAll` state
+(`LeadershipApp.jsx`, `ScreenCalendar`), one line in the `cal` useMemo
+(`if(showAll) return calAll;`, ahead of the real filter), and one `Note`
+with a checkbox in the header, all three explicitly commented `⚠️
+TEMPORARY`. The two "why is this empty" notes (loading / not linked to a
+Position) are suppressed while `showAll` is on, since they'd be answering a
+question that doesn't apply in that state. **Nothing about the role filter
+itself changed** — this sits beside it as a bypass, not a rewrite; removing
+the toggle later means deleting exactly the three `⚠️ TEMPORARY`-marked
+spots and nothing else.
+
+**Next session: if this is still here and nobody's said why, ask before
+assuming it's still wanted** — it was asked for as scaffolding for a
+specific testing pass, not a permanent feature.
 
 ## 6. Schema facts that are expensive to rediscover
 
@@ -3314,15 +3529,32 @@ is never second-guessed.
 ⚠️ **A real `.xlsx` can legitimately BE an OLE2 file, not a ZIP one** — found
 21 Sep on the very first live file opened through this viewer
 (`lm_MeetingCategory (1789744418443) (1).xlsx`, see the Live file inventory
-below): its actual content, after the double-base64 peel, was an old-format
-`.xls` (OLE2) wearing an `.xlsx` name. `xlsx`/`xlsm`/`xlsb` now all accept
-**either** `['zip','ole2']` in `EXPECTED` (`xls` already did) — SheetJS
-sniffs the real container from the bytes regardless of what the filename
-says, so gating on ZIP-only for those three was stricter than the library
-it protects, and silently discarded a correctly-peeled result in favour of
-raw undecoded text. `docx`/`pptx` are deliberately still ZIP-only: this
-viewer has no old-format `.doc`/`.ppt` renderer either way. Covered in
-`scripts/test-decodefile.mjs`.
+below): its actual content, after the double-base64 peel, was OLE2, not
+ZIP. `xlsx`/`xlsm`/`xlsb` now all accept **either** `['zip','ole2']` in
+`EXPECTED` (`xls` already did) — SheetJS sniffs the real container from the
+bytes regardless of what the filename says, so gating on ZIP-only for those
+three was stricter than the library it protects, and silently discarded a
+correctly-peeled result in favour of raw undecoded text. `docx`/`pptx` are
+deliberately still ZIP-only: this viewer has no old-format `.doc`/`.ppt`
+renderer either way. Covered in `scripts/test-decodefile.mjs`.
+
+⚠️ **An OLE2 `.xlsx` is not necessarily an old-format `.xls` — it can just
+as easily be a workbook saved WITH A PASSWORD**, which uses the identical
+container family. That very same file turned out to be exactly this case,
+found one step later: past the signature check, SheetJS threw *"ECMA-376
+Encrypted file missing /EncryptionInfo"*. Read from `xlsx.mjs` itself:
+`read_cfb()` hands any CFB container holding a stream named
+`EncryptedPackage` to the password-protected code path — this file has one,
+so it is (or was) genuinely encrypted, not a plain legacy workbook, and no
+fix to the OLE2 signature check above changes that. **This viewer has no
+password prompt, by design, so an encrypted workbook can never be shown
+here regardless.** `FilePreview.jsx` now recognises every SheetJS message in
+this family (`/password-protected|Encrypted file/i` — six throw sites in
+`xlsx.mjs`, confirmed by reading each one, all one of those two phrasings)
+and replaces it with an honest, actionable message instead of the raw
+SheetJS wording. The error view also gained a Download button when the
+bytes are available but unparseable for ANY reason — previously it had
+none, ever, even for a genuinely downloadable file.
 
 ⚠️ **Never hand unverified bytes to SheetJS to find out whether they are a
 workbook.** It treats anything it cannot identify as CSV and SUCCEEDS,

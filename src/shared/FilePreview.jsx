@@ -220,7 +220,29 @@ export function FilePreview({entitySet, recordId, field, name}){
            rare, so bundling it into the app's main chunk would make every
            page load pay for a screen most people never open. */
         const XLSX = await import('xlsx');
-        const wb = XLSX.read(bytes, {type:'array'});
+        let wb;
+        try{
+          wb = XLSX.read(bytes, {type:'array'});
+        }catch(e){
+          /* A file whose bytes carry the right ZIP/OLE2 signature (the check
+             above already passed) can still fail here -- the one confirmed
+             live case is a workbook SAVED with a password: SheetJS finds an
+             `EncryptedPackage` CFB stream and, whether or not the matching
+             `EncryptionInfo` stream survived alongside it, throws one of a
+             handful of "password-protected"/"Encrypted file …" messages --
+             never something this in-browser, no-password-prompt viewer could
+             act on regardless of which exact stream is missing. Recognised
+             by pattern, not by one exact string, and re-thrown with `bytes`
+             attached so the error view below can still offer the real file
+             for download -- opening it in Excel with the password is the
+             only path that was ever going to work. */
+          const known = /password-protected|Encrypted file/i.test(e?.message || '');
+          const wrapped = new Error(known
+            ? 'This file is password-protected, so it can’t be previewed here — there is no way to enter a password in this read-only viewer. Download it and open it in Excel with the password.'
+            : `This file could not be read as a spreadsheet: ${e?.message || e}`);
+          wrapped.bytes = bytes;
+          throw wrapped;
+        }
         const sheets = wb.SheetNames.map(n=>({
           name: n,
           rows: trimGrid(XLSX.utils.sheet_to_json(wb.Sheets[n], {header:1, defval:''})),
@@ -245,7 +267,11 @@ export function FilePreview({entitySet, recordId, field, name}){
     })().catch(e=>{
       if(!alive) return;
       console.warn('[FilePreview]', entitySet, recordId, field, e);
-      setSt({phase:'error', msg: e?.message || String(e)});
+      /* `bytes` rides along when the failure happened AFTER the bytes were
+         already fetched and signature-checked (e.g. a password-protected
+         workbook, above) -- carried through so Download still works even
+         though there is nothing to preview. */
+      setSt({phase:'error', msg: e?.message || String(e), bytes: e?.bytes || null});
     });
 
     return ()=>{
@@ -274,8 +300,12 @@ export function FilePreview({entitySet, recordId, field, name}){
      extension is not valid", which reads like a corrupt upload and is not
      one. The URL is cached for repeat clicks and released by the effect
      cleanup above, on a delay. Do not revoke here. */
+  /* Not gated on st.phase==='ready': a failed preview can still carry
+     `bytes` (see the error state below), and the file is exactly as
+     downloadable then as when the preview succeeds -- only the in-page
+     rendering failed. */
   const download = ()=>{
-    if(st.phase !== 'ready') return;
+    if(!st.bytes && !st.url) return;
     if(!dlRef.current){
       dlRef.current = st.url || URL.createObjectURL(
         new Blob([st.bytes], {type: MIME[extOf(name)] || 'application/octet-stream'}));
@@ -295,6 +325,9 @@ export function FilePreview({entitySet, recordId, field, name}){
     return <div className="fv-msg fv-err">
       <b>The file could not be read.</b>
       <div className="fv-detail">{st.msg}</div>
+      {st.bytes
+        ? <button type="button" className="btn" style={{marginTop:8}} onClick={download}>Download</button>
+        : null}
     </div>;
 
   const body =
