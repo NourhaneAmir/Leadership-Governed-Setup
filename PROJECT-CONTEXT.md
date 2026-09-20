@@ -2056,6 +2056,75 @@ It is now `"error"` in `.oxlintrc.json`, with `env: {browser, es2024}` declared
 alongside — without that the one real finding drowns in ~300 window/console
 hits. `src/` is clean under it; `npm run lint` fails on the next one.
 
+### 20 Sep, later: environment groundwork, and four UI fixes
+
+`053d0e6`, `d7d9510`, `424666e`, `06e0967` and the file-picker commit.
+
+**Groundwork for open decision 9** (`053d0e6`). `DATA_ORG` was one constant in
+the shared `src/`, so changing it moved BOTH apps — the exact thing the IT move
+must not do. Each app's `vite.config.js` now defines `__DATA_ORG__`, and
+`xenv.js` reads it with DT New as the fallback. Behaviour is unchanged today;
+verified the define is substituted at build time (the identifier is absent from
+the bundle, the URL is inlined). `__DATA_ORG__` is declared `readonly` in
+`.oxlintrc.json`, or `no-undef` flags it.
+
+**`preflight()`, the tool that replaces yesterday's 45 CLI calls.**
+
+    await window.__xenvPreflight()
+    await window.__xenvPreflight({ org: 'https://org2f45e702.crm4.dynamics.com' })
+
+Reads one row from every registered table and reports OK / EMPTY / DENIED /
+ABSENT, with `out.blocked` as the list to hand an administrator. **The org
+override is the point**: the adapter takes the organization per call, so IT can
+be checked from the app running today — no rebuild, no deploy — and it tests
+the APP's connection and user rather than whoever is signed in to the CLI.
+The table list is not hardcoded: `dvTable()` registers every entity set it is
+asked for, so the sweep cannot drift from what the app uses.
+
+⚠️ `window.__xenvSmokeTest` had been documented in `xenv.js` for weeks and was
+**never attached to `window`** — it had never been runnable as described. Both
+helpers are attached now, plus `window.__xenvOrg()`.
+
+**Destination moved to Submission per unit** (`d7d9510`). It sat on
+"Destination and content" as a red error until a Channel was chosen — an alarm
+raised on a step where nothing could be done about it. It now sits under the
+Channel that fills it, on each unit card, read-only: dashed placeholder before,
+the resolved SharePoint path after. `destinationOf()` still derives it at
+display and at save, so there is still no second copy to drift. The rule moved
+with it — reported against the first unit rather than the step that only
+displayed the result, because `u-<key>` is what `unitIssueCount()` counts to
+mark a unit card.
+
+**Both file pickers styled like "+ Add section".** A bare
+`<input type="file">` cannot be restyled (its button is a shadow-DOM part), so
+the input is visually hidden inside a `<label>` carrying the look — clipped,
+not `display:none`, which would drop it out of the tab order. ⚠️ The label
+NESTS the input and does **not** also carry `htmlFor`: a label that both wraps
+its control and points at it can fire the click twice, opening the file dialog
+two deep. The focus ring uses `:focus-within`; a sibling combinator cannot
+reach the button, because the input sits after it in the markup.
+
+**⚠️ A CSS collision that specificity did not prevent** (`424666e`). The
+searchable-dropdown work put its styles in `theme.css` as bare `.combo-*`, and
+Governance already had `.gov-root .combo-opt` — which the Position picker's
+options also carry. `.gov-root .combo-opt` beats a bare `.combo-opt` **only for
+the properties it sets**, and it does not set `flex-direction`. So the unscoped
+`flex-direction:column` still applied, and `.gov-root .pos-sel-opt`'s
+`align-items:center` — correct for a row — centred the column. Every Position
+option rendered as an avatar above a centred name. Renamed to `.cmb-*` rather
+than scoped: two components sharing a class name in one bundle is the bug, and
+winning a specificity fight leaves the next collision to be found the same way.
+**Check the BUILT css, not the source**, when a style behaves unexpectedly
+across the two modules.
+
+**The Expected Content Checklist shows on a Template's Details tab**
+(`06e0967`). It reported only "N section(s)", so the one thing a Report
+Template defines could only be read by opening the wizard — which meant putting
+the Setup into edit mode to look at it. Each section now shows heading,
+Diagnostic Angle, attached file and every citation. The citation labels come
+from the editor's own rule, lifted into `sectionItemLabel()` and shared, so the
+same row cannot read two ways.
+
 ### Deployment, settled — pushing to the SAME link and the SAME app id
 
 **This supersedes the 17 Sep "re-registered from scratch" entry above.** The
