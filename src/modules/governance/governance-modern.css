@@ -203,7 +203,6 @@
 .gov-root .stats{ grid-template-columns:repeat(auto-fit,minmax(170px,1fr)) }
 .gov-root .grid2{ grid-template-columns:repeat(auto-fit,minmax(360px,1fr)) }
 .gov-root .grid3{ grid-template-columns:repeat(auto-fit,minmax(280px,1fr)) }
-.gov-root .sum-grid{ grid-template-columns:repeat(auto-fit,minmax(280px,1fr)) }
 .gov-root .kv-block{ grid-template-columns:repeat(auto-fit,minmax(220px,1fr)) }
 
 /* register/lists two-pane screens: let the content pane breathe on ultrawide */
@@ -960,4 +959,36 @@
 .gov-root .card.reg-card:hover{
   border-color:#F0C893;
   box-shadow:0 4px 12px rgba(33,28,30,.07);
+}
+
+/* ---- Review panel: the approved design's grouped key/value rows ---------
+   One full-width column of groups instead of a grid of side-by-side blocks.
+   Each group is a gold uppercase heading over full-width label/value rows,
+   which is what lets a long value (a resolved scope, a Teams link) use the
+   width it needs -- the old 280px grid cell is what forced those to wrap
+   into an unreadable column.
+
+   Scoped to .gov-root and kept in the GOVERNANCE sheet even though
+   SumBlock is governance-only today: `.sum-*` itself lives in the shared
+   theme.css, so an unscoped override here would follow the class if
+   Leadership ever adopts it. */
+.gov-root .sum-grid{ grid-template-columns:1fr; gap:0 }
+.gov-root .sum-block{ margin-bottom:16px }
+.gov-root .sum-block:last-child{ margin-bottom:0 }
+.gov-root .sum-block h4{
+  color:var(--teal); letter-spacing:.1em; margin-bottom:8px;
+}
+.gov-root .sum-row{ padding:8px 0 }
+/* Restored: theme.css drops the last row's rule, which was right when a
+   block was a standalone card. Here it is the line that closes the group
+   off from the next group's heading. */
+.gov-root .sum-row:last-child{ border-bottom:1px solid var(--border) }
+/* The value is capped so a long one wraps rather than squeezing its label
+   away; the label keeps the rest. */
+.gov-root .sum-row b{ max-width:62%; text-align:right }
+/* --teal-d, not --teal: at 11.5px the lighter gold sits near 3:1 on this
+   background, which is under the readable threshold for small text. */
+.gov-root .sum-row .sum-url{
+  font-family:var(--mono); font-size:11.5px; font-weight:500;
+  color:var(--teal-d); word-break:break-all;
 }

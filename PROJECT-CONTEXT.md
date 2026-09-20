@@ -2056,6 +2056,51 @@ It is now `"error"` in `.oxlintrc.json`, with `env: {browser, es2024}` declared
 alongside — without that the one real finding drowns in ~300 window/console
 hits. `src/` is clean under it; `npm run lint` fails on the next one.
 
+### 20 Sep: the Review panel on both Details tabs, restyled
+
+Same source as the register restyle -- the `setup-detail` Summary tab in
+**`leadership-practice (2).html`**. The side-by-side grid of summary blocks
+becomes ONE full-width column: a gold uppercase group heading over a stack of
+full-width label/value rows.
+
+**This was almost entirely CSS, because `SumBlock` already emitted the right
+structure** -- an `<h4>` heading over `.sum-row` children, each a label span
+and a value `<b>`. Only the layout was wrong, so nothing about how the two
+summaries are composed had to change.
+
+**It lands on exactly the two tabs that were asked for.** `.sum-grid` has
+precisely two users, `MeetingSummary` and `ReportSummary` -- which are the
+Meeting Details tab and the Report Details tab (and, the same components
+being reused, the wizard's final Review step). Checked before changing it
+rather than assumed.
+
+Why full width matters here and is not only decoration: the old grid cell was
+`minmax(280px, 1fr)`, so a long value -- a resolved scope like
+`Andalusia Health > KSA > Andalusia Jeddah > Quality > Accreditation`, or a
+Teams link -- wrapped into a narrow column and became hard to read. The value
+is now capped at 62% of a full-width row, which lets it wrap sensibly while
+leaving its label intact.
+
+⚠️ **Two `.gov-root .sum-grid` rules existed after the first pass**, the old
+`repeat(auto-fit,minmax(280px,1fr))` at the top of the file and the new
+single-column one at the bottom. Equal specificity, so only SOURCE ORDER
+decided the layout, and any reordering of that stylesheet would have silently
+restored the grid. The superseded rule was deleted. Caught by reading the
+BUILT stylesheet -- the same check that caught the `.combo-*` collision, and
+the reason to keep doing it.
+
+A value that is plainly a URL (`/^https?:\/\//`) now renders mono, gold and
+`word-break:break-all`, as the design shows the Teams link. ⚠️ The test is
+guarded on `typeof v === 'string'`: a SumBlock value may be a React node --
+the Template file row passes one, with its View button -- and a regex against
+that throws. The link uses `--teal-d` rather than `--teal`, because at 11.5px
+the lighter gold sits near 3:1 on this background, under the readable
+threshold for small text.
+
+`.sum-row:last-child` gets its rule back. theme.css removes it, which was
+right when a block was a standalone card; in a stacked column it is the line
+that closes a group off from the next group's heading.
+
 ### 20 Sep, later still: Setup Register restyled to the approved design
 
 Source of truth is **`leadership-practice (2).html`** in the repo root (the

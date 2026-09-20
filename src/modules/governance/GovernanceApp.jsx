@@ -2518,7 +2518,14 @@ function UnitChain({u,k,s,setUnit}){
 }
 
 /* ---- read-only summary rows --------------------------------------------- */
-const SumRow=({k,v})=><div className="sum-row"><span>{k}</span><b>{v||'—'}</b></div>;
+/* A value that is plainly a URL is set in mono and allowed to break
+   mid-string, as the design shows the Teams link. Without the break a long
+   link holds the value column open and squeezes its own label to nothing.
+   Guarded on typeof: a value may be a React node (the Template file row
+   passes one), and a regex against that would throw. */
+const isUrlValue = v => typeof v === 'string' && /^https?:\/\//i.test(v);
+const SumRow=({k,v})=><div className="sum-row"><span>{k}</span>
+  <b className={isUrlValue(v)?'sum-url':undefined}>{v||'—'}</b></div>;
 function SumBlock({title,items}){
   /* an item is [label, value]; a suppressed row arrives as [false, …] and must not render */
   const rows=items.filter(it=>Array.isArray(it)&&it[0]);
