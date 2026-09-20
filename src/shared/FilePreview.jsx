@@ -91,6 +91,32 @@ const matchesAny = (bytes, names) =>
    us what the leading bytes should be, they do not match, and after
    decoding again they do. So a file that is merely unrecognised is passed
    through untouched, and a text file is never mangled. */
+/* What actually arrived, in a form that can be read straight off the
+   screen. This exists because two separate theories about the payload were
+   INFERRED rather than observed, and both were wrong. Showing the bytes
+   costs one line and settles the question. */
+function describeBytes(bytes){
+  const hex = Array.from(bytes.slice(0,12))
+    .map(b=>b.toString(16).padStart(2,'0')).join(' ');
+  let text = '';
+  try{ text = new TextDecoder('latin1').decode(bytes.slice(0,96)); }catch{ /* ignore */ }
+  return {length:bytes.length, hex, printable:text.replace(/[^ -~]/g,'.')};
+}
+
+/* Strips the wrappers a base64 payload is commonly delivered inside, any of
+   which makes atob() throw and so would defeat the peel below. */
+function cleanBase64Text(text){
+  let t = text.trim();
+  if(t.charCodeAt(0) === 0xFEFF) t = t.slice(1);                    // BOM
+  if(t.length > 1 && t[0] === '"' && t[t.length-1] === '"') t = t.slice(1,-1);
+  if(t.startsWith('data:')){                                        // data: URI
+    const c = t.indexOf(',');
+    if(c !== -1) t = t.slice(c+1);
+  }
+  return t.replace(/\s+/g,'')
+          .replace(/-/g,'+').replace(/_/g,'/');                     // base64url
+}
+
 function decodeFile(b64, name){
   const first = b64ToBytes(b64);
   const want = EXPECTED[extOf(name)];
@@ -99,14 +125,18 @@ function decodeFile(b64, name){
   try{
     /* latin1: every byte maps to one char, so nothing is lost the way a
        UTF-8 decode would lose a malformed sequence. */
-    const text = new TextDecoder('latin1').decode(first).replace(/\s+/g,'');
-    const peeled = b64ToBytes(text);   // atob throws if it is not base64
+    const text = new TextDecoder('latin1').decode(first);
+    const peeled = b64ToBytes(cleanBase64Text(text));  // atob throws if not base64
     if(matchesAny(peeled, want)){
       console.info('[FilePreview] content arrived double base64-encoded; peeled one layer',
         {name, received:first.length, actual:peeled.length});
       return peeled;
     }
+    console.warn('[FilePreview] a second base64 layer decoded, but it is still not a '
+      + want.join('/'), describeBytes(peeled));
   }catch{ /* not base64 after all -- fall through with what we had */ }
+  console.warn('[FilePreview] content does not match its extension',
+    {name, expected:want.join('/'), ...describeBytes(first)});
   return first;
 }
 
@@ -159,17 +189,23 @@ export function FilePreview({entitySet, recordId, field, name}){
          download and the type check all have to agree on the content. */
       const bytes = decodeFile(b64, name);
 
+      /* ⚠️ One signature check for every type that has one, before anything
+         tries to render. SheetJS in particular treats whatever it cannot
+         identify as CSV, so handing it a non-workbook yields a grid holding
+         the raw text rather than an error -- which is exactly how the
+         decoding bug stayed hidden for two rounds.
+
+         The message carries the real leading bytes deliberately: it is the
+         evidence needed to identify the payload, and it belongs on screen
+         rather than in a console the person reporting it will not open. */
+      if(EXPECTED[ext] && !matchesAny(bytes, EXPECTED[ext])){
+        const d = describeBytes(bytes);
+        throw new Error(
+          `This is not a readable ${ext.toUpperCase()} file. ` +
+          `${d.length} bytes arrived, starting ${d.hex} \— as text: "${d.printable}"`);
+      }
+
       if(kind === 'sheet'){
-        /* ⚠️ Refuse rather than render. SheetJS treats anything it
-           cannot identify as CSV, so handing it a non-workbook produces a
-           grid of one cell holding the raw text instead of an error -- which
-           is exactly how the double-encoding bug hid. */
-        if(EXPECTED[ext] && !matchesAny(bytes, EXPECTED[ext])){
-          throw new Error(
-            `This does not contain a readable ${ext.toUpperCase()} file. ` +
-            `Its first bytes are not a ${ext === 'xls' ? 'compound document' : 'ZIP container'}, ` +
-            `which every ${ext.toUpperCase()} begins with.`);
-        }
         /* Loaded on demand. SheetJS is a large dependency and a preview is
            rare, so bundling it into the app's main chunk would make every
            page load pay for a screen most people never open. */

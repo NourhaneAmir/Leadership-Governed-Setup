@@ -2056,6 +2056,36 @@ It is now `"error"` in `.oxlintrc.json`, with `env: {browser, es2024}` declared
 alongside — without that the one real finding drowns in ~300 window/console
 hits. `src/` is clean under it; `npm run lint` fails on the next one.
 
+### 20 Sep: stop guessing at the payload — make it identify itself
+
+The peel did not fix it. That is now **two** theories inferred rather than
+observed, both wrong:
+
+1. "The stored file is corrupt" — wrong, and it sent me to inspect Dataverse.
+2. "It is double base64-encoded" — also wrong; peeling produced nothing that
+   carried a ZIP signature.
+
+⚠️ **The lesson is the method, not the payload.** Each theory was built from
+an indirect symptom (a lenient parser not throwing; text appearing in a
+cell). Neither cost less than simply printing the first bytes would have.
+`describeBytes()` now reports length, the first 12 bytes as hex, and the
+first 96 as printable text, and that goes **into the on-screen error**, not
+only the console — the person who can reproduce it is reading the panel,
+not devtools.
+
+The signature check also moved OUT of the sheet branch and now runs for every
+extension with a known signature, so a PDF or an image fails the same honest
+way rather than rendering as a broken frame.
+
+The peel was additionally made tolerant of wrappers that would defeat
+`atob()` regardless of whether the content is double-encoded: a BOM,
+surrounding JSON quotes, a `data:` prefix, and the base64url alphabet
+(`-_` for `+/`).
+
+⚠️ **Still unresolved**, and the open question from the previous entry stands
+unchanged: whether the upload stores base64 text, or the transport re-encodes.
+The next screenshot of the error panel names the payload and settles it.
+
 ### 20 Sep: the real cause — the file content arrives DOUBLE base64-encoded
 
 The preview rendered one cell holding a long base64 string. That is the whole
