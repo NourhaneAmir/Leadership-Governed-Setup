@@ -3019,7 +3019,222 @@ chunk again, and the main chunk is `757.60 kB` — roughly +10 kB over the
 pre-`FilePreview` baseline (`747.78 kB`), which is `FilePreview.jsx`'s own
 code, not the library.
 
-**Not yet deployed** — built and green (both apps), not pushed.
+**Deployed same day.** Both apps rebuilt and pushed to Code App Development,
+same recipe, same live pair (`4912152c…` Governance, `83db0ef8…` Leadership)
+— both succeeded on the **first** attempt. Confirmed in the rebuilt staging
+folders before pushing: `xlsx-DwRHmDrW.js` is its own chunk in both apps'
+`dist/`, not folded into the main one.
+
+### 21 Sep, later still: the new file viewer's first real click found a live file `FilePreview.jsx` refused to open — fixed, both apps redeployed
+
+The very first thing opened through the viewer just built was the one real
+File citation in DT New — `lm_MeetingCategory (1789744418443) (1).xlsx`, the
+file already named in this section's own "Live file inventory" (20 Sep). It
+threw: *"This is not a readable XLSX file. 94210 bytes arrived, starting
+22 30 4d 38 52 34 4b 47 78 47 75 45 — as text: `"0M8R4KGxGuEAAAA…"`."*
+
+**Not a new bug in the double-base64 peel** — that machinery worked exactly
+as designed. `"0M8R4KGxGuE…"` is the base64 text of the OLE2 compound-file
+signature (`D0 CF 11 E0 A1 B1 1A E1`) — i.e. this specific file's real
+content is an **old-format `.xls` (OLE2)**, not the ZIP `.xlsx` its name
+promises. `decodeFile()` peeled the outer base64 layer correctly and landed
+on that OLE2 header — then discarded the result anyway, because
+`EXPECTED['xlsx']` only ever listed `['zip']`. The check that exists to
+catch a genuinely wrong payload (§6, "Never hand unverified bytes to
+SheetJS") was, here, rejecting a real, readable workbook for the sin of
+being the wrong flavour of real, readable workbook.
+
+**Fix: `EXPECTED.xlsx`/`xlsm` now accept `['zip','ole2']`, matching what
+`xls`/`xlsb` already allowed.** SheetJS itself sniffs the actual container
+format from the bytes and does not care what the filename claims, so there
+was never a reason the signature gate should be stricter than the library it
+is protecting. `docx`/`pptx` were deliberately left ZIP-only — this preview
+has no old-format `.doc`/`.ppt` renderer to hand OLE2 bytes to regardless of
+whether the check let them through. `MAGIC`/`EXPECTED` and their comments in
+`src/shared/FilePreview.jsx` now say so explicitly, so the next person
+reading this file understands why xlsx accepts two signatures instead of
+assuming it's a typo.
+
+**Verified, not just reasoned through.** `scripts/test-decodefile.mjs`
+(extracts the real `decodeFile()` from the source, same convention as
+every other test script in this project) gained a case built from the
+literal OLE2 signature, double-encoded and named `a.xlsx` — confirms the
+peel now lands on the OLE2 bytes and keeps them instead of falling back to
+raw, undecoded text. All prior cases (corrupt content, base64-looking text
+that must NOT be peeled, base64 of something that still isn't a zip) still
+pass unchanged — the widened check only accepts more REAL container
+signatures, not more content generally.
+
+**Both apps rebuilt and redeployed** to the same live pair, same recipe,
+both succeeding on the first attempt.
+
+### 21 Sep, later again: the OLE2 fix wasn't the whole story — the Template's own file lost its NAME, not its bytes
+
+Asked what was actually on screen rather than guessing again (the previous
+entry's own stated lesson, applied immediately): what the Template's own
+file showed was **"This file type cannot be shown here... `.template file`
+has no viewer"** and a download that saved under a nameless extension-less
+file. `.template file` is the tell — that is `extOf('Template file')`, the
+literal fallback string `Hierarchy.jsx` passes to `FilePreview` as `name`
+when `tplDet.fileStoredName` is empty. So the real file's stored name —
+"Untitled spreadsheet (1).xlsx", per this section's own Live file
+inventory — never reached the screen at all, on a Template that genuinely
+has a file (`hasFile` was correctly `true`, only the *name* was missing).
+
+**Root cause: the File column's `<column>_name` projection does not
+reliably ride along on a LIST read through this connector, only on a
+single-record GET.** Every other place in this app that reads a File
+column's name — `fetchReportTemplateDetail()`'s Template parent AND its
+Section Items — does so through a `.get(id, {...})` call, which is where
+the "the name rides along once the column is selected" rule (§6,
+"Dataverse File columns") was actually proven. `fetchReportTemplateHierarchyContent()`
+(21 Sep, earlier entry) was the first place this app ever read a File
+column through `.getAll()` instead, to keep the sweep to three flat
+requests — and on a list read, `lm_attachementfile_name` simply came back
+absent. The rule this file documented was correct for the case it was
+tested against and silently didn't generalise to the new one.
+
+**Fixed by recovering the name with one targeted `.get()` per row that
+actually has a file** — `Lm_report_templatesService.get(t.id,
+{select:['lm_attachementfile']})` for a qualifying Template,
+`Lm_reporttemplatesectionitemsesService.get(it.id, {...})` for a qualifying
+Section Item, both run in parallel via `Promise.all`, both wrapped so a
+single failed lookup only leaves that one row's placeholder name rather
+than failing the whole screen. **Still bounded by how many rows have a
+file, not by how many Templates/Items exist** — the same "pay only for
+what you use" reasoning the bulk sweep was built around in the first
+place, so this doesn't reopen the N+1 cost `fetchReportTemplateDetail()`
+was deliberately avoided for.
+
+**§6's "Dataverse File columns" note is amended** with this list-vs-get
+distinction, so the next screen that reads a File column in bulk doesn't
+rediscover it the same way.
+
+Both apps rebuilt and redeployed to the same live pair; Governance's own
+bundle hash did not change (it never calls this function, so the edit was
+dead-code-eliminated there) — confirmed before pushing, not assumed.
+
+### 21 Sep, later: Calendar — MOM Due is back, the Week tab stopped showing yesterday, Decisions is half-built and waiting on a product answer
+
+Per an explicit ask to apply more of `leadership-practice (2).html`'s Calendar
+UI, specifically the Decisions/MOM Due filter chips the 15 Sep restyle pass
+deliberately skipped ("re-adding it means sourcing Decision deadlines and
+MOM due-dates into the calendar feed, which nobody has asked for" — someone
+now has), plus a genuine bug: the Week tab showed the whole Sun–Sat range,
+including days already past, unlike "This Week's Meetings" below it, which
+already filtered from today.
+
+**Week tab fixed.** `wk[0]` (the calendar week's Sunday) is always ≤ `TODAY`
+by construction (`rangeBounds('week')` is always the week containing today),
+so the fix is the same one-line shape "This Week's Meetings" already used:
+filter `i.date>=TODAY` instead of `i.date>=wk[0]`. The heading changed from
+"Week of {Sun} – {Sat}" to "{Today} – {Sat}" so it names what's actually
+listed, and the subtitle/empty-state text changed to match.
+
+**MOM Due is back, live, not seeded.** It existed once, was removed when the
+Calendar went from seeded to live (its own comment said so: "MOM Due is
+gone: those deadlines were derived from seeded Minutes"), and the styling
+for it (`.cal-e.k-mom`, `CAL_CHIP_STYLE.purple`, `calTagColour`'s `'MOM'`
+branch) was **left in place the whole time, unused** — this entry is mostly
+reconnecting scaffolding, not building from nothing. New
+`dvMomDueCalItem(o, hours)` (`LeadershipApp.jsx`, beside `dvReportCalItem`)
+turns a Held Meeting into a calendar entry dated `addHours(o.date+' '+o.end,
+hours)`. The `cal` useMemo now includes one of these for every Held Meeting
+that has an end time and **no submitted Minutes yet** — the exact same test
+(`m && m.submittedAt`) AG-16 scoring and the Meetings screen's own
+`momOverdue` exception list already use, so all three agree by
+construction. `hours` is `S.momWriteupHours`, the same **global** default
+AG-16 reads — not the per-Setup `lm_momwriteuphours` column (15 Sep), which
+still isn't consumed by scoring or, now, by this either (§9 already tracks
+that gap; this doesn't widen or narrow it). Clicking a MOM Due entry now
+opens the Meeting straight to its Minutes tab (`openDvRec`'s `'MOM'` branch
+was routing to `'detail'` before — a small, related fix, not something
+asked for separately).
+
+**Decisions chip added to the UI; NOT wired to real dates — asked, not
+guessed.** `CAL_KINDS`/`CAL_DOT`/`CAL_CHIP_STYLE`/`calTagColour`/
+`calGridCls` all gained a `red` "Decisions" entry, and the month-grid legend
+and Upcoming Deadlines list both know how to colour one — matching the
+reference's red/alert dot. What's missing is the data: `wlog_decisions`
+(§6) — the only live Decisions table this app reads — **has no deadline or
+due-date column of any kind**. Its date fields are all backward-looking
+(`createdon`, `wlog_reviewedon`, `wlog_escalatedon`,
+`wlog_escalationresolvedon`); the reference's "Decision Deadline" concept
+(an Approval Cycle timeout) exists only on the **seeded** Decision workflow
+(`db.decisions`, Direct/Authority-Check routing, Approval Cycle steps),
+which the Calendar has never read from and mixing in now would put a demo
+record on a calendar otherwise built entirely from live Dataverse — the
+exact seeded/live conflation this app has been careful to avoid everywhere
+else (§4/§9: `wlog_decisions` was deliberately kept as "a separate live
+list alongside," not merged into the seeded workflow, for this reason).
+**Rather than invent a deadline this table doesn't have, asked the product
+owner which real date should place a Decision on the calendar** — logged
+date, escalation date, skip it, or add a real deadline column. **Answered:
+skip it for now** — same "Not Applicable until the data exists" pattern
+AG-10–AG-14 already use, not a rejection of the feature. The chip, legend
+entry and Upcoming Deadlines colouring all stay exactly as built (harmless
+and ready); only the actual wiring of `dvDecisions` into the `cal` feed is
+deferred. **To finish this once a deadline column exists** (or a decision
+to use `createdon`/`escalatedOn` instead): a `dvDecisionCalItem()` beside
+`dvMomDueCalItem()`, and one more spread into the `cal` useMemo — everything
+else is already in place and needs no further change.
+
+**Not built, still matching the 15 Sep decision, unchanged:** the reference's
+"Executive Calendar — Multi-Committee Overlay" checkbox panel — no
+committee-overlay concept exists in this app's data model, and nobody has
+asked for it this time either.
+
+Both apps build clean and were rebuilt and pushed to Code App Development,
+same live pair, same recipe, both succeeding on the first attempt.
+
+### 21 Sep, later still: Business intelligence flipped from KPI-driven to BI-Report-driven, plus a month stepper
+
+Per an explicit ask: `ScreenBI` (`screens/BusinessIntelligence.jsx`) used to
+list every KPI (`strategy_kpises`) and show whichever BI report sat behind
+each — so a `lm_bireportdashboards` row with **no** KPI linked to it was
+never listed anywhere on this screen at all, and "N of M" counted KPIs, not
+reports. It now reads `lm_bireportdashboards` directly as the primary list
+(`fetchBiReportDashboards()`, already existed, just wasn't the driver
+before) — every report is findable now, linked to a measure or not.
+
+**KPIs are still read, deliberately** — not removed, repurposed. A report's
+figures panel and the Process/Department filters both hang off whichever
+KPI (if any) a report cites (`r.kpi`, resolved once via a `kpiById` map
+rather than re-looked-up per render). What changed is which table DRIVES
+the list and the "N of M" count — KPIs are now a lookup a report may or may
+not have, not the thing being enumerated.
+
+**The month filter — asked for as "navigate to previous reports or
+dashboards," built as a stepper over the FIGURES, not the report list.**
+`lm_bireportdashboards` has no date column of any kind (confirmed by
+reading its selected columns in `dataverse.js` — `lm_reportname`,
+`lm_dashboardlink`, `_lm_kpi_value`, nothing else) — a BI report/dashboard
+row is an evergreen link to a live Power BI object, not a monthly snapshot,
+so there is no real "previous month's report" to switch to at the row
+level. The one genuinely period-shaped live data available is a linked
+KPI's own achievement history (`k.ach`, keyed `'BU:period'`), which the
+figures panel already read off a single hardcoded `PERIOD` (today's month)
+before this change. **Built, not guessed at, but flagged as an
+interpretation call**: a `←  {Month Year}  →  Now` stepper — same shape
+Calendar's own month nav already uses, new local `shiftPeriod(p,n)` helper
+— replaces the fixed `PERIOD` constant everywhere a report's figures are
+computed (`achFor(k, bu, period)`), so "navigate to a previous month" means
+seeing that month's target/actual for the KPI behind a report, not
+switching to a different report. If this isn't what was meant, the stepper
+and its one piece of state (`period`) are the whole surface to change.
+
+**The old `fBi` (BI report) filter dropdown is gone** — redundant once BI
+reports are the thing being listed and searched directly; the search box
+already covers finding one by name. `Combo`'s KPI-search box was also
+retitled "Search reports…" to match.
+
+**Not verified against live Dataverse** — no BI report in DT New is known
+to have zero KPI linked (the case this change makes visible for the first
+time), so the "reports now findable that weren't before" claim is
+structural/reasoned, not yet confirmed against a real example.
+
+Both apps build clean; Governance's bundle hash is unchanged (this file
+isn't part of that app). Not yet deployed.
 
 ## 6. Schema facts that are expensive to rediscover
 
@@ -3091,10 +3306,23 @@ strip those fails**, which is exactly what happened on the first attempt and
 caused a correct diagnosis to be abandoned.
 
 Peeling is gated on file signatures (ZIP `50 4B 03 04` for
-xlsx/xlsm/docx/pptx, OLE2 `D0 CF 11 E0` for xls, `%PDF`, PNG/GIF/JPG/BMP):
+xlsx/xlsm/xlsb/docx/pptx, OLE2 `D0 CF 11 E0` for xls, `%PDF`, PNG/GIF/JPG/BMP):
 the extension must say what the leading bytes should be, they must not match,
 and after decoding again they must. A `.txt` or `.csv`, having no signature,
 is never second-guessed.
+
+⚠️ **A real `.xlsx` can legitimately BE an OLE2 file, not a ZIP one** — found
+21 Sep on the very first live file opened through this viewer
+(`lm_MeetingCategory (1789744418443) (1).xlsx`, see the Live file inventory
+below): its actual content, after the double-base64 peel, was an old-format
+`.xls` (OLE2) wearing an `.xlsx` name. `xlsx`/`xlsm`/`xlsb` now all accept
+**either** `['zip','ole2']` in `EXPECTED` (`xls` already did) — SheetJS
+sniffs the real container from the bytes regardless of what the filename
+says, so gating on ZIP-only for those three was stricter than the library
+it protects, and silently discarded a correctly-peeled result in favour of
+raw undecoded text. `docx`/`pptx` are deliberately still ZIP-only: this
+viewer has no old-format `.doc`/`.ppt` renderer either way. Covered in
+`scripts/test-decodefile.mjs`.
 
 ⚠️ **Never hand unverified bytes to SheetJS to find out whether they are a
 workbook.** It treats anything it cannot identify as CSV and SUCCEEDS,
@@ -3144,6 +3372,24 @@ real source rather than restating them.
 It is runtime-projected, not declared, so selecting it explicitly risks the
 400 that killed the whole Decisions read. Select the file column itself and
 the name rides along.
+
+⚠️ **Amended 21 Sep — "the name rides along" only held for a single-record
+GET, not a LIST read, and this file used to say it unconditionally.**
+Every confirmation of that rule up to 20 Sep went through
+`fetchReportTemplateDetail()`, which reads the Template parent and its
+Section Items via `.get(id, {...})`. The first time this app read a File
+column through `.getAll()` instead
+(`fetchReportTemplateHierarchyContent()`, the Reporting hierarchy's
+Templates view), `lm_attachementfile_name` came back **empty on a row that
+genuinely had a file** — confirmed live, not inferred: `hasFile` was
+correctly `true`, the download worked, only the name was missing, which
+then broke `previewKind()`'s extension sniffing (it read the UI's own
+"no name" fallback string as the file's "extension") and gave the
+downloaded copy a nameless, extension-less filename. **If you read a File
+column's name in bulk, don't trust it — do one targeted
+`.get(id, {select:[<file column>]})` per row that has a file**, same as
+`fetchReportTemplateHierarchyContent()` now does; bounded by how many rows
+have a file, not by how many rows exist, so it stays cheap.
 
 ⚠️ **FetchXML entity names for these tables are not the entity sets.**
 `lm_report_template` is singular, but `lm_reporttemplatesectionitems` is

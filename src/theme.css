@@ -386,10 +386,12 @@ fieldset:disabled{opacity:.62}
 .cal-e.restr{background:var(--purple-bg);color:var(--purple);border-left-color:var(--purple)}
 .cal-e.mom{background:var(--purple-bg);color:var(--purple);border-left-color:var(--purple)}
 .cal-e.rpt{background:var(--blue-bg);color:#12406f;border-left-color:var(--blue)}
-/* kind-based palette, matching the filter bar: Meetings green, Reports gold, MOM Due purple */
+/* kind-based palette, matching the filter bar: Meetings green, Reports gold,
+   MOM Due purple, Decisions red */
 .cal-e.k-mtg{background:var(--green-bg);color:#0a5537;border-left-color:var(--green)}
 .cal-e.k-rpt{background:var(--teal-l);color:var(--teal-d);border-left-color:var(--teal)}
 .cal-e.k-mom{background:var(--purple-bg);color:var(--purple);border-left-color:var(--purple)}
+.cal-e.k-dec{background:var(--red-bg);color:var(--red);border-left-color:var(--red)}
 .cal-e.k-canc{background:var(--grey-bg);color:var(--faint);border-left-color:var(--grey-bd);
   text-decoration:line-through}
 .cal-fchip{display:inline-flex;align-items:center;gap:6px;border-radius:20px;padding:4.5px 12px;

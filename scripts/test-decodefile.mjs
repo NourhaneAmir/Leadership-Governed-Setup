@@ -31,6 +31,12 @@ const { decodeFile } = await import(
 /* A minimal but REAL zip: the four signature bytes plus filler. */
 const XLSX_BYTES = Uint8Array.from([0x50, 0x4B, 0x03, 0x04, ...Array(60).fill(7)]);
 const PDF_BYTES  = Uint8Array.from([0x25, 0x50, 0x44, 0x46, ...Array(60).fill(7)]);
+/* A real OLE2 compound file -- the container an old-format .xls uses.
+   Confirmed live 21 Sep: a Section's File citation named ".xlsx" (uploaded
+   through this app, no extension validation on that picker) turned out to
+   actually be one of these, double-encoded like any other file here, and
+   was refused because the extension implied ZIP only. */
+const XLS_OLE2_BYTES = Uint8Array.from([0xD0, 0xCF, 0x11, 0xE0, ...Array(60).fill(7)]);
 const b64 = u8 => Buffer.from(u8).toString('base64');
 const same = (a, b) => a.length === b.length && a.every((v, k) => v === b[k]);
 
@@ -51,6 +57,10 @@ const doubled = Buffer.from(b64(XLSX_BYTES), 'utf8');       // base64 TEXT as by
 check('xlsx, double-encoded', decodeFile(b64(doubled), 'a.xlsx'), XLSX_BYTES);
 const doubledPdf = Buffer.from(b64(PDF_BYTES), 'utf8');
 check('pdf, double-encoded', decodeFile(b64(doubledPdf), 'a.pdf'), PDF_BYTES);
+/* The live bug: a file NAMED .xlsx whose real bytes are OLE2, not ZIP. */
+const doubledOle2 = Buffer.from(b64(XLS_OLE2_BYTES), 'utf8');
+check('xlsx-named but really OLE2 (old .xls), double-encoded',
+  decodeFile(b64(doubledOle2), 'a.xlsx'), XLS_OLE2_BYTES);
 
 console.log('\n--- things that must NOT be peeled ---');
 /* A .txt has no signature, so it is never second-guessed -- even though its

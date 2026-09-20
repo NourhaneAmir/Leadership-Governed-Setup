@@ -2890,10 +2890,11 @@ export async function fetchReportTemplateHierarchyContent(){
     typeCode: t.lm_reporttype ?? null,
     categoryCode: t.lm_reportcategory ?? null,
     statusCode: t.lm_reportstatus ?? null,
-    /* Same File-column convention as everywhere else in this file: the name
-       rides along with the column once it's selected, and is never itself
-       put in $select. See "Dataverse File columns" in PROJECT-CONTEXT.md §6. */
     hasFile: !!t.lm_attachementfile,
+    /* The `<column>_name` projection does NOT reliably ride along on a LIST
+       read through this connector -- confirmed live 21 Sep, empty here even
+       for a Template with a real file. Recovered below with a targeted GET,
+       the same read fetchReportTemplateDetail() already uses successfully. */
     fileStoredName: t.lm_attachementfile_name || '',
   }));
 
@@ -2915,7 +2916,31 @@ export async function fetchReportTemplateHierarchyContent(){
     type: SECTION_ITEM_TYPE[it.lm_itemtype] || (it.lm_attachementfile ? 'File' : null),
     childTemplateId: it._lm_childreporttemplate_value || null,
     hasFile: !!it.lm_attachementfile,
+    /* Same list-read gap as the Template row above -- recovered below. */
     fileStoredName: it.lm_attachementfile_name || '',
+  }));
+
+  /* Recover the stored file NAME for every row that actually has one, via
+     one targeted GET per row -- bounded by how many Templates/Section Items
+     carry an attachment, not by how many exist, so this stays cheap even
+     though fetchReportTemplateDetail()'s per-Template fan-out was avoided
+     above for exactly that reason. Without this, a Template/Item whose file
+     name came back empty falls back to a placeholder string with no
+     extension in it ("Template file"/"File") -- which broke BOTH ends at
+     once, live 21 Sep: previewKind() read that placeholder as the file's
+     own "extension" and refused to show it, and a download saved under that
+     same nameless string instead of the file's real name. */
+  await Promise.all(templates.filter(t=>t.hasFile).map(async t => {
+    try{
+      const r = await Lm_report_templatesService.get(t.id, { select: ['lm_attachementfile'] });
+      if(r?.data?.lm_attachementfile_name) t.fileStoredName = r.data.lm_attachementfile_name;
+    }catch(e){ console.warn('[dataverse] Report Template file name read failed:', t.id, e); }
+  }));
+  await Promise.all(items.filter(it=>it.hasFile).map(async it => {
+    try{
+      const r = await Lm_reporttemplatesectionitemsesService.get(it.id, { select: ['lm_attachementfile'] });
+      if(r?.data?.lm_attachementfile_name) it.fileStoredName = r.data.lm_attachementfile_name;
+    }catch(e){ console.warn('[dataverse] Section Item file name read failed:', it.id, e); }
   }));
 
   return { templates, checklist, items };

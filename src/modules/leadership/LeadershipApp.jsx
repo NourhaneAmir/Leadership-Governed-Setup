@@ -1541,18 +1541,22 @@ const CAL_KINDS = [
   {id:'All',     label:'All',      colour:null},
   {id:'Meeting', label:'Meetings', colour:'green'},
   {id:'Report',  label:'Reports',  colour:'teal'},
+  {id:'MOM',     label:'MOM Due',  colour:'purple'},
+  {id:'Decision',label:'Decisions',colour:'red'},
 ];
 /* Icon/colour treatment for a calendar item's kind — MOM Due borrows the Minutes styling,
-   since a MOM write-up deadline is, functionally, a Minutes item. */
+   since a MOM write-up deadline is, functionally, a Minutes item. Decision already has its
+   own entry in KIND_ICON/KIND_SLOT (used by Work Queue), so it needs no special-casing here. */
 const calIconKind = k => k==='MOM' ? 'Minutes' : k;
-const calTagColour = k => k==='Report'?'teal' : k==='MOM'?'purple' : 'green';
+const calTagColour = k => k==='Report'?'teal' : k==='MOM'?'purple' : k==='Decision'?'red' : 'green';
 const calGridCls = i => i.status==='Cancelled' ? 'k-canc'
-  : i.kind==='Report' ? 'k-rpt' : i.kind==='MOM' ? 'k-mom' : 'k-mtg';
-const CAL_DOT = {green:'var(--green)', teal:'var(--teal)', purple:'var(--purple)'};
+  : i.kind==='Report' ? 'k-rpt' : i.kind==='MOM' ? 'k-mom' : i.kind==='Decision' ? 'k-dec' : 'k-mtg';
+const CAL_DOT = {green:'var(--green)', teal:'var(--teal)', purple:'var(--purple)', red:'var(--red)'};
 const CAL_CHIP_STYLE = {
   green: {border:'var(--green)', bg:'var(--green-bg)', text:'var(--green)'},
   teal:  {border:'var(--teal)',  bg:'var(--teal-l)',    text:'var(--teal-d)'},
   purple:{border:'var(--purple)',bg:'var(--purple-bg)', text:'var(--purple)'},
+  red:   {border:'var(--red)',   bg:'var(--red-bg)',    text:'var(--red)'},
 };
 
 /* A live Dataverse occurrence, shown read-only. The seeded Meeting screen is
@@ -1681,7 +1685,7 @@ function ScreenCalendar(){
   };
 
   /* -------- Upcoming Deadlines -------- */
-  const deadlines = cal.filter(i=>(i.kind==='Report'||i.kind==='MOM') && i.date>=TODAY)
+  const deadlines = cal.filter(i=>(i.kind==='Report'||i.kind==='MOM'||i.kind==='Decision') && i.date>=TODAY)
     .sort((a,b)=>a.date.localeCompare(b.date)).slice(0,6);
   const relDay = d => { const n=daysBetween(TODAY,d);
     return n<=0?'Today':n===1?'Tomorrow':n+' days'; };
@@ -1734,15 +1738,21 @@ function ScreenCalendar(){
       <div style={{display:'flex',gap:15,flexWrap:'wrap',marginTop:11,fontSize:11.5,color:'var(--muted)'}}>
         <span><span className="tag green" style={{padding:'1px 7px'}}>&nbsp;</span> Meetings</span>
         <span><span className="tag teal" style={{padding:'1px 7px'}}>&nbsp;</span> Reports</span>
+        <span><span className="tag purple" style={{padding:'1px 7px'}}>&nbsp;</span> MOM Due</span>
+        <span><span className="tag red" style={{padding:'1px 7px'}}>&nbsp;</span> Decisions</span>
         <span><span className="tag grey" style={{padding:'1px 7px'}}>&nbsp;</span> Cancelled</span>
       </div>
     </div>}
 
+    {/* From today through Saturday, not from Sunday -- same "don't show a day
+        already past this week" rule "This Week's Meetings" below already
+        applies, now also on the Week tab itself, which used to show the
+        whole Sun-Sat range including days that had already passed. */}
     {view==='week' && <div className="card">
-      <h2>Week of {fmtDS(wk[0])} – {fmtDS(wk[1])}</h2>
-      <div className="csub" style={{marginBottom:2}}>Every item in the selected range, whatever kind.</div>
-      {vis.filter(i=>i.date>=wk[0]&&i.date<=wk[1]).length===0 ? <Empty ic="🗓">Nothing this week.</Empty>
-      : vis.filter(i=>i.date>=wk[0]&&i.date<=wk[1]).sort(byDateTime)
+      <h2>{fmtDS(TODAY)} – {fmtDS(wk[1])}</h2>
+      <div className="csub" style={{marginBottom:2}}>Every item from today through the end of the week, whatever kind.</div>
+      {vis.filter(i=>i.date>=TODAY&&i.date<=wk[1]).length===0 ? <Empty ic="🗓">Nothing left this week.</Empty>
+      : vis.filter(i=>i.date>=TODAY&&i.date<=wk[1]).sort(byDateTime)
           .map((i,n)=><EventRow key={i.kind+i.id+n} i={i}/>)}
     </div>}
 
@@ -1774,7 +1784,8 @@ function ScreenCalendar(){
         {deadlines.length===0 ? <Empty ic="✓">Nothing due.</Empty>
         : deadlines.map((i,n)=>
           <div key={'dl'+i.id+i.kind+n} className="wa-up-r" onClick={()=>open(i)}>
-            <div className="wa-date plain" style={{color:i.kind==='MOM'?'var(--purple)':'var(--teal-d)'}}>
+            <div className="wa-date plain"
+              style={{color:i.kind==='MOM'?'var(--purple)':i.kind==='Decision'?'var(--red)':'var(--teal-d)'}}>
               <span className="dd">{i.date.slice(8)}</span>
               <span className="mo">{MONTHS[+i.date.slice(5,7)-1]}</span></div>
             <div className="wa-up-t"><div className="n">{i.title}</div>
@@ -1970,6 +1981,26 @@ function dvReportCalItem(r){
   };
 }
 
+/* A Held Meeting's MOM write-up deadline, as a Calendar entry -- only while
+   the write-up is genuinely still outstanding. Uses the exact same clock
+   AG-16 scoring already reads (`S.momWriteupHours`, the global default --
+   the per-Setup Completion Period isn't consumed by scoring, or here,
+   either, see PROJECT-CONTEXT.md §9) and the same "no Minutes row yet, or
+   one that exists but was never submitted" test the Meetings screen's own
+   `momOverdue` exception list already uses, so this can't disagree with
+   either of those about which meetings still owe a write-up. */
+function dvMomDueCalItem(o, hours){
+  const due = addHours(o.date+' '+o.end, hours);
+  const [date,time] = due.split(' ');
+  const buName=dvBu(o.businessUnitId)||dvRegion(o.regionId);
+  return {
+    id:o.id, kind:'MOM', date, time, title:'MOM Due: '+o.name,
+    cls: due<nowStamp() ? 'canc' : 'due', status:null,
+    sub:'Write-up for '+o.name+(buName?' · '+buName:''),
+    bu:o.businessUnitId, type:'MOM', _dv:true, _rec:o,
+  };
+}
+
 /* What the live tables say still needs doing, in the same shape openItems()
    produces for seeded records so the Workspace renders both side by side.
 
@@ -2073,11 +2104,12 @@ function App({onSwitch}){
      rather than an execution screen that could not render it. */
   const [dvOpen,setDvOpen]=useState(null);
   /* A live Meeting Occurrence has a full detail page of its own, so it navigates
-     there. A live Report Occurrence has no page yet, so it opens the read-only
-     panel instead. */
+     there -- straight to the Minutes tab for a MOM Due calendar item, since
+     that is the one thing there is to do about it. A live Report Occurrence
+     has no page yet, so it opens the read-only panel instead. */
   const openDvRec=(kind,rec)=> kind==='Report'
     ? setDvOpen({kind:'Report',_rec:rec})
-    : openMeeting(rec.id,'detail');
+    : openMeeting(rec.id, kind==='MOM' ? 'minutes' : 'detail');
   const openWork=w=> w._dv ? openDvRec(w.area==='Report'?'Report':'Meeting', w._rec)
     : w.tab ? openMeeting(w.rid,w.tab) : go(w.screen,w.rid);
   const reset=()=>{ if(!window.confirm('Reset the demo to its seeded state? All changes in this browser are discarded.')) return;
@@ -2648,15 +2680,31 @@ function App({onSwitch}){
     const {due,review,finish}=dvWorkItems(dvMeetingOccs,dvReportOccs);
     return {due,review,finish,all:[...due,...review,...finish]};
   },[dvMeetingOccs,dvReportOccs,dvTick]);
-  /* The calendar shows the occurrence tables and nothing else -- the seeded
-     demo entries, and the MOM write-up deadlines derived from them, are gone.
+  /* The calendar reads the occurrence tables, plus one derived kind: a MOM
+     Due deadline for every Held Meeting whose write-up genuinely still owes
+     (no Minutes row, or one that was never submitted) -- the same test
+     dvMomDueCalItem's own comment traces back to the Meetings screen's
+     `momOverdue` list, so the two can't disagree about which meetings
+     still owe a write-up. Re-derived, not read from anywhere seeded: this
+     used to come from seeded Minutes and was removed along with them; this
+     is the live equivalent, added back on request.
      dvTick is a dependency because the GUID->name maps the live items read from
      are plain objects, not state -- without it the first render after they load
      would keep the earlier, name-less labels. */
-  const cal  = useMemo(()=>[
-    ...dvMeetingOccs.filter(o=>o.date).map(dvMeetingCalItem),
-    ...dvReportOccs.filter(r=>r.period).map(dvReportCalItem),
-  ],[dvMeetingOccs,dvReportOccs,dvTick]);
+  const cal  = useMemo(()=>{
+    const momDue = S.momWriteupHours==null ? [] : dvMeetingOccs
+      .filter(o=>o.status==='Held' && o.end)
+      .filter(o=>{
+        const m = dvMinutes.find(x=>x.occurrenceId===o.id);
+        return !(m && m.submittedAt);
+      })
+      .map(o=>dvMomDueCalItem(o, S.momWriteupHours));
+    return [
+      ...dvMeetingOccs.filter(o=>o.date).map(dvMeetingCalItem),
+      ...dvReportOccs.filter(r=>r.period).map(dvReportCalItem),
+      ...momDue,
+    ];
+  },[dvMeetingOccs,dvReportOccs,dvMinutes,S.momWriteupHours,dvTick]);
   const counts = useMemo(()=>{
     const c={work:work.due.length+work.finish.length};
     work.all.forEach(w=>{ c[w.screen]=(c[w.screen]||0)+1; });

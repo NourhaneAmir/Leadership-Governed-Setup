@@ -60,19 +60,29 @@ function b64ToBytes(b64){
   return out;
 }
 
-/* Leading bytes that identify a file. xlsx/xlsm/docx/pptx are ZIP
-   containers; .xls is an OLE2 compound file. */
+/* Leading bytes that identify a file. xlsx/xlsm/docx/pptx are normally ZIP
+   containers; .xls is an OLE2 compound file -- but a real workbook can
+   arrive as EITHER regardless of which extension it was saved/uploaded
+   under (a genuine old-format .xls renamed to .xlsx along the way is still
+   a real, readable workbook, just not a zip one), so a sheet extension's
+   expected set below allows both rather than asserting one. */
 const MAGIC = {
   zip :[0x50,0x4B,0x03,0x04], ole2:[0xD0,0xCF,0x11,0xE0],
   pdf :[0x25,0x50,0x44,0x46], png :[0x89,0x50,0x4E,0x47],
   gif :[0x47,0x49,0x46,0x38], jpg :[0xFF,0xD8,0xFF], bmp:[0x42,0x4D],
 };
 /* What each extension's bytes must start with. An extension absent here --
-   txt, csv, json -- has no signature to check, and is never second-guessed. */
+   txt, csv, json -- has no signature to check, and is never second-guessed.
+   Every SHEET_EXT entry accepts both container types (see the MAGIC comment
+   above) -- SheetJS itself sniffs the real format from the bytes and does
+   not care which one the filename implies, so rejecting a live OLE2
+   workbook here just because its name ends .xlsx would refuse a genuinely
+   readable file. docx/pptx are left ZIP-only: this preview has no OLE2
+   (old .doc/.ppt) renderer to hand those bytes to either way. */
 const EXPECTED = {
-  xlsx:['zip'], xlsm:['zip'], docx:['zip'], pptx:['zip'], xlsb:['zip','ole2'],
-  xls:['ole2','zip'], pdf:['pdf'], png:['png'], gif:['gif'],
-  jpg:['jpg'], jpeg:['jpg'], bmp:['bmp'],
+  xlsx:['zip','ole2'], xlsm:['zip','ole2'], xlsb:['zip','ole2'], xls:['ole2','zip'],
+  docx:['zip'], pptx:['zip'],
+  pdf:['pdf'], png:['png'], gif:['gif'], jpg:['jpg'], jpeg:['jpg'], bmp:['bmp'],
 };
 const matchesAny = (bytes, names) =>
   (names||[]).some(n=>MAGIC[n].every((b,i)=>bytes[i]===b));

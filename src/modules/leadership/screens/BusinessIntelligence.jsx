@@ -235,7 +235,25 @@ export function BiFrame({bi}){
   </div>;
 }
 
+/* One period ('YYYY-MM') shifted by n months -- the same shape Calendar's
+   own month stepper uses for `ym`, just over a period string instead of a
+   month-anchored date. */
+const shiftPeriod = (p,n) => {
+  const [y,m] = p.split('-').map(Number);
+  const d = new Date(y, m-1+n, 1);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+};
+
 /* ---- 1. Business intelligence ------------------------------------------ */
+/* LIVE, restructured 21 Sep. Used to list every KPI (strategy_kpises) and
+   show whichever BI report sat behind each -- so a report with no KPI
+   linked to it was invisible, and the list's length was "how many KPIs
+   exist," not "how many reports exist." It now reads lm_bireportdashboards
+   directly as the primary list: every report is findable, linked to a
+   measure or not, and a month stepper controls which period's figures show
+   underneath the ones that do have one -- the same "how did this look as of
+   a previous month" question a KPI's own achievement history can actually
+   answer, since lm_bireportdashboards itself carries no date of its own. */
 export function ScreenBI(){
   /* The dashboards, and which KPI each sits behind. Read here rather than at
      app start: only this screen and the two report screens need them. */
@@ -249,30 +267,24 @@ export function ScreenBI(){
     return ()=>{ live = false; };
   },[]);
   const biList = biRows || [];
-  /* A KPI may have more than one dashboard; all of them are offered. */
-  const biByKpi = useMemo(()=>{
-    const m = new Map();
-    /* Read from biRows, not biList: biList is rebuilt every render, so
-       depending on it would defeat the memo. */
-    for(const r of biRows || []){
-      if(!r.kpiId) continue;
-      if(!m.has(r.kpiId)) m.set(r.kpiId, []);
-      m.get(r.kpiId).push(r);
-    }
-    return m;
-  },[biRows]);
   const {bu, dvLookup} = use();
   const deptList = dvLookup?.deptList || [];
   const [fProc,setFProc]   = useState('');
   const [fOwner,setFOwner] = useState('');
-  const [fBi,setFBi]       = useState('');
   const [q,setQ]           = useState('');
   const [open,setOpen]     = useState(null);
+  /* The month a report's figures are shown as of -- defaults to the current
+     one, stepped like Calendar's own month nav. lm_bireportdashboards has no
+     date column of its own to filter BY; this is the one real,
+     period-shaped thing available, off the KPI a report happens to cite. */
+  const [period,setPeriod] = useState(PERIOD);
 
   /* KPIs and Processes, read live from strategy_kpises / strategy_processes --
      each carries its own Department AND its own Process directly (see
      dataverse.js), so no seeded catalogue or derived "owner of its Process"
-     step is needed any more. */
+     step is needed any more. Still read here even though a KPI is no longer
+     what's being LISTED: a report's own figures panel, and the Process/
+     Department filters, both hang off whichever KPI (if any) it cites. */
   const [procs,setProcs] = useState(null);   // null while reading
   const [kpis,setKpis]   = useState(null);
   useEffect(()=>{
@@ -283,99 +295,107 @@ export function ScreenBI(){
         if(live){ setProcs([]); setKpis([]); } });
     return ()=>{ live = false; };
   },[]);
-  const loading = procs===null || kpis===null;
+  const loading = procs===null || kpis===null || biRows===null;
 
-  const matches = loading ? [] : kpis.filter(k=>
-       (!fProc  || k.processId===fProc)
-    && (!fOwner || k.dept===fOwner)
-    /* Which dashboards sit behind this KPI comes from lm_bireportdashboard.lm_kpi
-       now, not from a `bi` field on the KPI -- a live KPI has no such field, so
-       this used to empty the list whenever a report was chosen. */
-    && (!fBi    || (biByKpi.get(k.id)||[]).some(b=>b.id===fBi))
-    && matchesQuery(q,[k.name, k.id, k.processName, k.deptName]));
+  const kpiById = useMemo(()=>new Map((kpis||[]).map(k=>[k.id,k])), [kpis]);
+  /* Every BI report, each carrying its linked KPI object (or null) rather
+     than just an id -- everything below reads off this once instead of
+     re-resolving the lookup per filter/render. */
+  const reports = useMemo(()=>
+    biList.map(r=>({...r, kpi: r.kpiId ? (kpiById.get(r.kpiId)||null) : null})),
+    [biList, kpiById]);
 
-  const anyFilter = fProc||fOwner||fBi||q.trim();
+  const matches = loading ? [] : reports.filter(r=>
+       (!fProc  || r.kpi?.processId===fProc)
+    && (!fOwner || r.kpi?.dept===fOwner)
+    && matchesQuery(q,[r.name, r.kpi?.name, r.kpi?.processName, r.kpi?.deptName]));
+
+  const anyFilter = fProc||fOwner||q.trim();
 
   return <>
     <div className="ph"><h1>Business intelligence</h1>
-      <div className="sub">Sections of a BI report are measurements. You cite one; there is nothing
-        in it to argue with. Find the report behind a KPI, then open it or cite it.</div></div>
+      <div className="sub">Every BI report and dashboard this app knows about. Sections of one are
+        measurements — you cite one; there is nothing in it to argue with.</div></div>
 
     <div className="card">
-      <h2>Find the report behind a measure</h2>
-      <div className="csub">Filters combine. Process and Department come straight from the KPI's
-        own record in strategy_kpises — search either list if it runs long.</div>
+      <h2>Find a report</h2>
+      <div className="csub">Filters combine. Process and Department come from the report's linked
+        KPI where one exists — a report with no KPI linked is still listed, just not filterable by
+        either.</div>
       <div className="f-row3">
         <Combo label="Process" value={fProc} onChange={setFProc}
           opts={loading ? [] : procs} all="Any Process" placeholder="Search processes…"/>
         <Combo label="Owning department" value={fOwner} onChange={setFOwner}
           opts={deptList} all="Any department" placeholder="Search departments…"/>
-        <Combo label="BI report" value={fBi} onChange={setFBi}
-          opts={biList.map(b=>({id:b.id, name:b.name, sub:b.kpiName||null}))}
-          all="Any BI report" placeholder="Search BI reports…"/>
+        <div>
+          <label style={{display:'block',fontSize:11.5,fontWeight:600,color:'var(--ink-2)',marginBottom:4}}>
+            Figures as of</label>
+          <div style={{display:'flex',gap:6,alignItems:'center'}}>
+            <Btn k="sm" onClick={()=>setPeriod(p=>shiftPeriod(p,-1))}>←</Btn>
+            <b style={{flex:1,fontSize:12.5,textAlign:'center'}}>{fmtP(period)}</b>
+            <Btn k="sm" onClick={()=>setPeriod(p=>shiftPeriod(p,1))}>→</Btn>
+            {period!==PERIOD && <Btn k="sm" onClick={()=>setPeriod(PERIOD)}>Now</Btn>}
+          </div>
+        </div>
       </div>
       <div className="btn-row" style={{marginTop:4}}>
-        <input type="search" value={q} placeholder="Search KPIs…"
+        <input type="search" value={q} placeholder="Search reports…"
           onChange={e=>setQ(e.target.value)}
           style={{flex:'1 1 220px',minWidth:0,border:'1px solid var(--border-d)',
                   borderRadius:8,padding:'6px 10px',fontSize:12.5}}/>
         {anyFilter
-          ? <Btn k="sm" onClick={()=>{setFProc('');setFOwner('');setFBi('');setQ('');}}>Clear</Btn>
+          ? <Btn k="sm" onClick={()=>{setFProc('');setFOwner('');setQ('');}}>Clear</Btn>
           : null}
       </div>
-      {/* lm_bireportdashboard.lm_kpi is what links the two, added 20 Sep. A KPI
-          with no dashboard recorded against it still reads "No BI report
-          linked" -- which is now a fact about the data, not a missing table. */}
+      {/* lm_bireportdashboard.lm_kpi is what links the two, added 20 Sep. A
+          report with no KPI recorded against it still opens and frames --
+          the figures panel is simply the one part that has nothing to show. */}
     </div>
 
     <div className="card flush">
       <div className="card-hd" style={{display:'flex',alignItems:'center',gap:12}}>
         <div className="wa-icon gold">📊</div>
-        <h2 style={{flex:1}}>{loading ? 'Reading KPIs…' : `${matches.length} of ${kpis.length} measures`}</h2>
+        <h2 style={{flex:1}}>{loading ? 'Reading BI reports…' : `${matches.length} of ${reports.length} reports`}</h2>
       </div>
       {loading
-        ? <div style={{padding:'8px 17px 17px'}}><Empty ic="…">Reading strategy_kpises and strategy_processes from Dataverse.</Empty></div>
+        ? <div style={{padding:'8px 17px 17px'}}><Empty ic="…">Reading lm_bireportdashboards from Dataverse.</Empty></div>
         : matches.length===0
-        ? <div style={{padding:'8px 17px 17px'}}><Empty>No KPI matches this combination.</Empty></div>
+        ? <div style={{padding:'8px 17px 17px'}}>
+            <Empty>{reports.length ? 'No report matches this combination.' : 'No BI report is registered yet.'}</Empty>
+          </div>
         : <div style={{padding:'4px 17px 17px'}}>
-            {matches.map(k=>{
-              /* Every dashboard recorded against this KPI. The first is the
-                 one framed when the card is opened; the rest are named. */
-              const bis = biByKpi.get(k.id) || [];
-              const bi  = bis[0] || null;
-              const a  = achFor(k, bu, PERIOD);
+            {matches.map(r=>{
+              const k = r.kpi;
+              const a = k ? achFor(k, bu, period) : null;
               const pct2 = a ? achPct(k,a) : null;
-              const isOpen = open===k.id;
-              return <div key={k.id} className="card" style={{marginBottom:10}}>
+              const isOpen = open===r.id;
+              return <div key={r.id} className="card" style={{marginBottom:10}}>
                 <div className="ph-row" style={{gap:10,alignItems:'flex-start'}}>
                   <div style={{flex:1,minWidth:0}}>
-                    <div className="t-main">{k.name}</div>
+                    <div className="t-main">{r.name}</div>
                     <div className="t-sub">
-                      {[k.processName, k.deptName].filter(Boolean).join(' · ')}</div>
+                      {k ? [k.processName, k.deptName].filter(Boolean).join(' · ') : 'No KPI linked'}</div>
                   </div>
-                  {pct2!=null
-                    ? <Tag c={achCls(pct2)}>{pct2}% of target</Tag>
-                    : <Tag c="grey">No figure for this period</Tag>}
-                  {bi
-                    ? <Tag c="teal">{bi.name}{bis.length>1?` +${bis.length-1}`:''}</Tag>
-                    : <Tag c="red">No BI report linked</Tag>}
+                  {k
+                    ? (pct2!=null ? <Tag c={achCls(pct2)}>{pct2}% of target</Tag>
+                                  : <Tag c="grey">No figure for {fmtP(period)}</Tag>)
+                    : null}
+                  {k && <Tag c="teal">{k.name}</Tag>}
                 </div>
                 {a ? <div className="t-sub" style={{marginTop:4}}>
                   Target {a.target}{k.unit} · Actual {a.actual}{k.unit}
                   {k.dir==='down' ? ' · lower is better' : ''}</div> : null}
                 <div className="btn-row" style={{marginTop:8}}>
-                  {bi
-                    ? <Btn k="sm" onClick={()=>setOpen(isOpen?null:k.id)}>
-                        {isOpen?'Hide the report':'Open the BI report'}</Btn>
-                    : <span className="holder">No BI report is linked to this KPI yet.</span>}
-                  {(k.breakdowns||[]).length
+                  <Btn k="sm" onClick={()=>setOpen(isOpen?null:r.id)}>
+                    {isOpen?'Hide the report':'Open the BI report'}</Btn>
+                  {(k?.breakdowns||[]).length
                     ? <Tag c="grey">{k.breakdowns.length} breakdown{k.breakdowns.length>1?'s':''} ·
                         {' '}{bdDims(k).join(', ')}</Tag>
                     : null}
                 </div>
                 {isOpen ? <>
-                    <KpiPanel k={k} scope={{bu, period:PERIOD}}/>
-                    {bis.map(b=><BiFrame key={b.id} bi={{n:b.name, link:b.link}}/>)}
+                    {k ? <KpiPanel k={k} scope={{bu, period}}/> : null}
+                    <BiFrame bi={{n:r.name, link:r.link}}/>
                   </> : null}
               </div>;
             })}
