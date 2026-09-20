@@ -2431,6 +2431,11 @@ export async function fetchReportTemplateDetail(id){
         childTemplateId: it._lm_childreporttemplate_value || null,
         dimension: SECTION_BREAKDOWN_DIM[it.lm_breakdowndimension] || null,
         hasFile: !!it.lm_attachementfile,
+        /* The FILE's own name, which is not lm_sectionitemname -- that is
+           the citation's label and is stored prefixed ("File: x.xlsx").
+           Same `<column>_name` projection the Template uses, and kept out
+           of the $select for the same reason. */
+        fileStoredName: it.lm_attachementfile_name || '',
       })),
     })),
     lines: linesRes?.data ?? [],

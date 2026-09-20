@@ -84,6 +84,10 @@ export function FilePreview({entitySet, recordId, field, name}){
   /* Object URLs are a leak if they outlive the component, and a preview is
      opened and closed repeatedly. */
   const urlRef = useRef(null);
+  /* Kept separate from urlRef because the two have OPPOSITE lifetimes: a
+     preview URL is dead the moment its <iframe>/<img> unmounts, but a
+     download URL has to survive past it -- see download() below. */
+  const dlRef = useRef(null);
 
   useEffect(()=>{
     let alive = true;
@@ -137,20 +141,42 @@ export function FilePreview({entitySet, recordId, field, name}){
 
     return ()=>{
       alive = false;
+      /* The preview URL is only read by an element that is going away with
+         this component, so it can go immediately. */
       if(urlRef.current){ URL.revokeObjectURL(urlRef.current); urlRef.current = null; }
+      /* A download URL cannot. If the panel is closed right after clicking
+         Download, an immediate revoke can still cut the transfer off, so
+         this one is released on a delay -- long after any browser has
+         finished reading the blob, and still bounded so it is not a leak. */
+      if(dlRef.current){
+        const dying = dlRef.current;
+        dlRef.current = null;
+        setTimeout(()=>URL.revokeObjectURL(dying), 30000);
+      }
     };
   }, [entitySet, recordId, field, name]);
 
-  /* Download is built on demand rather than held open, so the URL exists
-     only for the moment the click needs it. */
+  /* ⚠️ The object URL MUST outlive the click.
+
+     `a.click()` only STARTS the download -- the browser then reads the blob
+     asynchronously. This used to revoke on the next tick
+     (`setTimeout(..., 0)`), which races that read and lands a truncated or
+     empty file on disk; Excel reports it as "the file format or file
+     extension is not valid", which reads like a corrupt upload and is not
+     one. The URL is cached for repeat clicks and released by the effect
+     cleanup above, on a delay. Do not revoke here. */
   const download = ()=>{
     if(st.phase !== 'ready') return;
-    const url = st.url || URL.createObjectURL(
-      new Blob([b64ToBytes(st.b64)], {type: MIME[extOf(name)] || 'application/octet-stream'}));
+    if(!dlRef.current){
+      dlRef.current = st.url || URL.createObjectURL(
+        new Blob([b64ToBytes(st.b64)], {type: MIME[extOf(name)] || 'application/octet-stream'}));
+    }
     const a = document.createElement('a');
-    a.href = url; a.download = name || 'download';
+    a.href = dlRef.current;
+    /* Falls back to a safe name: a download with no name at all is saved
+       as the opaque blob id. */
+    a.download = name || 'download';
     document.body.appendChild(a); a.click(); a.remove();
-    if(!st.url) setTimeout(()=>URL.revokeObjectURL(url), 0);
   };
 
   if(st.phase === 'loading')

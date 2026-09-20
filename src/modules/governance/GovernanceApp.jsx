@@ -1607,8 +1607,9 @@ function SectionsBlock({sections, onView}){
                         {onView && it.type==='File' && it.hasFile && it.dvId
                           ? <button type="button" className="fv-link" onClick={()=>onView({
                               entitySet:'lm_reporttemplatesectionitemses', recordId:it.dvId,
-                              field:'lm_attachementfile', name:it.fileName||'File'})}>
-                              {canPreview(it.fileName) ? 'View' : 'Download'}</button>
+                              field:'lm_attachementfile',
+                              name:it.fileStoredName||it.fileName||'File'})}>
+                              {canPreview(it.fileStoredName||it.fileName) ? 'View' : 'Download'}</button>
                           : null}</span>)}
                   </div>}
             </div>;
@@ -3588,6 +3589,11 @@ function dataverseReportToSetup(detail){
              name at upload time). hasFile flags that content already exists
              in Dataverse, so the picker's re-upload warning is meaningful. */
           fileName:it.type==='File' ? (it.label||'file') : undefined,
+          /* What the file is really called, for the preview and the
+             download. `fileName` above is the citation's LABEL and carries
+             a "File: " prefix, which a browser rewrites to "File_" when it
+             saves. */
+          fileStoredName:it.fileStoredName||'',
           hasFile:!!it.hasFile,
           /* The item's own Dataverse id, kept ONLY so its file can be read
              back -- `id` above is a fresh local uid because the editor needs

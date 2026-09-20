@@ -2056,6 +2056,49 @@ It is now `"error"` in `.oxlintrc.json`, with `env: {browser, es2024}` declared
 alongside — without that the one real finding drowns in ~300 window/console
 hits. `src/` is clean under it; `npm run lint` fails on the next one.
 
+### 20 Sep: "Excel cannot open the file" — a revoked blob URL, not a bad file
+
+Downloading the Section citation's file produced an .xlsx Excel rejected as
+"the file format or file extension is not valid". **The stored file was never
+at fault, and neither was the upload.**
+
+**How that was established without guessing:** the Download button only
+renders when `FilePreview` is in its `ready` state, and for a spreadsheet that
+state is reached *only after* `XLSX.read()` has parsed the workbook. A button
+being on screen to press therefore proves the bytes were a valid .xlsx. The
+fault had to be between those bytes and the file on disk.
+
+⚠️ **`URL.revokeObjectURL` must not run on the tick after `a.click()`.**
+`click()` only STARTS the download; the browser then reads the blob
+asynchronously. The original code revoked in `setTimeout(..., 0)`, which races
+that read and writes a truncated or empty file. The symptom looks exactly like
+a corrupt upload, which is the trap — it sends you to inspect Dataverse when
+the bug is three lines of local code.
+
+The URL is now cached for repeat clicks and released by the effect cleanup,
+**on a 30 s delay**, because closing the panel immediately after clicking
+Download would otherwise revoke it mid-transfer. Preview URLs
+(`urlRef`) still go immediately — nothing reads them once the `<iframe>` or
+`<img>` unmounts. The two lifetimes are opposite, which is why they are two
+refs.
+
+⚠️ **A Section citation's `lm_sectionitemname` is NOT the file's name.** It is
+the citation's LABEL and is stored prefixed: `File: lm_MeetingCategory
+(...).xlsx`. Using it as the download name produced
+`File_lm_MeetingCategory (...).xlsx`, because a browser rewrites the illegal
+`:` when it saves. The real name is the File column's own
+`lm_attachementfile_name`, now carried through as `fileStoredName` — the same
+projection the Template already used, and kept out of the `$select` for the
+same reason.
+
+**Also learned about the CLI here:** `pac org fetch` crashed with a *stack
+overflow inside `bolt.system.GridOutput.ToTextGrid()`* on the `fileattachment`
+table. That is the CLI's own text-grid RENDERER failing on the result, not the
+query — which corrects the older note in this file that "non-aggregate fetches
+crash against some orgs". The query is fine; the printer is not. There is no
+`--json` flag on `pac org fetch`, so the way round it is to request fewer or
+shorter columns.
+
 ### 20 Sep: "came back empty" — two defects in the first download
 
 Live symptom on a Section's File citation:
