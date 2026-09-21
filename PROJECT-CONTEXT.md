@@ -568,7 +568,10 @@ and rejects two identical days. **Annual is deliberately not wired** — see §6
 
 **Also this session:** at least one Section with a heading is now required to
 publish (an untitled Section used to pass validation and then be dropped
-silently by the payload's `.filter(c=>c.text)`); the Setup Register defaults to
+silently by the payload's `.filter(c=>c.text)`) — **stale as of 22 Sep: the
+"at least one Section" half of this was deliberately dropped, see §5's 22 Sep
+"Content Checklist ... optional" entry. The untitled-Section half (a Section
+with no heading still blocks) is unchanged.** The Setup Register defaults to
 newest first on the `Updated` column it already displays; and the child
 report/plan picker was fixed — it read local Setups, whose Dataverse id lives on
 `_dataverseId` not `dvId`, so it wrote a *session* id like `su-8` as a lookup and
@@ -3451,6 +3454,305 @@ spots and nothing else.
 assuming it's still wanted** — it was asked for as scaffolding for a
 specific testing pass, not a permanent feature.
 
+### 22 Sep, later still: the Report Template's Content Checklist is now optional, not required, to publish or send for review
+
+Per an explicit ask. `validateReport()` in `GovernanceApp.jsx` (the function
+behind both the live validation panel and the `disabled={issues.length>0}`
+gate on the Publish button — there is no separate "send for review" action;
+Publish is what moves a Setup from Draft into Under Review) no longer raises
+an issue when `s.checklist` is empty. The other half of the same check is
+unchanged: a Section that exists but has no heading still blocks, since an
+untitled Section saves as nothing and silently disappears.
+
+Also updated in the same pass so the UI doesn't contradict the relaxed rule:
+the `Field` for the checklist lost its `req` flag (no more red asterisk) and
+its hint now says the checklist is optional for now; the old "At least one
+section is required" inline error under the `SectionEditor` was removed,
+while the "N section(s) have no heading" error stays.
+
+**Scoped to validation and that one Field only** — nothing changed in how
+Sections are saved, seeded, or displayed elsewhere (e.g. the Sections count
+shown in summary tables). If the checklist is later meant to become required
+again, or required only past a certain Stage/Category, that's a follow-up
+decision, not implied by this change.
+
+### 22 Sep, later yet: Confidentiality removed from the Meeting Setup entirely — the Report Template keeps it
+
+Per an explicit ask — not "made optional" like the checklist above, a genuine
+removal. Meeting Setup (`validateMeeting()`, `BLANK_MEETING`, all six seed
+Committee/Meeting rows, the step-6 Field in `MeetingWizard`, `MeetingSummary`,
+`buildMeetingTemplatePayload()`, and the Dataverse-row hydrate for
+`lm_meetingtemplates`) no longer asks for, shows, saves, or reads back a
+Confidentiality value. `DV_MEETING_CONFIDENTIALITY` (the local decode map)
+was deleted as dead code alongside it. The Report Template side is
+untouched — `validateReport()` still requires it, the wizard Field, summary,
+payload builder and hydrate all still carry it.
+
+`buildPublishSummary()`'s `addField('Confidentiality', …)` moved from the
+shared section into the `isReport` branch only, since a Meeting Setup's
+`confidentiality` is now always `undefined` on both sides of the diff and
+would never have shown a change anyway — moving it just makes that explicit
+rather than relying on it never firing.
+
+**Deliberately left alone: `dataverse.js` and the generated schema files.**
+`lm_meetingtemplates.lm_meetingconfidentiality` still exists as a column and
+is still in the `$select` list and the save function's write path — nothing
+in `dataverse.js` was touched, per this file's own rule that the data-service
+module doesn't know about display/business concerns (see the note above
+`buildReportTemplatePayload`). The practical effect: since
+`buildMeetingTemplatePayload()` no longer puts `confidentiality` on the
+payload it hands to `saveMeetingTemplateToDataverse`, every future save of a
+Meeting Setup writes `lm_meetingconfidentiality: null` — so any of the seeded
+Dataverse rows that already hold a real value (if any exist there; unrelated
+to the local seed data edited here) will go blank the next time that Setup is
+edited and saved, not on this change alone. If that's ever a problem, dropping
+the column read/write in `dataverse.js` and the generated models is the
+follow-up — not done here, out of scope for a Setup-screen change.
+
+### 22 Sep, later still: "Dashboard" retired from the Report Type picker in Report Template Setup
+
+Per an explicit ask ("remove the dashboard from the report setup"). Scoped to
+the picker only, not the underlying choice value: `REPORT_TYPES` (`['Plan',
+'Dashboard','Report']`) stays whole, since its order backs Dataverse's own
+1-based choice codes (`byCode1`/`DV_REPORT_TYPE` — code 2 is still
+"Dashboard" on the real table) and it still feeds the Setup Register's type
+filter, so an existing Dashboard-type Template stays findable there. A new
+derived constant, `REPORT_TYPES_PICKABLE` (`REPORT_TYPES` minus
+"Dashboard"), feeds only the `Seg` control on the wizard's Identity step
+(step 1) — that's the one place a NEW or edited Setup's Report Type is
+actually chosen. `REPORT_TYPE_HELP`/`REPORT_TYPE_TAG_COLOR` (the per-value
+hint text and register tag colour) were left untouched, so a legacy
+Dashboard-type Template still reads correctly everywhere except that one
+picker.
+
+**Known cosmetic consequence, not fixed here:** `Seg` just diffs `val`
+against `opts` to decide which button lights up — it has no concept of "the
+current value isn't offered anymore." So opening an existing Setup whose
+`reportType` is still `'Dashboard'` shows the Report Type control with
+*no* button highlighted (Plan/Report both read as unselected), even though
+`s.reportType` is still `'Dashboard'` underneath and nothing is lost until
+the user clicks a different option. If that ever needs a real fix, `Seg`
+already has a `locked` per-option shape (see `Seg`'s own definition) that
+could show Dashboard, greyed out, only when it's the record's current value
+— not built here, since no legacy Dashboard Setup was reported as an actual
+problem, just the picker itself.
+
+The local demo seed `su-8` (`reportType:'Dashboard'`) was changed to
+`'Plan'` so the sample/demo data doesn't show a retired type — it still
+exercises the same "no Submission Timing, Source Link delivery" path Plan
+and Dashboard share, so the scenario it was written for is unaffected.
+
+### 22 Sep, later yet again: built and pushed — Governance Setup live with all four changes above
+
+`npm run build:governance` (`vite build`), bundle verified to still point at
+IT (`org2f45e702.crm4.dynamics.com`, per §9 — no drift back to DT New),
+copied over `C:\tmp\cad-gov-new\dist` (removed first, not merged — stale
+hashed filenames from a prior build otherwise survive alongside the new
+ones), pushed from inside that staging folder with `power-apps push`.
+Printed `App pushed successfully` and the play URL — the actual sign of
+success, not just an exit code (§8 already found once that a push can DNS-
+fail on `generateResourceStorage` and still exit 0). Leadership Execution
+was **not** built or pushed — nothing changed under `apps/leadership/` this
+session.
+
+Live now at `786c1b14-bf09-4dd7-a0a2-5730e87744fe` (Code App Development):
+the Content Checklist optional-not-required change, Confidentiality removed
+from Meeting Setup, and Dashboard retired from the Report Type picker — the
+three entries directly above this one, all from this same session.
+
+### 22 Sep, once more: the Report Template's destination (Channel) is also now optional, not required
+
+Per an explicit ask, same shape as the Content Checklist entry above. The
+rule dropped from `validateReport()` was: no unit's Team Channel resolves to
+a destination (`!destinationOf(s)`) → blocks Publish, reported against the
+first scope unit's card (`u-<key>`) since that's what `unitIssueCount()`
+reads to badge a unit card. That whole check is gone — a Report Template can
+now publish or go to review with no Channel chosen anywhere, so
+`destinationLink` saves as `undefined`/empty. The per-unit "Destination"
+Field (`u-dest-<key>`, step 4 — read-only, filled in from the Channel picked
+just above it) lost its `req` asterisk and its hint now says "Optional for
+now"; the empty-state placeholder text ("Choose a Channel above…") is
+unchanged, it was never an error, just a prompt.
+
+**Same open question as the checklist entry: what a destination-less,
+Channel-less Report Template actually delivers to remains unaddressed** —
+Team/Submitter/Owner/Review Chain per unit are all still required
+(`unitRules`), only the Channel/destination itself was relaxed. If this is
+meant to come back — always, or only past a certain Stage/Category — that's
+a follow-up decision, not implied here.
+
+### 22 Sep, later still: Meeting Setup's three Completion periods now default to 24h/24h/48h instead of blank
+
+Per an explicit ask, with a screenshot of the Mandate and Agenda step's
+"Completion periods" card. Only `BLANK_MEETING`'s three fields changed —
+`momWriteupHours`/`momApprovalHours: null→24`, `gridSubmitHours: null→48` —
+nothing about the inputs themselves, which were already plain editable
+number fields (`f-momWriteupHours`/`f-momApprovalHours`/`f-gridSubmitHours`,
+step 5). So a brand-new Meeting Setup now opens with 24/24/48 pre-filled
+instead of empty, and — since it's the same input either way — stays exactly
+as editable while first setting it up and on every later Edit of a saved
+Setup, same as before this change. Verified live in the browser: a new Draft
+opened with 24/24/48 showing, and typing over the first field to 36 left the
+other two at their defaults.
+
+**Deliberately not touched:** the six existing Committee/Meeting seed rows
+(`su-1`..`su-6`) don't set these three fields explicitly, so they inherit
+whatever `BLANK_MEETING` says — meaning the demo data's periods silently
+went from blank to 24/24/48 too. Also not touched: `LeadershipApp.jsx`'s
+`DEFAULT_SETTINGS.momWriteupHours/momApprovalHours/gridSubmitHours`, the
+execution module's own GLOBAL defaults (still `null`) that AG-16/AG-05
+scoring falls back on — this change is the per-Setup override only, per the
+existing (stale-looking but accurate) comment above `BLANK_MEETING` that the
+two are named identically on purpose but are separate values. The
+Dataverse hydrate path (`p.lm_momwriteuphours ?? null`, etc.) was left
+alone too: an already-saved Setup with no value stored still shows blank,
+truthfully — the new 24/24/48 default is a NEW-Setup starting point, not a
+stand-in for "no value was ever saved."
+
+### 22 Sep, later again: built and pushed a second time — Governance Setup live with the destination and Completion-period changes too
+
+Same procedure as the build/push entry above: `npm run build:governance`,
+bundle re-checked for the IT org URL (`org2f45e702.crm4.dynamics.com`, still
+the only one present), `C:\tmp\cad-gov-new\dist` replaced (not merged), then
+`power-apps push` from inside that staging folder — printed `App pushed
+successfully` again, same play URL, same app id
+(`786c1b14-bf09-4dd7-a0a2-5730e87744fe`). Leadership Execution again not
+touched.
+
+Adds two more changes on top of the previous push: the Report Template's
+destination/Channel requirement dropped (the entry two above this one), and
+Meeting Setup's Completion periods defaulting to 24h/24h/48h (the entry
+directly above this one). Also incidental to this session but along for the
+ride in the same build: a `governance-app` entry was added to
+`.claude/launch.json` (alongside the existing `leadership-app`) so the
+Governance app's own dev server can be previewed directly — used once this
+session to verify the Completion-periods defaults in the browser before this
+push.
+
+⚠️ **Corrected later the same session: the pre-existing `leadership-app`
+entry in `.claude/launch.json` was already broken** — `"runtimeArgs":
+["run", "dev"]` referenced a script that doesn't exist (`package.json` only
+has `dev:leadership`), and its `"port": 3000` was also wrong: Leadership's
+own `apps/leadership/vite.config.js` pins port **3001**, specifically so the
+two apps never collide (Governance is 3000). Both fixed in the entry below's
+session; the two configs no longer share a port and both are independently
+previewable now.
+
+### 22 Sep, later still again: Leadership's Reports/Plans data (Report Occurrences and everything under them) now reads and writes the IT environment, cross-environment from the rest of Leadership
+
+Per an explicit ask ("make the report / plan tab ... read from the report
+occurrences tables that are in the IT Env"), clarified in conversation before
+building anything, since the literal ask didn't by itself decide three real
+questions: **which** tab (two candidates share the exact same underlying
+data — see below), whether child tables move **too**, and whether **writes**
+follow reads. Answered: the "Reports / Plans" tab specifically named, but
+the whole Report Occurrence tree moves together (parent + children), and new
+Report Occurrences created from Leadership write to IT too, not just reads.
+
+**Why "which tab" was a real question, not a formality:** `dvReportOccs` is
+ONE shared array, fetched once in `LeadershipApp.jsx` (`refreshOccurrences()`)
+and consumed by Work Queue, Calendar, Home stats, Communication,
+`BuildReport.jsx` ("Build a report/plan" — label text closer to the literal
+ask than "Reports / Plans"), `Hierarchy.jsx`, and `OrgReports.jsx` ("Reports /
+Plans" itself, the tab actually named in the answer). There is no
+per-screen data source in this codebase — repointing "just one tab" was
+never actually on the table without forking the fetch into two inconsistent
+copies, which nobody wanted. So functionally this is a data-layer change:
+every one of those consumers now sees IT's Report Occurrences, not DT New's.
+
+**What changed, mechanically:**
+- `src/services/xenv.js` — `dvTable(entitySet, pkField, org = DATA_ORG)`
+  gained a third parameter. Every one of its five methods (`getAll`, `get`,
+  `create`, `update`, `delete`) and the `fail()` helper's error message now
+  use this per-call `org` instead of always closing over the module-level
+  `DATA_ORG` constant. Fully backward compatible — every existing call site
+  that omits the third argument behaves exactly as before. A new exported
+  constant, `REPORT_OCCURRENCE_ORG = 'https://org2f45e702.crm4.dynamics.com'`
+  (the same IT org Governance Setup already moved to, §9), sits next to
+  `DATA_ORG` with a comment explaining it's a no-op for Governance (its own
+  `DATA_ORG` already equals this) and a deliberate divergence for Leadership.
+- `src/services/dataverse.js` — the five tables that make up a Report
+  Occurrence now pass `REPORT_OCCURRENCE_ORG` as `dvTable()`'s third
+  argument: `Lm_reportoccurrencesService` (`lm_reportoccurrences`),
+  `Lm_reportoccurrencehistoriesService` (`lm_reportoccurrencehistories`),
+  `Lm_reportoccurrencesectionsesService` (`lm_reportoccurrencesectionses`),
+  `Lm_reportsectioncitationsesService` (`lm_reportsectioncitationses`), and
+  `Lm_reportoccurrencesharesService` (`lm_reportoccurrenceshares`). Every
+  function built on these — `fetchReportOccurrences`,
+  `fetchReportOccurrencesByTemplate`, `fetchReportOccurrenceContent`,
+  `fetchReportOccurrenceForEdit`, `saveReportOccurrenceContent`,
+  `createReportOccurrence`, `updateReportOccurrenceFile`,
+  `fetchReportOccurrenceHistory`, `submitReportOccurrence`,
+  `shareReportOccurrence`, the approve/reject/return-for-revision writers —
+  now targets IT, both reads and writes, with zero changes to their own
+  bodies. `dataverse.js` is shared by both apps, so this is app-agnostic by
+  construction: it fires wherever either app calls these functions.
+- **Deliberately unchanged:** every Meeting-side table, including
+  `lm_meetingoccurrences` itself and `lm_meetingoccurrencelinkedreportses`
+  (a Meeting Occurrence's own child table of links to Report Occurrences).
+  Both still follow whichever app's own `DATA_ORG` is building — DT New for
+  Leadership. `fetchReportOccurrencesByTemplate` (used by Governance's Usage
+  tab, §9) needed no change at all: Governance's `DATA_ORG` already equals
+  `REPORT_OCCURRENCE_ORG`.
+
+⚠️ **New cross-environment inconsistency this creates, not fixed here:**
+`lm_meetingoccurrencelinkedreportses` rows are created in DT New (their
+parent Meeting Occurrence's org) carrying `lm_ReportOccurrence@odata.bind`
+pointing at a `lm_reportoccurrences` GUID — which, for any Report Occurrence
+created AFTER this change, now exists only in IT, not in DT New. A Dataverse
+lookup bind cannot cross environments; linking a DT-New Meeting Occurrence
+to a newly-created (IT-resident) Report Occurrence via
+`linkMeetingOccurrenceReport()`/`attachReportOccurrenceToLink()` will very
+likely fail once tried against live data, since DT New has no row under that
+id to bind to. Not investigated further or worked around — flagged for
+whoever hits it, since fixing it means deciding how (or whether) a
+Meeting-side table can reference an IT-side row at all.
+
+**Verification limitation, worth being explicit about:** this change could
+not be confirmed against live data through the browser-pane dev preview.
+Opening `leadership-app` and navigating to Reports / Plans left it stuck on
+"Reading reports…" indefinitely. To rule out a regression, `window.__xenvPreflight()`
+was called directly from the browser console against Leadership's own,
+UNCHANGED home org (DT New, no IT override at all) and it **also** hung
+past an 8-second timeout — proving the Dataverse connector bridge doesn't
+resolve AT ALL in this bare `vite` dev-server preview, independent of this
+change entirely. (§8 already documents that real local verification needs
+`npx power-apps run`, the actual Power Apps player, not a bare dev server —
+this is presumably the same underlying limitation.) So this change is
+verified by construction (syntax-checked, and mechanically identical to the
+Governance→IT pattern §9 already confirmed live) but was **not** confirmed
+against real IT data end-to-end through the dev preview — see the build/push
+entry directly below, which is the first real (deployed) test of it.
+
+### 22 Sep, once more: both apps built and pushed together — first real-environment test of the Report Occurrence cross-environment change
+
+Per an explicit ask, no app named — built and pushed **both** this time,
+since the entry above touched `src/services/xenv.js` and
+`src/services/dataverse.js`, shared by both apps (a no-op rebuild for
+Governance, a live functional change for Leadership). Same procedure as
+every push this session: `npm run build:governance` then
+`npm run build:leadership`, each bundle grepped for org URLs before
+deploying — Governance's `index-*.js` contains **only**
+`org2f45e702.crm4.dynamics.com` (IT), Leadership's contains **both**
+`org2f45e702.crm4.dynamics.com` (IT — the Report Occurrence tree) **and**
+`org319b4ea9.crm4.dynamics.com` (DT New — everything else), confirming the
+split compiled the way §5's entry above describes. `dist/` replaced (not
+merged) in both staging folders, `power-apps push` from each —
+`C:\tmp\cad-gov-new` printed `App pushed successfully` for
+`786c1b14-bf09-4dd7-a0a2-5730e87744fe`, then `C:\tmp\cad-exec-new` printed
+the same for **Leadership**, `d61c6237-fec1-45c7-80e0-a9c63dd1e662` — the
+first time Leadership Execution has been pushed in this file's session
+narrative; every prior push this session was Governance only.
+
+This is the first opportunity for the Report Occurrence cross-environment
+read/write to run against real Dataverse rather than the non-functional
+bare dev-server preview documented in the entry above — worth checking
+Reports / Plans, Build a report/plan, Work Queue and Calendar in the live
+Leadership app for whether IT's Report Occurrences actually appear, and
+whether the `lm_meetingoccurrencelinkedreportses` cross-environment bind
+problem flagged above actually manifests. Neither was confirmed here; this
+entry only confirms the push itself succeeded.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### NEW this session: group-wide (Stage 3/4) roles now live on the parent row
@@ -4449,7 +4751,84 @@ original single-environment wiring and no longer gates anything.
 
 ---
 
-### 9. Moving Governance Setup to the IT environment — blocked on access, and the GUIDs do not match
+### 9. Moving Governance Setup to the IT environment — DONE (22 Sep), access blocker resolved, GUID blocker stands as expected
+
+**Resolved 22 Sep: access was granted, Governance Setup now reads/writes IT.**
+Superseded everything below marked "Decided 20 Sep" / "blocked on access" — kept
+for the row-count table and the GUID evidence, both still accurate.
+
+- **Blocker 1 (privilege denial on 32 tables) is gone.** Verified directly, not
+  assumed: `pac org select --environment https://org2f45e702.crm4.dynamics.com/`
+  then an aggregate `pac org fetch` against `lm_report_template`,
+  `lm_meetingoccurrence`, `lm_reportoccurrence`, `lm_meetingminutes`,
+  `lm_auditgridinstance`, `lm_setupactivity` and `and_microsoftgroupmember` all
+  read cleanly — no `prvRead` errors. **IT already holds real rows**:
+  `lm_report_template` = 2, `lm_reportoccurrence` = 3. Not yet investigated where
+  those came from — flagged for whoever opens the app next, since "rebuild fresh"
+  (below) was decided without looking at what those two rows are.
+- **Blocker 2 (missing tables) is unchanged, plus one more found.** `lm_authoritymatrixrow`,
+  `lm_approvalcycle`, `lm_approvalcyclestep` still don't exist in IT (a genuine
+  "not found in MetadataCache" from `pac org fetch`, not a permission error).
+  **New finding: `wlog_decisions` doesn't exist in IT either** — not on the
+  original blocker list, since that table wasn't registered yet when this
+  decision was first written. The seeded Decision workflow and the live
+  `wlog_decisions` list are both effectively DT-New-only concepts now; neither
+  has anywhere to write if Governance-side code ever touched them (it doesn't
+  today — Decisions is a Leadership-only screen).
+- **Blocker 3 (GUID mismatch) is unchanged, confirmed again.** Re-pulled IT's
+  `crd04_regions` directly: `KSA = 5cc005a9-b333-f011-8c4e-000d3aa9ba0c`,
+  `EGY = 2a3de7a2-b333-f011-8c4e-000d3aa9ba0c` — identical to the ids already
+  recorded below, so this was never an access problem and switching over does
+  not fix it. **Decided (22 Sep): rebuild Setups fresh in IT rather than
+  migrate** — no attempt was made to map DT New ids to IT ones.
+
+**What actually changed, scope Governance-only as decided 20 Sep:**
+`apps/governance/vite.config.js`'s `__DATA_ORG__` define changed from
+`https://org319b4ea9.crm4.dynamics.com` (DT New) to
+`https://org2f45e702.crm4.dynamics.com` (IT) — the one line the 20 Sep
+groundwork entry said this would be. `apps/leadership/vite.config.js` is
+untouched, still DT New. Verified in the **built** bundle, not just the
+source: `apps/governance/dist/assets/index-*.js` contains the IT URL twice and
+zero occurrences of the DT New URL; `apps/leadership/dist/assets/index-*.js`
+still contains the DT New URL twice. Pushed to the live Governance app,
+**`786c1b14-bf09-4dd7-a0a2-5730e87744fe`** (Code App Development,
+`C:\tmp\cad-gov-new` staging folder), successful on the first attempt.
+
+⚠️ **This corrects the "Deployment, settled" section's own claim that
+`786c1b14…`/`d61c6237…` are unused orphans and `4912152c…`/`83db0ef8…` are
+"the live pair."** Confirmed 22 Sep against the maker portal directly (App ID,
+Modified timestamp) that `786c1b14…` and `d61c6237…` are the ones that have
+actually been receiving pushes since at least 20 Sep — several "20 Sep" entries
+in this file's own §5 already say so explicitly, in tension with "Deployment,
+settled"'s table. Both app pairs still exist in Code App Development; treat
+`786c1b14…` (Governance) / `d61c6237…` (Leadership) as current unless a future
+session finds otherwise, and note this file's own deployment history has an
+unresolved internal contradiction between these two sections.
+
+⚠️ **Consequence, as already predicted 20 Sep and now real**: Governance
+Setup and Leadership Execution no longer share a world. A Setup created
+through the live Governance app now writes to IT; Leadership still reads only
+DT New, so it will show nothing from it — no occurrence, no Position
+resolution, nothing. **No Setups exist in IT yet** (only the 2 report
+templates / 3 occurrences noted above, origin unconfirmed) — the first Setup
+built there is a genuine fresh start against IT's own Regions/BUs/Departments/
+Positions/KPIs, not a migration. The 73-row `lm_meetingcategory` bulk upload
+(19-20 Sep, DT New) has **not** been re-run against IT — Category/
+Classification pickers in the live Governance app will show empty until that
+upload is repeated there.
+
+**Not done, deliberately out of scope for this pass:** no code changed in
+`src/` itself (the whole move is the one `vite.config.js` constant, per how
+`xenv.js` was already built); no investigation of the 2 pre-existing IT rows;
+no decision yet on whether Leadership ever follows Governance to IT, or
+whether a bridge is built instead (the open question the 20 Sep entry already
+named and left unanswered).
+
+---
+
+**Original entry below, dated 20 Sep, kept for the environment facts (row
+counts, GUID table, the exact IT environment id) — its own "blocked" framing
+is superseded by the above.**
 
 **Decided 20 Sep: deferred until read/write access is granted on every table.**
 Nothing has been changed in the code. `DATA_ORG` still points at DT New for

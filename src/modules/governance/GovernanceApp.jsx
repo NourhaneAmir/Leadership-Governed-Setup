@@ -84,6 +84,13 @@ const AGENDA_SOURCES=['Migrated - Initial','Added'];
    the code comment on REPORT_TYPE_KEY in dataverse.js), so nothing downstream
    needs the longer name. */
 const REPORT_TYPES=['Plan','Dashboard','Report'];
+/* Dashboard is retired from the Setup wizard's own picker -- no longer a
+   choice when creating or editing a Report Template. REPORT_TYPES itself
+   stays whole: it still backs the Setup Register's type filter (so an
+   existing Dashboard-type Template stays findable) and its order still
+   matches Dataverse's own 1-based choice codes (byCode1/DV_REPORT_TYPE)
+   used to decode a Template that already carries that value. */
+const REPORT_TYPES_PICKABLE=REPORT_TYPES.filter(t=>t!=='Dashboard');
 /* Only a Report/Conclusion has a submission-timing question to answer: a Plan
    is submitted before the period it covers, and a Dashboard is a live view that
    is not tied to one period's submission at all. Kept in Report Type's order so
@@ -659,13 +666,15 @@ const BLANK_MEETING={
   frequency:null, dayOfWeek:null, dayOfMonth:null, monthInQuarter:null,
   mode:null,
   supportive:[], quorum:90,
-  torLink:'', agenda:[], linkedTemplates:[], confidentiality:null,
+  torLink:'', agenda:[], linkedTemplates:[],
   /* Per-Setup completion-period overrides -- same three deadlines as the
      execution module's global Governance Settings defaults (momWriteupHours/
      momApprovalHours/gridSubmitHours in LeadershipApp.jsx's DEFAULT_SETTINGS),
-     named identically on purpose. UI only for now -- no Dataverse column
-     exists yet, see the note above WizStep 5's Completion periods card. */
-  momWriteupHours:null, momApprovalHours:null, gridSubmitHours:null,
+     named identically on purpose. Defaulted (24h/24h/48h) rather than left
+     blank, per an explicit ask -- still a plain number input on the wizard's
+     Completion periods card (step 5), so the person setting it up can change
+     it there, and it stays editable the same way on every later Edit too. */
+  momWriteupHours:24, momApprovalHours:24, gridSubmitHours:48,
   status:'Draft', version:0, updated:TODAY};
 
 const BLANK_REPORT={
@@ -712,7 +721,7 @@ function seed(){
             {id:'a3',text:'Open corrective actions review',owner:'p04',source:'Migrated - Initial'},
             {id:'a4',text:'Accreditation readiness update',owner:'p01',source:'Added'}],
     linkedTemplates:[{template:'su-7',role:'Input'}],
-    confidentiality:'Confidential', status:'Active / Approved', version:2, updated:'2026-06-14'});
+    status:'Active / Approved', version:2, updated:'2026-06-14'});
 
   /* 2 — the Cross-Functional Team of Teams of ONE Department. This is where that Department
          monitors its own service strategy — the seam with the Strategy module. */
@@ -729,7 +738,7 @@ function seed(){
     quorum:null, torLink:'',
     agenda:[{id:'a1',text:'Function updates',owner:'p03',source:'Migrated - Initial'},
             {id:'a2',text:'Blockers and dependencies',owner:'p05',source:'Added'}],
-    linkedTemplates:[], confidentiality:'Internal',
+    linkedTemplates:[],
     status:'Active / Approved', version:1, updated:'2026-05-02'});
 
   /* 3 — published Monitoring Meeting at Stage 3 — group-wide, a single section */
@@ -745,7 +754,7 @@ function seed(){
     mode:'Virtual',
     supportive:['Strategy Management (SMO)'], quorum:null, torLink:'',
     agenda:[{id:'a1',text:'Group scorecard review',owner:'p15',source:'Migrated - Initial'}],
-    linkedTemplates:[{template:'su-8',role:'Input'}], confidentiality:'High Confidential',
+    linkedTemplates:[{template:'su-8',role:'Input'}],
     status:'Active / Approved', version:1, updated:'2026-04-21'});
 
   /* 4 — Draft across THREE Business Units with only the first one filled in.
@@ -762,7 +771,7 @@ function seed(){
     frequency:'Monthly', dayOfMonth:20,
     mode:'Physical',
     supportive:[], quorum:null, torLink:'',
-    agenda:[], linkedTemplates:[], confidentiality:'Confidential',
+    agenda:[], linkedTemplates:[],
     status:'Draft', version:0, updated:'2026-07-18'});
 
   /* 5 — Under Review, Stage 2: the same Committee run once per REGION —
@@ -784,7 +793,7 @@ function seed(){
     agenda:[{id:'a1',text:'Carried-forward items from the last meeting',owner:'p05',source:'Migrated - Initial'},
             {id:'a2',text:'Surveillance data review',owner:'p11',source:'Migrated - Initial'},
             {id:'a3',text:'Hand hygiene compliance',owner:'p05',source:'Added'}],
-    linkedTemplates:[], confidentiality:'Confidential',
+    linkedTemplates:[],
     status:'Under Review', version:1, updated:'2026-07-25'});
 
   /* 6 — Expired */
@@ -797,7 +806,7 @@ function seed(){
     mode:'Physical',
     supportive:[], quorum:null, torLink:'',
     agenda:[{id:'a1',text:'Overnight escalations',owner:'p05',source:'Migrated - Initial'}],
-    linkedTemplates:[], confidentiality:'Internal',
+    linkedTemplates:[],
     status:'Expired', version:2, updated:'2026-03-30'});
 
   /* 7 — published Report Template written once and submitted from TWO Business Units
@@ -824,7 +833,7 @@ function seed(){
   /* 8 — published Report Template using a source link instead of a destination */
   mk({id:'su-8', kind:'Report Template',
     objective:'Consolidate business unit performance for the executive review cycle.',
-    reportType:'Dashboard', reportCategory:'Core',
+    reportType:'Plan', reportCategory:'Core',
     stage:STAGES[2], regions:[], businessUnits:[],
     lines:[{id:'ln8a', department:'Quality', function:null},
            {id:'ln8b', department:'Operations', function:null}],
@@ -1063,8 +1072,6 @@ function validateMeeting(s){
     r.push({field:'f-agenda', step:5, msg:'At least one standing Agenda Item is required.'});
   if(ag.some(a=>(a.text||'').trim() && !a.owner))
     r.push({field:'f-agenda', step:5, msg:'Every standing Agenda Item needs an owner.'});
-  /* 6 — review */
-  if(!s.confidentiality) r.push({field:'f-confidentiality', step:6, msg:'Confidentiality is required.'});
   return r;
 }
 
@@ -1084,29 +1091,17 @@ function validateReport(s, all){
   r.push(...scopeRules(s,2));
   /* 3 — destination and content */
   /* The destination is no longer typed or picked -- it resolves from the Team
-     Channel chosen per unit. So the rule is that one has to resolve, not that
-     a Site/Library/Folder or a link was filled in. */
-  /* Reported against the first unit with no resolvable Channel rather than
-     against the step that only displays the result -- 'u-<key>' is what
-     unitIssueCount() counts to mark a unit card, so the error lands on the
-     card whose Channel is missing. */
-  if(!destinationOf(s)){
-    const firstKey = (scopeKeys(s) || [])[0];
-    r.push({field: firstKey ? 'u-'+firstKey : 'u-dest', step:4,
-      msg:'No destination yet. Choose a Team and Channel for a unit — the Channel’s '+
-          'SharePoint path becomes the destination.'});
-  }
-  /* A Template defines what a submission must contain, so it needs at least one
-     Section -- and a Section with no heading defines nothing. Both are checked:
-     an untitled Section used to pass validation and then be dropped silently at
-     save time, which looked like the Template had saved correctly. */
+     Channel chosen per unit. Optional for now, though: a Template can publish
+     or go to review with no unit's Channel resolving to one yet. Was required
+     (see git history for the exact rule and message if this needs to come
+     back) -- dropped on an explicit ask, same as the Content Checklist below. */
+  /* The Content Checklist is optional for now -- a Template can publish or go
+     to review with no Sections at all. A Section that is present but has no
+     heading still defines nothing, so that half of the check stays. */
   {
     const sections = s.checklist||[];
     const titled = sections.filter(c=>(c.text||'').trim());
-    if(titled.length===0)
-      r.push({field:'f-checklist', step:3,
-        msg:'At least one section with a heading is required.'});
-    else if(titled.length < sections.length)
+    if(titled.length < sections.length)
       r.push({field:'f-checklist', step:3,
         msg:`${sections.length-titled.length} section${sections.length-titled.length>1?'s have':' has'} no heading. Give each one a heading, or remove it.`});
   }
@@ -2438,8 +2433,8 @@ function UnitSetup({s,set,issues,shared,intro}){
                 is derived from the Channel above by destinationOf(), so there
                 is nothing to type and no second copy to fall out of step. */}
             {report
-              ? <Field id={'u-dest-'+k} label="Destination" req
-                  hint="Filled from the Team Channel above — its SharePoint path. Nothing to type here.">
+              ? <Field id={'u-dest-'+k} label="Destination"
+                  hint="Filled from the Team Channel above — its SharePoint path. Optional for now — nothing to type here.">
                   {channelPath(u.channel)
                     ? <div className="dest-v mono">{channelPath(u.channel)}</div>
                     : <div className="dest-v empty">Choose a Channel above and its SharePoint path appears here</div>}
@@ -2760,10 +2755,6 @@ function MeetingWizard({rec,onClose}){
               <Sel val={r.role} opts={REPORT_ROLES}
                 onChange={v=>set({linkedTemplates:s.linkedTemplates.map((x,j)=>j===i?{...x,role:v}:x)})}/>
             </div>}/>
-          <Field id="f-confidentiality" label="Confidentiality" req
-            hint="Inherited by every occurrence created from this Setup.">
-            <Seg id="f-confidentiality" opts={CONFIDENTIALITY} val={s.confidentiality}
-              onChange={v=>set({confidentiality:v})}/></Field>
         </div>
         <MeetingSummary s={s}/>
       </>;
@@ -2848,7 +2839,6 @@ function MeetingSummary({s}){
           ['Linked Templates',(s.linkedTemplates||[]).length
             ? s.linkedTemplates.map(t=>`${t.templateName||'—'} (${t.role})`).join(', ')
             : 'None'],
-          ['Confidentiality',s.confidentiality],
           ['Audit Grid',accred?'Produced for every occurrence':'Not produced']]}/>
       </div>
     </div>
@@ -2881,7 +2871,7 @@ function ReportWizard({rec,onClose}){
         <div className="f-row">
           <Field id="f-reportType" label="Report Type" req
             hint={s.reportType?REPORT_TYPE_HELP[s.reportType]:'Plan, Report and Conclusion differ by which month the content covers.'}>
-            <Seg id="f-reportType" opts={REPORT_TYPES} val={s.reportType}
+            <Seg id="f-reportType" opts={REPORT_TYPES_PICKABLE} val={s.reportType}
               onChange={v=>set({reportType:v,
                 /* Leaving a stale timing behind would save a Plan as though it
                    answered a question only a Report is asked. */
@@ -2941,16 +2931,15 @@ function ReportWizard({rec,onClose}){
                     {' '}— choose a file above to replace it.</div>
                 : <div className="holder">No template file attached yet.</div>}
           </Field>
-          <Field id="f-checklist" label="Expected Content Checklist" req
-            hint="The sections a submission must contain each period. Each section can name a
+          <Field id="f-checklist" label="Expected Content Checklist"
+            hint="The sections a submission must contain each period. Optional for now — a
+                  Template can publish or go to review with none. Each section can name a
                   diagnostic angle and carry any number of KPIs, KPI breakdowns, Processes or a
                   child report/plan — all seeded in automatically when the template is used.">
             <SectionEditor sections={s.checklist||[]} templateId={s._dataverseId}
               onChange={v=>set({checklist:v})}/>
             {(()=>{ const secs=s.checklist||[];
               const blank=secs.filter(c=>!(c.text||'').trim()).length;
-              if(secs.length===0)
-                return <div className="err" role="alert">At least one section is required.</div>;
               if(blank)
                 return <div className="err" role="alert">
                   {blank} section{blank>1?'s have':' has'} no heading. A section without a heading
@@ -3203,7 +3192,6 @@ function buildMeetingTemplatePayload(f){
     secondDayOfMonth: typeof f.secondDayOfMonth==='number' ? f.secondDayOfMonth : undefined,
     monthInSemester: f.monthInSemester || undefined,
     mode: f.mode,
-    confidentiality: f.confidentiality,
     quorum: f.quorum,
     momWriteupHours: f.momWriteupHours,
     momApprovalHours: f.momApprovalHours,
@@ -3321,7 +3309,6 @@ function buildPublishSummary(original, edited){
   addField('Day of week', original.dayOfWeek, edited.dayOfWeek);
   addField('Day of month', original.dayOfMonth, edited.dayOfMonth);
   addField('Month within quarter', original.monthInQuarter, edited.monthInQuarter);
-  addField('Confidentiality', original.confidentiality, edited.confidentiality);
   if(isReport){
     addField('Objective', original.objective, edited.objective);
     addField('Report Type', original.reportType, edited.reportType);
@@ -3330,6 +3317,7 @@ function buildPublishSummary(original, edited){
     addField('Report Delivery', original.delivery, edited.delivery);
     addField('Source link', original.sourceLink, edited.sourceLink);
     addField('File Attachment', original.fileAttachment, edited.fileAttachment);
+    addField('Confidentiality', original.confidentiality, edited.confidentiality);
   }else{
     addField('Setup Type', original.setupType, edited.setupType);
     addField('Type / Classification', original.category, edited.category);
@@ -3484,7 +3472,6 @@ const DV_MEETING_MONTH_IN_QUARTER={124330000:'1st month',124330001:'2nd month',1
    their own maps and cannot reuse DV_MEETING_DAY_OF_WEEK. */
 const DV_MEETING_SECOND_DAY_OF_WEEK={1:'Sunday',2:'Monday',3:'Tuesday',4:'Wednesday',5:'Thursday'};
 const DV_MEETING_MONTH_IN_SEMESTER={1:'1st month',2:'2nd month',3:'3rd month',4:'4th month',5:'5th month',6:'6th month'};
-const DV_MEETING_CONFIDENTIALITY={124330000:'Public',124330001:'Internal',124330002:'Confidential',124330003:'High Confidential',124330004:'Restricted'};
 const DV_MEETING_CATEGORY={124330000:'Planning Meeting',124330001:'Monitoring Meeting',124330002:'Clinical Meeting',124330003:'Operational Meeting',124330004:'Technology Meeting',124330005:'Cross-Functional Meeting',124330006:TOT};
 const DV_MEETING_MODE={1:'Physical',2:'Virtual',3:'Hybrid'};
 const DV_MEETING_SETUP_TYPE={1:'Business Meeting',2:'Accreditation Committee'};
@@ -3689,7 +3676,6 @@ function dataverseMeetingToSetup(detail){
     secondDayOfMonth:p.lm_seconddayofthemonth ?? null,
     monthInSemester:DV_MEETING_MONTH_IN_SEMESTER[p.lm_monthofthesemesterseme]||null,
     mode:DV_MEETING_MODE[p.lm_defaultmeetingmode]||null,
-    confidentiality:DV_MEETING_CONFIDENTIALITY[p.lm_meetingconfidentiality]||null,
     quorum:p.lm_quorumthreshold ?? null,
     momWriteupHours:p.lm_momwriteuphours ?? null,
     momApprovalHours:p.lm_momapprovalhours ?? null,

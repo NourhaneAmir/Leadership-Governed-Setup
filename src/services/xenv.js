@@ -45,6 +45,21 @@ export const DATA_ORG =
     ? __DATA_ORG__
     : 'https://org319b4ea9.crm4.dynamics.com';
 
+/* The Report Occurrence family of tables (lm_reportoccurrences and its own
+   child tables -- sections, citations, history, shares) reads and writes
+   THIS org always, regardless of which app is built or what DATA_ORG above
+   resolves to. Per an explicit ask: Leadership's own Reports/Plans screens
+   (and Work Queue, Calendar, Home stats, Communication, Build a report/plan
+   -- everything fed by dataverse.js's fetchReportOccurrences()) now reads
+   the SAME Report Occurrences Governance Setup's own Report Templates
+   already live next to, in the IT environment -- see PROJECT-CONTEXT.md
+   Open Decision 9. Governance Setup's own DATA_ORG already equals this org
+   (moved there 22 Sep), so this constant is a no-op for Governance and a
+   deliberate divergence for Leadership, which stays on DT New for every
+   other table (Meeting Occurrences included). dataverse.js passes this as
+   dvTable()'s third argument for exactly those tables -- nowhere else. */
+export const REPORT_OCCURRENCE_ORG = 'https://org2f45e702.crm4.dynamics.com';
+
 /* The connector wants the table's ENTITY SET (plural) name, e.g.
    `lm_setupactivities`, not the logical name `lm_setupactivity`. Both are in
    power.config.json under databaseReferences -- entitySetName is the one. */
@@ -63,10 +78,10 @@ const PREFER_PAGED =
    PROJECT-CONTEXT section 6, "Every create()/update() must be checked" -- so
    the shape is preserved rather than converted to exceptions here, and
    dataverse.js's existing idOrThrow()/assertSuccess() keep working. */
-const fail = (op, table, error) => ({
+const fail = (op, table, error, org = DATA_ORG) => ({
   success: false,
   data: undefined,
-  error: error ?? new Error(`${op} failed on ${table} in ${DATA_ORG}`),
+  error: error ?? new Error(`${op} failed on ${table} in ${org}`),
 });
 
 /* The connector's @odata.nextLink is NOT a plain Dataverse URL: it points at
@@ -104,18 +119,24 @@ const newGuid = () =>
       });
 
 /**
- * One table in the DATA_ORG environment, exposing the same five methods the
- * generated per-table services do.
+ * One table in the DATA_ORG environment (or `org`, when given), exposing the
+ * same five methods the generated per-table services do.
  * @param {string} entitySet the table's plural entity set name
  * @param {string} [pkField] the primary key column, e.g. `lm_report_templateid`.
  *   When given, create() supplies the new row's GUID itself -- see create().
+ * @param {string} [org] override for DATA_ORG -- this ONE table always reads
+ *   and writes this org instead, whatever DATA_ORG resolves to for the rest
+ *   of the app. See REPORT_OCCURRENCE_ORG above for why this exists.
  */
 /* Every entity set dvTable() has been asked for, in call order.
    preflight() sweeps this rather than a hand-kept list: a hand-kept list
-   drifts the first time someone adds a table and forgets. */
+   drifts the first time someone adds a table and forgets. Value is just
+   pkField, not the org override (if any) -- preflight()'s own `org` param
+   is a deliberate manual override for probing "would ALL these tables work
+   in org X", so it isn't meant to reflect each table's real target either. */
 const REGISTERED = new Map();
 
-export function dvTable(entitySet, pkField) {
+export function dvTable(entitySet, pkField, org = DATA_ORG) {
   if (!REGISTERED.has(entitySet)) REGISTERED.set(entitySet, pkField || null);
   return {
     /** Every matching row, following pagination to the end. */
@@ -126,7 +147,7 @@ export function dvTable(entitySet, pkField) {
          that never changes would otherwise spin forever against Dataverse. */
       for (let page = 0; page < 200; page++) {
         const res = await DV.ListRecordsWithOrganization(
-          DATA_ORG,                    // organization -- FIRST here, unlike create/update
+          org,                          // organization -- FIRST here, unlike create/update
           entitySet,                   // entityName
           PREFER_PAGED,                // prefer
           JSON_ACCEPT,                 // accept
@@ -141,7 +162,7 @@ export function dvTable(entitySet, pkField) {
           skiptoken,                   // $skiptoken
           undefined                    // partitionId
         );
-        if (!res?.success) return fail('getAll', entitySet, res?.error);
+        if (!res?.success) return fail('getAll', entitySet, res?.error, org);
 
         const body = res.data || {};
         if (Array.isArray(body.value)) rows.push(...body.value);
@@ -155,12 +176,12 @@ export function dvTable(entitySet, pkField) {
     /** One row by id. */
     async get(id, options) {
       const res = await DV.GetItemWithOrganization(
-        PREFER_REPRESENTATION, JSON_ACCEPT, DATA_ORG, entitySet, id,
+        PREFER_REPRESENTATION, JSON_ACCEPT, org, entitySet, id,
         undefined, undefined, selectOf(options), options?.expand, undefined
       );
       return res?.success
         ? { success: true, data: res.data, error: undefined }
-        : fail('get', entitySet, res?.error);
+        : fail('get', entitySet, res?.error, org);
     },
 
     /**
@@ -184,9 +205,9 @@ export function dvTable(entitySet, pkField) {
       const body = pkField ? { ...record, [pkField]: id } : record;
 
       const res = await DV.CreateRecordWithOrganization(
-        PREFER_REPRESENTATION, JSON_ACCEPT, DATA_ORG, entitySet, body, undefined
+        PREFER_REPRESENTATION, JSON_ACCEPT, org, entitySet, body, undefined
       );
-      if (!res?.success) return fail('create', entitySet, res?.error);
+      if (!res?.success) return fail('create', entitySet, res?.error, org);
 
       const returned = res.data && typeof res.data === 'object' ? res.data : null;
       if (!pkField) return { success: true, data: returned ?? undefined, error: undefined };
@@ -205,11 +226,11 @@ export function dvTable(entitySet, pkField) {
     /** Patch a row. */
     async update(id, changedFields) {
       const res = await DV.UpdateRecordWithOrganization(
-        PREFER_REPRESENTATION, JSON_ACCEPT, DATA_ORG, entitySet, id, changedFields, undefined
+        PREFER_REPRESENTATION, JSON_ACCEPT, org, entitySet, id, changedFields, undefined
       );
       return res?.success
         ? { success: true, data: res.data, error: undefined }
-        : fail('update', entitySet, res?.error);
+        : fail('update', entitySet, res?.error, org);
     },
 
     /* The per-table delete() returns a bare Promise<void> and throws on
@@ -219,10 +240,10 @@ export function dvTable(entitySet, pkField) {
        methods. Passing the write-method order would send 'return=representation'
        as the org URL. */
     async delete(id) {
-      const res = await DV.DeleteRecordWithOrganization(DATA_ORG, entitySet, id, undefined);
+      const res = await DV.DeleteRecordWithOrganization(org, entitySet, id, undefined);
       if (!res?.success) {
         throw new Error(
-          `delete failed on ${entitySet} in ${DATA_ORG}: ${JSON.stringify(res?.error ?? {})}`
+          `delete failed on ${entitySet} in ${org}: ${JSON.stringify(res?.error ?? {})}`
         );
       }
     },

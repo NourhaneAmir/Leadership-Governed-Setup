@@ -32,7 +32,7 @@ export default defineConfig({
      Leadership on DT New. While DATA_ORG was a single shared constant that
      was impossible. Change this line in ONE app to move ONE app. */
   define: {
-    __DATA_ORG__: JSON.stringify('https://org319b4ea9.crm4.dynamics.com'),
+    __DATA_ORG__: JSON.stringify('https://org2f45e702.crm4.dynamics.com'),
   },
   root: here,
   base: './', // required for Power Apps Code Apps: assets are hosted under a

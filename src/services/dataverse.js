@@ -81,7 +81,7 @@ function rowsOrThrow(res){
    read from each generated service's create() signature -- which lets
    create() supply the new row's GUID itself; see xenv.js.
    --------------------------------------------------------------------- */
-import { dvTable, uploadFileColumn } from './xenv.js';
+import { dvTable, uploadFileColumn, REPORT_OCCURRENCE_ORG } from './xenv.js';
 
 const BusinessunitsService = dvTable('businessunits');
 const Crd04_regionsesService = dvTable('crd04_regionses');
@@ -2547,7 +2547,16 @@ const Lm_meetingoccurrenceagendasService = dvTable('lm_meetingoccurrenceagendas'
 const Lm_meetingoccurrenceattendeesesService = dvTable('lm_meetingoccurrenceattendeeses', 'lm_meetingoccurrenceattendeesid');
 const Lm_meetingoccurrencedepartmentfunctionsService = dvTable('lm_meetingoccurrencedepartmentfunctions', 'lm_meetingoccurrencedepartmentfunctionid');
 const Lm_meetingoccurrencelinkedreportsesService = dvTable('lm_meetingoccurrencelinkedreportses', 'lm_meetingoccurrencelinkedreportsid');
-const Lm_reportoccurrencesService = dvTable('lm_reportoccurrences', 'lm_reportoccurrenceid');
+/* The whole Report Occurrence family -- the occurrence itself plus its own
+   Sections, Citations, History and Shares -- reads and writes
+   REPORT_OCCURRENCE_ORG (the IT environment) always, independent of this
+   app's own DATA_ORG. Per an explicit ask (22 Sep): Leadership's Reports/
+   Plans screens now read the same Report Occurrences Governance Setup's own
+   Report Templates already live next to in IT, rather than DT New. See
+   xenv.js's REPORT_OCCURRENCE_ORG for the full rationale. Everything else on
+   this page -- Meeting Occurrences included -- is unaffected and still
+   follows this app's own DATA_ORG. */
+const Lm_reportoccurrencesService = dvTable('lm_reportoccurrences', 'lm_reportoccurrenceid', REPORT_OCCURRENCE_ORG);
 const Lm_meetingminutesesService = dvTable('lm_meetingminuteses', 'lm_meetingminutesid');
 const Lm_momnotesesService = dvTable('lm_momnoteses', 'lm_momnotesid');
 const Lm_auditgridinstancesService = dvTable('lm_auditgridinstances', 'lm_auditgridinstanceid');
@@ -2555,14 +2564,17 @@ const Lm_auditgridanswersService = dvTable('lm_auditgridanswers', 'lm_auditgrida
 const Lm_approvalcyclesService = dvTable('lm_approvalcycles');
 const Lm_approvalcyclestepsService = dvTable('lm_approvalcyclesteps');
 const Lm_authoritymatrixrowsService = dvTable('lm_authoritymatrixrows');
-const Lm_reportoccurrencehistoriesService = dvTable('lm_reportoccurrencehistories', 'lm_reportoccurrencehistoryid');
+const Lm_reportoccurrencehistoriesService =
+  dvTable('lm_reportoccurrencehistories', 'lm_reportoccurrencehistoryid', REPORT_OCCURRENCE_ORG);
 /* A Report Occurrence's content: its Sections, and the Citations inside them.
    Entity sets are double-plural -- the logical names are already plural. */
-const Lm_reportoccurrencesectionsesService = dvTable('lm_reportoccurrencesectionses', 'lm_reportoccurrencesectionsid');
-const Lm_reportsectioncitationsesService   = dvTable('lm_reportsectioncitationses', 'lm_reportsectioncitationsid');
+const Lm_reportoccurrencesectionsesService =
+  dvTable('lm_reportoccurrencesectionses', 'lm_reportoccurrencesectionsid', REPORT_OCCURRENCE_ORG);
+const Lm_reportsectioncitationsesService =
+  dvTable('lm_reportsectioncitationses', 'lm_reportsectioncitationsid', REPORT_OCCURRENCE_ORG);
 const Wlog_decisionsService = dvTable('wlog_decisions', 'wlog_decisionid');
 const Lm_reportoccurrencesharesService =
-  dvTable('lm_reportoccurrenceshares', 'lm_reportoccurrenceshareid');
+  dvTable('lm_reportoccurrenceshares', 'lm_reportoccurrenceshareid', REPORT_OCCURRENCE_ORG);
 
 /** Every Report Occurrence share -- who sent what to whom, and when.
  *
