@@ -97,11 +97,19 @@ const SystemusersService = dvTable('systemusers');
 const Hr_employeesService = dvTable('hr_employees');
 /* and_teamschannels retired 22 Sep in favour of and_teamschannellinks (below)
    -- a newly-registered table with a real Team/Channel object id on each
-   row, not just a repeated name. Per an explicit ask, the VIEW side only:
-   lm_TeamChannel (the lookup a Setup's per-unit Channel picker actually
-   saves) still targets and_teamschannels in Dataverse, unchanged, so a
-   Channel chosen from this new table's rows cannot yet be saved -- the
-   lookup column itself is a separate, later step. See PROJECT-CONTEXT.md. */
+   row, not just a repeated name.
+
+   COMPLETED 23 Sep. The 22 Sep pass deliberately moved the VIEW side only,
+   leaving lm_TeamChannel still targeting the old table, so a Channel picked
+   from the new rows could not be saved. A schema refresh against IT confirmed
+   lm_TeamChannel has since been repointed to and_teamschannellink -- in BOTH
+   environments, which is why comparing the two orgs shows nothing -- so all
+   nine `lm_TeamChannel@odata.bind` writes now target
+   /and_teamschannellinks(...) to match. See IT-SCHEMA-REFRESH.md.
+
+   ⚠️ The two tables share no ids: a Setup saved BEFORE this carries an
+   and_teamschannels id in a lookup that no longer points at that table. Those
+   rows need their Channel re-picked; nothing here repairs them. */
 const And_teamschannellinksService = dvTable('and_teamschannellinks');
 
 /** Regions -- table crd04_regions (generated as Crd04_regionsesService).
@@ -999,7 +1007,7 @@ function reportTemplateParentPayload(payload){
   };
   if(groupUnit?.ownerPositionId)      row['lm_OwnerPosition@odata.bind']      = `/cr603_organizationstructures(${groupUnit.ownerPositionId})`;
   if(groupUnit?.submittingPositionId) row['lm_SubmittingPosition@odata.bind'] = `/cr603_organizationstructures(${groupUnit.submittingPositionId})`;
-  if(groupUnit?.channelId)            row['lm_TeamChannel@odata.bind']        = `/and_teamschannels(${groupUnit.channelId})`;
+  if(groupUnit?.channelId)            row['lm_TeamChannel@odata.bind']        = `/and_teamschannellinks(${groupUnit.channelId})`;
   if(groupUnit?.specialityId)         row['lm_ReportSpecialty@odata.bind']    = `/cr301_specialtyksa_service_hubs(${groupUnit.specialityId})`;
   return row;
 }
@@ -1147,7 +1155,7 @@ async function createReportTemplateChildren(templateId, payload, errors, opts = 
         if(unit.specialityId) rowPayload['lm_Speciality@odata.bind'] = `/cr301_specialtyksa_service_hubs(${unit.specialityId})`;
         if(unit.ownerPositionId) rowPayload['lm_OwnerPosition@odata.bind'] = `/cr603_organizationstructures(${unit.ownerPositionId})`;
         if(unit.submittingPositionId) rowPayload['lm_SubmittingPosition@odata.bind'] = `/cr603_organizationstructures(${unit.submittingPositionId})`;
-        if(unit.channelId) rowPayload['lm_TeamChannel@odata.bind'] = `/and_teamschannels(${unit.channelId})`;
+        if(unit.channelId) rowPayload['lm_TeamChannel@odata.bind'] = `/and_teamschannellinks(${unit.channelId})`;
         const created = await Lm_reporttemplatebusinessunitsesService.create(rowPayload);
         const rowId = created?.data?.lm_reporttemplatebusinessunitsid;
         if(rowId){ unitBind = `/lm_reporttemplatebusinessunitses(${rowId})`; unitLookupField = 'lm_ReportTemplatePerBusinessUnit@odata.bind'; }
@@ -1162,7 +1170,7 @@ async function createReportTemplateChildren(templateId, payload, errors, opts = 
         if(unit.specialityId) rowPayload['lm_ReportSpeciality@odata.bind'] = `/cr301_specialtyksa_service_hubs(${unit.specialityId})`;
         if(unit.ownerPositionId) rowPayload['lm_OwnerPosition@odata.bind'] = `/cr603_organizationstructures(${unit.ownerPositionId})`;
         if(unit.submittingPositionId) rowPayload['lm_SubmittingPosition@odata.bind'] = `/cr603_organizationstructures(${unit.submittingPositionId})`;
-        if(unit.channelId) rowPayload['lm_TeamChannel@odata.bind'] = `/and_teamschannels(${unit.channelId})`;
+        if(unit.channelId) rowPayload['lm_TeamChannel@odata.bind'] = `/and_teamschannellinks(${unit.channelId})`;
         const created = await Lm_reporttemplateregionsService.create(rowPayload);
         const rowId = created?.data?.lm_reporttemplateregionid;
         if(rowId){ unitBind = `/lm_reporttemplateregions(${rowId})`; unitLookupField = 'lm_ReportTemplatePerRegion@odata.bind'; }
@@ -1260,7 +1268,7 @@ async function reconcileReportUnits(templateId, payload, existing, errors){
     if(u.specialityId)        f[specialityField] = `/cr301_specialtyksa_service_hubs(${u.specialityId})`;
     if(u.ownerPositionId)     f['lm_OwnerPosition@odata.bind'] = posBind(u.ownerPositionId);
     if(u.submittingPositionId) f['lm_SubmittingPosition@odata.bind'] = posBind(u.submittingPositionId);
-    if(u.channelId)           f['lm_TeamChannel@odata.bind'] = `/and_teamschannels(${u.channelId})`;
+    if(u.channelId)           f['lm_TeamChannel@odata.bind'] = `/and_teamschannellinks(${u.channelId})`;
     return f;
   };
   const diffOf = specialityValueField => (u, row) => {
@@ -1274,7 +1282,7 @@ async function reconcileReportUnits(templateId, payload, existing, errors){
     if(u.submittingPositionId && lookupChanged(row._lm_submittingposition_value, u.submittingPositionId))
       patch['lm_SubmittingPosition@odata.bind'] = posBind(u.submittingPositionId);
     if(u.channelId && lookupChanged(row._lm_teamchannel_value, u.channelId))
-      patch['lm_TeamChannel@odata.bind'] = `/and_teamschannels(${u.channelId})`;
+      patch['lm_TeamChannel@odata.bind'] = `/and_teamschannellinks(${u.channelId})`;
     return patch;
   };
 
@@ -1950,7 +1958,7 @@ async function reconcileMeetingUnits(templateId, payload, existing, errors){
     if(u.chairmanId)    f['lm_MeetingChairman@odata.bind'] = posBind(u.chairmanId);
     if(u.coChairmanId)  f['lm_MeetingCoChairman@odata.bind'] = posBind(u.coChairmanId);
     if(u.facilitatorId) f['lm_MeetingOrganizerFacilitator@odata.bind'] = posBind(u.facilitatorId);
-    if(u.channelId)     f['lm_TeamChannel@odata.bind'] = `/and_teamschannels(${u.channelId})`;
+    if(u.channelId)     f['lm_TeamChannel@odata.bind'] = `/and_teamschannellinks(${u.channelId})`;
     return f;
   };
   /* Only the fields that actually differ. A lookup that was cleared in the
@@ -1966,7 +1974,7 @@ async function reconcileMeetingUnits(templateId, payload, existing, errors){
     if(u.facilitatorId && lookupChanged(row._lm_meetingorganizerfacilitator_value, u.facilitatorId))
       patch['lm_MeetingOrganizerFacilitator@odata.bind'] = posBind(u.facilitatorId);
     if(u.channelId     && lookupChanged(row._lm_teamchannel_value, u.channelId))
-      patch['lm_TeamChannel@odata.bind'] = `/and_teamschannels(${u.channelId})`;
+      patch['lm_TeamChannel@odata.bind'] = `/and_teamschannellinks(${u.channelId})`;
     return patch;
   };
 
@@ -2059,7 +2067,7 @@ async function createMeetingTemplateChildren(templateId, payload, errors, opts =
         if(unit.chairmanId)    rowPayload['lm_MeetingChairman@odata.bind'] = `/cr603_organizationstructures(${unit.chairmanId})`;
         if(unit.coChairmanId)  rowPayload['lm_MeetingCoChairman@odata.bind'] = `/cr603_organizationstructures(${unit.coChairmanId})`;
         if(unit.facilitatorId) rowPayload['lm_MeetingOrganizerFacilitator@odata.bind'] = `/cr603_organizationstructures(${unit.facilitatorId})`;
-        if(unit.channelId) rowPayload['lm_TeamChannel@odata.bind'] = `/and_teamschannels(${unit.channelId})`;
+        if(unit.channelId) rowPayload['lm_TeamChannel@odata.bind'] = `/and_teamschannellinks(${unit.channelId})`;
         const created = await Lm_meetingtemplatebusinessunitsesService.create(rowPayload);
         const rowId = created?.data?.lm_meetingtemplatebusinessunitsid;
         if(rowId){ unitBind = `/lm_meetingtemplatebusinessunitses(${rowId})`; unitLookupField = 'lm_MeetingTemplatePerBusinessUnit@odata.bind'; }
@@ -2074,7 +2082,7 @@ async function createMeetingTemplateChildren(templateId, payload, errors, opts =
         if(unit.chairmanId)    rowPayload['lm_MeetingChairman@odata.bind'] = `/cr603_organizationstructures(${unit.chairmanId})`;
         if(unit.coChairmanId)  rowPayload['lm_MeetingCoChairman@odata.bind'] = `/cr603_organizationstructures(${unit.coChairmanId})`;
         if(unit.facilitatorId) rowPayload['lm_MeetingOrganizerFacilitator@odata.bind'] = `/cr603_organizationstructures(${unit.facilitatorId})`;
-        if(unit.channelId) rowPayload['lm_TeamChannel@odata.bind'] = `/and_teamschannels(${unit.channelId})`;
+        if(unit.channelId) rowPayload['lm_TeamChannel@odata.bind'] = `/and_teamschannellinks(${unit.channelId})`;
         const created = await Lm_meetingtemplateregionsService.create(rowPayload);
         const rowId = created?.data?.lm_meetingtemplateregionid;
         if(rowId){ unitBind = `/lm_meetingtemplateregions(${rowId})`; unitLookupField = 'lm_MeetingTemplatePerRegion@odata.bind'; }

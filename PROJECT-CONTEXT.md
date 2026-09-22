@@ -3917,6 +3917,82 @@ itself has not been repointed, so picking a Channel and saving will very
 likely fail until that lookup is updated in Dataverse, a step described as
 coming later, not done here or in this push.
 
+### 23 Sep: full schema refresh against IT, and the Team/Channel lookup finally repointed
+
+Per an explicit ask ("refresh all the tables that are on the IT environment
+... added columns, changed datatypes, changed lookups source"). All **57**
+tables the apps reach through `dvTable()` were regenerated with
+`pac modelbuilder build --environment <org> --entitynamesfilter <57 names>`
+against **both** IT and DT New, and compared. Report:
+**`IT-SCHEMA-REFRESH.md`** (repo root).
+
+⚠️ **`--environment` takes the target directly** — there is no need for
+`pac org select`, so the active auth profile is never disturbed. The profile
+still points at DT New, and the doc's mention of an `andalusiaEnv` profile is
+stale: `pac auth list` shows one UNIVERSAL profile only.
+
+**The finding that mattered, and why the obvious method missed it.**
+`lm_TeamChannel` has been repointed to `and_teamschannellink` — in **BOTH**
+environments. So an environment-vs-environment diff reports *no difference*
+while every `lm_TeamChannel@odata.bind` write in both apps is wrong. It only
+surfaces when the live schema is compared against **what the code writes**.
+⚠️ Two different questions, and only one of them was being asked:
+
+| Question | Method | Found |
+|---|---|---|
+| What differs between IT and DT New? | modelbuilder both, diff | 3 absent tables, 36 app-owned columns |
+| What does the code now get wrong? | live schema vs `dataverse.js` | **the repointed lookup** |
+
+**Fixed:** all nine `lm_TeamChannel@odata.bind` sites now target
+`/and_teamschannellinks(...)`. This completes the migration the 22 Sep entry
+deliberately left half-done (read side only). `fetchTeamsChannels()` already
+returned `and_teamschannellinkid` as its `id`, so a newly picked Channel
+carries a new-table id and now binds correctly.
+
+⚠️ **Old rows are not repaired.** The two tables share no ids, so any Setup
+saved before this carries an `and_teamschannels` id in a lookup that no longer
+targets that table. Those need their Channel re-picked.
+
+**Other real differences (IT vs DT New):**
+- **Absent from IT:** `lm_approvalcycle`, `lm_approvalcyclestep`,
+  `lm_authoritymatrixrow`. `wlog_decision` **now exists** in IT, contradicting
+  the 22 Sep note in decision 9 — a leaner version, without the `pms_*` family
+  DT New carries.
+- ⚠️ `lm_meetingoccurrencedepartmentfunction` in IT has **no**
+  `lm_departmentname` / `lm_functionname`, and the code selects both. One
+  unknown column fails the whole query. Meeting-side, so DT New today — this
+  becomes a live break if Meetings ever follow Reports to IT.
+- `lm_reportoccurrence` in IT has no `lm_attachementfile` and no
+  `lm_teamchannel`. Neither is selected, so nothing breaks, but the paused
+  occurrence-file work (§7.6) has nowhere to store a file in IT.
+- `lm_attachementfile` is selected only on `lm_report_templates` and
+  `lm_reporttemplatesectionitemses`; IT has it on both. Consistent with the
+  file viewer working there.
+
+⚠️ **Datatype changes could NOT be verified, and the first attempt was
+worthless.** Comparing IT's C# against the committed TS models produced 98
+"differences" of which ~94 were representation artifacts — the TS generator
+renders Guid, DateTime and lookup all as `string`. Same-generator comparison
+gives 0 type differences. But modelbuilder's C# **cannot express a max-length
+or precision change** either: text widened 100 -> 2000 is `string` on both
+sides. If a datatype was changed, name the column and it can be checked
+directly.
+
+**Three traps hit while doing this, all worth knowing:**
+1. ⚠️ **A relationship is only emitted when BOTH entities are in the
+   generation set.** The first run omitted the retired `and_teamschannel`, so
+   the lookup comparison silently skipped the one column that mattered. §6
+   already records this rule; it still cost a run.
+2. ⚠️ **modelbuilder cases the generated class from the entity's schema name**,
+   which differs harmlessly between orgs (`cr603_chklst_departments` vs
+   `cr603_chklst_Departments`) — 12 false "repointed lookup" rows until the
+   comparison was made case-insensitive.
+3. ⚠️ **`public virtual` on every OptionSet property.** A property regex
+   without it makes every choice column look absent — 40-odd false "this
+   column is gone" findings.
+4. ⚠️ The **CRLF trap in §8 caught me again**: a table list written by Python
+   on Windows made all 54 generated entities look missing. `tr -d '\r'`.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### NEW this session: group-wide (Stage 3/4) roles now live on the parent row
