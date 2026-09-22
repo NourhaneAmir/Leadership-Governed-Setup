@@ -3753,6 +3753,105 @@ whether the `lm_meetingoccurrencelinkedreportses` cross-environment bind
 problem flagged above actually manifests. Neither was confirmed here; this
 entry only confirms the push itself succeeded.
 
+### 22 Sep, yet again: the Reporting hierarchy's "Report Templates" view — and the whole Report Template family behind it — also now reads/writes IT
+
+Per an explicit ask ("in the reporting hierarchy tab... read from the Report
+templates tables from the IT Env"). Less ambiguous than the Report
+Occurrence ask two entries above — only one screen matches ("Reporting
+hierarchy" → the **Report Templates** tree, `Hierarchy.jsx`'s `seg-ctl`
+toggle added 21 Sep, backed by `fetchReportTemplateHierarchyContent()`) and
+Leadership never WRITES to a Report Template (only Governance Setup does),
+so neither of the two clarifying questions asked for the Occurrence case
+applied here — no AskUserQuestion this time.
+
+**`xenv.js`'s `REPORT_OCCURRENCE_ORG` renamed to `IT_ORG`, its comment
+rewritten to describe both table families it now names**, since a Report-
+Occurrence-flavoured name no longer fit a constant also used for Report
+Templates. Purely a rename — a project-wide `sed` across
+`dataverse.js`, no behavioural change to the five call sites already using
+it.
+
+**Every Report Template table in `dataverse.js` now pins `IT_ORG` as
+`dvTable()`'s third argument** — not just the three
+`fetchReportTemplateHierarchyContent()` reads (`lm_report_templates`,
+`lm_reporttemplatecontentchecklists`, `lm_reporttemplatesectionitemses`),
+but the full family: `lm_reporttemplatebusinessunitses`,
+`lm_reporttemplateregions`, `lm_reporttemplatedepartmentfunctions`,
+`lm_reporttemplaterelatedkpises`, `lm_reporttemplaterelatedprocesseses`,
+`lm_reporttemplatereviewchains` too. Same reasoning as the Report Occurrence
+family: Governance Setup's own `DATA_ORG` already equals `IT_ORG`, so
+pinning ALL of them is a no-op for Governance (the only thing that ever
+writes to a Report Template) and makes every OTHER reader consistent, not
+just the one screen asked about — in particular
+`fetchReportTemplatesList()` (shared, feeds Leadership's app-wide Template
+name lookup and BuildReport's approved-Template picker, `LeadershipApp.jsx`)
+also now resolves its per-row Business Unit/Region scope sub-queries against
+the org the ids actually belong to, instead of silently returning empty
+scope arrays against DT New for every row (harmless before — Leadership
+never displayed that scope data — but wrong regardless, and now correct for
+free). `fetchReportTemplateDetail()`'s full per-Template fan-out (review
+chains, related KPIs/Processes, department/functions) is Governance-only
+and untouched in behaviour, just explicitly pinned rather than implicitly
+correct through Governance's own `DATA_ORG`.
+
+**No new cross-environment risk analogous to the Meeting-linked-report one
+flagged above** — Report Templates are exclusively authored by Governance
+Setup, which writes every one of these tables to IT already; there is no
+DT-New-resident parent row anywhere in this family the way
+`lm_meetingoccurrencelinkedreportses` has one on the Meeting Occurrence
+side. Both apps rebuilt clean; Governance's bundle still contains only the
+IT org URL, Leadership's contains both. Not yet built and pushed as of this
+entry — see whether a push after it actually shipped this before assuming
+the live apps have it.
+
+### 22 Sep, later: a Position's holder name now reads Organization Structure's own `hr_fullnameofcurrentemployee` column directly
+
+Per an explicit ask. `fetchPositions()` (`dataverse.js`) used to compose the
+name shown under a Position dropdown by cross-referencing `hr_employees`
+(and, as a further fallback, `systemusers`) off the Position's
+`hr_CurrentEmployee` lookup — three routes, documented above
+`fetchEmployeeIndex()`. Organization Structure (`cr603_organizationstructures`)
+turns out to already carry the composed name itself: **`hr_fullnameofcurrentemployee`**
+("Full Name of Current Employee"), confirmed in both apps'
+`.power/schemas/dataverse/organizationstructures.Schema.json` as a real
+`StringType`, read-only column — **not** a `VirtualType` synthetic
+display field like `cr603_positionname` (the one Dataverse already refuses
+on a plain `$select`, see the note a few lines above this one), so selecting
+it directly is safe.
+
+Added to `fetchPositions()`'s `$select`, and now the **primary** source for
+`holder` — the old three-route resolution stays, but only fires when this
+column comes back blank for a row. **`holderUserId` is unchanged, still
+built the old way**: Organization Structure has no equivalent "current
+employee's systemuserid" column to read directly, and `holderUserId` is
+what "is this Position mine" compares against the signed-in user's own id
+(§6, "22 Sep: 'my Positions' resolved by ID") — nothing about that
+resolution was touched, and `fetchEmployeeIndex()`/`fetchUserNameMap()` are
+still called on every read for exactly that reason, even though they're now
+a fallback rather than the primary route for the name. Both apps rebuilt
+clean.
+
+### 22 Sep, later still: built and pushed a third time — both apps live with the Report Template cross-environment pin and the Position holder-name column
+
+Same procedure as every push this session: `npm run build:governance` then
+`npm run build:leadership`, each bundle re-checked for org URLs (Governance:
+only `org2f45e702.crm4.dynamics.com`; Leadership: both that and
+`org319b4ea9.crm4.dynamics.com`), `dist/` replaced in both staging folders,
+`power-apps push` from each — `App pushed successfully` for both,
+`786c1b14-bf09-4dd7-a0a2-5730e87744fe` (Governance) then
+`d61c6237-fec1-45c7-80e0-a9c63dd1e662` (Leadership), same app ids as every
+prior push this session.
+
+Ships the two entries directly above: the Report Template family's `IT_ORG`
+pin (Reporting hierarchy's "Report Templates" view, and every other
+Leadership reader of Report Template data) and `fetchPositions()` reading
+`hr_fullnameofcurrentemployee` directly. Also noticed in passing while
+checking `git status` before this build: `apps/governance/vite.config.js`'s
+IT-org `__DATA_ORG__` change (§9) has since been committed
+(`314cda2 update the env source and the governance app`), outside this
+file's own session narrative — it no longer shows as a working-tree
+modification, which is expected and not a sign anything reverted.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### NEW this session: group-wide (Stage 3/4) roles now live on the parent row

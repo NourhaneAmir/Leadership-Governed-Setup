@@ -81,7 +81,7 @@ function rowsOrThrow(res){
    read from each generated service's create() signature -- which lets
    create() supply the new row's GUID itself; see xenv.js.
    --------------------------------------------------------------------- */
-import { dvTable, uploadFileColumn, REPORT_OCCURRENCE_ORG } from './xenv.js';
+import { dvTable, uploadFileColumn, IT_ORG } from './xenv.js';
 
 const BusinessunitsService = dvTable('businessunits');
 const Crd04_regionsesService = dvTable('crd04_regionses');
@@ -455,11 +455,17 @@ async function fetchUserNameMap(){
 /** Employees, read once from hr_employees and indexed two ways.
  *
  *  A Position dropdown names the POSITION; the person shown under it is
- *  whoever currently holds it. That is resolved from this table:
+ *  whoever currently holds it -- read straight off the Organization
+ *  Structure row's own hr_fullnameofcurrentemployee column now (see
+ *  fetchPositions()), so byEmployeeId/byPositionId below are a fallback
+ *  for that column only, not the primary route any more. They stay the
+ *  primary (only) route for holderUserId, which has no equivalent column
+ *  to read directly -- Organization Structure names its holder, not their
+ *  systemuserid.
  *
  *   - byEmployeeId   -- the forward path. The Organization Structure row names
  *                       its Current Employee (hr_CurrentEmployee), and that id
- *                       is looked up here. This is the intended route.
+ *                       is looked up here.
  *   - byPositionId   -- the reverse path, kept as a backstop. Every Employee
  *                       carries a required lookup back to the Position it holds
  *                       (cr603_OrganizationStructure), so a Position whose
@@ -510,6 +516,7 @@ export async function fetchPositions(){
       select: [
         'cr603_organizationstructureid', 'cr603_name', '_cr603_businessunit_value',
         '_cr18c_departments_lkp_value', '_hr_funtion_value', '_hr_currentemployee_value',
+        'hr_fullnameofcurrentemployee',
       ],
     }),
     fetchEmployeeIndex(),
@@ -519,17 +526,18 @@ export async function fetchPositions(){
   return rows.map(r => {
     const posId = r.cr603_organizationstructureid;
     const currentEmployeeId = r._hr_currentemployee_value;
-    /* Read the Position from the Organization Structure, then go back to
-       hr_employees for the name of the employee currently holding it.
-
-       Three routes, in order of how directly they answer that:
-        1. the Position's own Current Employee lookup, resolved in hr_employees
-        2. the same lookup resolved in systemusers -- covers an environment where
-           hr_CurrentEmployee points at a User rather than an Employee record
-        3. the reverse link, an Employee pointing back at this Position, for rows
-           where Current Employee was never filled in */
+    /* The Organization Structure row names its own holder directly --
+       hr_fullnameofcurrentemployee, a real (read-only) StringType column,
+       not a synthetic lookup-display field Dataverse would reject on
+       $select (unlike cr603_positionname, see the note above). Per an
+       explicit ask, this is now the primary source. The old three-route
+       resolution through hr_employees/systemusers stays as a fallback only
+       for a row where that column itself is blank -- fetchEmployeeIndex()/
+       fetchUserNameMap() are still called regardless, since holderUserId
+       below still depends on them. */
     const holder =
-         (currentEmployeeId && employees.byEmployeeId[currentEmployeeId])
+         r.hr_fullnameofcurrentemployee
+      || (currentEmployeeId && employees.byEmployeeId[currentEmployeeId])
       || (currentEmployeeId && userMap[currentEmployeeId])
       || employees.byPositionId[posId]
       || null;
@@ -758,11 +766,27 @@ export async function fetchCurrentUser(){
    the Department/Function scope lines, and the linked Processes/KPIs --
    is fully resolved against real ids and written correctly. */
 
-const Lm_report_templatesService = dvTable('lm_report_templates', 'lm_report_templateid');
-const Lm_reporttemplatebusinessunitsesService = dvTable('lm_reporttemplatebusinessunitses', 'lm_reporttemplatebusinessunitsid');
-const Lm_reporttemplateregionsService = dvTable('lm_reporttemplateregions', 'lm_reporttemplateregionid');
-const Lm_reporttemplatecontentchecklistsService = dvTable('lm_reporttemplatecontentchecklists', 'lm_reporttemplatecontentchecklistid');
-const Lm_reporttemplatesectionitemsesService = dvTable('lm_reporttemplatesectionitemses', 'lm_reporttemplatesectionitemsid');
+/* The whole Report Template family -- the Template itself, its Business
+   Unit/Region scope, its Sections/Section Items, its per-unit review chains
+   and related KPIs/Processes/Departments (below) -- reads and writes
+   IT_ORG always, independent of this app's own DATA_ORG. Per an explicit
+   ask (22 Sep): Leadership's Reporting hierarchy "Report Templates" view
+   (fetchReportTemplateHierarchyContent()) and its app-wide Template name
+   lookup (fetchReportTemplatesList(), feeding BuildReport's picker and
+   every screen naming a linked Template) now read the SAME Report
+   Templates Governance Setup itself writes to in IT, rather than a
+   DT New copy no longer being written to. Governance Setup's own DATA_ORG
+   already equals IT_ORG, so this whole block is a no-op there -- see
+   xenv.js's IT_ORG for the full rationale, same pattern as the Report
+   Occurrence family a few sections down. */
+const Lm_report_templatesService = dvTable('lm_report_templates', 'lm_report_templateid', IT_ORG);
+const Lm_reporttemplatebusinessunitsesService =
+  dvTable('lm_reporttemplatebusinessunitses', 'lm_reporttemplatebusinessunitsid', IT_ORG);
+const Lm_reporttemplateregionsService = dvTable('lm_reporttemplateregions', 'lm_reporttemplateregionid', IT_ORG);
+const Lm_reporttemplatecontentchecklistsService =
+  dvTable('lm_reporttemplatecontentchecklists', 'lm_reporttemplatecontentchecklistid', IT_ORG);
+const Lm_reporttemplatesectionitemsesService =
+  dvTable('lm_reporttemplatesectionitemses', 'lm_reporttemplatesectionitemsid', IT_ORG);
 
 /* Report Template Section (Expected Content Checklist item) option sets.
    Mapped by CODE, not by label -- 'Physician ' carries a trailing space in the
@@ -847,10 +871,16 @@ async function createSectionItems(checklistId, items, errors){
     }
   }
 }
-const Lm_reporttemplatedepartmentfunctionsService = dvTable('lm_reporttemplatedepartmentfunctions', 'lm_reporttemplatedepartmentfunctionid');
-const Lm_reporttemplaterelatedkpisesService = dvTable('lm_reporttemplaterelatedkpises', 'lm_reporttemplaterelatedkpisid');
-const Lm_reporttemplaterelatedprocessesesService = dvTable('lm_reporttemplaterelatedprocesseses', 'lm_reporttemplaterelatedprocessesid');
-const Lm_reporttemplatereviewchainsService = dvTable('lm_reporttemplatereviewchains', 'lm_reporttemplatereviewchainid');
+/* Rest of the Report Template family -- see the comment above
+   Lm_report_templatesService, same IT_ORG pin, same reason. */
+const Lm_reporttemplatedepartmentfunctionsService =
+  dvTable('lm_reporttemplatedepartmentfunctions', 'lm_reporttemplatedepartmentfunctionid', IT_ORG);
+const Lm_reporttemplaterelatedkpisesService =
+  dvTable('lm_reporttemplaterelatedkpises', 'lm_reporttemplaterelatedkpisid', IT_ORG);
+const Lm_reporttemplaterelatedprocessesesService =
+  dvTable('lm_reporttemplaterelatedprocesseses', 'lm_reporttemplaterelatedprocessesid', IT_ORG);
+const Lm_reporttemplatereviewchainsService =
+  dvTable('lm_reporttemplatereviewchains', 'lm_reporttemplatereviewchainid', IT_ORG);
 
 // Dataverse choice fields take the numeric key, not the label, on write.
 // These map the app's exact label strings to the real keys from the
@@ -2549,14 +2579,14 @@ const Lm_meetingoccurrencedepartmentfunctionsService = dvTable('lm_meetingoccurr
 const Lm_meetingoccurrencelinkedreportsesService = dvTable('lm_meetingoccurrencelinkedreportses', 'lm_meetingoccurrencelinkedreportsid');
 /* The whole Report Occurrence family -- the occurrence itself plus its own
    Sections, Citations, History and Shares -- reads and writes
-   REPORT_OCCURRENCE_ORG (the IT environment) always, independent of this
+   IT_ORG (the IT environment) always, independent of this
    app's own DATA_ORG. Per an explicit ask (22 Sep): Leadership's Reports/
    Plans screens now read the same Report Occurrences Governance Setup's own
    Report Templates already live next to in IT, rather than DT New. See
-   xenv.js's REPORT_OCCURRENCE_ORG for the full rationale. Everything else on
+   xenv.js's IT_ORG for the full rationale. Everything else on
    this page -- Meeting Occurrences included -- is unaffected and still
    follows this app's own DATA_ORG. */
-const Lm_reportoccurrencesService = dvTable('lm_reportoccurrences', 'lm_reportoccurrenceid', REPORT_OCCURRENCE_ORG);
+const Lm_reportoccurrencesService = dvTable('lm_reportoccurrences', 'lm_reportoccurrenceid', IT_ORG);
 const Lm_meetingminutesesService = dvTable('lm_meetingminuteses', 'lm_meetingminutesid');
 const Lm_momnotesesService = dvTable('lm_momnoteses', 'lm_momnotesid');
 const Lm_auditgridinstancesService = dvTable('lm_auditgridinstances', 'lm_auditgridinstanceid');
@@ -2565,16 +2595,16 @@ const Lm_approvalcyclesService = dvTable('lm_approvalcycles');
 const Lm_approvalcyclestepsService = dvTable('lm_approvalcyclesteps');
 const Lm_authoritymatrixrowsService = dvTable('lm_authoritymatrixrows');
 const Lm_reportoccurrencehistoriesService =
-  dvTable('lm_reportoccurrencehistories', 'lm_reportoccurrencehistoryid', REPORT_OCCURRENCE_ORG);
+  dvTable('lm_reportoccurrencehistories', 'lm_reportoccurrencehistoryid', IT_ORG);
 /* A Report Occurrence's content: its Sections, and the Citations inside them.
    Entity sets are double-plural -- the logical names are already plural. */
 const Lm_reportoccurrencesectionsesService =
-  dvTable('lm_reportoccurrencesectionses', 'lm_reportoccurrencesectionsid', REPORT_OCCURRENCE_ORG);
+  dvTable('lm_reportoccurrencesectionses', 'lm_reportoccurrencesectionsid', IT_ORG);
 const Lm_reportsectioncitationsesService =
-  dvTable('lm_reportsectioncitationses', 'lm_reportsectioncitationsid', REPORT_OCCURRENCE_ORG);
+  dvTable('lm_reportsectioncitationses', 'lm_reportsectioncitationsid', IT_ORG);
 const Wlog_decisionsService = dvTable('wlog_decisions', 'wlog_decisionid');
 const Lm_reportoccurrencesharesService =
-  dvTable('lm_reportoccurrenceshares', 'lm_reportoccurrenceshareid', REPORT_OCCURRENCE_ORG);
+  dvTable('lm_reportoccurrenceshares', 'lm_reportoccurrenceshareid', IT_ORG);
 
 /** Every Report Occurrence share -- who sent what to whom, and when.
  *

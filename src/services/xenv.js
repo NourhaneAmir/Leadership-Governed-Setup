@@ -45,20 +45,31 @@ export const DATA_ORG =
     ? __DATA_ORG__
     : 'https://org319b4ea9.crm4.dynamics.com';
 
-/* The Report Occurrence family of tables (lm_reportoccurrences and its own
-   child tables -- sections, citations, history, shares) reads and writes
-   THIS org always, regardless of which app is built or what DATA_ORG above
-   resolves to. Per an explicit ask: Leadership's own Reports/Plans screens
-   (and Work Queue, Calendar, Home stats, Communication, Build a report/plan
-   -- everything fed by dataverse.js's fetchReportOccurrences()) now reads
-   the SAME Report Occurrences Governance Setup's own Report Templates
-   already live next to, in the IT environment -- see PROJECT-CONTEXT.md
-   Open Decision 9. Governance Setup's own DATA_ORG already equals this org
-   (moved there 22 Sep), so this constant is a no-op for Governance and a
-   deliberate divergence for Leadership, which stays on DT New for every
-   other table (Meeting Occurrences included). dataverse.js passes this as
-   dvTable()'s third argument for exactly those tables -- nowhere else. */
-export const REPORT_OCCURRENCE_ORG = 'https://org2f45e702.crm4.dynamics.com';
+/* The IT environment -- the same one Governance Setup's own DATA_ORG has
+   pointed at since Open Decision 9 (22 Sep, see PROJECT-CONTEXT.md). A table
+   family that dataverse.js wants pinned to IT regardless of which app is
+   built (or what DATA_ORG above resolves to) passes this as dvTable()'s
+   third argument. Two families use it so far, both per an explicit ask, both
+   because the real rows only meaningfully exist in IT now that Governance
+   Setup writes there:
+     - the Report Occurrence family (lm_reportoccurrences and its own child
+       tables -- sections, citations, history, shares) -- Leadership's
+       Reports/Plans, Work Queue, Calendar, Home stats, Communication and
+       Build a report/plan all read this through fetchReportOccurrences();
+     - the Report Template family (lm_report_templates,
+       lm_reporttemplatecontentchecklists, lm_reporttemplatesectionitemses)
+       -- Leadership's Reporting hierarchy "Report Templates" view
+       (fetchReportTemplateHierarchyContent()) and its app-wide Template
+       name lookup (fetchReportTemplatesList(), feeding BuildReport's
+       approved-Template picker and every screen that names a linked
+       Template) both read this through the same three tables.
+   Governance Setup's own DATA_ORG already equals this org, so pinning any
+   of the above is a no-op there -- the divergence is Leadership-only, which
+   stays on DT New for every table not listed above (Meeting Occurrences
+   included, and any Report Template scope/review-chain child table
+   Governance alone reads -- those were never given this override, since
+   nothing outside Governance touches them). */
+export const IT_ORG = 'https://org2f45e702.crm4.dynamics.com';
 
 /* The connector wants the table's ENTITY SET (plural) name, e.g.
    `lm_setupactivities`, not the logical name `lm_setupactivity`. Both are in
