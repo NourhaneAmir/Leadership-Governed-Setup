@@ -2567,6 +2567,56 @@ Diagnostic Angle, attached file and every citation. The citation labels come
 from the editor's own rule, lifted into `sectionItemLabel()` and shared, so the
 same row cannot read two ways.
 
+### 23 Sep: deployment, as it ACTUALLY is — read this one, the two below are history
+
+Verified by pushing, not by reading: both apps went out successfully today
+and the URLs below are what `power-apps push` printed back.
+
+| App | App id | Push from |
+|---|---|---|
+| Governance Setup | `7caa2fb2-1661-4b02-a2a3-926f58f88e61` | `apps/governance/` |
+| Leadership Execution | `0f077a0a-fd52-4e57-900c-b7607ea30505` | `apps/leadership/` |
+
+Both are HOSTED in **DT New** (`9ce6fb09-5b63-e9f4-9185-b707b4b3425e`,
+`org319b4ea9`) — **not** Code App Development, which is where every earlier
+entry in this file says they live.
+
+```
+https://apps.powerapps.com/play/e/9ce6fb09-5b63-e9f4-9185-b707b4b3425e/app/7caa2fb2-1661-4b02-a2a3-926f58f88e61
+https://apps.powerapps.com/play/e/9ce6fb09-5b63-e9f4-9185-b707b4b3425e/app/0f077a0a-fd52-4e57-900c-b7607ea30505
+```
+
+**The whole procedure now:**
+
+```bash
+npm run build:governance && npm run build:leadership
+PA="$PWD/node_modules/.bin/power-apps"
+(cd apps/governance  && "$PA" push)
+(cd apps/leadership  && "$PA" push)
+```
+
+⚠️ **The staging-folder dance is GONE and cannot be followed.** `C:\tmp\cad-gov`
+and `C:\tmp\cad-exec` still exist but **no longer contain a
+`power.config.json`**, and `C:\tmp\cad-gov-new` — which decision 9 names as
+the current staging folder — **does not exist at all**. The only
+`power.config.json` files left are the repo's own `apps/governance/` and
+`apps/leadership/`, which is why the push runs from there. That is also the
+tidier arrangement: §1 already describes both as real Code App roots.
+
+⚠️ **Hosting environment and DATA environment are now different things, and
+both matter.** Hosted in DT New; Governance's `__DATA_ORG__` still points at
+**IT**, and Leadership still splits (DT New, plus 14 IT-pinned tables).
+Verified in the built bundles on this push: Governance contains the IT URL and
+**zero** DT New URLs; Leadership contains **both**. That is the expected
+signature — check it on every push.
+
+⚠️ **This file has now named FOUR app pairs as live** (`4912152c`/`83db0ef8`,
+`786c1b14`/`d61c6237`, and this one). Decision 9 already records an
+unresolved contradiction between the first two. **Do not trust any app id in
+an entry below this one.** The authority is `apps/*/power.config.json` in the
+repo — `push` has no flag to target an app and reads only that file, so
+whatever it says IS the destination.
+
 ### Deployment, settled — pushing to the SAME link and the SAME app id
 
 **This supersedes the 17 Sep "re-registered from scratch" entry above.** The
