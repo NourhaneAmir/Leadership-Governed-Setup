@@ -95,7 +95,14 @@ const And_microsoftgroupmembersService = dvTable('and_microsoftgroupmembers');
 const Cr603_organizationstructuresService = dvTable('cr603_organizationstructures');
 const SystemusersService = dvTable('systemusers');
 const Hr_employeesService = dvTable('hr_employees');
-const And_teamschannelsService = dvTable('and_teamschannels');
+/* and_teamschannels retired 22 Sep in favour of and_teamschannellinks (below)
+   -- a newly-registered table with a real Team/Channel object id on each
+   row, not just a repeated name. Per an explicit ask, the VIEW side only:
+   lm_TeamChannel (the lookup a Setup's per-unit Channel picker actually
+   saves) still targets and_teamschannels in Dataverse, unchanged, so a
+   Channel chosen from this new table's rows cannot yet be saved -- the
+   lookup column itself is a separate, later step. See PROJECT-CONTEXT.md. */
+const And_teamschannellinksService = dvTable('and_teamschannellinks');
 
 /** Regions -- table crd04_regions (generated as Crd04_regionsesService).
  *  Primary key crd04_regionsid; crd04_id holds the display name. */
@@ -573,34 +580,47 @@ function notWiredYet(name){
 
 export async function fetchSetups(){ return notWiredYet('fetchSetups'); }
 
-/** Teams and Channels -- table and_teamschannels. One row per CHANNEL; the
- *  Team it belongs to is lm_team, a plain text column rather than a lookup
- *  to a Teams table (there is no Teams table -- a "Team" exists only as the
- *  name repeated across its channels' rows). So the app derives its Team
- *  list from the distinct lm_team values, and a Team's channels are the rows
- *  carrying that exact name.
+/** Teams and Channels -- table and_teamschannellinks (22 Sep, replaces
+ *  and_teamschannels). One row per CHANNEL; the Team it belongs to is
+ *  and_teamname, a plain text column rather than a lookup to a Teams table
+ *  (there is still no Teams table -- a "Team" exists only as the name
+ *  repeated across its channels' rows, same limitation the old table had).
+ *  So the app derives its Team list from the distinct and_teamname values,
+ *  and a Team's channels are the rows carrying that exact name.
  *
- *  Consequence worth knowing: a Team here has no Business Unit or Region
- *  relationship, so Teams can't be narrowed to the unit a Setup runs in the
- *  way the old mock data allowed -- every unit is offered every Team.
+ *  and_teamobjectid / and_channelobjectid (the real Microsoft Teams/Graph
+ *  object ids) are read live but not used yet -- nothing in the app
+ *  currently needs them, kept for whoever wires the next step.
  *
- *  lm_sharepointsitepath / lm_documentlibrary / lm_folder are the channel's
- *  document location, joined into one path by the caller and used to
- *  auto-fill a Report Template's Source link. */
+ *  Consequence worth knowing: a Team here still has no Business Unit or
+ *  Region relationship, so Teams can't be narrowed to the unit a Setup runs
+ *  in -- every unit is offered every Team, same as before.
+ *
+ *  and_rootpath / and_documentlibrary / and_rootfolder are the channel's
+ *  document location, joined into one path by the caller (channelPath() in
+ *  GovernanceApp.jsx) and used to auto-fill a Report Template's Source link
+ *  -- the same role lm_sharepointsitepath/lm_documentlibrary/lm_folder
+ *  played on the old table. ⚠️ This mapping is inferred from the new
+ *  table's column NAMES only (and_rootpath reads as the closest match to
+ *  "site path" among and_rootpath/and_sharepointsitelink/and_rootfolderlink)
+ *  -- not yet checked against a real populated row, since this table was
+ *  only just registered. If a Channel's auto-filled destination path looks
+ *  wrong once real data is in it, this is the mapping to revisit first. */
 export async function fetchTeamsChannels(){
-  const res = await And_teamschannelsService.getAll({
-    select: ['and_teamschannelid','and_channelname','and_channellink','lm_team',
-             'lm_sharepointsitepath','lm_documentlibrary','lm_folder'],
+  const res = await And_teamschannellinksService.getAll({
+    select: ['and_teamschannellinkid','and_channelname','and_channellink','and_teamname',
+             'and_teamobjectid','and_channelobjectid',
+             'and_rootpath','and_documentlibrary','and_rootfolder'],
   });
   const rows = res?.data ?? [];
   return rows.map(r => ({
-    id: r.and_teamschannelid,
+    id: r.and_teamschannellinkid,
     name: r.and_channelname || '(unnamed channel)',
     link: r.and_channellink ?? null,
-    team: (r.lm_team || '').trim() || null,
-    sitePath: r.lm_sharepointsitepath ?? null,
-    library: r.lm_documentlibrary ?? null,
-    folder: r.lm_folder ?? null,
+    team: (r.and_teamname || '').trim() || null,
+    sitePath: r.and_rootpath ?? null,
+    library: r.and_documentlibrary ?? null,
+    folder: r.and_rootfolder ?? null,
   }));
 }
 

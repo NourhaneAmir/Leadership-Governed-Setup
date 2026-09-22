@@ -3852,6 +3852,71 @@ IT-org `__DATA_ORG__` change (§9) has since been committed
 file's own session narrative — it no longer shows as a working-tree
 modification, which is expected and not a sign anything reverted.
 
+### 22 Sep, later: `and_teamschannellinks` wired in for the Team/Channel picker — read side only, on purpose
+
+Per an explicit ask: a newly-registered table, uploaded to IT by the user,
+meant to read Team and Channel into Meeting/Report Setup instead of the old
+`and_teamschannels`. **Schema pulled live before writing anything** —
+`pac modelbuilder build -enf and_teamschannellink` against the `andalusiaEnv`
+auth profile (already pointed at IT) — the established rule in this file
+about never guessing a column name paid off again: the real columns are
+`and_teamname`, `and_teamobjectid`, `and_channelname`, `and_channelobjectid`,
+`and_channellink`, `and_documentlibrary`, `and_rootfolder`,
+`and_rootfolderlink`, `and_rootpath`, `and_roottype`, `and_sharepointsitelink`,
+and a lookup `and_planchannel` (target entity not identified, not needed for
+this ask). Entity set: `and_teamschannellinks`. PK:
+`and_teamschannellinkid`.
+
+**Asked and answered before writing code, because guessing wrong here
+breaks every future Setup save:** does `lm_TeamChannel` (the lookup column
+the per-unit Channel picker actually binds to on save) already target the
+new table in Dataverse? **No — not yet, that's a separate, later step.**
+So this change is deliberately **read-only**: `fetchTeamsChannels()`
+(`dataverse.js`) now reads `and_teamschannellinksService` instead of
+`and_teamschannelsService` (the old table's service const removed, fully
+replaced per the same answer), but every `lm_TeamChannel@odata.bind` write
+site — nine of them, across Meeting and Report Template save/create/update —
+is untouched and still targets `/and_teamschannels(id)`.
+
+**⚠️ Known consequence, accepted on purpose for now:** picking a Channel in
+either wizard now shows rows from `and_teamschannellinks`, whose ids don't
+exist in `and_teamschannels` at all. Saving a Setup with a Channel chosen
+will very likely fail (or bind to nothing) until `lm_TeamChannel` is
+repointed to the new table in Dataverse — a step the user described as
+coming later, not done here. Until then, this wiring is display/selection
+only.
+
+**One mapping is a best guess, flagged for when real data exists to check
+it against:** the old table's `lm_sharepointsitepath`/`lm_documentlibrary`/
+`lm_folder` (joined by `channelPath()` in `GovernanceApp.jsx` into the
+Report destination path) map onto the new table's `and_rootpath`/
+`and_documentlibrary`/`and_rootfolder` — chosen because `and_rootpath` reads
+as the closest name-match to "site path" among the new table's several
+path/link-shaped columns (`and_rootpath`, `and_sharepointsitelink`,
+`and_rootfolderlink`), not confirmed against a populated row. `and_teamname`/
+`and_channelname`/`and_channellink`/id are direct, unambiguous matches — no
+guessing there. `and_teamobjectid`/`and_channelobjectid` (the real
+Teams/Graph object ids the old table never had) are read but not used by
+anything yet.
+
+Both apps rebuilt clean.
+
+### 22 Sep, later still: built and pushed a fourth time — both apps live with and_teamschannellinks wired in (read-only)
+
+Same procedure as every push this session: `npm run build:governance` then
+`npm run build:leadership`, each bundle re-checked for org URLs (Governance:
+only IT; Leadership: both IT and DT New), `dist/` replaced in both staging
+folders, `power-apps push` from each — `App pushed successfully` for both,
+same two app ids as every prior push this session
+(`786c1b14-bf09-4dd7-a0a2-5730e87744fe` Governance,
+`d61c6237-fec1-45c7-80e0-a9c63dd1e662` Leadership).
+
+Ships the entry directly above: the Team/Channel picker in both wizards now
+reads `and_teamschannellinks` live. **Still read-only** — `lm_TeamChannel`
+itself has not been repointed, so picking a Channel and saving will very
+likely fail until that lookup is updated in Dataverse, a step described as
+coming later, not done here or in this push.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### NEW this session: group-wide (Stage 3/4) roles now live on the parent row
