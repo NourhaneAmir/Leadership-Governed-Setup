@@ -4406,6 +4406,54 @@ resource: 400` in the console is a pointer, not a diagnosis — the response
 body is the diagnosis, and for a Code App talking to Dataverse through this
 connector, that means the Network tab, not the Console tab.
 
+### 23 Sep, later: every BU/Region-scoped Position picker can now search company-wide, on demand
+
+Per an explicit ask, with two genuinely ambiguous points clarified before
+writing anything (the ask itself said so was fine to do): **which** pickers
+(every one restricted by `positionsInScope(s,k)` — Chairman, Co-Chairman,
+Facilitator, Owner Position, Submitting Position, Review Chain steps,
+Attendees — but **not** Agenda Item Owner, which is restricted by a
+different rule entirely, people already holding a role on this Setup, not
+Business Unit/Region, and not the Microsoft Group picker, which isn't a
+Position search at all), and **how** it surfaces (an opt-in checkbox inside
+the dropdown, not an automatic fallback).
+
+**All wired through `PosSel` itself**, the one shared combo component behind
+every Position picker in both wizards. Gained an optional `fullOpts` prop —
+the unscoped, company-wide `POSITIONS` array (already a module-level `let`,
+loaded once by `fetchPositions()`, no new fetch needed) — passed only by the
+call sites that should offer it. A caller that doesn't pass `fullOpts` (the
+Group picker, Agenda Item Owner) gets no checkbox and behaves exactly as
+before; nothing about their existing restriction changed.
+
+**When checked**, the dropdown's search runs against `fullOpts` instead of
+the scoped `opts`, but requires a typed query first — `POSITIONS` is
+company-wide (this org's live `cr603_organizationstructure` count alone is
+five figures — 11,315 rows in IT, per this section's own "Moving Governance
+Setup to the IT environment" entry) so rendering the whole thing unfiltered
+would be both a bad list and a real performance problem. Resets to unchecked every time the
+picker closes — on select, on Clear, and on reopening the button — the same
+places its search text already reset, so it can never be silently left on.
+
+**Review Chain step keeps its existing exclusion rule under the checkbox
+too** — a Position already used elsewhere in the same chain still can't be
+picked twice, in `fullOpts` exactly as in the scoped `opts`; that rule is
+about chain integrity, not Business Unit/Region, so widening the search
+doesn't widen it away.
+
+**A real, pre-existing-shaped bug found and fixed along the way**: `PosSel`'s
+closed-button display (`sel = opts.find(o=>o.id===val)`) only ever looked in
+the scoped list — so a Position picked while "search everyone" was checked
+would show correctly the moment it was picked, then read back as the empty
+placeholder the next time the picker reopened, even though the value was
+saved correctly the whole time. Now falls back to `fullOpts` when not found
+in `opts`. This is exactly the class of gap this whole feature exists to
+close, just one step further down — worth remembering if anything else here
+ever reports "it doesn't show my selection" after using the new checkbox.
+
+Both apps rebuilt, org URLs re-checked, pushed — same two app ids as every
+push this session.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### NEW this session: group-wide (Stage 3/4) roles now live on the parent row
