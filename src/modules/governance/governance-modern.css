@@ -499,6 +499,15 @@
   width:100%; border:1px solid var(--border-d); border-radius:6px;
   padding:6px 8px; font-size:12.5px; margin-bottom:5px; font-family:inherit;
 }
+/* The "search everyone" opt-in -- sits between the search box and the
+   results, so it reads as a qualifier on the search rather than a separate
+   control. Only rendered when the caller passed fullOpts (see PosSel). */
+.gov-root .pos-sel-allscope{
+  display:flex; align-items:flex-start; gap:6px; font-size:11.5px;
+  color:var(--muted); cursor:pointer; padding:2px 4px 7px;
+  border-bottom:1px solid var(--border); margin-bottom:5px;
+}
+.gov-root .pos-sel-allscope input{ margin-top:2px; accent-color:var(--teal); cursor:pointer }
 .gov-root .pos-sel-opt{ display:flex; align-items:center; gap:8px; line-height:1.35 }
 .gov-root .pos-sel-opt b{ font-weight:600 }
 .gov-root .pos-sel-opt i{ font-style:normal; font-size:11px; color:var(--muted) }

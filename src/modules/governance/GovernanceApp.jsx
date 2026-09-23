@@ -1321,9 +1321,17 @@ function FloatingList({anchorRef,listRef,open,className,role,children}){
     document.body);
 }
 
-function PosSel({id,val,onChange,opts,placeholder='Select…',disabled}){
+/* fullOpts is optional -- the unscoped candidate list (every Position,
+   company-wide), for the "can't find them" case. Only offered when the
+   caller actually passes one: the Microsoft Group picker and Agenda Item
+   Owner reuse this same component with their own, differently-shaped
+   restrictions (a Team's groups; people already named a role on this Setup)
+   that "search everyone" does not apply to the same way, so they simply
+   don't pass fullOpts and get no checkbox, unchanged from before. */
+function PosSel({id,val,onChange,opts,fullOpts,placeholder='Select…',disabled}){
   const [q,setQ]=useState('');
   const [open,setOpen]=useState(false);
+  const [all,setAll]=useState(false);
   const ref=useRef(null);
   const listRef=useRef(null);
   useEffect(()=>{
@@ -1338,16 +1346,26 @@ function PosSel({id,val,onChange,opts,placeholder='Select…',disabled}){
     return ()=>{ document.removeEventListener('mousedown',onDoc); document.removeEventListener('keydown',onEsc); };
   },[open]);
 
-  const sel=opts.find(o=>o.id===val);
+  /* Falls back to fullOpts so a Position picked while "search everyone" was
+     on still shows correctly here after closing -- it may not be in the
+     scoped `opts` list at all, which is exactly the case this exists for. */
+  const sel=opts.find(o=>o.id===val) || (fullOpts && fullOpts.find(o=>o.id===val));
+  const searchingAll=all && !!fullOpts;
+  const pool=searchingAll ? fullOpts : opts;
   const needle=q.trim().toLowerCase();
-  const shown=needle
-    ? opts.filter(o=>(o.name||'').toLowerCase().includes(needle)
-                  || (o.holder||'').toLowerCase().includes(needle))
-    : opts;
+  /* In "search everyone" mode, an empty query would otherwise mean "show
+     every Position in the company" -- fullOpts can be thousands of rows
+     (org-wide), so a query is required there rather than dumping the list. */
+  const shown=(searchingAll && !needle) ? []
+    : (needle
+        ? pool.filter(o=>(o.name||'').toLowerCase().includes(needle)
+                      || (o.holder||'').toLowerCase().includes(needle))
+        : pool);
+  const reset=()=>{ setQ(''); setAll(false); };
 
   return <div className="pos-sel" ref={ref}>
     <button type="button" id={id} className="pos-sel-btn" disabled={disabled}
-      onClick={()=>{ if(!disabled){ setOpen(o=>!o); setQ(''); } }}>
+      onClick={()=>{ if(!disabled){ setOpen(o=>!o); reset(); } }}>
       {/* Every Position in Setup is held by a person, so each one reads as a
           member row: avatar, Position name, holder beneath. An empty picker
           keeps a neutral circle so a column of them stays aligned. */}
@@ -1367,16 +1385,23 @@ function PosSel({id,val,onChange,opts,placeholder='Select…',disabled}){
       <input autoFocus type="search" className="pos-sel-q" value={q}
         onChange={e=>setQ(e.target.value)}
         placeholder="Search a Position or the person holding it…"/>
+      {fullOpts
+        ? <label className="pos-sel-allscope">
+            <input type="checkbox" checked={all} onChange={e=>setAll(e.target.checked)}/>
+            <span>Not here? Search every Position, ignoring Business Unit/Region scope</span>
+          </label>
+        : null}
       {shown.length===0
         ? <div className="combo-empty">
-            {opts.length===0 ? 'No Position in this unit’s scope' : 'Nothing matches that search.'}</div>
+            {searchingAll && !needle ? 'Type a name to search every Position, company-wide.'
+              : opts.length===0 ? 'No Position in this unit’s scope' : 'Nothing matches that search.'}</div>
         : <>
             {val ? <button type="button" className="combo-opt pos-sel-clear"
-                     onClick={()=>{ onChange(null); setOpen(false); setQ(''); }}>Clear</button> : null}
+                     onClick={()=>{ onChange(null); setOpen(false); reset(); }}>Clear</button> : null}
             {shown.map(o=>
               <button type="button" key={o.id}
                 className={'combo-opt pos-sel-opt'+(o.id===val?' on':'')}
-                onClick={()=>{ onChange(o.id); setOpen(false); setQ(''); }}>
+                onClick={()=>{ onChange(o.id); setOpen(false); reset(); }}>
                 <span className="pos-av" aria-hidden="true">{o.av||posInitials(o.holder||o.name)}</span>
                 <span className="pos-sel-v"><b>{o.name}</b>{o.holder?<i>{o.holder}</i>:null}</span>
               </button>)}
@@ -1959,7 +1984,7 @@ function RowEditor({id,rows,onChange,render,onAdd,addLabel,empty,reorder}){
    which counts towards quorum, green for Supportive, which does not. The
    distinction is the whole point of the field, so it should be visible without
    reading the pills. */
-function AttendeeList({id,rows,opts,onChange}){
+function AttendeeList({id,rows,opts,fullOpts,onChange}){
   const patch=(i,p)=>onChange(rows.map((x,j)=>j===i?{...x,...p}:x));
   const add=()=>onChange([...(rows||[]),{id:uid('cm'),position:null,type:'Core'}]);
   /* A group attendee stands for everyone in it, so it takes the place of a
@@ -2030,7 +2055,7 @@ function AttendeeList({id,rows,opts,onChange}){
 
           return <div className={'mem-row '+(supp?'supp':'core')} key={r.id||i}>
             <div className="mem-id">
-              <PosSel val={r.position} placeholder="Choose a Position…" opts={opts}
+              <PosSel val={r.position} placeholder="Choose a Position…" opts={opts} fullOpts={fullOpts}
                 onChange={v=>patch(i,{position:v})}/>
             </div>
             {roles}
@@ -2498,11 +2523,13 @@ function UnitSetup({s,set,issues,shared,intro}){
                     <Field id={'u-sub-'+k} label="Submitting Position" req
                       hint="Who prepares and submits this report in this unit.">
                       <PosSel id={'u-sub-'+k} val={u.submitter} opts={positionsInScope(s,k)}
+                        fullOpts={POSITIONS}
                         onChange={v=>setUnit(k,{submitter:v})}/>
                     </Field>
                     <Field id={'u-own-'+k} label="Owner Position" req
                       hint="Accountable for the content.">
                       <PosSel id={'u-own-'+k} val={u.owner} opts={positionsInScope(s,k)}
+                        fullOpts={POSITIONS}
                         onChange={v=>setUnit(k,{owner:v})}/>
                     </Field>
                   </div>
@@ -2514,14 +2541,14 @@ function UnitSetup({s,set,issues,shared,intro}){
                       ['Organizer / Facilitator','facilitator',true]].map(([label,key,req])=>
                       <Field key={key} id={'u-'+key+'-'+k} label={label} req={req}>
                         <PosSel id={'u-'+key+'-'+k} val={u[key]} placeholder={req?'Select…':'None'}
-                          opts={positionsInScope(s,k)}
+                          opts={positionsInScope(s,k)} fullOpts={POSITIONS}
                           onChange={v=>setUnit(k,{[key]:v})}/>
                       </Field>)}
                   </div>
                   <Field id={'u-cm-'+k} label="Attendees"
                     hint="Core attendees count towards the quorum. Supportive attendees do not. A Microsoft Group attends as one attendee — everyone in it is listed beneath it and takes the group’s type.">
                     <AttendeeList id={'u-cm-'+k} rows={u.coreMembers||[]}
-                      opts={positionsInScope(s,k)}
+                      opts={positionsInScope(s,k)} fullOpts={POSITIONS}
                       onChange={v=>setUnit(k,{coreMembers:v})}/>
                   </Field>
                 </>}
@@ -2553,6 +2580,7 @@ function UnitChain({u,k,s,setUnit}){
       render={(r,i)=><div className="chain-row">
         <PosSel val={r.pos} placeholder="Position…"
           opts={positionsInScope(s,k).filter(p=>!chain.includes(p.id)||p.id===r.pos)}
+          fullOpts={POSITIONS.filter(p=>!chain.includes(p.id)||p.id===r.pos)}
           onChange={v=>{ if(v && v===u.submitter){setRejected(true);return;} setRejected(false);
             setUnit(k,{reviewChain:chain.map((x,j)=>j===i?v:x)});}}/>
         {i===chain.length-1?<Tag c="green">approves</Tag>:<Tag c="teal">reviews</Tag>}
