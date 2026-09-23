@@ -251,6 +251,8 @@ fieldset{border:none;margin:0;padding:0}
 fieldset:disabled{opacity:.62}
 .chk{display:flex;align-items:flex-start;gap:7px;font-size:12.5px;cursor:pointer;padding:3px 0}
 .chk input{margin-top:2.5px;accent-color:var(--teal);cursor:pointer}
+.chk.disabled{opacity:.45;cursor:not-allowed}
+.chk.disabled input{cursor:not-allowed}
 .pill-set{display:flex;flex-wrap:wrap;gap:6px}
 .pill{border:1px solid var(--border-d);background:#fff;border-radius:20px;padding:4px 11px;font-size:12px;
   color:var(--ink-2);user-select:none}

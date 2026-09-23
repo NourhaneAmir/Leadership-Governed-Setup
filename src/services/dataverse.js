@@ -130,16 +130,27 @@ export async function fetchRegions(){
 /** Business Units -- table businessunit. cr603_region is a lookup to
  *  crd04_regions; Dataverse Web API exposes lookup values as
  *  "_<lookupname>_value" (the related record's GUID). */
+/* Filtered to HR-tagged rows only, per an explicit ask (23 Sep).
+   cr603_application_tag is a multi-select Choices column; this reads its
+   FormattedValue annotation -- a "; "-joined label string, e.g.
+   "Onboarding; HR; Laptop" -- the same annotation-over-hand-kept-map
+   convention this file already uses for every other choice column (see FV
+   below), rather than a raw OData Microsoft.Dynamics.CRM.ContainValues
+   filter, which nothing in this app has exercised against this connector
+   yet. Confirmed live against IT: 15 of 36 rows carry HR. */
 export async function fetchBusinessUnits(){
   const res = await BusinessunitsService.getAll({
-    select: ['businessunitid', 'name', '_cr603_region_value'],
+    select: ['businessunitid', 'name', '_cr603_region_value', 'cr603_application_tag'],
   });
   const rows = res?.data ?? [];
-  return rows.map(r => ({
-    id: r.businessunitid,
-    name: r.name,
-    region: r._cr603_region_value ?? null, // matches a Region's id above
-  }));
+  return rows
+    .filter(r => String(r['cr603_application_tag' + FV] || '')
+      .split(';').map(t => t.trim()).includes('HR'))
+    .map(r => ({
+      id: r.businessunitid,
+      name: r.name,
+      region: r._cr603_region_value ?? null, // matches a Region's id above
+    }));
 }
 
 /* ---------------------------------------------------------------------
@@ -388,6 +399,54 @@ const MEETING_MONTH_IN_QUARTER_KEY = { '1st month':124330000, '2nd month':124330
    month is likewise a plain 1..6, matching the Report table's
    lm_monthofthesemester rather than the Meeting table's own quarter column. */
 const MEETING_SECOND_DAY_OF_WEEK_KEY = { 'Sunday':1, 'Monday':2, 'Tuesday':3, 'Wednesday':4, 'Thursday':5 };
+
+/* lm_dayofweeks -- a multi-select Choices column added 23 Sep to BOTH
+   lm_report_templates and lm_meetingtemplates, same codes on each (confirmed
+   via a fresh pac modelbuilder pull, not assumed -- see the note on
+   lm_daysofmonth's real shape below). Per explicit instruction, this is a
+   genuinely separate, parallel way of naming which day(s) a Weekly or Twice
+   Weekly Setup runs on -- an alternative to the single lm_dayoftheweek pick
+   above, not a replacement for it. The wizard offers a toggle between the
+   two; whichever is inactive is cleared, so only one is ever actually
+   written.
+
+   ⚠️ The column is bound to the org's "Days of Month" global choice set
+   (lm_daysofmonth, values 1..31, codes 124330000-based), not a weekday list
+   -- confirmed live 23 Sep. This is NOT a mistake to route around: the
+   numbers themselves are what gets chosen (up to 4 for Weekly, 8 for Twice
+   Weekly), not weekday names. Dataverse's own labels for this column ARE
+   the plain numbers 1..31, so there is nothing to relabel. */
+const DAY_OF_WEEKS_MULTI_KEY = {};
+const DAY_OF_WEEKS_MULTI = {};
+for (let n = 1; n <= 31; n++) {
+  DAY_OF_WEEKS_MULTI_KEY[n] = 124330000 + (n - 1);
+  DAY_OF_WEEKS_MULTI[124330000 + (n - 1)] = n;
+}
+export const DAY_OF_WEEKS_CAP = freq => (freq === 'Twice Weekly' ? 8 : 4);
+
+/* A multi-select Choices column's read shape through this connector has
+   never been exercised in this app before now -- everything else that reads
+   a multi-select (cr603_application_tag on businessunit, 23 Sep) only ever
+   read its FormattedValue annotation, never the raw attribute. Documented
+   Dataverse Web API behaviour is a plain array of the option-set integers;
+   accepting a comma-separated string too costs nothing and covers the one
+   other shape a connector could plausibly hand back. ⚠️ Not yet confirmed
+   against a real save -- see the note on the write side in
+   reportTemplateParentPayload()/meetingTemplateParentPayload(). */
+function parseMultiChoice(raw) {
+  if (raw == null) return [];
+  if (Array.isArray(raw)) return raw.map(Number).filter(n => !Number.isNaN(n));
+  if (typeof raw === 'string') {
+    return raw.split(',').map(s => Number(s.trim())).filter(n => !Number.isNaN(n));
+  }
+  return [];
+}
+/** lm_dayofweeks, whichever raw shape it came back as, decoded to the plain
+ *  1..31 numbers the wizard's picker and the Setup's own dayOfWeeks field
+ *  both use directly. */
+export function decodeDayOfWeeksMulti(raw) {
+  return parseMultiChoice(raw).map(code => DAY_OF_WEEKS_MULTI[code]).filter(n => n != null);
+}
 const MEETING_MONTH_IN_SEMESTER_KEY = { '1st month':1, '2nd month':2, '3rd month':3,
                                         '4th month':4, '5th month':5, '6th month':6 };
 const MEETING_CONFIDENTIALITY_KEY = { 'Public':124330000, 'Internal':124330001, 'Confidential':124330002, 'High Confidential':124330003, 'Restricted':124330004 };
@@ -984,6 +1043,23 @@ function reportTemplateParentPayload(payload){
       ? SUBMISSION_TIMING_KEY[payload.submissionTiming] : null,
     lm_frequency: payload.frequency ? FREQUENCY_KEY[payload.frequency] : null,
     lm_dayoftheweek: payload.dayOfWeek ? DAY_OF_WEEK_KEY[payload.dayOfWeek] : null,
+    /* The wizard keeps dayOfWeek/dayOfWeeks mutually exclusive (switching the
+       toggle clears whichever just went inactive), so this can write straight
+       from whatever payload.dayOfWeeks currently holds with no extra "which
+       mode" logic here -- same reasoning FREQUENCY_KEY's neighbours already
+       rely on for their own second-day/month fields.
+
+       ⚠️ CONFIRMED live 23 Sep, the hard way: a plain array (the documented
+       OData v4 shape) 400s outright -- "An unexpected 'StartArray' node was
+       found when reading from the JSON reader. A 'PrimitiveValue' node was
+       expected." This connector targets api/data/v9.1.0, which reads a
+       multi-select Choices value as a single primitive: a comma-separated
+       STRING of the option-set integers, e.g. "124330000,124330010". Never
+       send an array here -- parseMultiChoice() on the read side already
+       expected this and needs no change. */
+    lm_dayofweeks: (payload.dayOfWeeks||[]).length
+      ? payload.dayOfWeeks.map(n => DAY_OF_WEEKS_MULTI_KEY[n]).filter(n => n != null).join(',')
+      : null,
     lm_dayofthemonth: typeof payload.dayOfMonth === 'number' ? payload.dayOfMonth : null,
     lm_monthofthequarter: payload.monthInQuarter ? MONTH_IN_QUARTER_KEY[payload.monthInQuarter] : null,
     /* Twice Weekly and Twice Monthly carry a second day; Semesterly picks a
@@ -1913,6 +1989,12 @@ function meetingTemplateParentPayload(payload){
     lm_stages: payload.stage ? MEETING_STAGE_KEY[payload.stage] : null,
     lm_frequency: payload.frequency ? MEETING_FREQUENCY_KEY[payload.frequency] : null,
     lm_daysoftheweek: payload.dayOfWeek ? MEETING_DAY_OF_WEEK_KEY[payload.dayOfWeek] : null,
+    /* Same either/or toggle as the Report Template side -- see
+       reportTemplateParentPayload()'s note on lm_dayofweeks: a comma-
+       separated string, confirmed live 23 Sep, never an array. */
+    lm_dayofweeks: (payload.dayOfWeeks||[]).length
+      ? payload.dayOfWeeks.map(n => DAY_OF_WEEKS_MULTI_KEY[n]).filter(n => n != null).join(',')
+      : null,
     lm_dayofthemonth: typeof payload.dayOfMonth === 'number' ? payload.dayOfMonth : null,
     lm_monthofthequarter: payload.monthInQuarter ? MEETING_MONTH_IN_QUARTER_KEY[payload.monthInQuarter] : null,
     lm_seconddayoftheweek: payload.secondDayOfWeek ? MEETING_SECOND_DAY_OF_WEEK_KEY[payload.secondDayOfWeek] : null,
@@ -1933,6 +2015,15 @@ function meetingTemplateParentPayload(payload){
   if(groupUnit?.chairmanId)    row['lm_MeetingChairman@odata.bind']            = `/cr603_organizationstructures(${groupUnit.chairmanId})`;
   if(groupUnit?.coChairmanId)  row['lm_MeetingCoChairman@odata.bind']          = `/cr603_organizationstructures(${groupUnit.coChairmanId})`;
   if(groupUnit?.facilitatorId) row['lm_MeetingOrganizerFacilitator@odata.bind'] = `/cr603_organizationstructures(${groupUnit.facilitatorId})`;
+  /* lm_meetingtemplate carries its own lm_TeamChannel, same as Chairman/
+     Co-Chairman/Facilitator above -- the group-wide unit card renders a
+     Channel picker identically to a BU/Region one (UnitSetup has no
+     scope-level gate on it), so this was a real, silent data-loss gap, not a
+     deliberate omission: reportTemplateParentPayload() already writes the
+     equivalent field for a group-wide Report Template (see groupUnit above
+     there too) -- confirmed live 23 Sep while auditing every Template lookup
+     against the real schema. */
+  if(groupUnit?.channelId)     row['lm_TeamChannel@odata.bind']                = `/and_teamschannellinks(${groupUnit.channelId})`;
   return row;
 }
 
@@ -2049,15 +2140,28 @@ async function createMeetingTemplateChildren(templateId, payload, errors, opts =
   // per configured unit, each with its own Chairman/Co-Chairman/
   // Facilitator, and its own Attendees list bound back to that specific
   // unit row via lm_MeetingTemplatePerBusinessUnit /
-  // lm_MeetingTemplatePerRegion on lm_meetingattendeeslists. Group-level
-  // Setups have no dedicated child table yet, skipped with a console note.
-  /* On the update path the unit rows and their Attendees have already been
-     reconciled in place, so this loop must not run again -- it would create a
-     second copy of every unit. */
-  for(const unit of (opts.skipUnits ? [] : payload.units||[])){
+  // lm_MeetingTemplatePerRegion on lm_meetingattendeeslists. A group-wide
+  // Setup has no per-unit row to create -- lm_meetingattendeeslists binds
+  // straight to lm_MeetingTemplate instead (the same lookup every attendee
+  // row already carries regardless of scope), so its single synthetic unit
+  // still reaches the Attendees loop below with unitBind/unitLookupField
+  // left null. Confirmed live 23 Sep while auditing every Template lookup:
+  // the wizard's Attendees picker already renders for a group-wide unit
+  // exactly like a BU/Region one, so attendees typed in there were being
+  // silently discarded -- this branch, plus the matching read-side fix in
+  // fetchMeetingTemplateDetail()/fetchMeetingTemplateChildIds(), closes it.
+  for(const unit of (payload.units||[])){
     let unitBind = null, unitLookupField = null;
 
     if(payload.stageLevel==='bu' && unit?.businessUnitId){
+      /* On the update path this unit row and its Attendees have already been
+         reconciled in place, so this branch must not run again here -- it
+         would create a second copy of the unit. Group-wide has no equivalent
+         reconcile (see reconcileMeetingUnits, which only ever handles 'bu'/
+         'region'), so it is deliberately NOT covered by this same skip --
+         see the delete-then-recreate pair in updateMeetingTemplateToDataverse
+         instead, the same treatment every other flat list already gets. */
+      if(opts.skipUnits) continue;
       try{
         const rowPayload = {
           'lm_MeetingTemplate@odata.bind': bind,
@@ -2073,6 +2177,7 @@ async function createMeetingTemplateChildren(templateId, payload, errors, opts =
         if(rowId){ unitBind = `/lm_meetingtemplatebusinessunitses(${rowId})`; unitLookupField = 'lm_MeetingTemplatePerBusinessUnit@odata.bind'; }
       }catch(e){ errors.push({ table:'lm_meetingtemplatebusinessunitses', error:e }); }
     }else if(payload.stageLevel==='region' && unit?.regionId){
+      if(opts.skipUnits) continue; // see the comment on the 'bu' branch above
       try{
         const rowPayload = {
           'lm_MeetingTemplate@odata.bind': bind,
@@ -2087,8 +2192,12 @@ async function createMeetingTemplateChildren(templateId, payload, errors, opts =
         const rowId = created?.data?.lm_meetingtemplateregionid;
         if(rowId){ unitBind = `/lm_meetingtemplateregions(${rowId})`; unitLookupField = 'lm_MeetingTemplatePerRegion@odata.bind'; }
       }catch(e){ errors.push({ table:'lm_meetingtemplateregions', error:e }); }
+    }else if(payload.stageLevel==='group'){
+      /* No per-unit row exists or is needed -- fall straight through to the
+         Attendees loop below with unitBind/unitLookupField still null, which
+         it already tolerates (see the guard right before the create call). */
     }else{
-      console.warn(`[dataverse] Meeting Template unit "${unit?.name||unit?.key}" at "${payload.stageLevel}" level has no per-unit child table yet -- its Attendees, if any, were not saved.`);
+      console.warn(`[dataverse] Meeting Template unit "${unit?.name||unit?.key}" at "${payload.stageLevel}" level matched no known scope -- its Attendees, if any, were not saved.`);
       continue;
     }
 
@@ -2176,7 +2285,7 @@ async function fetchMeetingTemplateChildIds(dvId){
   const regions = regionsRes?.data ?? [];
   /* Attendees are kept PER UNIT rather than flattened: an attendee is only
      the same attendee within the same unit, so the diff has to run per unit. */
-  const [buAttendees, regionAttendees] = await Promise.all([
+  const [buAttendees, regionAttendees, groupAttendeesRes] = await Promise.all([
     Promise.all(businessUnits.map(bu => Lm_meetingattendeeslistsService.getAll({
       filter: `_lm_meetingtemplateperbusinessunit_value eq ${bu.lm_meetingtemplatebusinessunitsid}`,
       select: ATTENDEE_SELECT,
@@ -2185,6 +2294,14 @@ async function fetchMeetingTemplateChildIds(dvId){
       filter: `_lm_meetingtemplateperregion_value eq ${rg.lm_meetingtemplateregionid}`,
       select: ATTENDEE_SELECT,
     }).then(r=>r?.data??[]).catch(()=>[]))),
+    /* A group-wide (Stage 3/4) attendee has neither per-unit lookup set --
+       there is no unit row for it to bind to -- so it is told apart from a
+       stray/orphaned row the same way, by both being null, not by scope
+       level (this function does not know payload.stageLevel, only the id). */
+    Lm_meetingattendeeslistsService.getAll({
+      filter: `${filter} and _lm_meetingtemplateperbusinessunit_value eq null and _lm_meetingtemplateperregion_value eq null`,
+      select: ATTENDEE_SELECT,
+    }).then(r=>r?.data??[]).catch(()=>[]),
   ]);
   return {
     agenda: agendaRes?.data ?? [],
@@ -2193,6 +2310,7 @@ async function fetchMeetingTemplateChildIds(dvId){
     linkedReports: linkedRes?.data ?? [],
     businessUnits, regions,
     attendees: [...buAttendees.flat(), ...regionAttendees.flat()],
+    groupAttendees: groupAttendeesRes,
     /* keyed by unit row id, for the reconcile path */
     attendeesByUnit: new Map([
       ...businessUnits.map((bu,i) => [bu.lm_meetingtemplatebusinessunitsid, buAttendees[i]]),
@@ -2303,13 +2421,18 @@ export async function updateMeetingTemplateToDataverse(dvId, payload){
     /* Unit rows and their Attendees are RECONCILED, not deleted: adding one
        Business Unit or one Attendee must not rewrite the others. Everything
        below is a flat, template-level list that nothing references by id, so
-       delete-and-recreate stays -- it is simpler and costs nothing there. */
+       delete-and-recreate stays -- it is simpler and costs nothing there.
+       Group-wide Attendees have no unit row to reconcile against (see
+       createMeetingTemplateChildren's 'group' branch), so they get the same
+       delete-and-recreate treatment as the other flat lists here, not the
+       reconcileMeetingUnits() treatment above. */
     await reconcileMeetingUnits(dvId, payload, existing, errors);
 
     await deleteRows(Lm_meetingtemplateagendaitemsService, existing.agenda, 'lm_meetingtemplateagendaitemid', 'lm_meetingtemplateagendaitems', errors);
     await deleteRows(Lm_meetingtemplatedepartmentfunctionsService, existing.lines, 'lm_meetingtemplatedepartmentfunctionid', 'lm_meetingtemplatedepartmentfunctions', errors);
     await deleteRows(Lm_meetingtemplatesupportivefunctionsesService, existing.supportive, 'lm_meetingtemplatesupportivefunctionsid', 'lm_meetingtemplatesupportivefunctionses', errors);
     await deleteRows(Lm_meetingtemplatelinkedreportsesService, existing.linkedReports, 'lm_meetingtemplatelinkedreportsid', 'lm_meetingtemplatelinkedreportses', errors);
+    await deleteRows(Lm_meetingattendeeslistsService, existing.groupAttendees, 'lm_meetingattendeeslistid', 'lm_meetingattendeeslists', errors);
 
     /* Units are already handled above, so the recreate pass must skip them. */
     await createMeetingTemplateChildren(dvId, payload, errors, { skipUnits:true });
@@ -2438,7 +2561,7 @@ export async function fetchReportTemplateDetail(id){
   const parentRes = await Lm_report_templatesService.get(id, {
     select: ['lm_report_templateid','lm_newcolumn','lm_objective','lm_reporttype','lm_reportcategory',
       'lm_submissiontiming',
-      'lm_frequency','lm_dayoftheweek','lm_dayofthemonth','lm_monthofthequarter',
+      'lm_frequency','lm_dayoftheweek','lm_dayofweeks','lm_dayofthemonth','lm_monthofthequarter',
       'lm_seconddayoftheweek','lm_seconddayofthemonth','lm_monthofthesemester','lm_month','lm_confidentiality',
       'lm_destinationsharepointlink','lm_fileattachement','lm_attachementfile','lm_reportstatus','lm_version','lm_stage','modifiedon','createdon',
       // Group-wide (Stage 3/4) Owner/Submitting Position, Team Channel and
@@ -2538,14 +2661,17 @@ export async function fetchMeetingTemplateDetail(id){
   const parentRes = await Lm_meetingtemplatesService.get(id, {
     select: ['lm_meetingtemplateid','lm_meetingtemplatename','lm_setuptype','lm_typeclassification','lm_stages',
       '_lm_category_value','lm_category_name',
-      'lm_frequency','lm_daysoftheweek','lm_dayofthemonth','lm_monthofthequarter',
+      'lm_frequency','lm_daysoftheweek','lm_dayofweeks','lm_dayofthemonth','lm_monthofthequarter',
       'lm_seconddayoftheweek','lm_seconddayofthemonth','lm_monthofthesemesterseme','lm_defaultmeetingmode',
       'lm_meetingconfidentiality','lm_quorumthreshold','lm_torpolicylink','lm_meetingstatus','lm_version','modifiedon','createdon',
       'lm_momwriteuphours','lm_momapprovalhours','lm_gridsubmithours',
-      // Group-wide (Stage 3/4) Chairman/Co-Chairman/Facilitator -- see
-      // meetingTemplateParentPayload()'s comment for why these live here
-      // instead of on a per-unit child row.
-      '_lm_meetingchairman_value','_lm_meetingcochairman_value','_lm_meetingorganizerfacilitator_value'],
+      // Group-wide (Stage 3/4) Chairman/Co-Chairman/Facilitator/Team-Channel --
+      // see meetingTemplateParentPayload()'s comment for why these live here
+      // instead of on a per-unit child row. TeamChannel was missing from this
+      // select entirely until 23 Sep -- the write side had nowhere to read
+      // its own value back from, on top of never writing it either.
+      '_lm_meetingchairman_value','_lm_meetingcochairman_value','_lm_meetingorganizerfacilitator_value',
+      '_lm_teamchannel_value'],
   });
   const parent = parentRes?.data;
   if(!parent) throw new Error(`Meeting Template ${id} not found`);
@@ -2563,7 +2689,7 @@ export async function fetchMeetingTemplateDetail(id){
   const businessUnits = busRes?.data ?? [];
   const regions = regionsRes?.data ?? [];
 
-  const [buAttendees, regionAttendees] = await Promise.all([
+  const [buAttendees, regionAttendees, groupAttendeesRes] = await Promise.all([
     Promise.all(businessUnits.map(bu =>
       Lm_meetingattendeeslistsService.getAll({
         filter: `_lm_meetingtemplateperbusinessunit_value eq ${bu.lm_meetingtemplatebusinessunitsid}`,
@@ -2576,6 +2702,13 @@ export async function fetchMeetingTemplateDetail(id){
         select: ATTENDEE_SELECT,
       }).then(r => r?.data ?? []).catch(()=>[])
     )),
+    /* Same either/or identity as fetchMeetingTemplateChildIds() above: a
+       group-wide attendee has both per-unit lookups null, since there is no
+       unit row for it to bind to. */
+    Lm_meetingattendeeslistsService.getAll({
+      filter: `${filter} and _lm_meetingtemplateperbusinessunit_value eq null and _lm_meetingtemplateperregion_value eq null`,
+      select: ATTENDEE_SELECT,
+    }).then(r => r?.data ?? []).catch(()=>[]),
   ]);
 
   return {
@@ -2586,6 +2719,7 @@ export async function fetchMeetingTemplateDetail(id){
     linkedReports: linkedRes?.data ?? [],
     businessUnits: businessUnits.map((bu,i) => ({ ...bu, attendees: buAttendees[i] })),
     regions: regions.map((rg,i) => ({ ...rg, attendees: regionAttendees[i] })),
+    groupAttendees: groupAttendeesRes,
   };
 }
 /* =========================================================================

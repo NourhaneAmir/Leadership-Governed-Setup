@@ -2,7 +2,8 @@ import React, { useState, useMemo, useEffect, useLayoutEffect, useRef, createCon
 import { createPortal } from 'react-dom';
 import { ClipboardList, ListChecks, ArrowUpRight, FileText, CalendarDays, Check, MoreHorizontal } from 'lucide-react';
 import { fetchRegions, fetchBusinessUnits, fetchDepartments, fetchFunctions, fetchProcesses, fetchKpis, fetchSections, fetchPositions, departmentBuIndex, fetchTeamsChannels, fetchMicrosoftGroupMembers, fetchMeetingCategories, fetchCurrentUser, saveReportTemplateToDataverse, saveMeetingTemplateToDataverse, updateReportTemplateToDataverse, updateMeetingTemplateToDataverse, updateReportTemplateStatus, updateMeetingTemplateStatus, fetchReportTemplatesList, fetchMeetingTemplatesList, fetchReportTemplateDetail, fetchMeetingTemplateDetail, fetchMeetingOccurrencesByTemplate, fetchReportOccurrencesByTemplate, TEMPLATE_STATUS_LABEL,
-  logSetupActivity, logSetupActivityBatch, fetchSetupActivity, uploadReportTemplateFile } from '../../services/dataverse.js';
+  logSetupActivity, logSetupActivityBatch, fetchSetupActivity, uploadReportTemplateFile,
+  decodeDayOfWeeksMulti, DAY_OF_WEEKS_CAP } from '../../services/dataverse.js';
 import { FilePreview, canPreview } from '../../shared/FilePreview.jsx';
 import './governance-modern.css';
 
@@ -58,6 +59,19 @@ const MONTHS_OF_YEAR=['January','February','March','April','May','June',
 const DOW2_FREQ=['Twice Weekly'];
 const DOM2_FREQ=['Twice Monthly'];
 const DAYS_OF_WEEK=['Sunday','Monday','Tuesday','Wednesday','Thursday'];
+/* The alternative to a single fixed day, for Weekly/Twice Weekly -- picked
+   from lm_dayofweeks, whose real Dataverse labels are plain numbers 1..31
+   (see dataverse.js's note on that column). Not weekday names -- see
+   PROJECT-CONTEXT.md for why that's intentional, not a mix-up. */
+const DAY_NUMBERS=Array.from({length:31},(_,i)=>i+1);
+/* What the cadence summary shows for the day(s) -- unchanged for Fixed day
+   mode (still just s.dayOfWeek, exactly as before this toggle existed), a
+   new fragment for Multiple days so the review step doesn't just go blank
+   there. */
+const cadenceDayFragment=s=>
+  (DOW_FREQ.includes(s.frequency) && (s.dayMode||'fixed')==='multi')
+    ? ((s.dayOfWeeks||[]).length ? 'days '+s.dayOfWeeks.slice().sort((a,b)=>a-b).join(', ') : null)
+    : s.dayOfWeek;
 const MONTHS_IN_QUARTER=['1st month','2nd month','3rd month'];
 const MONTHS_IN_SEMESTER=['1st month','2nd month','3rd month',
                           '4th month','5th month','6th month'];
@@ -663,7 +677,7 @@ const BLANK_MEETING={
   kind:'Committee / Meeting', setupType:'Business Meeting', category:null,
   qualifier:'',
   stage:null, regions:[], businessUnits:[], lines:[], units:[],
-  frequency:null, dayOfWeek:null, dayOfMonth:null, monthInQuarter:null,
+  frequency:null, dayOfWeek:null, dayOfWeeks:[], dayMode:'fixed', dayOfMonth:null, monthInQuarter:null,
   mode:null,
   supportive:[], quorum:90,
   torLink:'', agenda:[], linkedTemplates:[],
@@ -685,7 +699,7 @@ const BLANK_REPORT={
   fileAttachment:'', templateFileName:'', templateFileStoredName:'', hasTemplateFile:false,
   secondDayOfWeek:null, secondDayOfMonth:null, monthInSemester:null, month:null,
   checklist:[], processes:[], kpis:[],
-  frequency:null, dayOfWeek:null, dayOfMonth:null, monthInQuarter:null,
+  frequency:null, dayOfWeek:null, dayOfWeeks:[], dayMode:'fixed', dayOfMonth:null, monthInQuarter:null,
   confidentiality:null, status:'Draft', version:0, updated:TODAY};
 
 function seed(){
@@ -1003,8 +1017,20 @@ function cadenceRules(s, stepNo){
   const r=[];
   if(!s.frequency){ r.push({field:'f-frequency', step:stepNo,
       msg:'Frequency is required — every Setup repeats on a cadence.'}); return r; }
-  if(DOW_FREQ.includes(s.frequency) && !s.dayOfWeek)
+  const dayMode=s.dayMode||'fixed';
+  if(DOW_FREQ.includes(s.frequency) && dayMode==='fixed' && !s.dayOfWeek)
     r.push({field:'f-dayOfWeek', step:stepNo, msg:`Day of week is required when Frequency is ${s.frequency}.`});
+  /* Multiple days mode: at least one, and never more than the cap Checks
+     itself already enforces at pick time -- checked again here as a safety
+     net, e.g. for a value that arrived some other way than this wizard. */
+  if(DOW_FREQ.includes(s.frequency) && dayMode==='multi'){
+    const cap=DAY_OF_WEEKS_CAP(s.frequency);
+    if(!(s.dayOfWeeks||[]).length)
+      r.push({field:'f-dayOfWeeks', step:stepNo,
+        msg:`Choose at least one day when Frequency is ${s.frequency} and Multiple days is selected.`});
+    else if(s.dayOfWeeks.length>cap)
+      r.push({field:'f-dayOfWeeks', step:stepNo, msg:`Choose at most ${cap} days.`});
+  }
   if(DOM_FREQ.includes(s.frequency) && !s.dayOfMonth)
     r.push({field:'f-dayOfMonth', step:stepNo, msg:`Day of month is required when Frequency is ${s.frequency}.`});
   if(MIQ_FREQ.includes(s.frequency) && !s.monthInQuarter)
@@ -1017,8 +1043,10 @@ function cadenceRules(s, stepNo){
     r.push({field:'f-month', step:stepNo,
       msg:'Month is required when Frequency is Annually.'});
   /* The twice-per-period cadences need a second day, and it has to be a
-     different one -- two occurrences on the same day is one occurrence. */
-  if(DOW2_FREQ.includes(s.frequency)){
+     different one -- two occurrences on the same day is one occurrence.
+     Only applies in Fixed day mode -- Multiple days names its own count via
+     the cap above, with no separate "second day" concept. */
+  if(DOW2_FREQ.includes(s.frequency) && dayMode==='fixed'){
     if(!s.secondDayOfWeek)
       r.push({field:'f-secondDayOfWeek', step:stepNo,
         msg:'A second day of week is required when Frequency is Twice Weekly.'});
@@ -1370,12 +1398,17 @@ const Seg=({id,opts,val,onChange,disabled})=>
         {l}{locked?<span className="seg-lock" aria-hidden="true">🔒</span>:null}</button>;})}
   </div>;
 
-const Checks=({id,opts,val,onChange})=>
-  <div className="chk-grid" id={id}>{opts.map(o=>
-    <label className="chk" key={o}>
-      <input type="checkbox" checked={(val||[]).includes(o)}
-        onChange={()=>onChange((val||[]).includes(o)?val.filter(x=>x!==o):[...(val||[]),o])}/>
-      <span>{o}</span></label>)}
+/* max is optional -- when given, an unchecked box past the cap is disabled
+   rather than silently ignored on click, so the limit is visible before it's
+   hit, not just enforced after. */
+const Checks=({id,opts,val,onChange,max})=>
+  <div className="chk-grid" id={id}>{opts.map(o=>{
+    const checked=(val||[]).includes(o);
+    const atCap=!checked && max && (val||[]).length>=max;
+    return <label className={'chk'+(atCap?' disabled':'')} key={o}>
+      <input type="checkbox" checked={checked} disabled={atCap}
+        onChange={()=>onChange(checked?val.filter(x=>x!==o):[...(val||[]),o])}/>
+      <span>{o}</span></label>;})}
   </div>;
 
 /* Searchable multi-select: type to filter, click a result to add it, chosen
@@ -2263,26 +2296,44 @@ function ScopeFields({s,set,stepNo}){
    this file keeps running into), the field is replaced by a note saying what is
    missing. Add lm_month (1..12) to lm_meetingtemplates and delete the prop. */
 function CadenceFields({s,set,noMonth}){
+  const dayMode=s.dayMode||'fixed';
   return <>
     <Field id="f-frequency" label="Frequency" req>
       <Sel id="f-frequency" val={s.frequency} opts={FREQUENCIES}
-        onChange={v=>set({frequency:v, dayOfWeek:null, dayOfMonth:null, monthInQuarter:null,
+        onChange={v=>set({frequency:v, dayOfWeek:null, dayOfWeeks:[], dayOfMonth:null, monthInQuarter:null,
                           secondDayOfWeek:null, secondDayOfMonth:null, monthInSemester:null,
                           month:null})}/></Field>
+    {/* Weekly/Twice Weekly only -- a Setup can name its day(s) either as one
+        (or two) fixed weekday(s), same as before this toggle existed, or as
+        several numbered days from lm_dayofweeks (see dataverse.js's note on
+        that column -- the numbers themselves are what's picked, not weekday
+        names). Switching clears whichever side just went inactive so a save
+        never carries a stale value from the other mode. */}
+    <Field id="f-dayMode" label="How is the day chosen?" when={DOW_FREQ.includes(s.frequency)}>
+      <Seg id="f-dayMode" val={dayMode}
+        opts={[{v:'fixed',label:'Fixed day'},{v:'multi',label:'Multiple days'}]}
+        onChange={v=>set({dayMode:v, dayOfWeek:null, secondDayOfWeek:null, dayOfWeeks:[]})}/>
+    </Field>
     <div className="f-row3">
       {/* Twice Weekly repeats on two days, so the first is labelled as such
           only when there is a second to distinguish it from. */}
       <Field id="f-dayOfWeek"
         label={DOW2_FREQ.includes(s.frequency)?'First day of week':'Day of week'}
-        req when={DOW_FREQ.includes(s.frequency)}>
+        req when={DOW_FREQ.includes(s.frequency) && dayMode==='fixed'}>
         <Sel id="f-dayOfWeek" val={s.dayOfWeek} opts={DAYS_OF_WEEK}
           onChange={v=>set({dayOfWeek:v})}/></Field>
       <Field id="f-secondDayOfWeek" label="Second day of week" req
-        when={DOW2_FREQ.includes(s.frequency)}
+        when={DOW2_FREQ.includes(s.frequency) && dayMode==='fixed'}
         hint="Must differ from the first day.">
         <Sel id="f-secondDayOfWeek" val={s.secondDayOfWeek}
           opts={DAYS_OF_WEEK.filter(d=>d!==s.dayOfWeek)}
           onChange={v=>set({secondDayOfWeek:v})}/></Field>
+      <Field id="f-dayOfWeeks" label="Days" req
+        when={DOW_FREQ.includes(s.frequency) && dayMode==='multi'}
+        hint={`Choose up to ${DAY_OF_WEEKS_CAP(s.frequency)}.`}>
+        <Checks id="f-dayOfWeeks" opts={DAY_NUMBERS} val={s.dayOfWeeks||[]}
+          max={DAY_OF_WEEKS_CAP(s.frequency)}
+          onChange={v=>set({dayOfWeeks:v})}/></Field>
 
       <Field id="f-dayOfMonth"
         label={DOM2_FREQ.includes(s.frequency)?'First day of month':'Day of month'}
@@ -2810,7 +2861,7 @@ function UnitsTable({s}){
 function MeetingSummary({s}){
   const {db}=use();
   const accred=s.setupType==='Accreditation Committee';
-  const cad=[s.frequency, s.dayOfWeek, s.dayOfMonth?('day '+s.dayOfMonth):null, s.monthInQuarter]
+  const cad=[s.frequency, cadenceDayFragment(s), s.dayOfMonth?('day '+s.dayOfMonth):null, s.monthInQuarter]
         .filter(Boolean).join(' · ');
   const keys=scopeKeys(s);
   return <>
@@ -2991,7 +3042,7 @@ function ReportSummary({s}){
      one can be open at a time and they render identically. */
   const [view,setView]=useState(null);
   const dest=destinationOf(s);
-  const cad=[s.frequency,s.dayOfWeek,s.dayOfMonth?('day '+s.dayOfMonth):null,s.monthInQuarter]
+  const cad=[s.frequency,cadenceDayFragment(s),s.dayOfMonth?('day '+s.dayOfMonth):null,s.monthInQuarter]
     .filter(Boolean).join(' · ');
   const keys=scopeKeys(s);
   return <>
@@ -3066,6 +3117,14 @@ function buildReportTemplatePayload(f){
     reportCategory: f.reportCategory,
     frequency: f.frequency,
     dayOfWeek: f.dayOfWeek,
+    /* 23 Sep: CadenceFields collects this too now (Multiple days mode) --
+       missing here the same way secondDayOfWeek/secondDayOfMonth/
+       monthInSemester were missing from this exact list on 08 Sep, per the
+       comment on the Meeting side below. Found live: a Twice Weekly Report
+       Template saved with Multiple days picked landed in Dataverse with an
+       empty lm_dayofweeks, no error shown, because payload.dayOfWeeks was
+       always undefined by the time reportTemplateParentPayload() read it. */
+    dayOfWeeks: f.dayOfWeeks || undefined,
     dayOfMonth: f.dayOfMonth,
     monthInQuarter: f.monthInQuarter,
     secondDayOfWeek: f.secondDayOfWeek || undefined,
@@ -3182,6 +3241,10 @@ function buildMeetingTemplatePayload(f){
     stage: f.stage,
     frequency: f.frequency,
     dayOfWeek: f.dayOfWeek,
+    /* 23 Sep: same gap as the Report side (see its own note) -- Multiple
+       days mode was collected by CadenceFields but had nowhere to go here,
+       so it saved silently as empty. */
+    dayOfWeeks: f.dayOfWeeks || undefined,
     dayOfMonth: f.dayOfMonth,
     monthInQuarter: f.monthInQuarter,
     /* Added 08 Sep, when lm_meetingtemplates gained the three columns the
@@ -3307,6 +3370,11 @@ function buildPublishSummary(original, edited){
   addField('Stage', original.stage, edited.stage);
   addField('Frequency', original.frequency, edited.frequency);
   addField('Day of week', original.dayOfWeek, edited.dayOfWeek);
+  /* Pre-joined to plain strings before reaching addField -- its own before!==
+     after check compares by reference, which two freshly-built arrays would
+     always fail even with identical contents. */
+  const dowText=arr=>(arr&&arr.length)?arr.slice().sort((a,b)=>a-b).join(', '):'';
+  addField('Days (multiple)', dowText(original.dayOfWeeks), dowText(edited.dayOfWeeks));
   addField('Day of month', original.dayOfMonth, edited.dayOfMonth);
   addField('Month within quarter', original.monthInQuarter, edited.monthInQuarter);
   if(isReport){
@@ -3531,6 +3599,12 @@ function dataverseReportToSetup(detail){
     reportCategory:byCode1(DV_REPORT_CATEGORY,p.lm_reportcategory),
     frequency:byCode1(DV_FREQUENCY,p.lm_frequency),
     dayOfWeek:byCode1(DV_DAY_OF_WEEK,p.lm_dayoftheweek),
+    /* dayOfWeeks (plural) is the alternate, multi-select way of naming this --
+       see dataverse.js's own note on lm_dayofweeks. Mode is inferred, not
+       stored: a Setup saved with any of these picked reopens straight into
+       Multiple days, otherwise Fixed day (the pre-existing behaviour). */
+    dayOfWeeks:decodeDayOfWeeksMulti(p.lm_dayofweeks),
+    dayMode:decodeDayOfWeeksMulti(p.lm_dayofweeks).length ? 'multi' : 'fixed',
     dayOfMonth:p.lm_dayofthemonth ?? null,
     monthInQuarter:byCode1(DV_MONTH_IN_QUARTER,p.lm_monthofthequarter),
     secondDayOfWeek:byCode1(DAYS_OF_WEEK,p.lm_seconddayoftheweek),
@@ -3648,14 +3722,21 @@ function dataverseMeetingToSetup(detail){
   }));
   const isRegionLevel=regionUnits.length>0 && buUnits.length===0;
   // A Stage 3/4 Setup has no per-unit child table, so its one section comes
-  // from the parent row's own Chairman/Co-Chairman/Facilitator instead --
-  // see meetingTemplateParentPayload()'s comment in dataverse.js.
+  // from the parent row's own Chairman/Co-Chairman/Facilitator/Team-Channel
+  // instead -- see meetingTemplateParentPayload()'s comment in dataverse.js.
+  // channel/team and coreMembers used to be hardcoded null/empty here even
+  // though the wizard's Channel and Attendees pickers both render for a
+  // group-wide unit exactly like a BU/Region one -- silent data loss, fixed
+  // 23 Sep, same pattern the Report Template hydrate above already used for
+  // Channel. Attendees has no per-unit row to key off, so
+  // fetchMeetingTemplateDetail() finds them by BOTH per-unit lookups being
+  // null instead (detail.groupAttendees) -- see its own comment.
   const groupUnits=(p.lm_stages===3 || p.lm_stages===4) ? [{
     id:'dvu-group-'+p.lm_meetingtemplateid, key:GROUP_KEY, section:null,
-    channel:null, team:null,
+    channel:p._lm_teamchannel_value||null, team:teamOfChannel(p._lm_teamchannel_value),
     chairman:p._lm_meetingchairman_value||null, coChairman:p._lm_meetingcochairman_value||null,
     facilitator:p._lm_meetingorganizerfacilitator_value||null,
-    coreMembers:[],
+    coreMembers:(detail.groupAttendees||[]).map(attendeeToRow),
   }] : [];
 
   return {...BLANK_MEETING,
@@ -3670,6 +3751,10 @@ function dataverseMeetingToSetup(detail){
     stage:isRegionLevel?STAGES[1]:(DV_MEETING_STAGE[p.lm_stages]||STAGES[0]),
     frequency:byCode1(DV_FREQUENCY,p.lm_frequency),
     dayOfWeek:DV_MEETING_DAY_OF_WEEK[p.lm_daysoftheweek]||null,
+    /* Same either/or toggle as the Report Template hydrate -- see its own
+       note on dayOfWeeks/dayMode above. */
+    dayOfWeeks:decodeDayOfWeeksMulti(p.lm_dayofweeks),
+    dayMode:decodeDayOfWeeksMulti(p.lm_dayofweeks).length ? 'multi' : 'fixed',
     dayOfMonth:p.lm_dayofthemonth ?? null,
     monthInQuarter:DV_MEETING_MONTH_IN_QUARTER[p.lm_monthofthequarter]||null,
     secondDayOfWeek:DV_MEETING_SECOND_DAY_OF_WEEK[p.lm_seconddayoftheweek]||null,

@@ -168,7 +168,7 @@ function trimGrid(rows){
    a checklist needs. */
 const MAX_ROWS = 500;
 
-export function FilePreview({entitySet, recordId, field, name}){
+export function FilePreview({entitySet, recordId, field, name, org}){
   const [st, setSt] = useState({phase:'loading'});
   const [sheet, setSheet] = useState(0);
   /* Object URLs are a leak if they outlive the component, and a preview is
@@ -191,7 +191,7 @@ export function FilePreview({entitySet, recordId, field, name}){
     }
 
     (async ()=>{
-      const b64 = await downloadFileColumn(entitySet, recordId, field);
+      const b64 = await downloadFileColumn(entitySet, recordId, field, org);
       if(!alive) return;
       const kind = previewKind(name);
       const ext  = extOf(name);
@@ -289,7 +289,7 @@ export function FilePreview({entitySet, recordId, field, name}){
         setTimeout(()=>URL.revokeObjectURL(dying), 30000);
       }
     };
-  }, [entitySet, recordId, field, name]);
+  }, [entitySet, recordId, field, name, org]);
 
   /* ⚠️ The object URL MUST outlive the click.
 

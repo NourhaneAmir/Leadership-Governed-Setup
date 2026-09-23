@@ -382,9 +382,9 @@ function describePayload(data) {
   return `${ctor}{${Object.keys(data).slice(0, 12).join(', ')}}`;
 }
 
-export async function downloadFileColumn(entitySet, recordId, fieldName) {
+export async function downloadFileColumn(entitySet, recordId, fieldName, org = DATA_ORG) {
   const call = range => DV.GetEntityFileImageFieldContentWithOrganization(
-    range, DATA_ORG, entitySet, recordId, fieldName, undefined
+    range, org, entitySet, recordId, fieldName, undefined
   );
 
   /* Omitting Range first, because that is the documented "whole file".
@@ -415,7 +415,7 @@ export async function downloadFileColumn(entitySet, recordId, fieldName) {
   }
 
   console.warn('[xenv] downloadFileColumn failed', {
-    entitySet, recordId, fieldName, org: DATA_ORG, lastData, tried,
+    entitySet, recordId, fieldName, org, lastData, tried,
   });
   throw new Error(
     `Could not read ${entitySet}.${fieldName} for ${recordId}. ` + tried.join(' | ')

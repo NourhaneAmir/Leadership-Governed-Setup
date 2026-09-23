@@ -38,6 +38,13 @@ import { DiagChip } from '../domain.jsx';
 import { FilePreview, canPreview } from '../../../shared/FilePreview.jsx';
 import { fetchReportOccurrenceContent, fetchReportTemplateHierarchyContent,
          REPORT_TYPE, REPORT_CATEGORY } from '../../../services/dataverse.js';
+/* The Report Template family (this screen's "Report Templates" tree) lives in
+   IT regardless of which app is running -- see xenv.js's IT_ORG comment.
+   Leadership's own DATA_ORG stays DT New, so a file-preview read has to be
+   told IT explicitly here; downloadFileColumn() otherwise defaults to
+   DATA_ORG and 404s on an id that only exists in IT (found live 23 Sep --
+   see PROJECT-CONTEXT.md). */
+import { IT_ORG } from '../../../services/xenv.js';
 
 /* DiagChip is keyed by the class, not the label, and a Section's angle comes
    back from Dataverse as the label. Same map Build a report/plan keeps. */
@@ -653,7 +660,8 @@ export function ScreenHierarchy(){
                   Template file attached{tplDet.fileStoredName?': '+tplDet.fileStoredName:''}.
                   <button type="button" className="fv-link" onClick={()=>setTplFileView({
                     entitySet:'lm_report_templates', recordId:tplDet.id,
-                    field:'lm_attachementfile', name:tplDet.fileStoredName||'Template file'})}>
+                    field:'lm_attachementfile', name:tplDet.fileStoredName||'Template file',
+                    org: IT_ORG})}>
                     {canPreview(tplDet.fileStoredName) ? 'View' : 'Download'}</button>
                 </span>
               </Note>
@@ -679,7 +687,8 @@ export function ScreenHierarchy(){
                             📎 {it.fileStoredName || it.label || 'File'}
                             <button type="button" className="fv-link" onClick={()=>setTplFileView({
                               entitySet:'lm_reporttemplatesectionitemses', recordId:it.id,
-                              field:'lm_attachementfile', name:it.fileStoredName||it.label||'File'})}>
+                              field:'lm_attachementfile', name:it.fileStoredName||it.label||'File',
+                              org: IT_ORG})}>
                               {canPreview(it.fileStoredName) ? 'View' : 'Download'}</button>
                           </span>)}
                       </div>

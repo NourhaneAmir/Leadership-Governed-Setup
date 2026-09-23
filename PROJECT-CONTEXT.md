@@ -4043,6 +4043,369 @@ directly.
 4. ⚠️ The **CRLF trap in §8 caught me again**: a table list written by Python
    on Windows made all 54 generated entities look missing. `tr -d '\r'`.
 
+### 23 Sep, later: Business Units filtered app-wide to HR-tagged rows only
+
+Per an explicit ask ("filter from the tables BUs that have the application
+tag of HR"). `fetchBusinessUnits()` (`dataverse.js`) is the **one** shared
+function every Business Unit picker in both apps calls — Meeting/Report Setup
+scope pickers, the Setup Register's BU filter, KPI/Process department→BU
+resolution (`deptInBu()`) — so this is an app-wide narrowing, not a
+single-screen change. **Confirmed live against IT before writing anything**:
+`cr603_application_tag` is a multi-select Choices column, and **15 of the 36
+IT Business Units carry the `HR` tag** (queried directly via `pac org fetch`,
+not assumed).
+
+**Read via the FormattedValue annotation, not a raw OData filter.**
+`cr603_application_tag` comes back from `getAll()` as
+`cr603_application_tag@OData.Community.Display.V1.FormattedValue` — a
+`"; "`-joined label string, e.g. `"Onboarding; HR; Laptop"` — the same
+annotation-over-hand-kept-code-map convention this file already uses for
+every other choice column (`FV`, `dataverse.js`). `fetchBusinessUnits()` now
+selects the raw column (to trigger the annotation) and filters rows whose
+split, trimmed label list includes exactly `'HR'`. A server-side
+`Microsoft.Dynamics.CRM.ContainValues` OData filter would also work but
+nothing in this app has exercised that syntax against this connector yet —
+client-side matching on a label this codebase already knows how to read is
+the safer default, consistent with how this file has repeatedly chosen the
+already-proven route over an untested one.
+
+⚠️ **The cached legacy schema's enum for this column is stale.** The 13
+values recorded in `apps/*/.power/schemas/dataverse/businessunits.Schema.json`
+(`OVR, Biomedical, checklist, Onboarding, Project, Customer feedback,
+Clinical Governance, HR, KSA Medical Audit, EGY Medical Audit, DTM, Services
+Hub, Planning System`) do **not** match what IT actually returns — live rows
+also carry `AHBS Requests` and `Laptop`, neither of which is in that cached
+list. Harmless for this change (label-string matching doesn't care about the
+full enum), but worth knowing before trusting that cached file for this
+column again — same lesson §5's "23 Sep: full schema refresh" entry just
+drew for other tables, now confirmed here too.
+
+⚠️ **Consequence, not yet checked against real data:** an existing Setup
+already scoped to a non-HR Business Unit keeps its saved lookup — nothing is
+deleted — but that BU no longer appears in the picker, so re-opening such a
+Setup will show the BU field as unselected, same "unlisted current value"
+behaviour already documented for the 22 Sep Dashboard-retirement change.
+Whether any live Setup is actually scoped to a non-HR BU has not been
+checked.
+
+Both apps rebuilt (`npm run build`), bundle org URLs verified unchanged
+(Governance: IT only; Leadership: IT + DT New, matching every prior push this
+session) before deploying — `dist/` replaced in both staging folders,
+`power-apps push` from each, `App pushed successfully` for both,
+`786c1b14-bf09-4dd7-a0a2-5730e87744fe` (Governance) then
+`d61c6237-fec1-45c7-80e0-a9c63dd1e662` (Leadership), same two app ids as
+every push this session.
+
+### 23 Sep, later: Reporting hierarchy's file preview 404'd on a real file — `downloadFileColumn()` had no org override, unlike `dvTable()`
+
+Reported live, with a screenshot: opening a Report Template's attached file
+from Leadership's Reporting Hierarchy → Report Templates view threw *"Entity
+'lm_Report_Template' With Id = ... Does Not Exist"* — on a Template that was
+visibly right there in the list the same screen had just rendered.
+
+**Root cause: `downloadFileColumn()` (`xenv.js`) always closed over the
+module-level `DATA_ORG`, with no per-call override.** Every other cross-org
+reader in this file (`dvTable()`) already takes an optional `org` argument —
+this is what let the Report Template family move to `IT_ORG` on 22 Sep in the
+first place (§9). `downloadFileColumn()` was the one exception: it was built
+before that split existed and nobody had opened a Report-Template-family file
+preview from **Leadership** until this click, since Governance's own
+`DATA_ORG` already equals `IT_ORG` and never exposed the gap. The list read
+(`fetchReportTemplateHierarchyContent()`) already correctly targets IT, so
+the row existed and rendered — the file-preview call then queried Leadership's
+own home org (DT New) for that same id, which genuinely has no row under it.
+
+**Fixed the same way `dvTable()` already solves it**: `downloadFileColumn(entitySet,
+recordId, fieldName, org = DATA_ORG)` gained a fourth parameter,
+`FilePreview` (`src/shared/FilePreview.jsx`) gained an optional `org` prop
+(added to its data-fetching `useEffect`'s dependency array too, so a changed
+org actually re-fetches) and passes it straight through, and `Hierarchy.jsx`'s
+two `setTplFileView({...})` call sites (the Template's own file, and a
+Section Item's file citation) now both set `org: IT_ORG` explicitly, importing
+it from `xenv.js`. Governance's own `<FilePreview>` call site
+(`GovernanceApp.jsx`) passes no `org` at all — the new parameter defaults to
+`DATA_ORG`, which already equals `IT_ORG` there, so it is unaffected by
+construction, not by a second code path.
+
+**Verified before pushing, not just reasoned through**: `npm run build`
+clean on both apps, then `scripts/undef-scan.py` run against the corrected
+local path (the checked-in script's `ROOT` is still hardcoded to a different
+machine's path — see §9's checklist) — the only two hits are both
+already-known false positives (`domain.jsx`'s "Issue" is prose inside label
+strings; `Hierarchy.jsx`'s "file" is the pre-existing `||'File'` fallback
+string this section's own 21 Sep entry already documents), nothing new from
+this change. Bundle org-URL counts checked before deploying, same as every
+push this session. Both apps rebuilt and pushed, `App pushed successfully`
+for both, same two app ids as every push this session.
+
+⚠️ **`uploadFileColumn()` (the write side) has the identical gap — no `org`
+parameter — left unfixed here.** Out of scope for this bug: only Governance
+Setup ever uploads a file, and Governance's `DATA_ORG` already equals
+`IT_ORG`, so there is no live path that exercises the gap today. Worth
+fixing the same way if a write-side cross-environment need ever appears.
+
+### 23 Sep, later: a full lookup audit of Report/Meeting Template saving — one real bug found, everything else confirmed correct
+
+Per an explicit ask to "make sure all lookups are correct." Every
+`@odata.bind` write in both Template families' create, update and reconcile
+paths was cross-checked against the **live** schema — not the cached files,
+not assumption — via a single `pac modelbuilder` sweep of all 27 tables in
+both families together (so every relationship between any two of them would
+actually emit; see §6's own note on that rule). The generated `.cs` files'
+`GetRelatedEntity<TargetClass>(...)` calls were parsed into a script-built
+map of every lookup property → its real target table, then checked by hand
+against every write site in `dataverse.js`.
+
+**Result: everything is correct, with two things that looked like bugs and
+verified as intentional:**
+- `lm_Meetingtemplate` (lowercase "t") on `lm_meetingtemplatedepartmentfunctions`
+  — confirmed live to be genuinely how that one column is spelled, not a typo
+  (every other Meeting Template child table uses the standard `lm_MeetingTemplate`
+  casing for the identical concept).
+- Three different spellings of "Speciality" across three tables
+  (`lm_Speciality` on the BU unit table, `lm_ReportSpecialty` on the parent,
+  `lm_ReportSpeciality` on the Region unit table) — each matches its own
+  table's real column name exactly; §6 already flagged this as intentional
+  before this audit, now independently re-confirmed.
+
+**One real bug, found and fixed in the same pass: a group-wide (Stage 3/4)
+Meeting Setup's Team Channel was silently never saved.** The wizard's
+Channel picker renders identically for a group-wide unit card as a BU/Region
+one (`UnitSetup` has no scope-level gate on it) — but
+`meetingTemplateParentPayload()` only ever bound Category/Chairman/Co-Chairman/
+Facilitator for the group-wide case, never `lm_TeamChannel`, even though the
+column exists on `lm_meetingtemplate` and the Report Template side already
+handles the identical case correctly. Three-part fix, mirroring exactly how
+the Report Template side already does it:
+- **Write**: `meetingTemplateParentPayload()` now binds
+  `groupUnit?.channelId` to `lm_TeamChannel@odata.bind`.
+- **Read select**: `fetchMeetingTemplateDetail()`'s parent `$select` was
+  missing `_lm_teamchannel_value` entirely — it had nowhere to read its own
+  value back from, on top of never writing it.
+- **Hydrate**: `dataverseMeetingToSetup()`'s `groupUnits` mapping hardcoded
+  `channel:null, team:null` instead of reading the parent row, same shape the
+  Report Template hydrate already used correctly.
+
+Both apps rebuilt, bundle org URLs re-checked (Governance IT-only, Leadership
+both), pushed — `App pushed successfully` for both,
+`786c1b14-bf09-4dd7-a0a2-5730e87744fe` (Governance) then
+`d61c6237-fec1-45c7-80e0-a9c63dd1e662` (Leadership), same two app ids as
+every push this session.
+
+### 23 Sep, later still: a second, bigger group-wide gap found chasing the first — group-wide Meeting Setup Attendees were also silently discarded
+
+Asked directly what else was missing after the Channel fix above. Tracing
+the same "does the wizard render this for a group-wide unit, and does the
+save path actually handle it" question found a second, more structural gap:
+`createMeetingTemplateChildren()`'s per-unit loop was a strict
+`if(bu)...else if(region)...else{ console.warn(...); continue; }` — for
+`stageLevel==='group'` it always hit the `else`, logging a console warning
+**only a developer would ever see** and skipping the Attendees sub-loop
+entirely. The Attendees picker (`AttendeeList`) renders for a group-wide
+unit card exactly like a BU/Region one, so anything typed in there was pure
+UI theatre — never reaching Dataverse.
+
+**Bigger than the Channel fix because there is no per-unit row to key
+off.** `lm_meetingattendeeslists` already carries a direct `lm_MeetingTemplate`
+lookup (bound unconditionally on every attendee row regardless of scope), so
+a group-wide attendee *can* bind straight to the template with no per-unit
+lookup at all — but nothing filtered for that shape on read, and the
+update path's reconcile-vs-flat-list split (`reconcileMeetingUnits()` only
+ever handles `'bu'`/`'region'`) had no bucket for it either.
+
+**Four-part fix:**
+- **Write** (`createMeetingTemplateChildren`): added a real `'group'` branch
+  that falls through to the Attendees loop with `unitBind`/`unitLookupField`
+  left `null` — a shape the loop already tolerated, just never reached.
+  `opts.skipUnits` (which fully skipped the loop before) now only gates the
+  `'bu'`/`'region'` branches specifically, so group-wide attendees are never
+  accidentally skipped on an update.
+- **Update**: group attendees are deleted-then-recreated on every edit — the
+  same treatment every other *flat* list already gets (agenda, department/
+  function lines, supportive functions, linked reports), not the
+  reconcile-by-diff treatment BU/Region attendees get, since there is no
+  stable per-unit row for them to diff against.
+- **Read** (`fetchMeetingTemplateChildIds()` *and* `fetchMeetingTemplateDetail()`):
+  both gained a query for attendees where **both** per-unit lookups are
+  `null` — that combination is what identifies a group-wide row, since
+  there's no unit row for it to point at.
+- **Hydrate**: `coreMembers:[]` → `coreMembers:(detail.groupAttendees||[]).map(attendeeToRow)`,
+  the same mapper the BU/Region hydrate already uses.
+
+Traced by hand through three scenarios before building: a brand-new
+group-wide Setup, editing an existing one (add/remove an attendee), and a
+BU/Region Setup (confirmed unaffected — the pre-existing `skipUnits` guard on
+those two branches is untouched). Both apps rebuilt, bundle org URLs
+re-checked, pushed — same two app ids as every push this session.
+
+### 23 Sep, once more: `lm_dayofweeks` — a Fixed day / Multiple days toggle for Weekly and Twice Weekly, on both Setup kinds
+
+Per an explicit ask, about a column the user had just added in Dataverse.
+**Confirmed live before writing anything, not assumed from the name** — a
+first `pac modelbuilder` pull looked alarming: `lm_dayofweeks` (a new
+multi-select Choices column, present on both `lm_report_templates` and
+`lm_meetingtemplates`) is bound to the org's **"Days of Month" global choice
+set** (`lm_daysofmonth`, values `1`..`31`, 124330000-based codes) — not a
+weekday list, unlike the existing `lm_SecondDayoftheWeek` column right next
+to it on both tables, which correctly uses the org's real `lm_weekdays` list
+(`Sunday`..`Thursday`). Flagged this to the user as looking like a
+maker-portal mix-up before building anything — **confirmed intentional**:
+there are genuinely two separate, parallel ways to name a Weekly/Twice
+Weekly Setup's day(s) — a single fixed weekday (existing behaviour,
+untouched), or several **numbered** days (not weekday names) from this new
+column, capped at 4 for Weekly and 8 for Twice Weekly.
+
+**What was built**, all in `CadenceFields` (shared by both wizards) unless
+noted:
+- A `Seg` toggle, **Fixed day / Multiple days**, shown only when Frequency is
+  Weekly or Twice Weekly. Switching it clears whichever side just went
+  inactive (`dayOfWeek`/`secondDayOfWeek` vs `dayOfWeeks`), so a save can
+  never carry a stale value from the mode not currently shown.
+- Fixed day mode is **pixel-for-pixel the pre-existing UI**, just now gated
+  behind the toggle instead of always shown.
+- Multiple days mode is a new checkbox grid, `1`..`31` (`DAY_NUMBERS`),
+  using the existing-but-previously-unused `Checks` component (defined,
+  never called, until now) — gained an optional `max` prop for this: a box
+  past the cap is disabled, not silently ignored on click. New
+  `.chk.disabled` rule in `theme.css`.
+- **Mode is inferred on hydrate, not stored** — there is no new "which mode"
+  column, so `dataverseReportToSetup()`/`dataverseMeetingToSetup()` set
+  `dayMode:'multi'` whenever `lm_dayofweeks` decodes to a non-empty array,
+  `'fixed'` otherwise.
+- `cadenceRules()` (shared validation) requires a fixed day only in Fixed
+  mode, and in Multiple days mode requires at least one pick and re-checks
+  the cap server-side-shaped (a safety net behind `Checks`'s own `max`, for
+  any value that arrives some other way than this wizard).
+- The review-step summary (`MeetingSummary`/`ReportSummary`) and the
+  publish-confirmation diff both show the picked numbers in Multiple days
+  mode, via a new shared `cadenceDayFragment(s)` helper, rather than going
+  blank there.
+
+**Data layer** (`dataverse.js`): `DAY_OF_WEEKS_MULTI_KEY`/`DAY_OF_WEEKS_MULTI`
+(1..31 ↔ 124330000-based codes), `parseMultiChoice()` (accepts either a
+plain array or a comma-separated string on read — this connector's real
+shape for a multi-select **write** has never been exercised by this app
+before, and reads have only ever gone through the FormattedValue annotation,
+never the raw attribute, so both are handled defensively rather than
+assumed), and `decodeDayOfWeeksMulti()` tying the two together. Wired into
+both parent payload builders (write: an array of the mapped codes, or `null`
+when empty) and both detail `$select`s.
+
+⚠️ **Genuinely unverified: this is the first multi-select WRITE anywhere in
+this app.** The write uses the documented standard Dataverse Web API shape
+(a plain array of option-set integers) but has not been proven against a
+real save. First real test: save a Weekly Setup with 2 days picked in
+Multiple days mode, reopen it, confirm they round-trip.
+
+Both apps rebuilt, bundle org URLs re-checked, pushed — same two app ids as
+every push this session.
+
+### 23 Sep, same day, straight after: "the report doesn't save" — the picked days never left the browser, and the "unverified write" flag above was aimed at the wrong risk
+
+Reported live, with a screenshot of the browser console — which turned out to
+be almost entirely Power Apps player/host chrome noise (`unload` permissions
+violations, ECS telemetry, `es6.webplayer-host-ui.js` warnings), nothing from
+this app's own bundle. **Diagnosed by checking Dataverse directly instead of
+guessing from the console**: queried `lm_report_templates` in IT for the most
+recently modified rows and found the Setup in question —
+`Clinical Governance and Advertising Production_Core_Twice Weekly`
+(`9c1f2678-4a9e-4146-a9d7-b2472bf775d7`), modified today — **had actually
+saved**. The parent row exists, with the right name and Frequency. But both
+`lm_dayoftheweek` *and* the new `lm_dayofweeks` came back completely empty,
+confirming the failure was narrower than "the report doesn't save": the row
+saves, the day selection silently does not.
+
+**Root cause: `buildReportTemplatePayload()`/`buildMeetingTemplatePayload()`
+(`GovernanceApp.jsx`) never learned about `dayOfWeeks`.** These two
+functions are the layer between the wizard's live form state and
+`reportTemplateParentPayload()`/`meetingTemplateParentPayload()`
+(`dataverse.js`) — both editions were updated earlier today to *read*
+`payload.dayOfWeeks`, and `CadenceFields` was updated to *collect* it into
+`s.dayOfWeeks`, but neither builder function was told to *copy* it across.
+Each one is an explicit field-by-field list (`frequency: f.frequency,
+dayOfWeek: f.dayOfWeek, dayOfMonth: f.dayOfMonth, …`), so a field left off
+it is silently `undefined` in the outgoing payload — not a typo Dataverse
+could reject, nothing to throw on. **This is the identical failure shape a
+comment sitting three lines away in `buildMeetingTemplatePayload()` already
+describes**, from an 08 Sep bug where `secondDayOfWeek`/`secondDayOfMonth`/
+`monthInSemester` were "collected... just had nowhere to put them" — the
+same mistake, repeated with the new field, in the same file, the same day it
+was built.
+
+**Fixed:** `dayOfWeeks: f.dayOfWeeks || undefined` added to both builder
+functions. Both apps rebuilt, org URLs re-checked, pushed.
+
+⚠️ **This means the "first multi-select write, unverified" flag on the entry
+above was pointed at the wrong risk.** The actual write to
+`lm_dayofweeks` was never reached at all in the one real attempt made today —
+`payload.dayOfWeeks` was always `undefined`, so `reportTemplateParentPayload()`
+wrote `null`, which Dataverse of course accepted with no error. Whether the
+documented standard shape (a plain array of option-set integers) is actually
+correct for a **write** is **still** completely unverified — now for the
+right reason. First real test, unchanged in substance from the earlier note:
+save a Weekly or Twice Weekly Setup with 2+ days picked in Multiple days
+mode, reopen it, confirm they round-trip. The leftover test row above
+(`9c1f2678-4a9e-4146-a9d7-b2472bf775d7`) still has empty day fields from the
+broken attempt — left as-is, not cleaned up, a natural one to re-save over
+for that test.
+
+### 23 Sep, same day, once more: that "first real test" ran, and settled the flag above the hard way — `lm_dayofweeks` needs a comma-separated STRING, not an array
+
+Reported live, with the real evidence this time: `Case Management_Executive_Weekly`
+(a fresh Report Template, Multiple days ticked, 4 numbers picked) failed to
+save **entirely** — nothing landed in `lm_report_templates` at all, confirmed
+by querying IT directly before asking for anything further. The generic
+toast said only "Dataverse write failed. Check the console for details," and
+the browser console itself was almost entirely Power Apps player/host chrome
+noise (`unload` permission violations, ECS telemetry) — the one real line in
+it was a bare `Failed to load resource: ... 400` against
+`.../api/data/v9.1.0/lm_report_templates`, with no message body visible.
+**The actual fix came from the Network tab's response body**, not the
+console — walked through step by step (Network tab → filter by table name →
+open the 400 → Response/Preview), because a terse "failed to load" line
+never carries the OData error text, only the tab that shows the raw response
+does.
+
+**The real message, once seen, settled it in one read:** *"An unexpected
+'StartArray' node was found when reading from the JSON reader. A
+'PrimitiveValue' node was expected."* This connector reads
+`api/data/v9.1.0` — Dataverse Web API on this version accepts a multi-select
+Choices value as a single **primitive**: a comma-separated **string** of the
+option-set integers (`"124330000,124330010,124330021,124330028"`), not a
+JSON array. Sending an array fails the whole parent-row create, not just
+that field — which is exactly why the entire Setup vanished rather than
+saving with an empty day list, the shape of the previous entry's failure.
+
+**Fixed:** both `reportTemplateParentPayload()` and
+`meetingTemplateParentPayload()` now `.join(',')` the mapped codes instead of
+leaving them as an array. `parseMultiChoice()` on the read side needed **no**
+change — it was already built to accept a string defensively, before this
+was confirmed, on the reasoning that the real shape hadn't been proven
+either direction yet. Verified the write→read round trip in isolation
+(`node -e`, the actual `DAY_OF_WEEKS_MULTI_KEY`/`DAY_OF_WEEKS_MULTI`/
+`parseMultiChoice` logic copied in, not restated from memory) against the
+exact four codes from the failed attempt (`1, 11, 22, 29` →
+`"124330000,124330010,124330021,124330028"` → back to `[1, 11, 22, 29]`) —
+confirmed the shape is now correct, though a real Dataverse save is still
+the only proof that actually counts. Both apps rebuilt, org URLs re-checked,
+pushed.
+
+⚠️ **This closes the "still completely unverified" flag two entries above —
+but only for the write's *shape*, confirmed by a real rejection and a real
+fix, not yet by a real *success*.** The next save attempt is still the first
+one that could actually prove the round trip end to end. If it fails again,
+get the Network tab response body first, the same way this one was found —
+the console alone did not have enough in it either time.
+
+**Worth generalising, since this is the second time in one afternoon that
+the console screenshot alone was not enough**: this app already has a
+documented instance of exactly this lesson (§6/§8, the File-upload
+content-type bug — "splitting a file-upload failure into its own tagged
+error... is what actually surfaced the fix"). A bare `Failed to load
+resource: 400` in the console is a pointer, not a diagnosis — the response
+body is the diagnosis, and for a Code App talking to Dataverse through this
+connector, that means the Network tab, not the Console tab.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### NEW this session: group-wide (Stage 3/4) roles now live on the parent row
@@ -4310,6 +4673,40 @@ Also note the **truncated logical name**: the column is
 `lm_monthofthesemesterseme`, not `lm_monthofthesemester`. Dataverse cut it at the
 length limit. Any hand-written FetchXML or flow expression has to use the
 truncated form.
+
+### `lm_dayofweeks` (23 Sep) is bound to the wrong-LOOKING choice set — confirmed intentional, not a mistake
+A third day-related column, on **both** `lm_report_templates` and
+`lm_meetingtemplates` (same codes on each). A multi-select Choices column,
+but bound to the org's **"Days of Month"** global choice set
+(`lm_daysofmonth`) — values `1`..`31`, 124330000-based codes (`_1`=124330000,
+`_2`=124330001, … same numbering family as `lm_daysoftheweek` above, just a
+much longer list) — **not** the org's real weekday list (`lm_weekdays`,
+`Sunday`..`Thursday`) that `lm_SecondDayoftheWeek` right next to it correctly
+uses. Looked like a maker-portal mix-up on first discovery and was flagged as
+one before any code was written — **confirmed intentional**: a Weekly/Twice
+Weekly Setup can alternatively name several **numbered** days (not weekday
+names) instead of a single fixed weekday, and the numbers themselves are
+what's picked. `DAY_OF_WEEKS_MULTI_KEY`/`DAY_OF_WEEKS_MULTI` (`dataverse.js`)
+hold the 1..31 ↔ code mapping; `DAY_OF_WEEKS_CAP(freq)` returns 8 for Twice
+Weekly, 4 for everything else in `DOW_FREQ`.
+
+⚠️ **First multi-select WRITE this app has ever done — and the first attempt
+was wrong, confirmed by a live 400.** Every prior multi-select use
+(`cr603_application_tag` on `businessunit`, read-only, 23 Sep) only ever read
+the FormattedValue annotation, never wrote the raw attribute. The documented
+OData v4 shape (a plain array of the option-set integers) fails outright
+against this connector: *"An unexpected 'StartArray' node was found... A
+'PrimitiveValue' node was expected"* — it targets `api/data/v9.1.0`, which
+wants a **comma-separated string** instead (`"124330000,124330010"`), and
+rejects the *entire* parent-row create when it gets an array, not just that
+field. **Fixed** — the write now `.join(',')`s. `parseMultiChoice()` on the
+read side needed no change; it was already built to accept a string
+defensively, before this was confirmed either way. Verified in isolation
+(`node -e`, the real logic copied in) that the write→read round trip is
+correct; a real Dataverse save round-trip is still the strongest remaining
+proof. If a *different* multi-select column is ever written anywhere else in
+this app, this is the first place to check — the array shape is the
+documented default everywhere online, and it is wrong for this connector.
 
 ### A Report Occurrence has no per-occurrence reviewer table
 `lm_reportoccurrences` carries **`lm_reviewstep` only**. The chain is **read from
