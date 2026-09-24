@@ -31,7 +31,9 @@ import { fetchReportOccurrenceForEdit, saveReportOccurrenceContent, submitReport
          fetchStrategies, fetchBiReportDashboards, fetchTasks, createTask,
          fetchProjects, PROJECT_STATUS, PROJECT_CATEGORY,
          POC_STATUS, fetchAssignableUsers, fetchBiReportsByKpi,
-         SECTION_ANGLE, SECTION_BREAKDOWN_DIM } from '../../../services/dataverse.js';
+         SECTION_ANGLE, SECTION_BREAKDOWN_DIM,
+         fetchBusinessUnitsForIT, fetchDepartmentsForIT, fetchFunctionsForIT,
+         fetchRegionsForIT, fetchPositionNamesForIT } from '../../../services/dataverse.js';
 
 /* Dataverse angle labels, and the DiagChip / .dg-seg class each maps onto. */
 const ANGLES = [['Untyped', 'none'], ['Descriptive', 'd1'], ['Diagnostic', 'd2'],
@@ -189,7 +191,39 @@ function AttachChild({ cite, occsOfTemplate, tplChildren, onAttach, busy, nm, L 
 
 export function ScreenBuildReport(){
   const { dvReportOccs, dvLoading, dvLookup, sel, setSel, refreshOccurrences, toast, go } = use();
-  const L = dvLookup || {};
+  /* Department/Function/BU/Region/Position on a Report Occurrence are IT ids
+     (the Report Occurrence family has read/written IT since 22 Sep) -- the
+     shared dvLookup context resolves those same fields against DT New instead,
+     since Meeting-side screens need that answer for the identical fields. So
+     this screen reads its own IT-sourced copies for just those five, and
+     overrides dvLookup with them below -- keeping dvLookup's rptTpl (already
+     IT-pinned via fetchReportTemplatesList) and myPositionIds (the signed-in
+     user's DT New Positions, still used as-is for submitReportOccurrence's
+     actorPositionId -- a related, not yet fixed, gap) untouched. */
+  const [itScope, setItScope] = useState(null);
+  useEffect(() => {
+    let live = true;
+    Promise.all([
+      fetchBusinessUnitsForIT().catch(() => []),
+      fetchDepartmentsForIT().catch(() => []),
+      fetchFunctionsForIT().catch(() => []),
+      fetchRegionsForIT().catch(() => []),
+      fetchPositionNamesForIT().catch(() => []),
+    ]).then(([bu, dept, func, region, pos]) => {
+      if (!live) return;
+      const toMap = rows => { const m = {}; (rows||[]).forEach(r => { m[r.id] = r.name; }); return m; };
+      const buM = toMap(bu), deptM = toMap(dept), funcM = toMap(func), regionM = toMap(region), posM = toMap(pos);
+      setItScope({
+        bu:     id => (id && buM[id])     || null,
+        dept:   id => (id && deptM[id])   || null,
+        func:   id => (id && funcM[id])   || null,
+        region: id => (id && regionM[id]) || null,
+        pos:    id => (id && posM[id])    || null,
+      });
+    });
+    return () => { live = false; };
+  }, []);
+  const L = { ...(dvLookup || {}), ...(itScope || {}) };
   const nm = (fn, id) => (id && typeof fn === 'function' ? fn(id) : null);
 
   const reports = dvReportOccs || [];

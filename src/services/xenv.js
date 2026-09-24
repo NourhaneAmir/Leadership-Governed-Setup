@@ -49,7 +49,7 @@ export const DATA_ORG =
    pointed at since Open Decision 9 (22 Sep, see PROJECT-CONTEXT.md). A table
    family that dataverse.js wants pinned to IT regardless of which app is
    built (or what DATA_ORG above resolves to) passes this as dvTable()'s
-   third argument. Two families use it so far, both per an explicit ask, both
+   third argument. Three families use it so far, all per an explicit ask, all
    because the real rows only meaningfully exist in IT now that Governance
    Setup writes there:
      - the Report Occurrence family (lm_reportoccurrences and its own child
@@ -62,7 +62,20 @@ export const DATA_ORG =
        (fetchReportTemplateHierarchyContent()) and its app-wide Template
        name lookup (fetchReportTemplatesList(), feeding BuildReport's
        approved-Template picker and every screen that names a linked
-       Template) both read this through the same three tables.
+       Template) both read this through the same three tables;
+     - the citation-source catalogs Build a report/plan's pickers cite
+       directly into a Report Occurrence row (24 Sep): strategy_kpises,
+       strategy_processes, stf_strategypocs, stf_executioncategories,
+       crd04_specialtieses, strategy_strategies, lm_bireportdashboards,
+       hx_taskses, cr603_projectses. Left unpinned, a citation created in IT
+       would have bound to a DT-New id that does not exist there -- these
+       tables have no natural home the way the first two families do, they
+       just have to agree with wherever the citation row itself lives.
+       fetchKpis()/fetchProcesses()/fetchBiReportDashboards()/fetchTasks()
+       are shared with Business Intelligence and Communication too, so this
+       moved those screens' data to IT as a deliberate side effect, not a
+       narrower per-screen pin -- there is no way to pin a table for one
+       caller only.
    Governance Setup's own DATA_ORG already equals this org, so pinning any
    of the above is a no-op there -- the divergence is Leadership-only, which
    stays on DT New for every table not listed above (Meeting Occurrences

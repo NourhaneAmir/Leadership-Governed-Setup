@@ -87,9 +87,81 @@ const BusinessunitsService = dvTable('businessunits');
 const Crd04_regionsesService = dvTable('crd04_regionses');
 const Cr603_chklst_departmentsesService = dvTable('cr603_chklst_departmentses');
 const Hr_functionsService = dvTable('hr_functions');
-const Strategy_kpisesService = dvTable('strategy_kpises');
-const Strategy_processesService = dvTable('strategy_processes');
-const Pm_kpiachievmentsService = dvTable('pm_kpiachievments');
+/* IT-pinned SIBLINGS of the four services directly above, plus Organization
+   Structure below -- deliberately a second, separate set of dvTable()
+   instances, not the same tables repointed to IT_ORG (24 Sep).
+
+   Business Unit/Region/Department/Function/Position are read by BOTH
+   Meeting-side data (Meeting Occurrences, still DT New) and Report-side data
+   (Report Occurrences, IT since 22 Sep) throughout LeadershipApp.jsx --
+   dvBu()/dvDept()/dvFunc()/dvPos()/dvRegion() alone are called 40+ times,
+   resolving Meeting Chairman/Facilitator names and Meeting BU/Region/
+   Department labels just as often as anything Report-side. Repointing the
+   existing services to IT_ORG the way the citation-source tables were pinned
+   would have fixed Build a report/plan's Scope panel and broken every one of
+   those Meeting-side resolutions in the same stroke -- Meeting Occurrences
+   still carry DT New ids, and IT's copies of these tables do not share ids
+   with DT New's any more than any other pair of tables in this app do.
+
+   So this is a genuine fork, not a pin: a second, IT-reading set, used only
+   by screens resolving names on Report-side (IT-hosted) records. Kept
+   deliberately minimal -- name-only, no holder-resolution chain for
+   Positions -- since that is all Build a report/plan's Scope panel needs. */
+const BusinessunitsItService = dvTable('businessunits', undefined, IT_ORG);
+const Crd04_regionsesItService = dvTable('crd04_regionses', undefined, IT_ORG);
+const Cr603_chklst_departmentsesItService = dvTable('cr603_chklst_departmentses', undefined, IT_ORG);
+const Hr_functionsItService = dvTable('hr_functions', undefined, IT_ORG);
+const Cr603_organizationstructuresItService = dvTable('cr603_organizationstructures', undefined, IT_ORG);
+
+/** IT-side siblings of fetchBusinessUnits/fetchDepartments/fetchFunctions/
+ *  fetchRegions/fetchPositions (name only, no holder chain) -- see the note
+ *  on the *ItService consts above for why these exist as a second, separate
+ *  set rather than the existing functions repointed to IT_ORG. */
+export async function fetchBusinessUnitsForIT(){
+  const res = await BusinessunitsItService.getAll({ select: ['businessunitid', 'name'] });
+  return (res?.data ?? []).map(r => ({ id: r.businessunitid, name: r.name }));
+}
+export async function fetchRegionsForIT(){
+  const res = await Crd04_regionsesItService.getAll({ select: ['crd04_regionsid', 'crd04_id'] });
+  return (res?.data ?? []).map(r => ({ id: r.crd04_regionsid, name: r.crd04_id }));
+}
+export async function fetchDepartmentsForIT(){
+  const res = await Cr603_chklst_departmentsesItService.getAll({
+    select: ['cr603_chklst_departmentsid', 'cr603_department'],
+  });
+  return (res?.data ?? []).map(r => ({ id: r.cr603_chklst_departmentsid, name: r.cr603_department }));
+}
+export async function fetchFunctionsForIT(){
+  const res = await Hr_functionsItService.getAll({ select: ['hr_functionid', 'hr_functionname'] });
+  return (res?.data ?? []).map(r => ({ id: r.hr_functionid, name: r.hr_functionname }));
+}
+export async function fetchPositionNamesForIT(){
+  const res = await Cr603_organizationstructuresItService.getAll({
+    select: ['cr603_organizationstructureid', 'cr603_name'],
+  });
+  return (res?.data ?? []).map(r => ({ id: r.cr603_organizationstructureid, name: r.cr603_name }));
+}
+/* Pinned to IT_ORG (24 Sep) -- both feed Build a report/plan's KPI/Process
+   citation pickers, and a citation row is created in IT (see
+   Lm_reportsectioncitationsesService below), binding lm_KPI/lm_Process
+   straight to whatever id the picker offered. Leaving these on this app's
+   own DATA_ORG (DT New for Leadership) would have handed the citation a
+   DT-New id to bind against an IT row -- the two environments do not share
+   ids for the same conceptual record anywhere else in this app either, so
+   the bind would fail. Business Intelligence and Communication also read
+   these two tables (fetchKpis/fetchProcesses are shared, not
+   Build-a-report/plan-only), so this moves their KPI/Process/Task data to
+   IT too, on purpose -- see PROJECT-CONTEXT.md for the scope decision. */
+const Strategy_kpisesService = dvTable('strategy_kpises', undefined, IT_ORG);
+const Strategy_processesService = dvTable('strategy_processes', undefined, IT_ORG);
+/* Pinned to IT_ORG (24 Sep) same day as strategy_kpises above, for the same
+   reason: fetchKpiAchievements() filters this table by _pm_kpi_value, and
+   since a KPI citation's id now comes from IT's strategy_kpises, an
+   unpinned (DT New) copy of this table would never match it -- DT New's
+   achievement rows point at DT New's KPI ids, not IT's. Both readers
+   (BuildReport.jsx, OrgReports.jsx) are Report Occurrence / citation
+   screens, already IT-hosted, so this is a plain repoint, not a fork. */
+const Pm_kpiachievmentsService = dvTable('pm_kpiachievments', undefined, IT_ORG);
 const Cr301_specialtyksa_service_hubsService = dvTable('cr301_specialtyksa_service_hubs');
 const And_microsoftgroupmembersService = dvTable('and_microsoftgroupmembers');
 const Cr603_organizationstructuresService = dvTable('cr603_organizationstructures');
@@ -138,19 +210,24 @@ export async function fetchRegions(){
    below), rather than a raw OData Microsoft.Dynamics.CRM.ContainValues
    filter, which nothing in this app has exercised against this connector
    yet. Confirmed live against IT: 15 of 36 rows carry HR. */
+/* Unfiltered again as of 24 Sep -- every Business Unit, whether or not it
+   has any Organization Structure rows of its own. Went through two other
+   shapes first (an HR application-tag filter, then a "has at least one
+   Position" filter) before landing here; see PROJECT-CONTEXT.md for why
+   each was tried and dropped. A BU with no Positions of its own is no
+   longer a dead end for the pickers that need one -- positionsInScope()
+   (GovernanceApp.jsx) now falls back to every Position company-wide,
+   labelled by its real BU, exactly for this case. */
 export async function fetchBusinessUnits(){
   const res = await BusinessunitsService.getAll({
-    select: ['businessunitid', 'name', '_cr603_region_value', 'cr603_application_tag'],
+    select: ['businessunitid', 'name', '_cr603_region_value'],
   });
   const rows = res?.data ?? [];
-  return rows
-    .filter(r => String(r['cr603_application_tag' + FV] || '')
-      .split(';').map(t => t.trim()).includes('HR'))
-    .map(r => ({
-      id: r.businessunitid,
-      name: r.name,
-      region: r._cr603_region_value ?? null, // matches a Region's id above
-    }));
+  return rows.map(r => ({
+    id: r.businessunitid,
+    name: r.name,
+    region: r._cr603_region_value ?? null, // matches a Region's id above
+  }));
 }
 
 /* ---------------------------------------------------------------------
@@ -284,7 +361,10 @@ export async function fetchProcesses(){
  *    - pm_month runs 1..12 in calendar order (new_pm_kpiachievment_pm_month),
  *      so a month can be filtered by code instead of matched against its label.
  *    - _pm_kpi_value targets strategy_kpis (relationship pm_kpiachievment_kpi)
- *      -- the same table this app's KPIs come from, so the join is sound.
+ *      -- the same table this app's KPIs come from, so the join is sound. This
+ *      table itself is IT_ORG-pinned (24 Sep) for that reason: a KPI
+ *      citation's id comes from IT, so this table has to live in IT too, or
+ *      the join would compare an IT id against DT New's copy of the row.
  *
  *  Called two ways. With a year alone it returns that whole year, which is what
  *  the Reports screen reads. With `only`, it narrows to particular KPIs and one
@@ -1636,17 +1716,26 @@ const Lm_meetingcategoriesService = dvTable('lm_meetingcategories', 'lm_meetingc
    lm_bireport and lm_task lookups would make the reference resolvable; the
    pickers below already carry the ids ready for that day.
    ======================================================================== */
-const Stf_strategypocsService       = dvTable('stf_strategypocs', 'stf_strategypocid');
-const Stf_executioncategoriesService= dvTable('stf_executioncategories', 'stf_executioncategoryid');
-const Crd04_specialtiesesService    = dvTable('crd04_specialtieses', 'crd04_specialtiesid');
-const Strategy_strategiesService    = dvTable('strategy_strategies', 'strategy_strategyid');
-const Lm_bireportdashboardsService  = dvTable('lm_bireportdashboards', 'lm_bireportdashboardid');
-const Hx_taskesService              = dvTable('hx_taskses', 'hx_tasksid');
+/* All pinned to IT_ORG (24 Sep) -- same reasoning as strategy_kpises/
+   strategy_processes above: every citation these back is written to a
+   Report Occurrence row that lives in IT, and stf_executioncategories/
+   crd04_specialtieses specifically resolve ids that sit directly on a POC
+   row (_stf_poccategory_value/_stf_specialty_value) -- once POC itself
+   reads from IT, those ids are IT's ids, and resolving them against DT
+   New's copies of the two lookup tables would fail the same way an
+   unpinned KPI/Process bind would have. */
+const Stf_strategypocsService       = dvTable('stf_strategypocs', 'stf_strategypocid', IT_ORG);
+const Stf_executioncategoriesService= dvTable('stf_executioncategories', 'stf_executioncategoryid', IT_ORG);
+const Crd04_specialtiesesService    = dvTable('crd04_specialtieses', 'crd04_specialtiesid', IT_ORG);
+const Strategy_strategiesService    = dvTable('strategy_strategies', 'strategy_strategyid', IT_ORG);
+const Lm_bireportdashboardsService  = dvTable('lm_bireportdashboards', 'lm_bireportdashboardid', IT_ORG);
+const Hx_taskesService              = dvTable('hx_taskses', 'hx_tasksid', IT_ORG);
 /* cr603_projects -- entity set cr603_projectses (double-s, same publisher
    convention as cr603_chklst_departmentses/crd04_specialtieses), confirmed
    via `pac modelbuilder build -enf cr603_projects`. Read-only: this app
-   only cites a Project, never creates or edits one. */
-const Cr603_projectsesService       = dvTable('cr603_projectses');
+   only cites a Project, never creates or edits one. Pinned to IT_ORG (24
+   Sep), same reasoning as its siblings above. */
+const Cr603_projectsesService       = dvTable('cr603_projectses', undefined, IT_ORG);
 
 /** POC status, read from the live option set stf_stfpocstatus. */
 export const POC_STATUS = { 1:'Active', 2:'Succeeded', 3:'Failed', 4:'Retired' };

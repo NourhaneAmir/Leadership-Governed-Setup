@@ -470,6 +470,17 @@ const buOf=(s,key)=> stageLevel(s)==='bu' ? key : null;
 /* key, when given, scopes to that ONE unit card's own Business Unit --
    not the whole Setup's multi-unit selection. Without a key, falls back to
    every Business Unit the Setup as a whole runs in. */
+/* 24 Sep: a unit whose own Business Unit(s) have NO Positions at all used to
+   leave every Position picker for it permanently empty -- there was no
+   dead-end message, no escape hatch, nothing to pick. Business Units are no
+   longer pre-filtered to ones with Positions (see fetchBusinessUnits()'s own
+   note), which makes this a live, not theoretical, case. Falls back to every
+   Position company-wide, each one's own Business Unit folded into its
+   displayed name -- PosSel already renders name (bold) then holder (italic)
+   as two lines, so "Position — BU" / "Employee" needs no change to PosSel
+   itself, only to what these fallback rows put in `.name`. Applies at BOTH
+   'bu' and 'region' scope: a Region whose Business Units collectively have
+   no Positions hits the exact same dead end, from the same buIds shape. */
 function positionsInScope(s,key){
   const lv=stageLevel(s);
   let buIds;
@@ -484,7 +495,9 @@ function positionsInScope(s,key){
     buIds = [];
   }
   if(!buIds.length) return POSITIONS;
-  return POSITIONS.filter(p=>!p.bu || buIds.includes(p.bu));
+  const strict = POSITIONS.filter(p=>!p.bu || buIds.includes(p.bu));
+  if(strict.length) return strict;
+  return POSITIONS.map(p=>({...p, name: `${p.name} - ${nameOf(BUSINESS_UNITS,p.bu)||'No Business Unit'}`}));
 }
 
 /* A Standing Agenda Item's Owner is one of the roles actually named on the Setup's
@@ -1074,10 +1087,15 @@ function validateMeeting(s){
       msg:'Type / Classification is required when Setup Type is Business Meeting.'});
   if(!s.stage) r.push({field:'f-stage', step:1, msg:'Stage is required.'});
   /* Required only where the governed list actually offers something for this
-     Stage and Classification. An empty list means the reference data has no row
-     for that pair -- which is a gap in the Taxonomy application, not something
-     the person filling this in can fix. */
-  if(meetingCategoryOpts(s).length && !s.meetingCategory)
+     Stage (and, for a Business Meeting, Classification too). An empty list
+     means the reference data has no row for that pair/Stage -- which is a
+     gap in the Taxonomy application, not something the person filling this
+     in can fix. Without passing accred here, this always used the
+     Classification-gated branch of meetingCategoryOpts -- which is always
+     empty for an Accreditation Committee, since it never has a
+     Classification -- so Category silently went unvalidated for every
+     Accreditation Committee Setup until this was noticed 24 Sep. */
+  if(meetingCategoryOpts(s,s.setupType==='Accreditation Committee').length && !s.meetingCategory)
     r.push({field:'f-meetingCategory', step:1, msg:'Category is required.'});
   /* the name is derived, so what can fail is that it does not resolve, or that it collides */
   r.push(...nameRules(s,1));
@@ -2098,11 +2116,26 @@ const classificationOpts = s => {
   return CATEGORIES.filter(n => allowed.has(n));
 };
 
-const meetingCategoryOpts = s =>
-  (!s.stage || !s.category) ? []
+/* An Accreditation Committee has no Type / Classification step at all (see
+   MeetingClassField's own `when={!accred}`) -- its Category comes straight
+   off lm_meetingcategories instead, narrowed only by Stage. This is not a
+   fallback or a guess: the 22 rows this app already carries with a blank
+   lm_typeclassification are, one for one, the taxonomy's own governed
+   Accreditation Committee list (Patient Experience, Medical Executive, …),
+   and every one of them is Stage 1 -- confirmed live 24 Sep, not assumed.
+   Before this, MeetingCategoryField required s.category (Classification) to
+   be set before showing anything, which an Accreditation Committee Setup
+   can never satisfy -- the Category picker was a permanent dead end for
+   every Accreditation Committee, the exact bug this fixes. */
+const meetingCategoryOpts = (s, accred) => {
+  if(!s.stage) return [];
+  const stageCode = STAGES.indexOf(s.stage) + 1;
+  if(accred) return MEETING_CATEGORIES.filter(c => c.stageCode === stageCode && !c.typeCode);
+  return !s.category ? []
     : MEETING_CATEGORIES.filter(c =>
-        c.stageCode === STAGES.indexOf(s.stage) + 1 &&
+        c.stageCode === stageCode &&
         DV_MEETING_CATEGORY[c.typeCode] === s.category);
+};
 
 /* Type / Classification, narrowed to what the chosen Stage allows. The middle
    level of the cascade: Stage decides this list, and this list decides the
@@ -2133,31 +2166,34 @@ function MeetingClassField({s,set,accred,tot,locked}){
   </Field>;
 }
 
-function MeetingCategoryField({s,set}){
-  const opts = meetingCategoryOpts(s);
+function MeetingCategoryField({s,set,accred}){
+  const opts = meetingCategoryOpts(s,accred);
   const chosen = MEETING_CATEGORIES.find(c=>c.id===s.meetingCategory);
   /* A Setup can hold a Category that is no longer offered -- retired in the
      Taxonomy application, or belonging to a Stage the Setup has since been
      moved off. Say so rather than showing an empty picker. */
   const orphaned = s.meetingCategory && !opts.some(c=>c.id===s.meetingCategory);
-  if(!s.stage || !s.category)
+  if(!s.stage || (!accred && !s.category))
     return <Field id="f-meetingCategory" label="Category"
-      hint="Choose a Stage and a Type / Classification above — the Category list is the set valid for that pair.">
+      hint={accred ? 'Choose a Stage above — Category is read directly from the Accreditation Committee list for that Stage.'
+        : 'Choose a Stage and a Type / Classification above — the Category list is the set valid for that pair.'}>
       <Sel id="f-meetingCategory" val={null} opts={[]} disabled
-        placeholder="Stage and Type / Classification first…" onChange={()=>{}}/>
+        placeholder={accred ? 'Stage first…' : 'Stage and Type / Classification first…'} onChange={()=>{}}/>
     </Field>;
   return <Field id="f-meetingCategory" label="Category" req={opts.length>0}
     hint={chosen?.regionChip
       ? `${chosen.name} is recorded against ${chosen.regionChip}.`
+      : accred ? 'The governed Accreditation Committee list for this Stage — read directly, with no Type / Classification step. Maintained in the Taxonomy application.'
       : 'The governed Category for this Stage and Type / Classification. Maintained in the Taxonomy application.'}>
     <Sel id="f-meetingCategory" val={s.meetingCategory}
       opts={opts.map(c=>({v:c.id, label:c.regionChip?`${c.name} · ${c.regionChip}`:c.name}))}
-      placeholder={opts.length?'Choose a Category…':'No Category defined for this combination'}
+      placeholder={opts.length?'Choose a Category…'
+        : accred ? 'No Accreditation Committee list defined for this Stage' : 'No Category defined for this combination'}
       onChange={v=>set({meetingCategory:v,
         meetingCategoryName:MEETING_CATEGORIES.find(c=>c.id===v)?.name||null})}/>
     {orphaned
       ? <Note k="warn" ic="⚠">This Setup holds <b>{s.meetingCategoryName||'a Category'}</b>, which is not
-          in the list for this Stage and Type / Classification — it may have been retired, or the Stage
+          in the list for this Stage{accred?'':' and Type / Classification'} — it may have been retired, or the Stage
           may have changed. Pick one from the list before publishing.</Note>
       : null}
     {chosen?.requiresSpecialty
@@ -2717,7 +2753,7 @@ function MeetingWizard({rec,onClose}){
                      meetingCategory:null, meetingCategoryName:null,
                      ...(v===STAGES[3]?{lines:[]}:{}), units:syncUnits(ns)});}}/></Field>
           <MeetingClassField s={s} set={set} accred={accred} tot={tot} locked={locked}/>
-          <MeetingCategoryField s={s} set={set}/>
+          <MeetingCategoryField s={s} set={set} accred={accred}/>
           <DerivedName s={s} set={set}/>
           {locked?<Note k="lock" ic="—">Setup Type is locked. Everything else may be changed, and
             publishing will create version {s.version+1}.</Note>:null}

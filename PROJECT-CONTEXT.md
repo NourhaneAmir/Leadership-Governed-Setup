@@ -4454,7 +4454,304 @@ ever reports "it doesn't show my selection" after using the new checkbox.
 Both apps rebuilt, org URLs re-checked, pushed — same two app ids as every
 push this session.
 
+### 24 Sep: the Business Unit filter changed twice more in one session — HR tag → "has Positions" → unfiltered, ending in an automatic Position fallback instead
+
+Two more asks, same day, each replacing the previous approach outright rather
+than layering onto it — worth reading in order, since the code's own history
+comment (`fetchBusinessUnits()`) only points here rather than restating all
+three.
+
+**Pass 1 — "has at least one Organization Structure record," not the HR
+tag.** `fetchBusinessUnits()` stopped filtering on `cr603_application_tag`
+(23 Sep) and instead kept only Business Units with ≥1 row in
+`cr603_organizationstructures`. No server-side distinct/aggregate query
+exists through `dvTable()`'s `getAll()` (only `$select`/`$filter`/
+`$orderby`/`$expand` are forwarded, no `$apply`, no raw FetchXML), so this
+read the one BU-lookup column across every Organization Structure row and
+de-duplicated client-side. **Confirmed live before shipping**: 16 of 36
+Business Units qualified — the same 15 that were HR-tagged, plus `EGY`
+(has Positions, was never HR-tagged).
+
+**Pass 2 — reverted again, same day: every Business Unit, unfiltered.**
+`fetchBusinessUnits()` is back to a plain, unfiltered read — no tag filter,
+no Positions-count filter. In its place, **`positionsInScope()`**
+(`GovernanceApp.jsx`) now falls back automatically when a unit's own
+Business Unit(s) have zero Positions: instead of a permanently empty
+picker, it returns every Position company-wide, with each one's `.name`
+rewritten as `"{Position} - {its real Business Unit}"`. `PosSel` already
+renders name (bold) then holder (italic) as two lines, so this reads as
+`Position - BU` / `Employee Name` with **no change to `PosSel` itself** —
+only to what the fallback rows put in `.name`. Applies at both `'bu'` and
+`'region'` scope (a Region whose Business Units collectively have zero
+Positions hits the identical dead end, from the same `buIds` shape).
+**Confirmed live**: 20 of the 36 Business Units currently have zero
+Organization Structure rows, so this is a live, immediately-visible case,
+not a rare edge one.
+
+Cascades to every one of `positionsInScope()`'s existing callers with no
+further per-call-site changes: Chairman, Co-Chairman, Facilitator, Owner
+Position, Submitting Position, Review Chain steps (whose own dedup filter —
+excluding a Position already used elsewhere in the same chain — still
+applies on top, keyed by `.id`, unaffected by the renamed `.name`), and
+Attendees. Agenda Item Owner is untouched, same reasoning as the 23 Sep
+"search everyone" feature: it's restricted by a different rule entirely
+(already holding a role on this Setup), not Business Unit/Region.
+
+Both apps rebuilt, org URLs re-checked, pushed — same two app ids as every
+push this session.
+
+### 24 Sep, later: Accreditation Committee's Category picker was a permanent dead end — found and fixed, validation had the identical gap
+
+Per an explicit ask, made concrete by a new taxonomy reference document shared
+in chat (`Leadership_Taxonomy_updated_v5.html`, not saved to the repo — see
+§3's note about chat-only source files re-request it if it's needed again).
+That document distinguishes three different things all labelled
+"Accreditation Committee": a `Setup Type` value (section 07, already matches
+this app exactly), a `Classification Type` value (section 03, one of 7
+sibling meeting-family choices), and — separately — a governed 22-row
+**Category** list (section 05) that a Classification Type of Accreditation
+Committee unlocks, Stage 1 only.
+
+**Confirmed against live data before writing any code, not assumed from the
+taxonomy alone**: queried `lm_meetingcategories` in IT directly. Of 94 live
+rows, **exactly 22 have no `lm_typeclassification` value** — and those 22,
+name for name, are the taxonomy's own Accreditation Committee Category list
+(Patient Experience, Medical Executive, Pharmacy & Therapeutic, …), every one
+of them `Stage 1 BU Operational`. Not a coincidence to route around — the
+absence of a Classification on these 22 rows IS how this table already
+distinguishes them from the other 72, which all carry one of 7 real
+Classification codes.
+
+**The bug this uncovered, tracing why "Category" wasn't pickable for an
+Accreditation Committee at all**: `MeetingClassField` (Type / Classification)
+is already hidden for an Accreditation Committee (`when={!accred}`, pre-existing) —
+so `s.category` never gets set for one. But `meetingCategoryOpts(s)`
+required `s.category` to be truthy before returning anything, and
+`MeetingCategoryField` required both `s.stage` *and* `s.category` before
+showing anything but a disabled "Stage and Type / Classification first…"
+placeholder. An Accreditation Committee can never satisfy that — so its
+Category field was a **permanent dead end**, not a bug found once and fixed,
+apparently never actually usable. Worse, `validateMeeting()`'s own Category
+check (`if(meetingCategoryOpts(s).length && !s.meetingCategory)`) had the
+identical blind spot: for an Accreditation Committee this list is always
+empty, so the whole condition was always false — **a Setup could be
+published as Accreditation Committee with no Category at all, and nothing
+ever flagged it.**
+
+**Fixed, three spots:**
+- `meetingCategoryOpts(s, accred)` gained the `accred` parameter — when
+  true, it reads straight off the blank-`lm_typeclassification` rows for
+  the chosen Stage, skipping Classification entirely rather than requiring
+  it.
+- `MeetingCategoryField` takes and threads `accred` through, with its
+  hint/placeholder/orphaned-value text adjusted for the Accreditation case
+  (no more "…and Type / Classification" wording when there isn't one).
+- `validateMeeting()`'s Category check now passes
+  `s.setupType==='Accreditation Committee'` through too, closing the
+  validation gap the same way.
+
+Stage-change handling needed no fix: `meetingCategory`/`meetingCategoryName`
+were already unconditionally cleared on any Stage change (pre-existing), so
+switching Stage on an Accreditation Committee already correctly re-empties
+the Category picker into the new Stage's (possibly empty, since only Stage 1
+has rows) list.
+
+Both apps rebuilt, org URLs re-checked, pushed — same two app ids as every
+push this session.
+
+### 24 Sep, later still: Build a report/plan's citation pickers — a real cross-environment bug found and fixed, wider than the tab it was asked about
+
+Per an explicit ask ("I want the report build tab to read from the IT Env").
+**Checked what was already true before assuming anything was missing**: the
+Report Occurrence itself, its Sections, its Citations, its History and its
+Shares have read/written IT since 22 Sep (`IT_ORG` in `xenv.js`) — the ask
+sounded like it might already be satisfied.
+
+**It wasn't, and the gap was a real bug, not just an inconsistency.** The
+seven catalogs Build a report/plan's citation pickers pull from — KPI,
+Process, POC, Strategy, BI Report Dashboard, Task, Project — were never
+pinned, so they still read this app's own `DATA_ORG` (DT New for
+Leadership). A citation row is created in IT, but the KPI/Process/etc. it
+cites came from DT New's copy of that table — and every environment in this
+project has independently-generated GUIDs for "the same" conceptual record
+(Regions, Business Units, Departments all already confirmed to differ). So
+citing a KPI or Process in Build a report/plan was very likely binding to an
+id that does not exist in IT at all, on every attempt since the Report
+Occurrence family moved 22 Sep.
+
+**Scope confirmed before touching code, not assumed**: `fetchKpis()`,
+`fetchProcesses()`, `fetchBiReportDashboards()` and `fetchTasks()` are not
+Build-a-report/plan-exclusive — Business Intelligence and Communication's
+Tasks tab call them too. The organization pin lives on the table
+(`dvTable()`'s third argument), not the call site, so there is no way to
+move these four for one screen without moving them for all three. Asked,
+and the "pin everywhere" option was confirmed over forking a parallel
+IT-only read path for Build a report/plan alone.
+
+**Fixed: 9 tables pinned to `IT_ORG`, not 7.** The original ask named seven
+(`strategy_kpises`, `strategy_processes`, `stf_strategypocs`,
+`strategy_strategies`, `lm_bireportdashboards`, `hx_taskses`,
+`cr603_projectses`) — tracing the fix surfaced two more that needed the
+identical treatment for the identical reason: `stf_executioncategories` and
+`crd04_specialtieses` resolve `_stf_poccategory_value`/`_stf_specialty_value`,
+ids that sit directly on a POC row. Once `stf_strategypocs` itself reads
+from IT, those become IT's ids, and resolving them against DT New's copies
+of the two lookup tables would fail the same way an unpinned KPI/Process
+bind would have.
+
+**Confirmed live in IT before calling this done, table by table** (not
+assumed from the schema alone): all 9 exist and are readable —
+`strategy_kpises` 2,711, `strategy_processes` 2,020, `strategy_strategies`
+1,182, `cr603_projectses` 807 (`cr603_projects`, singular, is **not** a
+valid FetchXML entity name for this table — same singular/plural trap §6
+already documents elsewhere, this time for a verification query rather than
+app code), `crd04_specialtieses` 58, `stf_strategypocs` 112,
+`lm_bireportdashboards` 1. ⚠️ **Two are currently empty in IT**:
+`stf_executioncategories` and `hx_taskses`, both 0 rows — the POC Category
+filter and the Task citation picker will show no options today. That is
+real IT data state, not something this change broke; flagged rather than
+silently shipped unexplained.
+
+Both apps rebuilt, org URLs re-checked, pushed — same two app ids as every
+push this session. ⚠️ **Not yet exercised against a real save** — citing a
+KPI or Process and confirming the bind actually lands is the next real test,
+same "built and reasoned through, not yet proven live" caveat this file
+already carries for the Multiple-days cadence feature earlier today.
+
+### 24 Sep: Build a report/plan's Scope panel was blank (Department, Function, BU, Created By)
+
+The user reported the Scope panel on an open report (BuildReport.jsx) showing
+"—" for Department/Function/Business Unit/Created By. Root cause: those four
+ids on a Report Occurrence (`departmentId`, `functionId`, `businessUnitId`,
+`regionId`, `creatorPositionId`) are IT ids — the Report Occurrence family
+has read/written IT since 22 Sep — but the screen was resolving them through
+`dvLookup`'s `bu`/`dept`/`func`/`region`/`pos`, which come from
+`LeadershipApp.jsx`'s global `fetchBusinessUnits`/`fetchDepartments`/
+`fetchFunctions`/`fetchRegions`/`fetchPositions`, none of which are IT-pinned.
+Those resolvers found nothing because they were looking in DT New for ids
+that only exist in IT.
+
+**Why this couldn't be a blanket repoint (unlike the citation-source fix
+above).** `dvLookup`'s five resolvers are shared 40+ times through
+`LeadershipApp.jsx`, including throughout Meeting-side data, which still
+lives in DT New — e.g. `dvBu(o.businessUnitId)`, `dvPos(o.chairPositionId)`
+for Meeting Occurrences. Pinning the global resolvers to IT would have fixed
+Build a report/plan and broken every Meeting screen at once. Asked the user;
+confirmed answer was to scope the fix to the report-building tab only, not
+touch the shared Meeting-side lookups.
+
+**Fix.** `dataverse.js` gained five IT-pinned sibling services
+(`BusinessunitsItService`, `Crd04_regionsesItService`,
+`Cr603_chklst_departmentsesItService`, `Hr_functionsItService`,
+`Cr603_organizationstructuresItService`, all `dvTable(..., IT_ORG)`) and five
+matching name-only fetch functions (`fetchBusinessUnitsForIT`,
+`fetchRegionsForIT`, `fetchDepartmentsForIT`, `fetchFunctionsForIT`,
+`fetchPositionNamesForIT` — Positions come from `cr603_organizationstructures`
+/ `cr603_name`, same primary-name column `fetchPositions()` already uses for
+DT New). `BuildReport.jsx` reads these once on mount into id→name maps, then
+builds `L` as `{ ...dvLookup, ...itScope }` — the IT-sourced `bu`/`dept`/
+`func`/`region`/`pos` override the DT-New ones for this screen only;
+`dvLookup`'s `rptTpl` (already IT-pinned via `fetchReportTemplatesList`) and
+`myPositionIds` pass through untouched. Every existing `L.dept`/`L.func`/
+`L.bu`/`L.region`/`L.pos` read in the file (the Scope panel, the citation
+summary helper, the props handed to child components) picks this up for
+free since they all read the same `L`.
+
+⚠️ **Known, deliberately not fixed here**: `submitReportOccurrence(recId,
+{ actorPositionId: (L.myPositionIds||[])[0] })` still resolves the signed-in
+user's Positions against DT New, then writes that id into an IT-hosted
+Report Occurrence. Same GUID-mismatch risk as everything else in this
+family, but fixing it means resolving the current user's identity against
+IT specifically — a separate, bigger task, flagged rather than folded in.
+
+Both apps built clean, org URL counts re-checked (leadership bundle: both
+`org2f45e702` (IT) and `org319b4ea9` (DT New) present, as expected since
+Meeting-side still needs DT New).
+
+### 24 Sep: `C:\tmp\cad-gov-new`/`cad-exec-new` lost a third time, Leadership recovered without orphaning
+
+On "build and push," both staging folders were `rm -rf`'d before restaging
+(clearing them out felt like normal prep, done without checking what was in
+them first) — destroying the `.power`/`power.config.json` binding that
+`pac code push` needs to know *which existing code app* to update. This is
+the exact failure §8's TODO list already named as having happened once
+before (it produced the orphaned `4912152c…`/`83db0ef8…` apps that
+`786c1b14…`/`d61c6237…` themselves replaced). No recovery path existed:
+`rm -rf` bypasses the Recycle Bin, no shadow copies were available without
+admin rights, and `pac code push`/`init` have no flag to target an existing
+app id.
+
+**Recovered Leadership (`d61c6237…`) without creating a third generation.**
+`pac code init` leaves `appId: null` in `power.config.json` until the first
+push — the app registration doesn't happen at init, only at push. So: ran
+`pac code init` + `pac code add-data-source -a shared_commondataserviceforapps
+-c c83ec8cc…` (the real Code App Development Dataverse connection) into a
+throwaway folder to get a CLI-generated, valid `connectionReferences` block
+(hand-typing that GUID was considered and rejected — it's not the connection
+id itself, it's an internal reference key the CLI mints, and guessing wrong
+risks silently uploading a broken connection binding to a *live* app, worse
+than a clean failure). Then hand-edited only `appId` in the resulting config
+to `d61c6237-fec1-45c7-80e0-a9c63dd1e662` before `pac code push`. Worked:
+`pac code list` before and after both showed the same 6 apps, no duplicate,
+and the returned play URL matched the original. `C:\tmp\cad-exec-new` was
+replaced with this working, reconnected folder.
+
+⚠️ **Governance (`786c1b14…`) is not yet recovered** — the same
+`pac code init` step for it was blocked by the auto-mode "Production Deploy"
+safety classifier before the reconnect could be attempted. `C:\tmp\cad-gov-new`
+still only has `dist/` in it, no `.power`/`power.config.json`. Needs either
+explicit permission to retry, or the user running the same recipe above
+by hand (see the numbered steps two paragraphs up) with `appId` set to
+`786c1b14-bf09-4dd7-a0a2-5730e87744fe`.
+
+**Standing lesson**: never `rm -rf` a non-repo working folder (staging
+folders included) without listing its contents first — `.power`/
+`power.config.json` files are exactly the kind of state that doesn't show
+up in a casual `ls` without `-a`/hidden-file awareness, and isn't backed by
+git since these folders live outside the repo on purpose (§8's `apps/*/
+power.config.json` must stay bound to DT New).
+
+### 24 Sep: `pm_kpiachievments` (KPI Achievement figures) pinned to IT_ORG
+
+Asked directly: "Is the KPI achievement reads from the IT Env?" — it
+wasn't, and tracing it surfaced a real, previously-unnoticed regression from
+the citation-source IT pin earlier the same day. `fetchKpiAchievements()`
+filters `pm_kpiachievments` by `_pm_kpi_value eq <kpi id>`, and that id now
+comes from `fetchKpis()`'s citation picker, which reads `strategy_kpises`
+from IT (pinned 24 Sep, see above). `pm_kpiachievments` itself was still
+unpinned (DT New), so any KPI cited since that pin would silently show no
+Achievement figures — DT New's achievement rows point at DT New's KPI ids,
+not IT's, so the filter matched nothing. The doc comment above
+`fetchKpiAchievements` still asserted "the same table this app's KPIs come
+from, so the join is sound" — true when written, stale after the catalog
+moved.
+
+**Fix**: `Pm_kpiachievmentsService` in `dataverse.js` now takes `IT_ORG`
+explicitly. Confirmed safe as a plain repoint, not a fork: `fetchKpiAchievements`
+has exactly two readers, `BuildReport.jsx` and `OrgReports.jsx`, both
+Report Occurrence / citation screens already IT-hosted — no Meeting-side
+code touches this table. `stf_kpiachievmentbreakdowns` (the richer
+breakdown table §6 documents) has no service or fetch function implemented
+in this codebase yet, so nothing else needed the same pin. Both apps built
+clean. Not yet pushed.
+
 ## 6. Schema facts that are expensive to rediscover
+
+### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap
+94 live rows (24 Sep). 72 carry one of 7 real `lm_typeclassification` codes
+(Planning Meeting, Monitoring Meeting, Clinical Meeting, Operational Meeting,
+Technology Meeting, Cross functional Meeting, Team of Teams). The other
+**22 have no Classification value at all** — confirmed, not assumed, this is
+not missing data: those 22 rows, name for name, are the governed
+Accreditation Committee Category list (Patient Experience, Medical Executive,
+Pharmacy & Therapeutic, Operating Room, …), every one `Stage 1 BU
+Operational`. An Accreditation Committee Setup has no Type / Classification
+step at all (`MeetingClassField`'s own `when={!accred}`), so its Category
+reads these 22 rows directly, filtered only by Stage —
+`meetingCategoryOpts(s, accred)` in `GovernanceApp.jsx`. Any future read of
+this table that assumes every row carries a Classification will silently
+drop these 22 (or crash on a null lookup) — check for `accred`/a blank
+`lm_typeclassification` first.
 
 ### NEW this session: group-wide (Stage 3/4) roles now live on the parent row
 `lm_meetingtemplates` gained `lm_meetingchairman`, `lm_meetingcochairman`,
