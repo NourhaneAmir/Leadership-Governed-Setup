@@ -5361,6 +5361,54 @@ says which list is in play.
 modal, same file) still infers. Whether a Meeting Setup's own Departments
 should govern there too is the same question and has not been asked.
 
+### 26 Sep: create-time migration brought up to insertTemplate's standard
+
+⚠️ **There were TWO mechanisms for this and the second was built without
+noticing the first.** `BuildReport.jsx` has had `insertTemplate()` all along
+-- the button *"Insert the template's sections as starting rows"* -- and it
+did two things the create-time migration did not:
+
+- **binds a real child occurrence** for a Child Template citation where one
+  exists, keeping the template id either way. Its own comment records the
+  reason: an unbound citation *"is a sentence about a report rather than a
+  link to it, which is what left the hierarchy with no edges."*
+- builds a readable label when the Template stamped none.
+
+⚠️ **And the button is gated on `sections.length === 0`.** So a successful
+migration HIDES it. That makes the migration's quality load-bearing: anything
+it does worse than the button is a downgrade, and if it silently produces
+nothing the user gets an empty report with the fallback still visible (that
+part is fine -- the gate is on sections, not on whether migration ran).
+
+Both gaps are closed. Child occurrences are resolved once per distinct child
+template, newest first, and BOTH `lm_CitedReportOccurrence` and
+`lm_ChildReportTemplate` are written.
+
+⚠️ This is a considered **departure from REPORT-OCCURRENCE-FLOW-PLAN section
+8**, which says cite the Template only and let a person pick the occurrence,
+since a child Template may have several per period. The shipped UI had
+already chosen the other way; writing both ids means nothing is lost and a
+person can still repoint it. If the flow is ever built, it and this must
+agree.
+
+**Verified against live IT metadata, not assumed:**
+- `lm_diagnosticangle` is **one global option set** shared by
+  `lm_reporttemplatecontentchecklist` and `lm_reportoccurrencesections`
+  (1 Untyped .. 5 Prescriptive), so the Template's raw code passes straight
+  through. Had they been two sets, every migrated section would have been
+  mislabelled silently.
+- `lm_sectionsource` really is `Migrated_fromTemplate = 1` /
+  `Added_thisoccurrenceonly = 2`. That had only ever been asserted in a code
+  comment.
+- the template reported as producing nothing, `OPD Regional Functional Report
+  - KSA`, **has 3 checklist rows in IT**.
+
+⚠️ **The reported failure was never reproduced.** Every static check passed.
+`migrateTemplateSectionsToOccurrence()` now `console.info`s a one-line
+summary on every run -- checklist rows found, sections created, citations,
+files skipped, errors -- because "it created without the checklist" was not
+diagnosable from outside. The toast already reported counts.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap

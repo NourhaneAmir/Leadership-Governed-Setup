@@ -3932,6 +3932,34 @@ export async function migrateTemplateSectionsToOccurrence(occurrenceId, template
   const rows = (detail.checklist || []).slice()
     .sort((a,b)=>(a.lm_checklistitemstep ?? 1e9) - (b.lm_checklistitemstep ?? 1e9));
 
+  /* Child Template citations: bind a real occurrence of the child where one
+     exists, exactly as Build a report/plan's insert does, and keep the
+     template id either way. An unbound citation is prose about a report
+     rather than a link to it, which is what leaves the hierarchy with no
+     edges. Resolved once per distinct child template, not once per citation.
+
+     ⚠️ This is a considered DEPARTURE from REPORT-OCCURRENCE-FLOW-PLAN section
+     8, which says to cite the Template only and let a person pick the
+     occurrence, because a child Template may have several per period. The
+     shipped UI already chose the other way; both ids are written, so nothing
+     is lost and a person can still repoint it. */
+  const childIds = [...new Set((detail.checklist || [])
+    .flatMap(c => (c.items || []).map(it => it.childTemplateId))
+    .filter(Boolean))];
+  const childOcc = new Map();
+  for(const tid of childIds){
+    try{
+      const occs = await fetchReportOccurrencesByTemplate(tid);
+      /* Newest first -- the same "most recent occurrence of that template"
+         the insert path settles on. */
+      const best = (occs || []).slice().sort((a, b) =>
+        String(b.period || b.created || '').localeCompare(String(a.period || a.created || '')))[0];
+      if(best) childOcc.set(tid, best);
+    }catch(e){
+      console.warn('[dataverse] could not resolve occurrences of child template', tid, e);
+    }
+  }
+
   let created = 0, citations = 0, skippedFiles = 0;
 
   for(let i = 0; i < rows.length; i++){
@@ -3957,13 +3985,22 @@ export async function migrateTemplateSectionsToOccurrence(occurrenceId, template
     for(const it of (c.items || [])){
       const kind = TEMPLATE_ITEM_CITATION_KIND[it.type];
       if(!kind){ if(it.type === 'File') skippedFiles++; continue; }
+      const occ = it.childTemplateId ? childOcc.get(it.childTemplateId) : null;
+      /* lm_name is the citation's only human-readable field. The Template
+         usually stamps one; this is the fallback when it did not, so a
+         citation never lands as an empty row. */
+      const label = it.label
+        || (occ && occ.name)
+        || (it.dimension ? `Breakdown by ${it.dimension}` : null)
+        || kind;
       try{
         const r = await Lm_reportsectioncitationsesService.create(reportCitationRow({
           kind,
-          label: it.label,
+          label,
           kpiId: it.kpiId || undefined,
           processId: it.processId || undefined,
           childTemplateId: it.childTemplateId || undefined,
+          citedReportId: occ ? occ.id : undefined,
           breakdown: it.dimension || undefined,
         }, sectionId));
         idOrThrow(r, 'lm_reportsectioncitationsid');
@@ -3974,7 +4011,14 @@ export async function migrateTemplateSectionsToOccurrence(occurrenceId, template
       }
     }
   }
-  return { created, citations, skippedFiles, errors };
+  /* Logged on every run: "created without its checklist" was not
+     diagnosable from outside, and the counts say immediately whether the
+     Template had sections, whether they were written, and what failed. */
+  console.info('[dataverse] migrateTemplateSectionsToOccurrence: template %s -> occurrence %s | ' +
+    'checklist rows %d, sections created %d, citations %d, files skipped %d, errors %d',
+    templateId, occurrenceId, rows.length, created, citations, skippedFiles, errors.length);
+
+  return { created, citations, skippedFiles, errors, checklistRows: rows.length };
 }
 
 export async function createReportOccurrence(payload){
