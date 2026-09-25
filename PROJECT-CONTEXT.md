@@ -4918,6 +4918,23 @@ screen, not Workspace, and moving it is a separate decision.
 
 Both apps built clean; bundles verified (Governance IT-only, Leadership both).
 
+### 26 Sep: pushed — the Meeting family IT move is live
+
+Both apps built and pushed to the decided pair
+(`4912152c…` from `C:	mp\cad-gov`, `83db0ef8…` from `C:	mp\cad-exec`),
+`App pushed successfully` read from the output in both cases, bindings
+confirmed intact before and after.
+
+⚠️ **Expect five screens to show no meetings**: Workspace, Calendar, Meetings,
+Minutes and Grid. IT holds 0 meeting occurrences against DT New's 124, and
+that consequence was accepted explicitly when the move was approved. If the
+screens look broken, this is why — check the row counts before debugging code.
+
+⚠️ **The master-data follow-up is NOT in this push** and was not asked for.
+An IT meeting's Chair/Facilitator/Department/BU lookups carry IT ids that will
+not resolve against the DT New rows `LeadershipApp.jsx` still loads. Dormant
+only while IT has no meetings. See the entry below for the two ways to fix it.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap
