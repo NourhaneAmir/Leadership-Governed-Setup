@@ -4980,6 +4980,21 @@ Template lookup resolves. IT holds 30 Report Templates.
 Not yet exercised against live data -- the picker lists Active / Approved only,
 so how many of those 30 appear depends on their status.
 
+### 26 Sep, later: pushed -- New Report flow live
+
+Both apps built and pushed to the standing pair (`4912152c...` from
+`C:/tmp/cad-gov`, `83db0ef8...` from `C:/tmp/cad-exec`), `App pushed
+successfully` read from the output both times, bindings confirmed intact
+before and after.
+
+Ships the reconnected New Report flow. The Meeting-family IT move went out in
+the previous push, so the five meeting screens are already showing no meetings
+-- that remains expected, not a new symptom.
+
+First thing to check on this one: the template picker lists **Active /
+Approved Setups only**. IT holds 30 Report Templates; if few or none are
+Approved the picker looks empty, which reads as a bug and is not one.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap
