@@ -5274,6 +5274,57 @@ the choosing that is closed. The `title` says why.
 for, and those are arguably also Template-governed for a migrated Section.
 Worth deciding deliberately rather than by drift.
 
+### 26 Sep: New Report now copies the Setup's sections down -- the flow's job, done in the app
+
+Reported: a report created from a Setup had no sections. **Not a bug in the
+create.** `REPORT-OCCURRENCE-FLOW-PLAN.md` assigns section copying to the
+Power Automate flow -- section 6 of this file records it as *"the flow writes
+lm_source 1, Build a report/plan writes 2"* -- and **that flow is plan-only,
+never built**. So the app's manual create produced a parent row and nothing
+else, exactly as designed, just with the other half missing.
+
+`migrateTemplateSectionsToOccurrence(occurrenceId, templateId)` now does it,
+following the plan's OWN mappings rather than inventing any:
+
+| Template item | Citation kind |
+|---|---|
+| `1` KPI | `1` KPI |
+| `2` Breakdown | `2` Breakdown (carries `lm_breakdowndimension`) |
+| `3` Process | `3` Process |
+| `4` Child Template | `11` Child Report |
+| File | **not copied** |
+
+⚠️ **A Child Report citation names the child TEMPLATE, not an occurrence.**
+The plan's 07 Sep revision is explicit -- once occurrences fan out per
+department a child Template has several for one period, so which is meant is
+a person's decision. `lm_ChildReportTemplate` is set directly and no
+occurrence lookup happens, which also means generation order stops mattering.
+That bind did not exist in `reportCitationRow()` and was added.
+
+⚠️ **File items are dropped, by the plan's own rule** (it creates kinds 1, 2,
+3 and 11 only): `lm_reportsectioncitations` has no File kind and no file
+column. IT currently holds 2 such items against 46 KPI / 9 Process / 8
+Breakdown / 6 Child Template. The toast says how many were skipped rather
+than losing them silently.
+
+⚠️ **Verified, not assumed:** the two Diagnostic Angle option sets are
+identical (1 Untyped .. 5 Prescriptive) in `SECTION_ANGLE` here and
+`DV_SECTION_ANGLE` in GovernanceApp, so the Template's raw code passes
+straight through. Had they differed, every migrated section would have been
+silently mislabelled.
+
+Partial failure is reported, never thrown: the Occurrence already exists by
+then, so a section that fails must not read as "the report was not created".
+The toast reports counts and downgrades to `warn` when anything failed.
+
+⚠️ **This now overlaps the unbuilt flow.** If that flow is ever built, the two
+must not both run for the same occurrence or sections will double. The app
+path only fires on a manual create from the New Report modal.
+
+`lm_sourcesectionchecklistitem` -- the occurrence section's lookup back to
+the Template checklist row it came from -- exists on the table and is still
+written by nobody, here or in the plan. Worth setting if traceability matters.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap

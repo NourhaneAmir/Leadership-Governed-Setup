@@ -32,6 +32,7 @@ import { fetchMeetingOccurrences, fetchReportOccurrences, createMeetingOccurrenc
          fetchBusinessUnits, fetchPositions, fetchDepartments, fetchFunctions, fetchRegions,
          fetchMeetingTemplatesList, fetchMeetingTemplateDetail,
          fetchReportTemplatesList, fetchReportTemplateDetail, fetchCurrentUser,
+         migrateTemplateSectionsToOccurrence,
          TEMPLATE_STATUS_LABEL,
          fetchMeetingMinutes, fetchMeetingMinutesByOccurrence, fetchAuditGridInstancesByOccurrence,
          fetchAuditGridInstances,
@@ -4708,10 +4709,34 @@ function NewReportModal({onClose}){
         toast('Not saved','Creating the Report Occurrence in Dataverse failed. Check the console for details.','err');
         return;
       }
+      /* Copy the Setup's Content Checklist down as this occurrence's Sections.
+         A Custom report has no Setup to copy from. The occurrence already
+         exists, so a failure here is reported as its own thing rather than
+         as "the report was not created". */
+      let migrated = null;
+      if(!custom){
+        try{
+          migrated = await migrateTemplateSectionsToOccurrence(id, f.setup);
+          if(migrated.errors.length)
+            console.warn('[dataverse] section migration had errors:', migrated.errors);
+        }catch(e){
+          console.warn('[dataverse] migrateTemplateSectionsToOccurrence() threw:', e);
+        }
+      }
+
+      const sectionNote = !migrated ? ''
+        : migrated.created
+          ? ` ${migrated.created} section${migrated.created===1?'':'s'} and ${migrated.citations} citation${migrated.citations===1?'':'s'} copied from the Setup.`
+            + (migrated.skippedFiles
+                ? ` ${migrated.skippedFiles} file citation${migrated.skippedFiles===1?'':'s'} could not be copied — attach them here.`
+                : '')
+          : ' The Setup defines no sections, so this report starts empty.';
+
       toast(custom?'Ad Hoc Report created':'Report created from the approved Setup',
-        custom
+        (custom
           ? 'Saved to lm_reportoccurrences as a Draft, flagged as having no Setup. It now appears in your Workspace.'
-          : 'Saved to lm_reportoccurrences as a Draft, linked to its approved Report Template.','ok');
+          : 'Saved to lm_reportoccurrences as a Draft, linked to its approved Report Template.') + sectionNote,
+        migrated && migrated.errors.length ? 'warn' : 'ok');
       await refreshOccurrences();
       onClose();
     }catch(e){

@@ -3545,6 +3545,12 @@ function reportCitationRow(c, sectionId){
   if(c.biId)          row['lm_BIReport@odata.bind'] = `/lm_bireportdashboards(${c.biId})`;
   if(c.taskId)        row['lm_Task@odata.bind'] = `/hx_taskses(${c.taskId})`;
   if(c.projectId)     row['lm_Project@odata.bind'] = `/cr603_projectses(${c.projectId})`;
+  /* A Child Report citation names the child TEMPLATE, never one of its
+     occurrences -- REPORT-OCCURRENCE-FLOW-PLAN section 8, revised 07 Sep: a
+     child Template can have several occurrences for one period once they fan
+     out per department, so which one is meant is a person's decision. */
+  if(c.childTemplateId)
+    row['lm_ChildReportTemplate@odata.bind'] = `/lm_report_templates(${c.childTemplateId})`;
   if(c.breakdown && SECTION_BREAKDOWN_DIM_KEY[c.breakdown])
     row.lm_breakdowndimension = SECTION_BREAKDOWN_DIM_KEY[c.breakdown];
   return row;
@@ -3893,6 +3899,84 @@ export async function recordAgendaDistribution(id){
  * @param {boolean} [payload.noSetupFlag] true when the Report has no approved Setup behind it
  * @returns {Promise<{id:string|null, errors:{table:string,error:any}[]}>}
  */
+/* Template item type -> Report Occurrence citation kind. File is absent on
+   purpose: lm_reportsectioncitations has no File kind and no file column, and
+   the flow plan (section 12) states it creates kinds 1, 2, 3 and 11 only. */
+const TEMPLATE_ITEM_CITATION_KIND = {
+  'KPI': 'KPI', 'Breakdown': 'Breakdown', 'Process': 'Process',
+  'Child Template': 'Child Report',
+};
+
+/** Copies a Report Template's Content Checklist onto a freshly created
+ *  Occurrence: one Section per checklist row, marked Migrated, carrying the
+ *  citations that have an occurrence-side equivalent.
+ *
+ *  Partial success is normal and reported rather than thrown -- the
+ *  Occurrence itself already exists by this point, so failing here must not
+ *  read as "the report was not created".
+ *
+ *  -> { created, citations, skippedFiles, errors }
+ */
+export async function migrateTemplateSectionsToOccurrence(occurrenceId, templateId){
+  const errors = [];
+  let detail;
+  try{
+    detail = await fetchReportTemplateDetail(templateId);
+  }catch(e){
+    return { created:0, citations:0, skippedFiles:0,
+             errors:[{ table:'lm_report_templates', error:e, what:'reading the Setup' }] };
+  }
+
+  /* The checklist's own step is the order the Setup defined; sequence is
+     renumbered from 1 so a gap in the Template does not leave one here. */
+  const rows = (detail.checklist || []).slice()
+    .sort((a,b)=>(a.lm_checklistitemstep ?? 1e9) - (b.lm_checklistitemstep ?? 1e9));
+
+  let created = 0, citations = 0, skippedFiles = 0;
+
+  for(let i = 0; i < rows.length; i++){
+    const c = rows[i];
+    const seq = i + 1;
+    let sectionId;
+    try{
+      const res = await Lm_reportoccurrencesectionsesService.create({
+        lm_heading: capped(c.lm_checklistitemname || `Section ${seq}`, 850, 'Section heading'),
+        /* Same option set on both sides, checked against DV_SECTION_ANGLE. */
+        lm_diagnosticangle: c.lm_diagnosticangle ?? SECTION_ANGLE_KEY.Untyped,
+        lm_sequence: seq,
+        lm_source: SECTION_SOURCE_MIGRATED,
+        'lm_ReportOccurrence@odata.bind': `/lm_reportoccurrences(${occurrenceId})`,
+      });
+      sectionId = idOrThrow(res, 'lm_reportoccurrencesectionsid');
+      created++;
+    }catch(e){
+      errors.push({ table:'lm_reportoccurrencesections', error:e, what:`section ${seq}` });
+      continue;                       // its citations have nowhere to hang
+    }
+
+    for(const it of (c.items || [])){
+      const kind = TEMPLATE_ITEM_CITATION_KIND[it.type];
+      if(!kind){ if(it.type === 'File') skippedFiles++; continue; }
+      try{
+        const r = await Lm_reportsectioncitationsesService.create(reportCitationRow({
+          kind,
+          label: it.label,
+          kpiId: it.kpiId || undefined,
+          processId: it.processId || undefined,
+          childTemplateId: it.childTemplateId || undefined,
+          breakdown: it.dimension || undefined,
+        }, sectionId));
+        idOrThrow(r, 'lm_reportsectioncitationsid');
+        citations++;
+      }catch(e){
+        errors.push({ table:'lm_reportsectioncitations', error:e,
+                      what:`citing "${it.label}" in section ${seq}` });
+      }
+    }
+  }
+  return { created, citations, skippedFiles, errors };
+}
+
 export async function createReportOccurrence(payload){
   if((payload.objective || '').length > 100){
     console.warn('[dataverse] createReportOccurrence: lm_reportobjective is %d characters; ' +
