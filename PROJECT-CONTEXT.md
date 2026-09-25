@@ -4840,6 +4840,84 @@ breakdown table §6 documents) has no service or fetch function implemented
 in this codebase yet, so nothing else needed the same pin. Both apps built
 clean. Not yet pushed.
 
+### 26 Sep: the Meeting family moved to IT — asked for as "Workspace", delivered as a data-layer move
+
+Asked: "I want my workspace tab to read from the IT environment." Three
+things had to be established before touching anything, and the third nearly
+stopped it.
+
+**1. Workspace has no data source of its own.** `ScreenWorkspace` consumes
+`dvMeetingOccs`/`dvReportOccs` through `dvWorkItems()`, the same shared arrays
+Calendar, Meetings, Minutes, Grid and Home read. There is no per-screen fetch,
+so "just this tab" was never available — identical to the 22 Sep Report
+Occurrence move. **Reports were already IT**, so in practice this was the
+Meeting half.
+
+**2. Could IT serve it?** Fresh `pac modelbuilder` pull against IT, then every
+column the code `select`s checked table by table. **13 of 14 passed.** The one
+blocker: `lm_meetingoccurrencedepartmentfunctions` has no `lm_departmentname`
+/ `lm_functionname` in IT, and one unknown column fails the whole query.
+
+⚠️ **Removed without a schema change, because both were dead.** They were read
+into `departmentName`/`functionName` and **never rendered anywhere**; the
+single consumer of that result reads `d.departmentId` alone
+(`meetingDeptIds`, LeadershipApp). Dropped from the `$select`, the two fields
+kept as `null` so no caller's object shape changes.
+
+**3. ⚠️ IT HAS NO MEETING DATA — and the move was made anyway, knowingly.**
+
+| Table | IT | DT New |
+|---|---|---|
+| `lm_meetingoccurrence` | **0** | 124 |
+| `lm_meetingtemplate` | **0** | 25 |
+| `lm_meetingminutes` | **0** | 10 |
+| `lm_reportoccurrence` | 4 | 62 |
+| `lm_report_template` | 30 | 22 |
+
+So Workspace, Calendar, Meetings, Minutes and Grid now show **no meetings at
+all** until meeting data exists in IT. This was put to the product owner with
+the numbers and the emptying spelled out, and the answer was to move anyway.
+**Not a regression — a decision.**
+
+**What moved:** 18 services, `dataverse.js`, IT-pinned 29 -> **47**. The
+occurrence tree (occurrence, agenda, attendees, departmentfunctions,
+linkedreports), everything hanging off it (minutes, momnotes, auditgrid
+instances/answers), and the Template family (template + its six child tables,
+attendeeslists, categories).
+
+The Template family was already half-moved by accident: **Governance writes
+Meeting Templates to IT** (its own `DATA_ORG` is IT) while Leadership read
+them from DT New. This closes that split rather than opening one.
+
+⚠️ **NEXT REQUIRED STEP — master data has not followed, and names will not
+resolve once meeting data exists in IT.** `LeadershipApp.jsx` loads
+`fetchBusinessUnits`/`fetchPositions`/`fetchDepartments`/`fetchFunctions`/
+`fetchRegions`, all still **DT New**. An IT meeting's Chair, Facilitator,
+Department and BU lookups carry IT ids, which will not match DT New's rows —
+blank names everywhere.
+
+It does not bite yet **only because IT has zero meetings**. It will the moment
+one exists.
+
+A second, parallel set already exists for this: `fetchBusinessUnitsForIT()`,
+`fetchDepartmentsForIT()`, `fetchFunctionsForIT()`, `fetchRegionsForIT()`,
+`fetchPositionNamesForIT()` (`dataverse.js`), today used only by
+`BuildReport.jsx`. Either repoint the global loads or route the meeting
+screens through these.
+
+⚠️ Note `fetchPositions()` is not just names — it carries the holder chain and
+backs "my Positions" (22 Sep). IT has ~11,315 organization-structure rows to
+DT New's 307, so that resolution likely *should* be IT, but it is a behaviour
+change for the signed-in user's own positions and was not made here.
+
+**Still DT New (15):** the master-data tables above, plus `lm_setupactivity`,
+`lm_approvalcycle`/`step`, `lm_authoritymatrixrow`, `wlog_decisions`,
+`and_microsoftgroupmembers`, `and_teamschannellinks`, `systemusers`,
+`hr_employees`. `wlog_decisions` was deliberately left: Decisions is its own
+screen, not Workspace, and moving it is a separate decision.
+
+Both apps built clean; bundles verified (Governance IT-only, Leadership both).
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap

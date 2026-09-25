@@ -1691,15 +1691,15 @@ export async function updateReportTemplateToDataverse(dvId, payload){
    reports, attendees).
    ========================================================================= */
 
-const Lm_meetingtemplatesService = dvTable('lm_meetingtemplates', 'lm_meetingtemplateid');
-const Lm_meetingtemplatebusinessunitsesService = dvTable('lm_meetingtemplatebusinessunitses', 'lm_meetingtemplatebusinessunitsid');
-const Lm_meetingtemplateregionsService = dvTable('lm_meetingtemplateregions', 'lm_meetingtemplateregionid');
-const Lm_meetingtemplateagendaitemsService = dvTable('lm_meetingtemplateagendaitems', 'lm_meetingtemplateagendaitemid');
-const Lm_meetingtemplatesupportivefunctionsesService = dvTable('lm_meetingtemplatesupportivefunctionses', 'lm_meetingtemplatesupportivefunctionsid');
-const Lm_meetingtemplatedepartmentfunctionsService = dvTable('lm_meetingtemplatedepartmentfunctions', 'lm_meetingtemplatedepartmentfunctionid');
-const Lm_meetingtemplatelinkedreportsesService = dvTable('lm_meetingtemplatelinkedreportses', 'lm_meetingtemplatelinkedreportsid');
-const Lm_meetingattendeeslistsService = dvTable('lm_meetingattendeeslists', 'lm_meetingattendeeslistid');
-const Lm_meetingcategoriesService = dvTable('lm_meetingcategories', 'lm_meetingcategoryid');
+const Lm_meetingtemplatesService = dvTable('lm_meetingtemplates', 'lm_meetingtemplateid', IT_ORG);
+const Lm_meetingtemplatebusinessunitsesService = dvTable('lm_meetingtemplatebusinessunitses', 'lm_meetingtemplatebusinessunitsid', IT_ORG);
+const Lm_meetingtemplateregionsService = dvTable('lm_meetingtemplateregions', 'lm_meetingtemplateregionid', IT_ORG);
+const Lm_meetingtemplateagendaitemsService = dvTable('lm_meetingtemplateagendaitems', 'lm_meetingtemplateagendaitemid', IT_ORG);
+const Lm_meetingtemplatesupportivefunctionsesService = dvTable('lm_meetingtemplatesupportivefunctionses', 'lm_meetingtemplatesupportivefunctionsid', IT_ORG);
+const Lm_meetingtemplatedepartmentfunctionsService = dvTable('lm_meetingtemplatedepartmentfunctions', 'lm_meetingtemplatedepartmentfunctionid', IT_ORG);
+const Lm_meetingtemplatelinkedreportsesService = dvTable('lm_meetingtemplatelinkedreportses', 'lm_meetingtemplatelinkedreportsid', IT_ORG);
+const Lm_meetingattendeeslistsService = dvTable('lm_meetingattendeeslists', 'lm_meetingattendeeslistid', IT_ORG);
+const Lm_meetingcategoriesService = dvTable('lm_meetingcategories', 'lm_meetingcategoryid', IT_ORG);
 
 /* ========================================================================
    Strategy execution -- POCs, Strategies, BI reports and Tasks.
@@ -2823,11 +2823,11 @@ export async function fetchMeetingTemplateDetail(id){
    (lm_meetingoccurrenceattendees, entity set lm_meetingoccurrenceattendeeses)
    -- same quirk as lm_meetingtemplatesupportivefunctions. Kept as generated. */
 
-const Lm_meetingoccurrencesService = dvTable('lm_meetingoccurrences', 'lm_meetingoccurrenceid');
-const Lm_meetingoccurrenceagendasService = dvTable('lm_meetingoccurrenceagendas', 'lm_meetingoccurrenceagendaid');
-const Lm_meetingoccurrenceattendeesesService = dvTable('lm_meetingoccurrenceattendeeses', 'lm_meetingoccurrenceattendeesid');
-const Lm_meetingoccurrencedepartmentfunctionsService = dvTable('lm_meetingoccurrencedepartmentfunctions', 'lm_meetingoccurrencedepartmentfunctionid');
-const Lm_meetingoccurrencelinkedreportsesService = dvTable('lm_meetingoccurrencelinkedreportses', 'lm_meetingoccurrencelinkedreportsid');
+const Lm_meetingoccurrencesService = dvTable('lm_meetingoccurrences', 'lm_meetingoccurrenceid', IT_ORG);
+const Lm_meetingoccurrenceagendasService = dvTable('lm_meetingoccurrenceagendas', 'lm_meetingoccurrenceagendaid', IT_ORG);
+const Lm_meetingoccurrenceattendeesesService = dvTable('lm_meetingoccurrenceattendeeses', 'lm_meetingoccurrenceattendeesid', IT_ORG);
+const Lm_meetingoccurrencedepartmentfunctionsService = dvTable('lm_meetingoccurrencedepartmentfunctions', 'lm_meetingoccurrencedepartmentfunctionid', IT_ORG);
+const Lm_meetingoccurrencelinkedreportsesService = dvTable('lm_meetingoccurrencelinkedreportses', 'lm_meetingoccurrencelinkedreportsid', IT_ORG);
 /* The whole Report Occurrence family -- the occurrence itself plus its own
    Sections, Citations, History and Shares -- reads and writes
    IT_ORG (the IT environment) always, independent of this
@@ -2838,10 +2838,10 @@ const Lm_meetingoccurrencelinkedreportsesService = dvTable('lm_meetingoccurrence
    this page -- Meeting Occurrences included -- is unaffected and still
    follows this app's own DATA_ORG. */
 const Lm_reportoccurrencesService = dvTable('lm_reportoccurrences', 'lm_reportoccurrenceid', IT_ORG);
-const Lm_meetingminutesesService = dvTable('lm_meetingminuteses', 'lm_meetingminutesid');
-const Lm_momnotesesService = dvTable('lm_momnoteses', 'lm_momnotesid');
-const Lm_auditgridinstancesService = dvTable('lm_auditgridinstances', 'lm_auditgridinstanceid');
-const Lm_auditgridanswersService = dvTable('lm_auditgridanswers', 'lm_auditgridanswerid');
+const Lm_meetingminutesesService = dvTable('lm_meetingminuteses', 'lm_meetingminutesid', IT_ORG);
+const Lm_momnotesesService = dvTable('lm_momnoteses', 'lm_momnotesid', IT_ORG);
+const Lm_auditgridinstancesService = dvTable('lm_auditgridinstances', 'lm_auditgridinstanceid', IT_ORG);
+const Lm_auditgridanswersService = dvTable('lm_auditgridanswers', 'lm_auditgridanswerid', IT_ORG);
 const Lm_approvalcyclesService = dvTable('lm_approvalcycles');
 const Lm_approvalcyclestepsService = dvTable('lm_approvalcyclesteps');
 const Lm_authoritymatrixrowsService = dvTable('lm_authoritymatrixrows');
@@ -4272,8 +4272,13 @@ export async function updateMeetingOccurrenceAgendaSequence(agendaItemId, sequen
    §6). Registered since 13 Sep but never read by any screen until now. */
 export async function fetchMeetingOccurrenceDepartments(occurrenceId){
   const res = await Lm_meetingoccurrencedepartmentfunctionsService.getAll({
+    /* ⚠️ lm_departmentname / lm_functionname are NOT selected: they do not
+       exist on this table in IT, and one unknown column fails the entire
+       query. Nothing is lost -- both were only ever copied into the fields
+       below, and the single consumer of this result
+       (LeadershipApp's meetingDeptIds) reads d.departmentId alone. */
     select: ['lm_meetingoccurrencedepartmentfunctionid', 'lm_name',
-             '_lm_department_value', 'lm_departmentname', '_lm_function_value', 'lm_functionname'],
+             '_lm_department_value', '_lm_function_value'],
     filter: `_lm_meetingoccurrence_value eq ${occurrenceId}`,
   });
   const rows = res?.data ?? [];
@@ -4281,9 +4286,11 @@ export async function fetchMeetingOccurrenceDepartments(occurrenceId){
     id: r.lm_meetingoccurrencedepartmentfunctionid,
     name: r.lm_name || null,
     departmentId: r._lm_department_value || null,
-    departmentName: r.lm_departmentname || null,
+    /* Always null now -- see the $select above. Kept so the shape of this
+       object does not change under any caller. */
+    departmentName: null,
     functionId: r._lm_function_value || null,
-    functionName: r.lm_functionname || null,
+    functionName: null,
   }));
 }
 
