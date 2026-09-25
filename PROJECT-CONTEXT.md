@@ -2567,6 +2567,58 @@ Diagnostic Angle, attached file and every citation. The citation labels come
 from the editor's own rule, lifted into `sectionItemLabel()` and shared, so the
 same row cannot read two ways.
 
+### 25 Sep: THE push target, decided by the product owner — not an inference
+
+Asked directly, given four pairs had been named current across five entries
+and at least two of those claims were wrong. **Answer: `4912152c…` /
+`83db0ef8…` in Code App Development**, pushed from the surviving staging
+folders. Both went out successfully today.
+
+| App | App id | Push from |
+|---|---|---|
+| Governance Setup | `4912152c-b5c8-4beb-bb74-c9f43550405b` | `C:\tmp\cad-gov` |
+| Leadership Execution | `83db0ef8-4c62-4eef-84ac-dadab326b704` | `C:\tmp\cad-exec` |
+
+```
+https://apps.powerapps.com/play/e/cd78a59b-e16f-e4aa-b0a1-8e450a70ed56/app/4912152c-b5c8-4beb-bb74-c9f43550405b
+https://apps.powerapps.com/play/e/cd78a59b-e16f-e4aa-b0a1-8e450a70ed56/app/83db0ef8-4c62-4eef-84ac-dadab326b704
+```
+
+⚠️ **Every earlier claim that this pair is "orphaned" is superseded.** It was
+called that on 17 Sep when `786c1b14…`/`d61c6237…` were registered to replace
+it — but those two lost their staging folders (24 Sep), and
+`cad-gov`/`cad-exec` are the ones that survived with their `.power` binding
+intact. The apps were live the whole time.
+
+**The procedure, which is the 17 Sep one and still correct:**
+
+```bash
+npm run build:governance && npm run build:leadership
+rm -rf /c/tmp/cad-gov/dist  && cp -r apps/governance/dist /c/tmp/cad-gov/dist
+rm -rf /c/tmp/cad-exec/dist && cp -r apps/leadership/dist /c/tmp/cad-exec/dist
+PA="$PWD/node_modules/.bin/power-apps"
+(cd /c/tmp/cad-gov  && "$PA" push)
+(cd /c/tmp/cad-exec && "$PA" push)
+```
+
+⚠️ **`rm -rf` the `dist` SUBFOLDER only, never the staging folder.** Removing
+the folder destroys `.power`/`power.config.json`, which is unrecoverable
+(no Recycle Bin, and `push`/`init` have no flag to target an existing app id)
+and is what orphaned a pair on 24 Sep. The binding was checked present before
+and after this push.
+
+**This push was a big catch-up** — these folders had not been used since
+roughly 20 Sep, so it carries everything since: the full IT schema refresh and
+the `lm_TeamChannel` repoint to `and_teamschannellinks`, `downloadFileColumn()`'s
+per-call `org`, the citation-picker and `strategy_kpises` IT pins, the
+`pm_kpiachievments` pin that had been built-but-unpushed, the Weekly/Twice
+Weekly `lm_dayofweeks` toggle, the group-wide Attendee and Category fixes, and
+the company-wide Position search. Worth a broader smoke test than a single-change
+push would need.
+
+⚠️ The DT New pair (`7caa2fb2…`/`0f077a0a…`) pushed in error on 23 Sep still
+exists and is now **stale**. Nobody has said what should happen to it.
+
 ### 25 Sep: ⚠️ the 23 Sep deployment entry below is WRONG — read this first
 
 **Its central factual claim is false, and the conclusion drawn from it sent a
