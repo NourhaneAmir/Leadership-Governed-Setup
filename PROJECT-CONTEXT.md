@@ -5222,6 +5222,30 @@ Target against an OPD KPI, something outside this table supplies it and the
 reading below is wrong -- worth a screenshot naming the KPI before assuming
 either way.
 
+### 26 Sep, end of day: both apps pushed, current with everything above
+
+`App pushed successfully` read from the output for both, bindings intact
+before and after. Governance had been a push behind since the master-data
+move; it is current now. The shared `dataverse.js` changes in that gap are
+no-ops for Governance, whose own `DATA_ORG` is already IT.
+
+**Live as of this push:** the Meeting family, all master data and Positions on
+IT; the New Report flow; Created by defaulting to the signed-in user; the
+100-character objective guard; and one shared `pickAchievement()` across both
+report screens.
+
+⚠️ **Still open, in the order they are likely to be noticed:**
+1. **KPI Target renders blank.** IT holds one `pm_target` row in 1,055, for
+   "No. of visits". Needs a data load, not code -- and NOT a fallback to
+   DT New, whose rows key on ids IT does not have.
+2. **Meetings show empty** on five screens -- IT holds none. Accepted when
+   the move was approved.
+3. **`and_microsoftgroupmembers`**: 0 rows in IT, bound from an IT table.
+4. **Positions read twice at load** (~23k rows) -- `fetchPositionNamesForIT()`
+   is now redundant with `fetchPositions()`; removing it means pointing
+   BuildReport's Scope panel at the context resolvers.
+5. `BI-Report-bulk-upload.xlsx` awaits its dashboard links.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap
