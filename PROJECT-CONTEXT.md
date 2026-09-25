@@ -5046,6 +5046,22 @@ explicit choice is never overwritten.
 
 Not yet exercised against live data.
 
+### 26 Sep, last: pushed -- Positions on IT, Created by defaulting
+
+Both apps pushed to the standing pair, `App pushed successfully` read from the
+output both times, bindings intact before and after.
+
+Ships the Positions move to IT and the Created by default. **This is the first
+push where any Position picker anywhere in Leadership lists IT rows**, so it
+is the one to watch:
+
+- every Position picker now offers 11,372 rows instead of 307
+- app load reads that table twice (`fetchPositions` and the redundant
+  `fetchPositionNamesForIT`), ~23k rows -- watch the start-up time
+- "my Positions" now resolves against IT, which is what the Calendar's
+  own-role scoping reads. If the Calendar empties, this is the cause: the
+  signed-in account has no matching row in IT's Organization Structure.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap
