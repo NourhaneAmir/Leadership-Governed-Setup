@@ -5150,6 +5150,39 @@ in `dataverse.js` with `MOM_NOTE_MAX`/`GRID_EVIDENCE_MAX`/`REPORT_NOTE_MAX`.
 Two homes for the same kind of constant already existed; this follows its
 nearest neighbour rather than splitting the modal's own checks across files.
 
+### 26 Sep: KPI TARGET is blank because IT has no targets -- the code was never wrong
+
+Reported as "I want the report / plan tab to read the target too". It already
+does. **No code was changed**, because nothing in the code was at fault:
+
+- `fetchKpiAchievements()` selects `pm_target` and maps it to `target`
+- `OrgReports.jsx` renders `{ach.target ?? '—'}`
+- `pm_target` is the ONLY target-shaped column on `pm_kpiachievment`, and
+  `strategy_kpis` has none at all -- both checked against live IT metadata
+
+⚠️ **The data is the problem, and the split is stark:**
+
+| `pm_kpiachievment` | IT | DT New |
+|---|---|---|
+| rows | 1,055 | — |
+| with `pm_actual` | 966 | 2,355 |
+| with `pm_target` | **1** | **527** |
+
+Reading the exact row behind the reported screenshot --
+`OPD - No of Patients`, September 2026, actual 1,629, baseline 3,497 --
+confirms it: `pm_target` is null on every one of those rows. The "—" is
+truthful.
+
+⚠️ **This is a consequence of pinning `pm_kpiachievments` to IT on 24 Sep.**
+Before that the app read DT New, where 527 rows carry a target. The pin was
+correct (cited KPI ids come from IT, so DT New's rows would match nothing at
+all), but it traded 527 targets for 1.
+
+**The fix is a data load into IT, not code.** Do NOT "solve" this by reading
+targets from DT New: the achievement rows there key on DT New KPI ids, which
+do not exist in IT, so the join that currently returns actuals would break
+too.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap
