@@ -22,7 +22,7 @@ import { use } from '../store.jsx';
 import { Btn, Tag, Note, Empty } from '../../../shared/ui.jsx';
 import { fmtD, fmtP, MONTHS } from '../../../shared/format.js';
 import { DiagChip, rptTagC, matchesQuery } from '../domain.jsx';
-import { fetchReportOccurrenceContent, fetchKpiAchievements,
+import { fetchReportOccurrenceContent, fetchKpiAchievements, pickAchievement,
          fetchBiReportsByKpi } from '../../../services/dataverse.js';
 import { BiFrame } from './BusinessIntelligence.jsx';
 
@@ -38,8 +38,6 @@ function KpiDashboards({ bis }){
     {open ? bis.map(b => <BiFrame key={b.id} bi={{ n: b.name, link: b.link }}/>) : null}
   </div>;
 }
-
-const sameText = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
 
 /* Dataverse's angle labels, mapped onto the ids DiagChip already styles. */
 const DIAG_ID = { Descriptive:'d1', Diagnostic:'d2', Predictive:'d3', Prescriptive:'d4' };
@@ -163,25 +161,38 @@ export function ScreenOrgReports(){
   }, [rec?.period]);
 
   /* Actual/Target/Baseline for one KPI citation, scoped to the open report's
-     own Department, Function and Period -- the match the user asked for.
-     stf_department/stf_function are free text on the achievement row, so the
-     match is by name, not by id, and case-insensitive. Returns:
+     own Business Unit, Department, Function and Period. Returns:
        undefined  -- this year hasn't been read yet
-       null       -- read, but nothing matches this KPI/Department/Function/month
-       the row    -- a match */
+       null       -- read, but nothing matches
+       the row    -- a match
+
+     ⚠️ The row is chosen by pickAchievement(), the SAME function Build a
+     report/plan uses. It used to be a hand-rolled `rows.find` here, and the
+     two disagreed in three ways for the same report and KPI:
+
+       - a row with a BLANK department was rejected here whenever the report
+         had one, while pickAchievement treats blank as "applies to any"
+       - Business Unit was ignored here entirely, so a row belonging to a
+         different BU could win
+       - the first match won rather than the most specific one
+
+     Month is still narrowed here, because this screen fetches a whole year
+     and caches it; Build report gets the same narrowing from its fetch,
+     which passes `month`. pickAchievement itself does NOT consider month --
+     whoever calls it has to have done that already. */
   const achForCitation = c => {
     if (!rec?.period || c.kind !== 'KPI' || !c.kpiId) return undefined;
     const year = String(rec.period).slice(0, 4);
     const rows = achByYear[year];
     if (rows === undefined || rows === null) return undefined;
     const monAbbr = MONTHS[+String(rec.period).slice(5, 7) - 1];
-    const deptName = nm(L.dept, rec.departmentId);
-    const funcName = nm(L.func, rec.functionId);
-    return rows.find(r => r.kpiId === c.kpiId
-      && (!deptName || sameText(r.department, deptName))
-      && (!funcName || sameText(r.function, funcName))
-      && r.monthLabel && String(r.monthLabel).toLowerCase().startsWith(monAbbr.toLowerCase())
-    ) || null;
+    const thisMonth = rows.filter(r => r.kpiId === c.kpiId
+      && r.monthLabel && String(r.monthLabel).toLowerCase().startsWith(monAbbr.toLowerCase()));
+    return pickAchievement(thisMonth, {
+      businessUnitId: rec.businessUnitId || null,
+      departmentName: nm(L.dept, rec.departmentId) || null,
+      functionName:   nm(L.func, rec.functionId) || null,
+    });
   };
 
   const openReport = id => { setOpenId(id); setOpenSec(null); };

@@ -5183,6 +5183,45 @@ targets from DT New: the achievement rows there key on DT New KPI ids, which
 do not exist in IT, so the join that currently returns actuals would break
 too.
 
+### 26 Sep: the two screens matched achievement rows by DIFFERENT rules
+
+Follow-up to the entry below. Told that the same KPI in the same report shows
+a Target in Build a report/plan but not in Reports / Plans -- which
+contradicted "IT has no targets". Chasing it found a real defect, though not
+the one reported.
+
+Both screens read the same table through the same `fetchKpiAchievements()`.
+They then chose a row by two different rules:
+
+| | Build report (`pickAchievement`) | Reports / Plans (hand-rolled `rows.find`) |
+|---|---|---|
+| row with a **blank** department | applies to anything | **rejected** when the report has one |
+| Business Unit | must match | **ignored entirely** |
+| several candidates | most specific wins | first one wins |
+
+So for one report and one KPI they could land on different rows: Reports /
+Plans rejected the general rows Build report accepted, and could accept a row
+belonging to a Business Unit the report has nothing to do with.
+
+**Fixed** by giving `achForCitation()` the same `pickAchievement()` both
+screens now share. The month narrowing stays where it was -- this screen
+fetches a whole year and caches it, while Build report gets the same
+narrowing from its fetch's `month` argument.
+
+⚠️ **`pickAchievement()` does NOT consider month.** Whoever calls it must
+narrow to the period first. Both callers now do; it is not obvious from the
+signature.
+
+`sameText()` went with it -- the hand-rolled matcher was its only caller.
+
+⚠️ **This does not by itself explain a visible Target**, and the data finding
+below stands unchanged: IT holds exactly ONE row with `pm_target` (actual
+138, target 186) and it belongs to KPI **"No. of visits"**, not to any OPD
+KPI. All 1,055 IT rows are September 2026. If Build report really does show a
+Target against an OPD KPI, something outside this table supplies it and the
+reading below is wrong -- worth a screenshot naming the KPI before assuming
+either way.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap
