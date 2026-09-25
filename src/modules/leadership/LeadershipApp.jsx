@@ -4586,7 +4586,25 @@ function NewReportModal({onClose}){
   const stageBU     = f.stage==='Business Unit';
   const stageRegion = f.stage==='Region';
   const scopeChosen = !(stageBU && !f.dvBusinessUnitId) && !(stageRegion && !f.dvRegionId);
-  const deptOpts = departmentsForScope(f.stage, f.dvBusinessUnitId, f.dvRegionId);
+  /* The Departments this Setup actually names --
+     lm_reporttemplatedepartmentfunctions, already on the detail as `lines`. */
+  const tplDeptIds = useMemo(()=>new Set(
+    (tplDetail?.lines || []).map(l=>l._lm_department_value).filter(Boolean)),
+  [tplDetail]);
+
+  /* ⚠️ A Setup's own Departments beat the scope inference.
+     departmentsForScope() works backwards from Positions -- "every Department
+     some Position in this Business Unit belongs to" -- which can offer a
+     Department the Setup never named and miss one it did. The Setup names them
+     outright, so when there is one, it wins.
+
+     Falls back to the inference for a Custom report, while the Setup is still
+     loading, or when the Setup names no Department at all. */
+  const tplDepts = DV_DEPT_LIST.filter(d=>tplDeptIds.has(d.id));
+  const fromSetup = !custom && tplDepts.length > 0;
+  const deptOpts = fromSetup
+    ? tplDepts
+    : departmentsForScope(f.stage, f.dvBusinessUnitId, f.dvRegionId);
   const scopedPos = positionsForScope(f.stage, f.dvBusinessUnitId, f.dvRegionId);
   /* Your own Position is always offered, even when it sits outside the
      chosen scope. "Created by" is who is preparing the report, which is not
@@ -4595,6 +4613,14 @@ function NewReportModal({onClose}){
   const posOpts = useMemo(()=>
     myPos && !scopedPos.some(p=>p.id===myPos.id) ? [myPos, ...scopedPos] : scopedPos,
   [myPos, scopedPos]);
+
+  /* A Department picked before the Setup's own list arrived may not be on it.
+     Cleared rather than left, so the form cannot submit a Department this
+     Setup does not name. */
+  useEffect(()=>{
+    if(fromSetup && f.dvDepartmentId && !deptOpts.some(d=>d.id===f.dvDepartmentId))
+      set('dvDepartmentId','');
+  },[fromSetup, deptOpts, f.dvDepartmentId]);
 
   /* Default to it once a scope exists. Not an initial state value: choosing a
      Stage, Business Unit or Region deliberately clears this field, so the
@@ -4831,13 +4857,18 @@ function NewReportModal({onClose}){
         the Setup's approved placement above.</Note>}
 
       <div className="f-row">
-        <Field label="Department" hint={scopeHint}>
+        <Field label="Department"
+          hint={fromSetup
+            ? `The ${deptOpts.length} Department${deptOpts.length===1?'':'s'} this Setup is for.`
+            : scopeHint}>
           <select value={f.dvDepartmentId} onChange={e=>set('dvDepartmentId',e.target.value)}
             disabled={!scopeChosen}>
             <option value="">{
               stageBU&&!f.dvBusinessUnitId ? 'Choose a Business Unit first'
               : stageRegion&&!f.dvRegionId ? 'Choose a Region first'
-              : deptOpts.length ? 'Select…' : 'No Departments in this scope'}</option>
+              : deptOpts.length ? 'Select…'
+              : custom ? 'No Departments in this scope'
+              : 'This Setup names no Department'}</option>
             {deptOpts.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
           </select></Field>
         <Field label="Created by" req

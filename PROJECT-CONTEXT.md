@@ -5325,6 +5325,42 @@ path only fires on a manual create from the New Report modal.
 the Template checklist row it came from -- exists on the table and is still
 written by nobody, here or in the plan. Worth setting if traceability matters.
 
+### 26 Sep: New Report's Department list comes from the Setup, not from Positions
+
+Asked for: the Department dropdown should offer the Departments linked to the
+Report Setup.
+
+⚠️ **What it did before is worth understanding, because the same helper backs
+several other pickers.** `departmentsForScope()` works BACKWARDS from
+Positions -- "every Department that some Position in this Business Unit
+belongs to". That is an inference, and it fails in both directions: it can
+offer a Department the Setup never named, and miss one the Setup names
+outright but that no loaded Position happens to sit in.
+
+A Report Template names its Departments directly, in
+`lm_reporttemplatedepartmentfunctions`, and
+`fetchReportTemplateDetail()` already returns them as `detail.lines` with
+`_lm_department_value`. Nothing had to be fetched; the authoritative answer
+was already on the object the modal held.
+
+**When a Setup is chosen and names Departments, its list wins.** The
+inference remains the fallback for a Custom report, while the Setup is still
+loading, and for a Setup that names none.
+
+⚠️ **A Department already picked is cleared if it is not on the Setup's
+list.** The Setup detail arrives asynchronously, so a Department can be
+chosen against the inferred list and then fall outside the real one. Leaving
+it would submit a Department the Setup does not name -- exactly the thing
+this change exists to prevent.
+
+The empty state distinguishes the two cases: "No Departments in this scope"
+for a Custom report, "This Setup names no Department" otherwise. The hint
+says which list is in play.
+
+**Not changed:** the second `departmentsForScope()` caller (the Meeting-side
+modal, same file) still infers. Whether a Meeting Setup's own Departments
+should govern there too is the same question and has not been asked.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap
