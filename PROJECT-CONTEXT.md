@@ -5112,6 +5112,44 @@ it needs group-member data in IT. Dormant while IT has no meetings.
 
 Both apps built clean. Not yet exercised against live data.
 
+### 26 Sep: the 100-character objective 400, which this file had already predicted
+
+Live failure creating a Report Occurrence:
+
+    0x80044331 -- the length of the 'lm_reportobjective' attribute of the
+    'lm_reportoccurrence' entity exceeded the maximum allowed length of '100'
+
+⚠️ **Section 6 already described this exact failure**, in the entry
+"`lm_reportobjective` on the occurrence is 100 characters": *"The Template's
+objective can be longer, and Dataverse rejects with a 400 rather than
+truncating. Anything copying the objective onto an occurrence has to cap it
+or skip it."*
+
+`NewReportModal` did precisely the thing that warns against -- on picking a
+Setup it copied `d.parent.lm_objective` in whole as the starting value -- and
+then nothing validated the field, unlike `fileUrl` right beside it which has
+had a `FILE_URL_MAX` check all along. A Template with an ordinary-length
+objective therefore made the form unsaveable, with the only clue an opaque
+hex code in the console.
+
+**Fixed three ways, matching the existing `FILE_URL_MAX` idiom exactly:**
+- `REPORT_OBJECTIVE_MAX = 100`, declared beside `FILE_URL_MAX`
+- the Template copy is **truncated on the way in** -- safe, because it is a
+  machine-supplied DEFAULT the person then edits
+- the field carries an `err` and the Create button is blocked, so what a
+  person *types* is refused rather than silently cut
+
+`createReportOccurrence()` also `console.warn`s the real cause when handed an
+over-length objective. Deliberately does NOT truncate: silently shortening
+someone's text is worse than refusing it. The point is that the next caller
+sees "lm_reportobjective is 214 characters; the column allows 100" instead of
+0x80044331.
+
+⚠️ Note the constant lives in `LeadershipApp.jsx` beside `FILE_URL_MAX`, not
+in `dataverse.js` with `MOM_NOTE_MAX`/`GRID_EVIDENCE_MAX`/`REPORT_NOTE_MAX`.
+Two homes for the same kind of constant already existed; this follows its
+nearest neighbour rather than splitting the modal's own checks across files.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap
@@ -5575,6 +5613,10 @@ client-side. Widened so far: `lm_momnotes.lm_notes` → 4000,
 `lm_meetingminutes.lm_returnreason` → 2000.
 
 **Still narrow and should be widened:**
+- `lm_reportoccurrence.lm_reportobjective` — **hit live 26 Sep**. 100 characters
+  is short for an objective, and the Report TEMPLATE's own `lm_objective` is
+  longer, so the natural "copy the Template's objective down" produces a row
+  Dataverse refuses. Guarded client-side now, but widening it is the real fix.
 - `lm_auditgridanswers.lm_evidence` — every manual score needs an evidence note
 - `lm_auditgridinstances.lm_returnreason`
 - `lm_auditgridinstances.lm_correctionreason`

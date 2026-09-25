@@ -3886,8 +3886,17 @@ export async function recordAgendaDistribution(id){
  * @returns {Promise<{id:string|null, errors:{table:string,error:any}[]}>}
  */
 export async function createReportOccurrence(payload){
+  if((payload.objective || '').length > 100){
+    console.warn('[dataverse] createReportOccurrence: lm_reportobjective is %d characters; ' +
+      'the column allows 100 and Dataverse will reject this with 0x80044331.',
+      payload.objective.length);
+  }
   const row = {
     lm_name: payload.name || 'Untitled Report',
+    /* 100 characters, and Dataverse 400s rather than truncating (0x80044331).
+       Not capped here on purpose -- silently shortening what someone typed is
+       worse than refusing it -- but a caller that skips its own validation
+       gets a named cause instead of an opaque error code. */
     lm_reportobjective: payload.objective || null,
     lm_period: payload.period || null,
     lm_status: REPORT_OCC_STATUS_KEY[payload.status || 'Draft'] ?? REPORT_OCC_STATUS_KEY.Draft,
