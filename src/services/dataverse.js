@@ -3435,6 +3435,10 @@ export async function fetchReportTemplateHierarchyContent(){
 /* lm_source on a Section: 1 Migrated (from Template), 2 Added (this occurrence
    only). A Section created by the Build screen is always Added. */
 const SECTION_SOURCE_ADDED = 2;
+/* Exported because the Build screen locks a migrated Section's angle: the
+   Template governs it, so the occurrence must not re-type it. Callers compare
+   the CODE, never the FormattedValue label, which is renameable in Dataverse. */
+export const SECTION_SOURCE_MIGRATED = 1;
 
 export const REPORT_CITATION_KIND_KEY = Object.fromEntries(
   Object.entries(REPORT_CITATION_KIND).map(([code, label]) => [label, Number(code)]));
@@ -3510,6 +3514,10 @@ export async function fetchReportOccurrenceForEdit(occurrenceId){
       angle: SECTION_ANGLE[s.lm_diagnosticangle] || 'Untyped',
       sequence: s.lm_sequence ?? null,
       source: s['lm_source' + FV] || null,
+      /* The raw choice code beside the label. `source` is the display text and
+         is renameable; anything BRANCHING on where a Section came from has to
+         use this. Compare against SECTION_SOURCE_MIGRATED / _ADDED. */
+      sourceCode: s.lm_source ?? null,
       author: s['_createdby_value' + FV] || null,
       created: s.createdon || null,
       citations: citesBySection[s.lm_reportoccurrencesectionsid] || [],

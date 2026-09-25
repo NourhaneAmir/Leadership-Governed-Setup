@@ -5246,6 +5246,34 @@ report screens.
    BuildReport's Scope panel at the context resolvers.
 5. `BI-Report-bulk-upload.xlsx` awaits its dashboard links.
 
+### 26 Sep: a Section migrated from the Setup keeps its Diagnostic Angle
+
+Asked for: in Build a report/plan, the section type should be uneditable for
+Sections that came from the Setup. That is what `lm_source` already
+distinguishes -- **1 Migrated (from Template)**, **2 Added (this occurrence
+only)** -- so the rule is simply that the Template governs the angle of the
+Sections it supplied.
+
+⚠️ **Keyed on the choice CODE, not the label.** The section mapping carried
+only `source`, the FormattedValue string ("Migrated (from Template)"), and
+branching on that would break the moment the option is renamed in Dataverse.
+`lm_source` was already in `EDIT_SECTION_SELECT`, just never mapped; it now
+comes through as `sourceCode`, with `SECTION_SOURCE_MIGRATED = 1` exported
+beside the existing `SECTION_SOURCE_ADDED = 2`.
+
+**The lock is opt-IN**, which matters: `addSection()` builds a Section with no
+`sourceCode` at all, so a Section added on the occurrence can never be caught
+by it. Only a row that came back from Dataverse carrying code 1 is locked.
+
+The control reads as locked rather than broken -- dashed border,
+`cursor:not-allowed`, the unchosen segments faded to .45 while the CHOSEN one
+keeps full colour and its accent. The value is still information; it is only
+the choosing that is closed. The `title` says why.
+
+**Not extended to heading, order or removal** -- only the angle was asked
+for, and those are arguably also Template-governed for a migrated Section.
+Worth deciding deliberately rather than by drift.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap

@@ -795,6 +795,13 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 .dg-seg button.on.d1{background:#5B7C8D}.dg-seg button.on.d2{background:#8E5B2A}
 .dg-seg button.on.d3{background:#6B5A9E}.dg-seg button.on.d4{background:#4A7C59}
 .dg-seg button.on.none{background:var(--grey)}
+/* Locked: the Section came from the Report Template, which governs its angle.
+   The chosen segment keeps its colour -- the value is still meaningful, it is
+   only the choosing that is closed -- while the rest fade back so the control
+   does not invite a click it will not accept. */
+.dg-seg.locked{ border-style:dashed; cursor:not-allowed }
+.dg-seg.locked button{ opacity:.45 }
+.dg-seg.locked button.on{ opacity:1 }
 .dg{display:inline-flex;align-items:center;gap:4px;border-radius:20px;padding:1px 8px;
   font-size:10.5px;font-weight:650;letter-spacing:.01em}
 .dg.d1{background:rgba(91,124,141,.13);color:#42606E}

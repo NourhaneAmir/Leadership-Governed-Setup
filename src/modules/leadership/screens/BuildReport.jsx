@@ -26,7 +26,7 @@ import { DiagChip, rptTagC, matchesQuery } from '../domain.jsx';
 import { BiFrame } from './BusinessIntelligence.jsx';
 import { fetchReportOccurrenceForEdit, saveReportOccurrenceContent, submitReportOccurrence,
          fetchReportTemplateDetail, fetchKpis, fetchProcesses,
-         fetchKpiAchievements, pickAchievement,
+         fetchKpiAchievements, pickAchievement, SECTION_SOURCE_MIGRATED,
          fetchStrategyPocs, fetchExecutionCategories, fetchSpecialties,
          fetchStrategies, fetchBiReportDashboards, fetchTasks, createTask,
          fetchProjects, PROJECT_STATUS, PROJECT_CATEGORY,
@@ -695,14 +695,24 @@ function SectionEditor({ s, i, total, busy, patch, move, remove, uncite, cite, p
                          catalog, inScope, reports, ach, rec, L, nm, exec, addTask, toast,
                          biByKpi, tplChildren, attachCite, occsOfTemplate }){
   const len = s.body.length;
+  /* Migrated (from Template) rather than added on this occurrence. */
+  const fromSetup = s.sourceCode === SECTION_SOURCE_MIGRATED;
+
   return <div className="sec">
     <div className="sec-h">
       <span className="sec-n">{i + 1}</span>
       <input className="sec-t" value={s.heading} maxLength={850} disabled={busy}
         placeholder="Heading" onChange={e => patch(s.key, { heading: e.target.value })}/>
-      <div className="dg-seg">
+      {/* A Section migrated down from the Report Template keeps the angle the
+          Template gave it -- that is what the Setup governs. Only a Section
+          added on this occurrence can be re-typed. A section added here has no
+          sourceCode at all, so the lock is opt-IN and never catches one. */}
+      <div className={'dg-seg' + (fromSetup ? ' locked' : '')}
+        title={fromSetup
+          ? 'Set by the Report Template — a Section from the Setup keeps its angle.'
+          : undefined}>
         {ANGLES.map(([label, cls]) =>
-          <button key={cls} type="button" disabled={busy}
+          <button key={cls} type="button" disabled={busy || fromSetup}
             className={(s.angle === label ? 'on ' : '') + cls}
             onClick={() => patch(s.key, { angle: label })}>{label}</button>)}
       </div>
