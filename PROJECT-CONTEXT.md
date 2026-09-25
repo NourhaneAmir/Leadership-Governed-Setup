@@ -5062,6 +5062,56 @@ is the one to watch:
   own-role scoping reads. If the Calendar empties, this is the cause: the
   signed-in account has no matching row in IT's Organization Structure.
 
+### 26 Sep, finally: all master data reads IT -- the fork is obsolete
+
+Reported: the New Report modal's Business Unit / Region picker showed five
+rows, every one of them "(Business Unit not in the loaded list)". The
+template's unit rows come from IT and carry IT business-unit ids; `dvBu()`
+resolved them against `fetchBusinessUnits()`, which read DT New. Nothing
+matched, so every label fell through to the placeholder.
+
+**Pinned to IT:** `businessunits`, `crd04_regionses`,
+`cr603_chklst_departmentses`, `hr_functions`,
+`cr301_specialtyksa_service_hubs`, `and_teamschannellinks`. With the
+Organization Structure pin earlier today, that completes the master-data
+follow-up the Meeting-move entry flagged.
+
+⚠️ **This directly contradicts the 24 Sep rationale, and correctly so.** That
+comment forked a second IT-reading set rather than repointing, because
+Business Unit/Region/Department/Function/Position were read by BOTH
+Meeting-side data (DT New) and Report-side data (IT), and repointing would
+have "broken every one of those Meeting-side resolutions in the same stroke".
+**That reasoning expired when the Meeting family moved to IT earlier today.**
+Both sides now carry IT ids. The old comment is preserved in place, marked
+superseded, because its reasoning is still correct for the world it was
+written in.
+
+⚠️ **The `*ItService` fork is now pure duplication** -- five services reading
+the same tables in the same org as their counterparts, so the app reads each
+table TWICE per load, and for Organization Structure that is 11.4k rows each
+time. Not removed here: `BuildReport.jsx` still calls the `fetch*ForIT()`
+wrappers, and removing them means pointing its Scope panel at the context's
+existing `dvLookup` resolvers. Its own change.
+
+**Only 8 services still read DT New, and each has a reason:**
+
+| Service | Why |
+|---|---|
+| `lm_approvalcycles`, `lm_approvalcyclesteps`, `lm_authoritymatrixrows` | **absent from IT** -- cannot move |
+| `hr_employees`, `systemusers` | fallback-only holder routes; the primary route is the org row's own `hr_fullnameofcurrentemployee` |
+| `lm_setupactivities` | Governance-only screen; its own `DATA_ORG` already makes it IT there |
+| `wlog_decisions` | Decisions is its own screen, not part of either move |
+| `and_microsoftgroupmembers` | see below |
+
+⚠️ **`and_microsoftgroupmembers` is a live landmine, left deliberately.** IT
+holds **0** rows; DT New holds 3. `lm_MicrosoftGroup` binds to it from
+`lm_meetingattendeeslists`, which **is** IT-pinned -- so saving a Meeting
+Setup with a Microsoft Group attendee will fail to bind. Pinning it would
+swap that for an empty picker, which is not better, so neither was chosen:
+it needs group-member data in IT. Dormant while IT has no meetings.
+
+Both apps built clean. Not yet exercised against live data.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap

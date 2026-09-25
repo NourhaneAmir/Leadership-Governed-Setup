@@ -83,30 +83,40 @@ function rowsOrThrow(res){
    --------------------------------------------------------------------- */
 import { dvTable, uploadFileColumn, IT_ORG } from './xenv.js';
 
-const BusinessunitsService = dvTable('businessunits');
-const Crd04_regionsesService = dvTable('crd04_regionses');
-const Cr603_chklst_departmentsesService = dvTable('cr603_chklst_departmentses');
-const Hr_functionsService = dvTable('hr_functions');
-/* IT-pinned SIBLINGS of the four services directly above, plus Organization
-   Structure below -- deliberately a second, separate set of dvTable()
-   instances, not the same tables repointed to IT_ORG (24 Sep).
+/* All IT. Every record that carries a Business Unit / Region / Department /
+   Function id -- Report Templates, Report Occurrences, Meeting Templates,
+   Meeting Occurrences -- is now read from and written to IT, so the id in the
+   record and the id in the name map have to come from the same place.
 
-   Business Unit/Region/Department/Function/Position are read by BOTH
-   Meeting-side data (Meeting Occurrences, still DT New) and Report-side data
-   (Report Occurrences, IT since 22 Sep) throughout LeadershipApp.jsx --
-   dvBu()/dvDept()/dvFunc()/dvPos()/dvRegion() alone are called 40+ times,
-   resolving Meeting Chairman/Facilitator names and Meeting BU/Region/
-   Department labels just as often as anything Report-side. Repointing the
-   existing services to IT_ORG the way the citation-source tables were pinned
-   would have fixed Build a report/plan's Scope panel and broken every one of
-   those Meeting-side resolutions in the same stroke -- Meeting Occurrences
-   still carry DT New ids, and IT's copies of these tables do not share ids
-   with DT New's any more than any other pair of tables in this app do.
+   IT and DT New do not share ids for any of these (§9's GUID evidence), and
+   the counts differ too: BU 36/35, Region 4/3, Department 71/57,
+   Function 252/294. A record's id simply does not appear in the other org's
+   table, which is what "(Business Unit not in the loaded list)" was.
 
-   So this is a genuine fork, not a pin: a second, IT-reading set, used only
-   by screens resolving names on Report-side (IT-hosted) records. Kept
-   deliberately minimal -- name-only, no holder-resolution chain for
-   Positions -- since that is all Build a report/plan's Scope panel needs. */
+   No-op for Governance, whose DATA_ORG is already IT. */
+const BusinessunitsService = dvTable('businessunits', undefined, IT_ORG);
+const Crd04_regionsesService = dvTable('crd04_regionses', undefined, IT_ORG);
+const Cr603_chklst_departmentsesService = dvTable('cr603_chklst_departmentses', undefined, IT_ORG);
+const Hr_functionsService = dvTable('hr_functions', undefined, IT_ORG);
+/* ⚠️ SUPERSEDED 26 Sep, and now pure duplication. Kept only because
+   BuildReport.jsx still calls the fetch*ForIT() wrappers below.
+
+   The 24 Sep rationale for forking these was sound at the time and is worth
+   preserving: Business Unit/Region/Department/Function/Position were read by
+   BOTH Meeting-side data (Meeting Occurrences, DT New) and Report-side data
+   (Report Occurrences, IT since 22 Sep). One set of services could not serve
+   both, so repointing them would have fixed Build a report/plan's Scope panel
+   and broken 40+ Meeting-side name resolutions in the same stroke.
+
+   **That ceased to be true on 26 Sep**, when the Meeting family moved to IT.
+   Both sides now carry IT ids, the four services above are pinned to IT, and
+   these five read the same tables in the same org as their counterparts.
+
+   ⚠️ So the app now reads each of these tables TWICE per load -- and for
+   Organization Structure that is 11.4k rows each time. Removing them means
+   pointing BuildReport.jsx's Scope panel at the context's existing dvLookup
+   resolvers instead of fetching its own copy; left as its own change rather
+   than bundled into this one. */
 const BusinessunitsItService = dvTable('businessunits', undefined, IT_ORG);
 const Crd04_regionsesItService = dvTable('crd04_regionses', undefined, IT_ORG);
 const Cr603_chklst_departmentsesItService = dvTable('cr603_chklst_departmentses', undefined, IT_ORG);
@@ -162,7 +172,9 @@ const Strategy_processesService = dvTable('strategy_processes', undefined, IT_OR
    (BuildReport.jsx, OrgReports.jsx) are Report Occurrence / citation
    screens, already IT-hosted, so this is a plain repoint, not a fork. */
 const Pm_kpiachievmentsService = dvTable('pm_kpiachievments', undefined, IT_ORG);
-const Cr301_specialtyksa_service_hubsService = dvTable('cr301_specialtyksa_service_hubs');
+/* IT: lm_Speciality / lm_ReportSpeciality on Report and Meeting Templates
+   all bind to this, and those rows are IT. */
+const Cr301_specialtyksa_service_hubsService = dvTable('cr301_specialtyksa_service_hubs', undefined, IT_ORG);
 const And_microsoftgroupmembersService = dvTable('and_microsoftgroupmembers');
 /* IT, not the app's own org. Every record that binds lm_CreatorPosition /
    lm_ChairPosition / lm_ReviewerPosition and friends to
@@ -201,7 +213,9 @@ const Hr_employeesService = dvTable('hr_employees');
    ⚠️ The two tables share no ids: a Setup saved BEFORE this carries an
    and_teamschannels id in a lookup that no longer points at that table. Those
    rows need their Channel re-picked; nothing here repairs them. */
-const And_teamschannellinksService = dvTable('and_teamschannellinks');
+/* IT: lm_TeamChannel binds to this from Report and Meeting Templates, which
+   are IT -- and the bind was only repointed to this table on 23 Sep. */
+const And_teamschannellinksService = dvTable('and_teamschannellinks', undefined, IT_ORG);
 
 /** Regions -- table crd04_regions (generated as Crd04_regionsesService).
  *  Primary key crd04_regionsid; crd04_id holds the display name. */
