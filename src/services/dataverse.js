@@ -164,7 +164,26 @@ const Strategy_processesService = dvTable('strategy_processes', undefined, IT_OR
 const Pm_kpiachievmentsService = dvTable('pm_kpiachievments', undefined, IT_ORG);
 const Cr301_specialtyksa_service_hubsService = dvTable('cr301_specialtyksa_service_hubs');
 const And_microsoftgroupmembersService = dvTable('and_microsoftgroupmembers');
-const Cr603_organizationstructuresService = dvTable('cr603_organizationstructures');
+/* IT, not the app's own org. Every record that binds lm_CreatorPosition /
+   lm_ChairPosition / lm_ReviewerPosition and friends to
+   /cr603_organizationstructures(id) is now written to IT, so the id has to be
+   an IT id or the bind resolves against nothing.
+
+   The data says the same thing: IT holds 11,372 Positions of which 4,641 name
+   their current holder; DT New holds 307, of which 11 do. The Position
+   pickers were listing the 307.
+
+   No-op for Governance, whose own DATA_ORG is already IT -- the divergence is
+   Leadership's, exactly as with the Report and Meeting families.
+
+   ⚠️ hr_employees and systemusers are deliberately NOT moved with it. They
+   feed fetchPositions()' FALLBACK holder routes only; the primary route is
+   the Organization Structure row's own hr_fullnameofcurrentemployee, which
+   is what the 4,641 above counts. Those fallbacks simply stop matching, and
+   holder resolution degrades to the name route rather than breaking.
+
+   ⚠️ Cost: ~11.4k rows at app load, three pages instead of one. */
+const Cr603_organizationstructuresService = dvTable('cr603_organizationstructures', undefined, IT_ORG);
 const SystemusersService = dvTable('systemusers');
 const Hr_employeesService = dvTable('hr_employees');
 /* and_teamschannels retired 22 Sep in favour of and_teamschannellinks (below)

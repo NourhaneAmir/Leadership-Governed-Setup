@@ -4995,6 +4995,57 @@ First thing to check on this one: the template picker lists **Active /
 Approved Setups only**. IT holds 30 Report Templates; if few or none are
 Approved the picker looks empty, which reads as a bug and is not one.
 
+### 26 Sep, later still: "Created by" defaults to the signed-in user -- and Positions finally read IT
+
+Reported as a UI problem: the Created by picker in New Report said
+"No Positions in this scope". It was a wrong-environment problem.
+
+**The numbers decided it:**
+
+| `cr603_organizationstructure` | IT | DT New |
+|---|---|---|
+| Positions | **11,372** | 307 |
+| with a named holder | **4,641** | 11 |
+
+The picker was listing DT New's 307. Worse, `lm_CreatorPosition` binds to
+`/cr603_organizationstructures(id)` on a Report Occurrence **written to IT**,
+so a DT New id could never have resolved there. ⚠️ **That has been broken
+since Report Occurrences moved to IT on 22 Sep** -- not caused by this
+change, only surfaced by it.
+
+**`cr603_organizationstructures` now reads IT.** This is the master-data
+follow-up the Meeting-move entry flagged as required, done for Positions
+only. No-op for Governance (its `DATA_ORG` is already IT); the divergence is
+Leadership's, same pattern as every other pin.
+
+⚠️ **`hr_employees` and `systemusers` deliberately did NOT move with it.**
+They feed `fetchPositions()`'s FALLBACK holder routes; the primary route is
+the Organization Structure row's own `hr_fullnameofcurrentemployee` -- the
+4,641 above. So the fallbacks stop matching and holder resolution degrades to
+the name route rather than breaking. `myPositionIds` already prefers
+systemuser id and falls back to holder name, so it lands on the working route
+by itself.
+
+⚠️ **Cost: ~11.4k rows at app load**, three pages instead of one. Not
+measured against the live app.
+
+⚠️ **`fetchPositionNamesForIT()` is now redundant** -- `Cr603_organization`
+`structuresItService` and `Cr603_organizationstructuresService` are both IT
+and both read the same 11.4k rows. `BuildReport.jsx` still calls the former,
+so the app now loads that table TWICE. Not removed here (it is a separate
+cleanup, and the other four `*ForIT` helpers are unaffected), but it should
+go.
+
+**Created by itself:** defaults to the signed-in user's own Position via
+`dvLookup.myPositionIds`, and that Position is offered **even when it sits
+outside the chosen scope** -- "Created by" is who prepares the report, not a
+fact about the scope it covers, and a scope with no Positions was exactly
+when the field could not be filled. The default only ever fills a BLANK
+field, because choosing a Stage/BU/Region deliberately clears it, so an
+explicit choice is never overwritten.
+
+Not yet exercised against live data.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap

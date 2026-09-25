@@ -4551,7 +4551,14 @@ function ApprovedSetupPicker({id,list,val,onChange,labelOf,emptyText,extraOption
 }
 
 function NewReportModal({onClose}){
-  const {toast,refreshOccurrences}=use();
+  const {toast,refreshOccurrences,dvLookup}=use();
+  /* The signed-in user's own Position, resolved by dvLookup.myPositionIds
+     (systemuser id first, holder name second -- see myPositionIds where the
+     context is built). This is the Position "Created by" means. */
+  const myPos = useMemo(()=>{
+    const ids = dvLookup?.myPositionIds || [];
+    return DV_POS_LIST.find(p=>ids.includes(p.id)) || null;
+  },[dvLookup]);
   const [f,setF]=useState({
     setup:'', tplUnitKey:'',
     name:'', objective:'', fileUrl:'',
@@ -4575,7 +4582,22 @@ function NewReportModal({onClose}){
   const stageRegion = f.stage==='Region';
   const scopeChosen = !(stageBU && !f.dvBusinessUnitId) && !(stageRegion && !f.dvRegionId);
   const deptOpts = departmentsForScope(f.stage, f.dvBusinessUnitId, f.dvRegionId);
-  const posOpts  = positionsForScope(f.stage, f.dvBusinessUnitId, f.dvRegionId);
+  const scopedPos = positionsForScope(f.stage, f.dvBusinessUnitId, f.dvRegionId);
+  /* Your own Position is always offered, even when it sits outside the
+     chosen scope. "Created by" is who is preparing the report, which is not
+     a fact about the scope it covers -- and a scope with no Positions in it
+     is exactly when this field was impossible to fill. */
+  const posOpts = useMemo(()=>
+    myPos && !scopedPos.some(p=>p.id===myPos.id) ? [myPos, ...scopedPos] : scopedPos,
+  [myPos, scopedPos]);
+
+  /* Default to it once a scope exists. Not an initial state value: choosing a
+     Stage, Business Unit or Region deliberately clears this field, so the
+     default has to be re-applied after each of those. Only ever fills a BLANK
+     field, so an explicit choice is never overwritten. */
+  useEffect(()=>{
+    if(myPos && scopeChosen && !f.dvCreatorPositionId) set('dvCreatorPositionId', myPos.id);
+  },[myPos, scopeChosen, f.dvCreatorPositionId]);
   const scopeHint = stageBU ? 'Narrowed to the chosen Business Unit.'
     : stageRegion ? 'Narrowed to every Business Unit in the chosen Region.'
     : 'Group and ExCom Reports are not narrowed — everything is offered.';
@@ -4779,7 +4801,9 @@ function NewReportModal({onClose}){
             {deptOpts.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
           </select></Field>
         <Field label="Created by" req
-          hint="The Position accountable for preparing it. Written to lm_CreatorPosition.">
+          hint={myPos
+            ? `Defaults to your own Position (${myPos.name}). Written to lm_CreatorPosition.`
+            : 'The Position accountable for preparing it. Written to lm_CreatorPosition.'}>
           <PositionSelect value={f.dvCreatorPositionId} onChange={v=>set('dvCreatorPositionId',v)}
             opts={posOpts} disabled={!scopeChosen}
             placeholder={scopeChosen?'Search a Position…':'Choose the scope first'}
