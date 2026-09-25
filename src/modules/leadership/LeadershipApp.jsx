@@ -2202,6 +2202,9 @@ function App({onSwitch}){
      clicked -- Workspace, Calendar or Meetings -- it opens the read-only panel
      rather than an execution screen that could not render it. */
   const [dvOpen,setDvOpen]=useState(null);
+  /* The New Report modal is opened from more than one screen, so it lives at
+     app level next to dvOpen rather than inside any one of them. */
+  const [newRpt,setNewRpt]=useState(false);
   /* A live Meeting Occurrence has a full detail page of its own, so it navigates
      there -- straight to the Minutes tab for a MOM Due calendar item, since
      that is the one thing there is to do about it. A live Report Occurrence
@@ -2839,7 +2842,12 @@ function App({onSwitch}){
   const ctx = {db,setDb,mut,me,bu,setBu,businessUnits,navOpen,setNavOpen,currentUser,screen,go,openMeeting,openWork,sel,setSel,
                toast,toasts,reset,S,A,work,cal,counts,onSwitch,
                dvMeetingOccs,dvReportOccs,dvMinutes,dvGridInstances,dvDecisions,dvLoading,dvError,refreshOccurrences,
-               dvOpen,setDvOpen,openDvRec,dvLookup};
+               dvOpen,setDvOpen,openDvRec,dvLookup,
+               /* Opens the New Report modal. On the context on purpose:
+                  OrgReports.jsx's header rule forbids it importing anything
+                  from this file, so the modal itself cannot travel -- only
+                  this opener does. */
+               openNewReport:()=>setNewRpt(true)};
   const Screen = SCREEN_BY_ID[screen] || SCREEN_BY_ID.work;
 
   return <Ctx.Provider value={ctx}>
@@ -2852,6 +2860,10 @@ function App({onSwitch}){
     </div>
     <Toasts/>
     {dvOpen ? <DvOccurrenceModal item={dvOpen} onClose={()=>setDvOpen(null)}/> : null}
+    {/* Built 02 Sep, rendered nowhere since it was cut from the nav. It reads
+        the approved Report Templates live and creates a real Report
+        Occurrence, so it is connected rather than rebuilt. */}
+    {newRpt ? <NewReportModal onClose={()=>setNewRpt(false)}/> : null}
   </Ctx.Provider>;
 }
 /* =========================================================================
@@ -2963,7 +2975,13 @@ function ScreenWorkspace(){
     <div className="ph ph-row">
       <div style={{flex:1}}><h1>My Workspace</h1>
         <div className="sub">Your pending tasks, upcoming meetings, and action items across all modules.</div></div>
-      <Btn onClick={()=>go('rpt')}>+ New Report</Btn>
+      {/* 'orpt' is the Reports / Plans TAB in the sidebar. This used to go to
+          'rpt', the hidden seeded composer -- a different screen with the
+          confusingly similar label "Reports & Plans". Safe to redirect
+          because this call site passes no id; the ones that DO pass an id
+          still need 'rpt' until ScreenOrgReports can receive a selection
+          (see the note on the hidden registry entry). */}
+      <Btn onClick={()=>go('orpt')}>+ New Report</Btn>
       <Btn k="pri" onClick={()=>go('mtg')}>+ New Meeting</Btn>
     </div>
 

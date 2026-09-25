@@ -66,7 +66,7 @@ const fmtStamp = iso => (iso ? fmtD(String(iso).slice(0, 10)) : '—');
    a Position the signed-in user holds is "Issued by you"; anything else is
    "Received". That is the only authorship the table records. */
 export function ScreenOrgReports(){
-  const { dvReportOccs, dvLoading, dvError, dvLookup, go } = use();
+  const { dvReportOccs, dvLoading, dvError, dvLookup, go, openNewReport } = use();
   const L = dvLookup || {};
   const nm = (fn, id) => (id && typeof fn === 'function' ? fn(id) : null);
 
@@ -187,9 +187,18 @@ export function ScreenOrgReports(){
   const openReport = id => { setOpenId(id); setOpenSec(null); };
 
   return <>
-    <div className="ph"><h1>Reports / Plans</h1>
-      <div className="sub">Organizational reports and plans, in and out. The same class of thing you
-        produce: sections with an author, a diagnostic angle and citations.</div></div>
+    <div className="ph ph-row">
+      <div style={{flex:1}}><h1>Reports / Plans</h1>
+        <div className="sub">Organizational reports and plans, in and out. The same class of thing you
+          produce: sections with an author, a diagnostic angle and citations.</div></div>
+      {/* Opens the app-level New Report modal: pick an approved Report
+          Template to work from, or create an Ad Hoc report with no Setup
+          behind it. The opener comes from the context, never from
+          LeadershipApp directly -- see this file's header. */}
+      {openNewReport
+        ? <Btn k="pri" onClick={openNewReport}>+ New Report</Btn>
+        : null}
+    </div>
 
     {dvError
       ? <Note k="err">Reading reports from Dataverse failed, so this list may be incomplete.

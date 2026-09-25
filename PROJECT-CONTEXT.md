@@ -4935,6 +4935,51 @@ An IT meeting's Chair/Facilitator/Department/BU lookups carry IT ids that will
 not resolve against the DT New rows `LeadershipApp.jsx` still loads. Dormant
 only while IT has no meetings. See the entry below for the two ways to fix it.
 
+### 26 Sep: the New Report flow reconnected -- almost nothing was built
+
+Asked for: Workspace's "+ New Report" to go to the Reports / Plans tab, a
+button there to reach a create screen, and that screen to read Report
+Templates so a user can work from one or go custom.
+
+**Most of it already existed and was unreachable.** `NewReportModal`
+(LeadershipApp) reads approved Report Templates live, offers
+`Custom Report -- no approved Setup` beside them, and creates a real
+`lm_reportoccurrences` row through `createReportOccurrence()`. It even toasts
+"Ad Hoc Report created" on the custom branch. Built 02 Sep, cut from the nav
+the same day, **rendered nowhere since** -- oxlint had been reporting it as an
+unused function ever since. Connected, not rebuilt.
+
+**Three wiring points:**
+1. Workspace's button: `go('rpt')` -> `go('orpt')`.
+2. `NewReportModal` now renders at app level beside `DvOccurrenceModal`, with
+   `newRpt` state.
+3. Reports / Plans gained a `+ New Report` button in its header.
+
+⚠️ **`rpt` and `orpt` are different screens with nearly identical
+labels.** `orpt` = "Reports / Plans", the live sidebar tab
+(`ScreenOrgReports`). `rpt` = "Reports & Plans", a HIDDEN seeded composer
+(`ScreenReports`). Confusing them is easy and the old button pointed at the
+hidden one.
+
+⚠️ **Only call sites passing NO id can be redirected.** The registry's
+own note explains why: `ScreenOrgReports` has no way to receive an externally
+selected report -- it manages its own `openId` rather than reading
+`sel[screenId]` like every other screen. Workspace's button passes no id, so
+it was safe. **The dozen-odd `go('rpt', id)` call sites still cannot move**
+until that screen is retrofitted.
+
+⚠️ **`OrgReports.jsx` forbids importing from `LeadershipApp.jsx`** -- its
+header says so, to keep the file portable. So the modal itself does not
+travel; only an `openNewReport` opener on the context does. Any future
+cross-file action from that screen must go the same way.
+
+Both ends are IT: `fetchReportTemplatesList` reads `lm_report_templates` and
+`createReportOccurrence` writes `lm_reportoccurrences`, both IT-pinned, so the
+Template lookup resolves. IT holds 30 Report Templates.
+
+Not yet exercised against live data -- the picker lists Active / Approved only,
+so how many of those 30 appear depends on their status.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap
