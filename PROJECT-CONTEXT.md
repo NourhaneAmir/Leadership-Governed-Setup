@@ -2567,6 +2567,59 @@ Diagnostic Angle, attached file and every citation. The citation labels come
 from the editor's own rule, lifted into `sectionItemLabel()` and shared, so the
 same row cannot read two ways.
 
+### 25 Sep: ⚠️ the 23 Sep deployment entry below is WRONG — read this first
+
+**Its central factual claim is false, and the conclusion drawn from it sent a
+push to the wrong pair.**
+
+It says `C:\tmp\cad-gov` and `C:\tmp\cad-exec` "no longer contain a
+`power.config.json`". **They both do**, and always did:
+
+| Folder | appId | Environment |
+|---|---|---|
+| `C:\tmp\cad-gov` | `4912152c-b5c8-4beb-bb74-c9f43550405b` | Code App Development |
+| `C:\tmp\cad-exec` | `83db0ef8-4c62-4eef-84ac-dadab326b704` | Code App Development |
+
+⚠️ **How the false negative happened, because it will happen again.** The
+check ran Python against a **Git Bash** path:
+
+    python -c "json.load(open('/c/tmp/cad-gov/power.config.json'))"
+    -> FileNotFoundError
+
+Native Windows Python cannot open `/c/...`; only the shell translates it.
+`ls` in the same command showed the file present, and the mismatch was read
+as "the folder has no config" instead of "the two tools disagree about the
+path". **Use `C:/tmp/...` for Python/`pac`; `/c/tmp/...` only for shell
+builtins.** When `ls` and a program disagree about whether a file exists,
+suspect the path form before believing the program.
+
+**Consequence.** On that false basis the staging route was declared dead and
+`power-apps push` was run from `apps/governance/` and `apps/leadership/`,
+which deployed to **`7caa2fb2-1661-4b02-a2a3-926f58f88e61`** and
+**`0f077a0a-fd52-4e57-900c-b7607ea30505`** in **DT New**. That contradicts
+§8's standing rule — *"use a staging folder so `apps/*/power.config.json`
+stays bound to DT New"* — whose entire point is that the repo config is a
+DEVELOPMENT binding and not a deploy target.
+
+⚠️ **So there is now a third live pair, and it was not meant to exist.** The
+23 Sep entry additionally told future sessions to treat the Code App
+Development pairs as "history", which is the opposite of true: 24 Sep was
+spent recovering `d61c6237…` specifically to avoid orphaning it.
+
+**Current state, as far as it can be established:**
+
+| Pair | Environment | Staging folder | Status |
+|---|---|---|---|
+| `4912152c` / `83db0ef8` | Code App Development | `cad-gov` / `cad-exec`, both intact | called orphaned by earlier entries, but their folders are the ones that survived |
+| `786c1b14` / `d61c6237` | Code App Development | **gone** — `cad-gov-new`/`cad-exec-new` do not exist | Leadership reconnected 24 Sep; Governance never recovered |
+| `7caa2fb2` / `0f077a0a` | **DT New** | `apps/governance`, `apps/leadership` | pushed 23 Sep in error |
+
+⚠️ **Do not push anywhere without asking first.** This file has now named
+four pairs as current across five entries, at least two of those claims are
+wrong, and the folder that 24 Sep's recovery produced is already missing
+again. Which pair is canonical is a question for the product owner, not an
+inference to be drawn from this document.
+
 ### 23 Sep: deployment, as it ACTUALLY is — read this one, the two below are history
 
 Verified by pushing, not by reading: both apps went out successfully today
