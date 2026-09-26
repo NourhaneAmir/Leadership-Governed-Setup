@@ -24,6 +24,7 @@ import { Btn, Tag, Note, Empty } from '../../../shared/ui.jsx';
 import { fmtP, TODAY } from '../../../shared/format.js';
 import { DiagChip, rptTagC, matchesQuery } from '../domain.jsx';
 import { BiFrame } from './BusinessIntelligence.jsx';
+import { ExportReportButtons } from './ExportReport.jsx';
 import { fetchReportOccurrenceForEdit, saveReportOccurrenceContent, submitReportOccurrence,
          fetchReportTemplateDetail, fetchKpis, fetchProcesses,
          fetchKpiAchievements, pickAchievement, SECTION_SOURCE_MIGRATED,
@@ -736,6 +737,16 @@ export function ScreenBuildReport(){
                 {busy === 'save' ? 'Saving…' : 'Save draft'}</Btn>
               <Btn k="pri" disabled={!!busy || before === null} onClick={onSubmit}>
                 {busy === 'submit' ? 'Submitting…' : 'Submit for review'}</Btn>
+              {/* Exports the sections ON SCREEN, not the saved rows -- that is
+                  what someone looking at the editor expects. When they differ
+                  the file says so on its own first page, because a file that
+                  leaves the app cannot rely on a toast to carry the caveat. */}
+              <ExportReportButtons report={rec} sections={sections}
+                disabled={before === null || !!busy}
+                extraWarnings={dirty
+                  ? ['This file was exported with unsaved changes open in the editor, '
+                     + 'so it reflects the screen rather than what is stored in Dataverse.']
+                  : null}/>
             </div>
           </div>
           <Note k="info" ic="i"><b>Submitting sends it into the review route configured on its Template</b>,

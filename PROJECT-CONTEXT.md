@@ -5684,6 +5684,242 @@ until the data exists.
 Wired into Build a report/plan. **Not yet in Reports / Plans** -- the same
 citation should eventually show the same thing in both.
 
+### 26 Sep — Readiness register published as a live link
+
+`https://claude.ai/artifact/6d7oGvErGmzPv2Wxv3X8gd` — a published page listing
+everything still standing between the apps and real day-to-day use, grouped by
+**who has to act** rather than by kind, because every item has exactly one owner:
+
+- **Dataverse administrator** — 3 absent tables (`lm_authoritymatrixrow`,
+  `lm_approvalcycle`, `lm_approvalcyclestep`), `wlog_decision.lm_citedreportsection`,
+  `lm_meetingtemplates.lm_month`, and the five text columns still at 100.
+- **Data owner** — no meetings in IT at all (0/0/0 vs 124/25/10), `lm_meetingcategory`
+  never uploaded to IT, `and_microsoftgroupmember` 0 rows, KPI target 1 of 1,055
+  (and 0 of 378 breakdowns), 6,731 of 11,372 Positions with no holder.
+- **Developer** — the review screen (`DvReportDetail`) rendered nowhere so no report
+  can be approved or returned, both occurrence generators unbuilt, Tasks/Comments/
+  Settings not persisted, plus the four small gaps (double Positions read,
+  `lm_sourcesectionchecklistitem` never written, breakdown members missing from
+  Reports/Plans, Meeting-side Department picker still inferring).
+- **Product owner** — the 6 open decisions from §7.
+
+⚠️ **§9's checklist is partly stale** and the page does not reproduce it. "Report/Plan
+Composition, execution side — nothing reads or writes them" is now false; the
+composer, the citations and the migration are all live. §9 should be re-read against
+the page rather than trusted on its own.
+
+Every count on the page was read live from `org2f45e702` and `org319b4ea9` — none is
+carried over from an earlier note. Text column widths are stated as *observed
+behaviour*, not metadata, because Dataverse exposes no max-length column (see §8).
+
+The page is **private** until shared from its own Share menu; the admin and the
+product owner cannot open the link before that.
+
+### 26 Sep — Excel refused the exported workbook; a regression from the ExcelJS swap
+
+⚠️ **UNRESOLVED AS OF THIS ENTRY.** A real export ("OPD Monthly Performance
+Report — September 2026.xlsx") failed to open: *"Excel cannot open the file …
+because the file format or file extension is not valid."* The SheetJS version
+opened fine, so this is a regression from the styling rewrite.
+
+#### What was ruled OUT, with evidence
+
+Do not re-investigate these; each was checked directly, not reasoned about:
+
+| Suspected | Finding |
+|---|---|
+| Blob built wrongly from `writeBuffer()` | Browser bundle returns a real `Uint8Array`, `byteOffset` 0, `new Blob([buf])` captures it exactly. Verified by loading `dist/exceljs.min.js` in Node. |
+| Browser bundle differs from Node entry | Ran the **same writer** through both. Byte-identical output (21,921 bytes), same 9 sheets. |
+| Malformed package | `[Content_Types].xml` declares every table part; every `r:id` a sheet uses exists in its `.rels`; table refs do not overlap. |
+| Control characters in body text | ExcelJS **strips** them (`before\u000bafter` → `beforeafter`). |
+| XML-special characters, newlines in names, empty heading, 3+ tables on one sheet, 12 sections, duplicate truncated headings | All produce valid files. |
+| Hyperlinks inside a table | Relationships correct on every sheet that has one. |
+
+#### What WAS found and fixed
+
+1. ⚠️ **A cell longer than 32,767 characters makes the whole workbook invalid
+   to Excel** — and SheetJS reads such a file back happily, so a round-trip
+   test does **not** catch it. Only Excel does. Every string now goes through
+   `cellText()`; numbers are left alone by `cellRow()` so columns still sum.
+2. Sheet names were `.trim()`ed *before* `.slice(0,31)`, so a truncated heading
+   kept a trailing space ("4. Corrective Actions and Next "). Now trimmed after.
+3. `xlNote()`'s row height could reach `NaN` if `span` were ever undefined;
+   ExcelJS writes it straight into the XML and `ht="NaN"` is invalid.
+4. **New integrity guard**: `reportToXlsx` now refuses to return a Blob unless
+   the bytes start with `PK\x03\x04` and contain an end-of-central-directory
+   record. A malformed workbook now raises a real error instead of downloading
+   and failing in Excel — which is what made this so hard to diagnose.
+
+#### ⚠️ Why this is not yet confirmed fixed
+
+None of the above could be **reproduced** here. There is no browser in this
+environment, and every Node reproduction produced a valid file. The 32,767
+limit is a genuine defect but a >32k section body is unlikely in this report,
+so it may not be the cause the user actually hit.
+
+**The fastest way to close this is the failing file itself** — its bytes say
+immediately whether it is truncated, zero-length, HTML, or a valid zip Excel
+dislikes for a specific reason. Asked for. Not committed or pushed until it is
+confirmed, because pushing an unverified fix over a known-working-before
+feature is worse than leaving it.
+
+### 26 Sep — The Excel export is styled, which meant changing library
+
+⚠️ **SheetJS cannot do this, and no amount of options makes it.** The community
+`xlsx` build cannot write a fill, a font or a table style at all — cell styling
+is a SheetJS **Pro** feature. So "add colours to the Excel" was not a matter of
+passing more arguments to the existing writer; it required a different library.
+
+`reportToXlsx` now uses **ExcelJS 4.4.0**. `xlsx` stays, because it is still the
+right tool for *reading* an uploaded workbook (FilePreview, and the checklist
+proof of concept in `LeadershipApp.jsx`). The two are never loaded in the same
+flow, and both are dynamic.
+
+**What the styling actually is** — not decoration, it is the part that makes a
+workbook usable:
+
+- **Real Excel Table objects** (`ws.addTable`), 11 of them in a typical report.
+  That is what gives filter dropdowns and banded rows. A hand-coloured
+  imitation would have neither.
+- **Frozen panes on every sheet**, so headings stay put while data scrolls.
+- **Number format `#,##0.##`** and right alignment on every figure column, so
+  95 stays `95` and 84.25 stays `84.25` — a fixed `0.00` would print every
+  integer target as `95.00`.
+- **Title / band / key-value / note / table** — five row kinds, so every sheet
+  is built from the same parts and a reader learns the pattern once.
+- **Wrapped notes with an estimated row height.** Merged cells do NOT auto-fit
+  in Excel, so a long objective in a 15px row would be invisible.
+
+Palette is the app's own (`src/theme.css`), as ARGB: `FF452F1B` title band,
+`FF6B4E30` section band, `FFF1E6D4` key labels, `FFFBF7F0` notes. Deliberately
+not Excel's default blue — the file leaves the app and should still look like it
+came from it. (⚠️ `--teal` in the stylesheet is a warm gold despite the name.)
+
+#### ⚠️ Two ExcelJS traps this cost real time
+
+1. **`row.alignment = …` applies to EVERY cell in that row.** A leftover
+   `row.alignment = row.alignment || {}` silently wiped the right-alignment
+   just set on the figure columns. Always set alignment per CELL inside a
+   table. The test caught this; nothing about the file looked wrong.
+2. **An empty table is not worth writing.** Excel tolerates a zero-row table
+   poorly and a filter over no rows tells a reader nothing, so `xlTable()`
+   falls back to a note — which is also the only way to say *why* it is empty
+   ("no achievement matched this report, so no members could be read").
+
+Table names are generated (`Pulse_T1…`), never derived from a heading: an Excel
+table name is an identifier — no spaces, must start with a letter, unique across
+the workbook — and a section heading guarantees none of that.
+
+**Chunks after the change** (all lazy, none in the main bundle): exceljs 930kB,
+xlsx 492kB, docx 405kB. The leadership main chunk went 816.45 → 820.93kB, and
+that 4.5kB is this feature's own code, not a library. Governance carries neither
+exceljs nor docx.
+
+**Open option, not taken:** moving FilePreview and the checklist POC onto ExcelJS
+would let `xlsx` be dropped entirely, saving ~492kB of deployed assets. Not done
+here — it touches working code that was not part of this request.
+
+### 26 Sep — Pushed both apps (report export)
+
+Both live on the first attempt, no `generateResourceStorage` timeout:
+
+| App | Id | Staging folder |
+|---|---|---|
+| Governance Setup | `4912152c-b5c8-4beb-bb74-c9f43550405b` | `C:\tmp\cad-gov` |
+| Leadership Execution | `83db0ef8-4c62-4eef-84ac-dadab326b704` | `C:\tmp\cad-exec` |
+
+Carries the Excel/Word report export and the `processId` line in
+`fetchReportOccurrenceContent`.
+
+`.power` and `power.config.json` checked present in both folders **before and
+after** — the `dist` subfolder only was replaced, per the standing rule.
+
+Asset counts are a useful smoke check here: governance 102, leadership 103. The
+extra one is the lazy `docx` chunk, which the governance app correctly does not
+carry.
+
+### 26 Sep — Export a report to Excel or Word
+
+Three new files, and one line added to `fetchReportOccurrenceContent`.
+
+`src/services/reportWriters.js` — the layout, and **nothing else**: no service
+import, no React, no Dataverse. That split is deliberate and worth keeping: it
+is what let the whole feature be tested in plain Node against a hand-built
+model, which caught three real defects before the app ever ran (a missing
+figure printing as `0`, the `&` in a report name going out unescaped — Word
+refuses to open such a file — and figures arriving as text so Excel would not
+sum them).
+
+`src/services/reportExport.js` — the model builder and the façade. Reads only
+the tables this report actually cites (`kindsPresent()`), because
+`cr603_projects` and `hx_tasks` are large shared tables and reading either for
+a report that cites neither would be the most expensive part of the export.
+
+`src/modules/leadership/screens/ExportReport.jsx` — the `Excel` / `Word` button
+pair, on both the author's footer (Build a report/plan) and the reader's header
+(Reports / Plans).
+
+**Excel:** a sheet per section (heading, angle, source, author, body, its
+citations, its KPI figures, its breakdown members, its dashboards), plus five
+cross-cutting sheets — `Report` (cover + the export's own notes), `KPI figures`,
+`Breakdowns`, `Citations` (every kind, every metadata column) and `BI reports`.
+
+**Word:** each section a real `Heading1` and each citation a real `Heading2`, so
+Word's navigation pane works; a metadata table per citation built only from the
+fields that kind actually carries; figures and breakdown members as tables.
+
+⚠️ **A missing figure is EMPTY in Excel and an em dash in Word, never `0`.** A
+dash in a spreadsheet poisons `SUM`; a blank in a document reads as a bug. The
+cover sheet says which convention it is using.
+
+⚠️ **The author's screen exports the sections ON SCREEN, not the saved rows** —
+that is what someone looking at an editor expects. When they differ the file
+declares it on its own first page, via `exportReport({extraWarnings})`, because
+a file that leaves the app cannot rely on a toast to carry the caveat.
+
+⚠️ **Both `xlsx` and `docx` MUST stay dynamically imported.** §5's earlier note
+on this is load-bearing: Rollup cannot give a module its own lazy chunk while
+anything in the bundle imports it statically, so one static import would drag
+~900kB into the MAIN chunk for all three importers. Verified after this change —
+the leadership main chunk is 816.45kB, byte-identical to before it.
+
+`docx@9.7.2` added to dependencies. It lands in its own 405kB lazy chunk and the
+governance app does not carry it at all.
+
+**One line in `dataverse.js`:** `processId` added to
+`fetchReportOccurrenceContent`'s citation map. It was only ever `processName`
+there, while the edit-side read always carried both — so the reader's screen
+could not resolve a Process to its own row for the department behind it.
+
+#### ⚠️ Why there is no BI dashboard screenshot, and why no library fixes it
+
+The request was for a screenshot of each attached dashboard. It cannot be done
+from this code, for two independent reasons, and both are worth recording so it
+is not re-attempted:
+
+1. **A dashboard is a cross-origin iframe.** `html2canvas` and every library
+   like it re-paint the DOM they can *read*; none can enter another origin's
+   document. There is no flag, no permission and no library that lifts this —
+   it is the rule that stops any page reading your signed-in bank dashboard.
+2. **In this host the frame frequently never renders.** `CSP_BLOCKS_POWERBI` in
+   `BusinessIntelligence.jsx` exists because the Power Apps host refuses frames
+   to powerbi.com; when it fires, `BiFrame` deliberately draws nothing. There
+   are then no pixels on screen to capture even in principle.
+
+So a BI citation exports as its name, the KPI behind it, a live hyperlink, and
+a clearly labelled reserved block — never a blank space that looks like a bug.
+
+**The one supported route** is Power BI's own `exportToFile`: a Power Automate
+flow using the Power BI connector's "Export To File for Power BI Reports"
+action, storing the PNG against the `lm_bireportdashboard` row. That needs a
+Power BI Pro/PPU licence and the workspace on Premium or Fabric capacity, so it
+is a licensing and flow decision, not code.
+
+**The hook is already built and tested.** Pass
+`biImages = { [biReportId]: { base64, width, height } }` to either writer and
+the image replaces the placeholder; nothing else changes. A test confirmed the
+image appears and the placeholder disappears.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap
@@ -7143,6 +7379,14 @@ looks absent — pipe it through `tr -d '\r'` first.
 ---
 
 ## 9. Remaining features checklist
+
+⚠️ **Parts of this section are stale.** Several entries below describe things that
+have since been built — notably "Report/Plan Composition, execution side", which
+now reads, writes, migrates its sections and citations down from a Setup, and
+renders them in both screens (breakdown MEMBERS are still Build-only). The live
+readiness register (see §5, 26 Sep:
+`https://claude.ai/artifact/6d7oGvErGmzPv2Wxv3X8gd`) was rebuilt from live row
+counts rather than from this list, and is the one to trust where the two disagree.
 
 Organized by what actually unblocks each item — not by how big it feels.
 

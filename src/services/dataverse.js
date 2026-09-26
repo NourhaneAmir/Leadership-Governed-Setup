@@ -3375,6 +3375,10 @@ export async function fetchReportOccurrenceContent(){
     breakdown: c['lm_breakdowndimension' + FV] || SECTION_BREAKDOWN_DIM[c.lm_breakdowndimension] || null,
     kpiId: c._lm_kpi_value || null,
     kpiName: c['_lm_kpi_value' + FV] || null,
+    /* The id as well as the name: the export resolves a Process to its own row
+       for the department behind it, which a formatted value cannot give. The
+       edit-side read (fetchReportOccurrenceForEdit) always carried both. */
+    processId: c._lm_process_value || null,
     processName: c['_lm_process_value' + FV] || null,
     citedReportId: c._lm_citedreportoccurrence_value || null,
     citedReportName: c['_lm_citedreportoccurrence_value' + FV] || null,

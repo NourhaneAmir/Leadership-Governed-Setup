@@ -28,6 +28,7 @@ import { BiFrame } from './BusinessIntelligence.jsx';
 /* Reused rather than copied: the same form Build a report/plan raises a task
    with, so a task raised from either side carries identical fields. */
 import { NewTaskForm } from './BuildReport.jsx';
+import { ExportReportButtons } from './ExportReport.jsx';
 
 /* The dashboards behind a cited KPI. Collapsed by default -- a report citing
    eight KPIs would otherwise mount eight Power BI frames at once, each
@@ -354,6 +355,10 @@ export function ScreenOrgReports(){
                 {!rec.locked && (rec.status === 'Draft' || rec.status === 'Returned')
                   ? <Btn k="sm pri" onClick={() => go('build', rec.id)}>Edit this report</Btn>
                   : null}
+                {/* Disabled until the content is read: exporting the shell of a
+                    report would produce a file with a cover and no sections. */}
+                <ExportReportButtons report={rec} sections={secs}
+                  citations={content?.citations} disabled={content === null}/>
               </div>
               <div className="csub">
                 {[scopeOf(rec), nm(L.pos, rec.creatorPositionId), fmtP(rec.period),
