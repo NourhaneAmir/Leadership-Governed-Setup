@@ -5528,6 +5528,46 @@ that does not exist.
 **two**-column grid, which would have stranded Created by on its own line.
 Switched to `.f-row3`.
 
+### 26 Sep: "+ Task" on a section — and why "+ Decision" cannot be built yet
+
+Asked for both, from the Extension prototype's section action row. They are
+in completely different states.
+
+**Task — already existed, now discoverable.** Raising a new Task or
+attaching an existing one has been possible all along: it is the `Task` kind
+inside the citation picker, with `NewTaskForm` for a new one and the
+`hx_taskses` list for an existing one, and `hx_taskses` is IT-pinned so the
+`lm_Task` bind resolves. The only problem was the way in — a picker labelled
+*"+ Cite a KPI, breakdown, process, child report or other source"* that you
+then had to change the kind on. A `+ Task` button now opens that same picker
+straight on that kind. **No new capability; only a door.**
+
+⚠️ **Decision — BLOCKED on an IT schema change, and neither environment can
+do it today.** Verified against live metadata in both:
+
+| | `lm_citedreportsection` on `wlog_decision` | Report Sections live in |
+|---|---|---|
+| DT New | **present** | — |
+| IT | **absent** | **IT** |
+
+`wlog_decisions` is one of the 8 services still reading DT New. So:
+
+- **leave it on DT New** → the section lookup would have to bind an IT
+  `lm_reportoccurrencesectionses` id from a DT New row. A Dataverse lookup
+  cannot cross environments.
+- **pin it to IT** → IT's copy of the table has no
+  `lm_citedreportsection` column at all, so there is nothing to bind.
+
+⚠️ IT's `wlog_decision` also carries none of DT New's `pms_*` family and no
+other report-side link — checked the full column list, not just that one
+name.
+
+**To unblock:** add `lm_citedreportsection` to `wlog_decision` in IT,
+targeting `lm_reportoccurrencesectionses`, then pin `wlog_decisions` to
+`IT_ORG`. The write path is otherwise straightforward — §6 already records
+that this lookup is how a Decision attaches to a Report Section, and the
+Decisions screen already creates rows.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap

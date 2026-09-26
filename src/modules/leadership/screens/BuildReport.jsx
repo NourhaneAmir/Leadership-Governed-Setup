@@ -755,10 +755,22 @@ function SectionEditor({ s, i, total, busy, patch, move, remove, uncite, cite, p
         : <div className="dg none" style={{ marginTop: 8, display: 'inline-block' }}>
             No source yet — free text only</div>}
 
-      <div className="sec-f">
+      <div className="sec-f" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         <Btn k="sm" disabled={busy}
           onClick={() => setPicker(picker ? null : { key: s.key, kind: 'KPI', q: '', kpiId: '', dim: '', text: '' })}>
           {picker ? 'Close the picker' : '+ Cite a KPI, breakdown, process, child report or other source'}</Btn>
+        {/* Raising or attaching a Task has always been possible -- it is the
+            'Task' kind inside the picker above, with NewTaskForm for a new one
+            and the hx_taskses list for an existing one. It was reachable only
+            by opening a picker labelled "Cite a KPI…" and changing the kind,
+            which is why nobody found it. This opens the same picker straight
+            on that kind; it adds no new capability, only a way in. */}
+        <Btn k="sm" disabled={busy}
+          title="Raise a new task, or attach one that already exists, against this section"
+          onClick={() => setPicker(picker?.kind === 'Task'
+            ? null
+            : { key: s.key, kind: 'Task', q: '', kpiId: '', dim: '', text: '' })}>
+          {picker?.kind === 'Task' ? 'Close the task picker' : '+ Task'}</Btn>
       </div>
 
       {picker
