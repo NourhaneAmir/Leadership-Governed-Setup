@@ -5763,6 +5763,77 @@ dislikes for a specific reason. Asked for. Not committed or pushed until it is
 confirmed, because pushing an unverified fix over a known-working-before
 feature is worse than leaving it.
 
+### 26 Sep — Pushed both apps (styled Excel + reviewer names)
+
+Both live on the first attempt. Carries the ExcelJS styling rewrite, the
+`hr_employees` IT pin and the review chain display.
+
+| App | Id | Staging folder |
+|---|---|---|
+| Governance Setup | `4912152c-b5c8-4beb-bb74-c9f43550405b` | `C:\tmp\cad-gov` |
+| Leadership Execution | `83db0ef8-4c62-4eef-84ac-dadab326b704` | `C:\tmp\cad-exec` |
+
+`.power` and `power.config.json` checked present in both folders before and
+after; the `dist` subfolder only was replaced.
+
+Asset counts: governance 102, leadership **104** — up from 103, the new one
+being the lazy `exceljs` chunk. Governance correctly carries neither `exceljs`
+nor `docx`.
+
+### 26 Sep — Reviewer names in the review chain, and why they were missing
+
+**The cause was a service on the wrong environment, not missing data.**
+
+`Cr603_organizationstructuresService` is IT-pinned, but `Hr_employeesService`
+was still on this app's `DATA_ORG` (DT New). Its only caller is
+`fetchEmployeeIndex()`, whose entire job is to join employees to Positions —
+so it was joining **IT Position ids against DT New employee rows**, which share
+no ids with them. Every one of the three fallback holder routes silently
+missed. Only the primary route (`hr_fullnameofcurrentemployee`, read straight
+off the IT Position row) could ever work.
+
+Confirmed live rather than reasoned about — position `030331ea…`
+"Patient Access Specialist/Patient Access-11681":
+
+| Column | Value |
+|---|---|
+| `hr_fullnameofcurrentemployee` | **empty** — so the primary route fails |
+| `hr_currentemployee` | `20005-AHJ` — the link IS there |
+| IT `hr_employee` row | **Yousef Abdulrahman Altalhi** |
+
+Fix: `dvTable('hr_employees', undefined, IT_ORG)`.
+
+⚠️ **This does NOT disturb `myPositionIds`.** `holderUserId` now carries IT
+systemuserids, which still cannot match a DT New `currentUser.systemUserId`
+(`systemusers` is deliberately left on DATA_ORG for now), so `myPositionIdsById`
+finds nothing exactly as before and falls through to `myPositionIdsByName` —
+which this change makes work for far more Positions, because `p.holder` is now
+populated. Checked the order at `LeadershipApp.jsx` before changing anything.
+
+#### ⚠️ §5's earlier "4,641 of 11,372" figure was an undercount
+
+It counted Positions whose `hr_fullnameofcurrentemployee` is filled. That is the
+primary route only. Measured live 26 Sep:
+
+| | IT |
+|---|---|
+| Positions with `hr_currentemployee` set | **8,862** of 11,372 |
+| Positions with `hr_fullnameofcurrentemployee` set | 4,641 |
+| `hr_employee` rows in IT | **11,255** |
+
+So roughly **8,862** Positions can now resolve a reviewer name, not 4,641 —
+close to double. The published readiness register was corrected; it had listed
+this as a data gap for the data owner when it was mostly a code defect.
+
+**The display also changed.** The review chain now leads with the person and
+keeps the Position underneath, because a reviewer is chased by name rather than
+by Position code — with an explicit "No current employee recorded" where there
+is genuinely no holder, since a vacant Position and one whose lookup failed
+looked identical before. The three repeated
+`tplUnits.find(u=>u.key===f.tplUnitKey)` calls in that one expression are now a
+single `reviewChain` const, and the modal's `pos()` helper (its only caller) was
+removed rather than left dead.
+
 ### 26 Sep — The Excel export is styled, which meant changing library
 
 ⚠️ **SheetJS cannot do this, and no amount of options makes it.** The community

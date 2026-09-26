@@ -4580,9 +4580,6 @@ function NewReportModal({onClose}){
   const set=(k,v)=>setF(x=>({...x,[k]:v}));
   const custom = f.setup==='custom';
 
-  const pos = id => { const n=dvPos(id); if(!n) return null;
-    const h=id&&DV_POS_HOLDER[id]; return h?`${n} — ${h}`:n; };
-
   /* Stage decides what the Report is scoped to, exactly as it does for a
      Meeting: Stage 1 runs in a Business Unit, Stage 2 in a Region, Group and
      ExCom once group-wide. Department and Creator narrow to whichever applies. */
@@ -4697,6 +4694,10 @@ function NewReportModal({onClose}){
       reviewChain: (r.reviewChain||[]).slice().sort((a,b2)=>(a.lm_step||0)-(b2.lm_step||0)),
     })),
   ].filter(u=>u.key) : [];
+
+  /* The chosen unit's chain, named once -- the review chain panel below used
+     to re-run this find() three times in one expression. */
+  const reviewChain = (tplUnits.find(u=>u.key===f.tplUnitKey)?.reviewChain) || [];
 
   const applyUnit = unit => {
     setF(x=>({...x,
@@ -4970,15 +4971,33 @@ function NewReportModal({onClose}){
             emptyText="No Positions in this scope"/></Field>
       </div>
 
-      {!custom && f.tplUnitKey && tplUnits.find(u=>u.key===f.tplUnitKey)?.reviewChain.length>0 &&
+      {!custom && f.tplUnitKey && reviewChain.length>0 &&
         <Field label="Review chain" hint="Resolved from the Setup for this unit — read-only, not stored on the occurrence.">
           <div style={{border:'1px solid var(--border)',borderRadius:8,overflow:'hidden'}}>
-            {tplUnits.find(u=>u.key===f.tplUnitKey).reviewChain.map((r,i)=>
-              <div key={i} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',
-                borderBottom:i<tplUnits.find(u=>u.key===f.tplUnitKey).reviewChain.length-1?'1px solid var(--border)':'none'}}>
-                <span style={{color:'var(--teal-d)',fontWeight:700,fontSize:12,width:16}}>{i+1}.</span>
-                <span style={{fontSize:12.5}}>{pos(r._lm_reviewerposition_value)||'—'}</span>
-              </div>)}
+            {reviewChain.map((r,i)=>{
+              const pid = r._lm_reviewerposition_value;
+              /* The Setup names a POSITION; who currently holds it comes from
+                 cr603_organizationstructures / hr_employees, both in IT. The
+                 person leads, because a reviewer is chased by name rather than
+                 by Position code -- with the Position kept underneath, since
+                 that is what the Setup actually governs. */
+              const who = pid && DV_POS_HOLDER[pid];
+              const title = pid && dvPos(pid);
+              return <div key={i} style={{display:'flex',alignItems:'baseline',gap:8,padding:'7px 10px',
+                borderBottom:i<reviewChain.length-1?'1px solid var(--border)':'none'}}>
+                <span style={{color:'var(--teal-d)',fontWeight:700,fontSize:12,flex:'0 0 16px'}}>{i+1}.</span>
+                <span style={{minWidth:0}}>
+                  <div style={{fontSize:12.5,fontWeight:who?600:400}}>{who || title || '—'}</div>
+                  {/* Vacant and not-yet-loaded look identical otherwise, and most
+                      IT Positions genuinely have no current employee recorded. */}
+                  {who
+                    ? <div className="holder" style={{fontSize:11.5}}>{title}</div>
+                    : title
+                      ? <div className="holder" style={{fontSize:11.5}}>No current employee recorded</div>
+                      : null}
+                </span>
+              </div>;
+            })}
           </div></Field>}
 
       <Field label="File"

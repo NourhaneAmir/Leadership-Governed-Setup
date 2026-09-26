@@ -197,7 +197,21 @@ const And_microsoftgroupmembersService = dvTable('and_microsoftgroupmembers');
    ⚠️ Cost: ~11.4k rows at app load, three pages instead of one. */
 const Cr603_organizationstructuresService = dvTable('cr603_organizationstructures', undefined, IT_ORG);
 const SystemusersService = dvTable('systemusers');
-const Hr_employeesService = dvTable('hr_employees');
+/* ⚠️ IT_ORG (26 Sep), and it has to be. Its ONLY caller is
+   fetchEmployeeIndex(), whose whole job is to join employees to Positions --
+   and cr603_organizationstructures is IT-pinned above. On this app's own
+   DATA_ORG it was joining IT Position ids against DT New employee rows, which
+   share no ids with them, so every fallback holder route silently missed and
+   a Position whose hr_fullnameofcurrentemployee happened to be blank showed
+   no name at all. Confirmed live: position 030331ea… carries employee
+   20005-AHJ, whose IT hr_employee row names Yousef Abdulrahman Altalhi, while
+   its hr_fullnameofcurrentemployee is empty.
+
+   This does NOT disturb myPositionIds: holderUserId now carries IT
+   systemuserids, which still cannot match a DT New currentUser.systemUserId,
+   so that match finds nothing exactly as before and falls through to the name
+   route -- which this change makes work for many more Positions. */
+const Hr_employeesService = dvTable('hr_employees', undefined, IT_ORG);
 /* and_teamschannels retired 22 Sep in favour of and_teamschannellinks (below)
    -- a newly-registered table with a real Team/Channel object id on each
    row, not just a repeated name.
