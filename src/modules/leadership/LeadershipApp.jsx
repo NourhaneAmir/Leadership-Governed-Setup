@@ -4572,7 +4572,7 @@ function NewReportModal({onClose}){
     name:'', objective:'', fileUrl:'',
     period: TODAY.slice(0,7),          // month the Report covers
     stage:'Business Unit',
-    dvBusinessUnitId:'', dvRegionId:'', dvDepartmentId:'', dvCreatorPositionId:'',
+    dvBusinessUnitId:'', dvRegionId:'', dvDepartmentId:'', dvFunctionId:'', dvCreatorPositionId:'',
   });
   const [saving,setSaving]=useState(false);
   const [tplDetail,setTplDetail]=useState(null);
@@ -4604,10 +4604,29 @@ function NewReportModal({onClose}){
      Falls back to the inference for a Custom report, while the Setup is still
      loading, or when the Setup names no Department at all. */
   const tplDepts = DV_DEPT_LIST.filter(d=>tplDeptIds.has(d.id));
+
+  /* ⚠️ The Setup's lines are Department/Function PAIRS, so the Functions on
+     offer are the ones paired with the Department chosen -- not every
+     Function that Department happens to own. A line with no Function means
+     "the whole Department", and contributes nothing here. */
+  const tplFuncIds = useMemo(()=>new Set(
+    (tplDetail?.lines || [])
+      .filter(l=>!f.dvDepartmentId || l._lm_department_value === f.dvDepartmentId)
+      .map(l=>l._lm_function_value).filter(Boolean)),
+  [tplDetail, f.dvDepartmentId]);
   const fromSetup = !custom && tplDepts.length > 0;
   const deptOpts = fromSetup
     ? tplDepts
     : departmentsForScope(f.stage, f.dvBusinessUnitId, f.dvRegionId);
+  /* Same precedence as the Department: what the Setup pairs wins, and the
+     fallback is every Function belonging to the chosen Department. Without a
+     Department there is nothing to narrow by, so nothing is offered. */
+  const tplFuncs = DV_FUNC_LIST.filter(fn=>tplFuncIds.has(fn.id));
+  const funcFromSetup = !custom && tplFuncs.length > 0;
+  const funcOpts = funcFromSetup
+    ? tplFuncs
+    : (f.dvDepartmentId ? DV_FUNC_LIST.filter(fn=>fn.dept === f.dvDepartmentId) : []);
+
   const scopedPos = positionsForScope(f.stage, f.dvBusinessUnitId, f.dvRegionId);
   /* Your own Position is always offered, even when it sits outside the
      chosen scope. "Created by" is who is preparing the report, which is not
@@ -4639,6 +4658,17 @@ function NewReportModal({onClose}){
     }
     if(!f.dvDepartmentId && deptOpts.length===1) set('dvDepartmentId', deptOpts[0].id);
   },[fromSetup, deptOpts, f.dvDepartmentId]);
+
+  /* The Function follows the Department, by the same two rules: drop one that
+     is no longer on offer (the Department changed under it), and take a lone
+     option rather than asking for a choice that does not exist. */
+  useEffect(()=>{
+    if(f.dvFunctionId && !funcOpts.some(fn=>fn.id===f.dvFunctionId)){
+      set('dvFunctionId','');
+      return;
+    }
+    if(!f.dvFunctionId && funcOpts.length===1) set('dvFunctionId', funcOpts[0].id);
+  },[funcOpts, f.dvFunctionId]);
 
   /* Default to it once a scope exists. Not an initial state value: choosing a
      Stage, Business Unit or Region deliberately clears this field, so the
@@ -4738,6 +4768,7 @@ function NewReportModal({onClose}){
         businessUnitId:(stageBU && f.dvBusinessUnitId) ? f.dvBusinessUnitId : undefined,
         regionId:(stageRegion && f.dvRegionId) ? f.dvRegionId : undefined,
         departmentId:f.dvDepartmentId||undefined,
+        functionId:f.dvFunctionId||undefined,
         creatorPositionId:f.dvCreatorPositionId||undefined,
         // A month is stored as its first day -- the column is a date, and the
         // Report covers the period, not a particular day in it.
@@ -4866,7 +4897,7 @@ function NewReportModal({onClose}){
               <select value={f.stage} onChange={e=>{
                 const v=e.target.value;
                 setF(x=>({...x, stage:v, dvBusinessUnitId:'', dvRegionId:'',
-                                dvDepartmentId:'', dvCreatorPositionId:''}));
+                                dvDepartmentId:'', dvFunctionId:'', dvCreatorPositionId:''}));
               }}>
               {['Business Unit','Region','Group','ExCom'].map(o=><option key={o}>{o}</option>)}</select></Field>
           : null}
@@ -4874,7 +4905,7 @@ function NewReportModal({onClose}){
         {custom && stageBU
           ? <Field label="Business Unit" req hint="Written to the lm_BusinessUnit lookup.">
               <select value={f.dvBusinessUnitId} onChange={e=>setF(x=>({...x,
-                dvBusinessUnitId:e.target.value, dvDepartmentId:'', dvCreatorPositionId:''}))}>
+                dvBusinessUnitId:e.target.value, dvDepartmentId:'', dvFunctionId:'', dvCreatorPositionId:''}))}>
                 <option value="">{DV_BU_LIST.length?'Select…':'No Business Units loaded'}</option>
                 {DV_BU_LIST.map(b=>{ const rn=dvRegion(b.region);
                   return <option key={b.id} value={b.id}>{rn?`${b.name} — ${rn}`:b.name}</option>; })}
@@ -4882,7 +4913,7 @@ function NewReportModal({onClose}){
           : custom && stageRegion
             ? <Field label="Region" req hint="Written to the lm_Region lookup.">
                 <select value={f.dvRegionId} onChange={e=>setF(x=>({...x,
-                  dvRegionId:e.target.value, dvDepartmentId:'', dvCreatorPositionId:''}))}>
+                  dvRegionId:e.target.value, dvDepartmentId:'', dvFunctionId:'', dvCreatorPositionId:''}))}>
                   <option value="">{DV_REGION_LIST.length?'Select…':'No Regions loaded'}</option>
                   {DV_REGION_LIST.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
                 </select></Field>
@@ -4900,7 +4931,7 @@ function NewReportModal({onClose}){
       {!custom && f.dvRegionId && <Note k="info" ic="i">Region: <b>{dvRegion(f.dvRegionId)}</b> — set by
         the Setup's approved placement above.</Note>}
 
-      <div className="f-row">
+      <div className="f-row3">
         <Field label="Department"
           hint={fromSetup
             ? `The ${deptOpts.length} Department${deptOpts.length===1?'':'s'} this Setup is for.`
@@ -4914,6 +4945,20 @@ function NewReportModal({onClose}){
               : custom ? 'No Departments in this scope'
               : 'This Setup names no Department'}</option>
             {deptOpts.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
+          </select></Field>
+        <Field label="Function"
+          hint={funcFromSetup
+            ? `Paired with this Department in the Setup.`
+            : f.dvDepartmentId ? 'Every Function in the chosen Department.'
+            : 'Choose a Department first.'}>
+          <select value={f.dvFunctionId} onChange={e=>set('dvFunctionId',e.target.value)}
+            disabled={!scopeChosen || !f.dvDepartmentId}>
+            <option value="">{
+              !f.dvDepartmentId ? 'Choose a Department first'
+              : funcOpts.length ? 'Select…'
+              : funcFromSetup ? 'The Setup pairs no Function with it'
+              : 'No Functions in this Department'}</option>
+            {funcOpts.map(fn=><option key={fn.id} value={fn.id}>{fn.name}</option>)}
           </select></Field>
         <Field label="Created by" req
           hint={myPos

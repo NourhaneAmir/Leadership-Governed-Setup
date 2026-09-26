@@ -3889,6 +3889,7 @@ export async function recordAgendaDistribution(id){
  * @param {string} [payload.regionId]
  * @param {string} [payload.stage] a Stage label, or 'Business Unit'|'Region'|'Group'|'ExCom'
  * @param {string} [payload.departmentId]
+ * @param {string} [payload.functionId]
  * @param {string} [payload.creatorPositionId]
  * @param {string} [payload.period] 'YYYY-MM-DD' -- the period the Report covers
  * @param {string} [payload.status] one of REPORT_OCC_STATUS_KEY's keys; defaults to Draft
@@ -4057,6 +4058,10 @@ export async function createReportOccurrence(payload){
   if(payload.businessUnitId)    row['lm_BusinessUnit@odata.bind']     = `/businessunits(${payload.businessUnitId})`;
   if(payload.regionId)          row['lm_Region@odata.bind']           = `/crd04_regionses(${payload.regionId})`;
   if(payload.departmentId)      row['lm_Department@odata.bind']       = `/cr603_chklst_departmentses(${payload.departmentId})`;
+  /* lm_Function was read back everywhere -- fetchReportOccurrences selects it,
+     and pickAchievement() matches KPI figures on it -- but never written,
+     because nothing set it on create. */
+  if(payload.functionId)        row['lm_Function@odata.bind']         = `/hr_functions(${payload.functionId})`;
   if(payload.creatorPositionId) row['lm_CreatorPosition@odata.bind']  = `/cr603_organizationstructures(${payload.creatorPositionId})`;
 
   try{

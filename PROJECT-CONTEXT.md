@@ -5499,6 +5499,35 @@ employee**; these are among the other 6,731.
 **The fix is data**: give those Positions a current employee in IT. The
 display will pick it up with no code change.
 
+### 26 Sep: a Function beside the Department when creating a report
+
+⚠️ **`lm_Function` was read everywhere and written nowhere.**
+`fetchReportOccurrences()` selects `_lm_function_value`, and
+`pickAchievement()` matches KPI figures on the Function -- so a report's
+figures were being scoped by a column no create path ever set.
+`createReportOccurrence()` bound Department and not Function, and the modal
+had no field at all. Both fixed.
+
+⚠️ **A Setup's Department/Function lines are PAIRS.** They come from
+`lm_reporttemplatedepartmentfunctions`, one row per
+(Department, Function). So the Functions offered are the ones the Setup pairs
+with the Department **chosen**, not every Function that Department owns. A
+line carrying a Department and no Function means "the whole Department" and
+contributes nothing to the Function list.
+
+Same precedence as the Department field: what the Setup pairs wins; the
+fallback is every Function whose `dept` matches. With no Department chosen,
+nothing is offered -- there is nothing to narrow by.
+
+The Function follows the Department by the same two rules already used for
+Department and Created by: drop a value no longer on offer (the Department
+changed under it), and take a lone option rather than asking for a choice
+that does not exist.
+
+⚠️ The row holding Department / Function / Created by was `.f-row`, a
+**two**-column grid, which would have stranded Created by on its own line.
+Switched to `.f-row3`.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap
