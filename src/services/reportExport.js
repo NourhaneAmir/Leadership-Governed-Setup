@@ -45,7 +45,7 @@
    instead of the placeholder. Nothing else has to change.
    ========================================================================= */
 
-import { fetchKpiAchievements, pickAchievement, fetchKpiBreakdowns,
+import { fetchKpiAchievements, matchAchievement, fetchKpiBreakdowns,
          fetchProcesses, fetchProjects, fetchTasks, fetchStrategyPocs,
          fetchBiReportDashboards } from './dataverse.js';
 /* The layout lives in its own module so it can be tested without the service
@@ -223,8 +223,14 @@ export async function buildReportExportModel({ report, sections, citations,
 
   const resolveKpi = cite => {
     if(!cite.kpiId) return null;
-    const hit = pickAchievement(ach.filter(r => r.kpiId === cite.kpiId), scope);
+    const { row: hit, candidates, ambiguousOn } =
+      matchAchievement(ach.filter(r => r.kpiId === cite.kpiId), scope);
     return {
+      /* When the report leaves a dimension blank more than one row fits, and
+         the figures below are one of them. Carried through so the workbook and
+         the document can say so instead of presenting a guess as the answer. */
+      ambiguousOn,
+      candidateCount: candidates.length,
       id: cite.kpiId,
       name: cite.kpiName || '(unnamed KPI)',
       /* What the row was matched ON, not what was asked for -- a figure
@@ -341,9 +347,19 @@ export async function buildReportExportModel({ report, sections, citations,
     }
   }
 
+  const ambiguous = out => out.reduce((n, s2) =>
+    n + s2.citations.filter(c => c.kpi?.ambiguousOn?.length).length, 0);
+
   if(kinds.has('kpi') && ach.length && !ach.some(r => num(r.target) !== null))
     warnings.push('No cited KPI has a target recorded in Dataverse for this period, '
                 + 'so every Target reads as empty. This is missing data, not a failed read.');
+
+  const nAmbiguous = ambiguous(out);
+  if(nAmbiguous)
+    warnings.push(`${nAmbiguous} KPI citation${nAmbiguous === 1 ? '' : 's'} matched more than one `
+      + 'achievement row, because this report does not name every dimension the figures are '
+      + 'recorded against. One row was used for each. Setting the Department and Function on '
+      + 'the report narrows it.');
 
   step(total, total, 'Ready');
 

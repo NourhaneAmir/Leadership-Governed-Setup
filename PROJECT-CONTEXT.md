@@ -5715,6 +5715,88 @@ behaviour*, not metadata, because Dataverse exposes no max-length column (see §
 The page is **private** until shared from its own Share menu; the admin and the
 product owner cannot open the link before that.
 
+### 27 Sep — KPI target and breakdown scope: one real defect, and a data answer
+
+Asked to make sure the Target is fetched for a section's KPI and its breakdown
+by the report's Department, Function, Business Unit and Period, and that every
+breakdown record is returned.
+
+#### ⚠️ The Target is absent from the DATA. No code change can produce it.
+
+Measured live in IT, 27 Sep — not inferred:
+
+| | |
+|---|---|
+| `pm_kpiachievment` rows | 1,055 (all September 2026) |
+| …carrying `pm_target` | **1** |
+| `stf_kpiachievmentbreakdown` rows | over 50,000 |
+| …carrying `comp_breakdowntarget` | **12**, all on achievement `KPIACH-0001000`, all dimension Employee |
+
+`pm_target` and `comp_breakdowntarget` are the only target columns that exist —
+confirmed against the full column list of both tables. **`strategy_kpis` has no
+target either**; its nearest column is `process_benchmark`. So there is nowhere
+else to read one from, and the dash shown against Target is correct.
+
+#### The real defect, which WAS costing figures
+
+`pickAchievement()` rejected a row whose Department or Function the report did
+not *also* name:
+
+```js
+(!r.function || same(r.function, functionName))   // r.function set, want null -> false
+```
+
+**1,051 of the 1,055 rows carry a Function** and 1,048 carry a Department, so a
+report that left Function blank matched **nothing at all** — and every figure,
+Actual included, read as "not recorded" when the real cause was the report's own
+blank field. Reports created before the Function picker existed are exactly this
+case.
+
+Replaced with `matchAchievement()`, which returns `{ row, candidates,
+ambiguousOn }`:
+
+- a dimension disqualifies a row only when **both** sides name it and they
+  **disagree**;
+- ranking per dimension — agreed 4, row blank ("applies to any") 2, neither
+  names it 1, row names what the report does not 0;
+- ties break by id, so the same data always picks the same row and an export run
+  twice cannot disagree with itself;
+- `ambiguousOn` names the dimensions on which equally-ranked rows differ, and
+  Build a report, Reports / Plans and the export all now say *"N rows fit this
+  report; showing one — set Function to narrow it"* rather than presenting a
+  guess as the answer.
+
+`pickAchievement()` stays as a thin wrapper so nothing else had to change.
+
+⚠️ **Period is deliberately NOT one of the dimensions.** `fetchKpiAchievements()`
+already filters `pm_year`/`pm_month` server-side and Reports / Plans narrows by
+month before calling; the matcher must not re-check what its caller guarantees.
+
+#### Breakdown completeness: already correct, one row excluded
+
+- `xenv.js`'s `getAll` **does** follow `@odata.nextLink` (200-page cap), so
+  nothing was being truncated at Dataverse's 5,000-row page.
+- Of the whole >50,000-row table there is exactly **1 orphan** (no
+  `stf_total`, so it belongs to no achievement and cannot be scoped) and
+  **1 inactive** row — and the inactive one sits in the only achievement that
+  has targets, so it would have double-counted a member. `fetchKpiBreakdowns()`
+  now filters `statecode eq 0`.
+- The breakdown scope needs no filtering of its own: it hangs off the
+  achievement through `_stf_total_value`, and that row already fixes
+  Department / Function / BU / Period.
+
+#### Verified, so it is not re-investigated
+
+- The achievement's `_pm_businessunit_value` targets **`businessunits`** — the
+  same table the Report Occurrence binds and `fetchBusinessUnitsForIT` reads, so
+  BU ids do align across the match.
+- `_pm_parent_value` and `pm_breakdown` exist on the achievement but are
+  **unused** — 0 rows populate either, so there is no parent row holding a
+  target that the child rows inherit.
+- `matchAchievement()` is covered by a test that lifts its real source out of
+  `dataverse.js` and runs it, rather than testing a copy — the module cannot be
+  imported in Node because of the Power Apps SDK.
+
 ### 26 Sep — Excel refused the exported workbook; a regression from the ExcelJS swap
 
 ⚠️ **UNRESOLVED AS OF THIS ENTRY.** A real export ("OPD Monthly Performance

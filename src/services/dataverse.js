@@ -493,7 +493,11 @@ export async function fetchKpiBreakdowns(achievementId, dimension){
     select: ['stf_kpiachievmentbreakdownid', 'stf_name', 'stf_breakdowntype',
              'stf_value', 'stf_baseline', 'comp_breakdowntarget', 'stf_historical',
              'stf_paymenttype', ...BREAKDOWN_MEMBER_FIELDS],
-    filter: `_stf_total_value eq ${achievementId} and stf_breakdowntype eq ${type}`,
+    /* statecode 0 = Active. An inactive breakdown is a withdrawn row, and
+       including it double-counts a member -- live 26 Sep there is exactly one
+       in IT, and it sits in the only achievement that carries targets. */
+    filter: `_stf_total_value eq ${achievementId} and stf_breakdowntype eq ${type}`
+          + ' and statecode eq 0',
   });
   return (res?.data ?? [])
     .map(r => ({
@@ -511,22 +515,71 @@ export async function fetchKpiBreakdowns(achievementId, dimension){
     .sort((a, b) => (b.actual ?? -Infinity) - (a.actual ?? -Infinity));
 }
 
-/** The one achievement row that best fits a scope, or null.
+/* The three scope dimensions an achievement row can be recorded against.
+   Period is NOT among them: fetchKpiAchievements() already filters pm_year and
+   pm_month server-side, so every row reaching here is the right month. */
+const ACH_SAME = (a, b) =>
+  String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+const ACH_SET = v => v !== null && v !== undefined && String(v).trim() !== '';
+
+/** Every achievement row that could serve a scope, best first.
  *
- *  A row that names a Business Unit, Department or Function must match the one
- *  the report is scoped to; a row that leaves it blank applies to any. Where
- *  several survive, the one naming most of them wins, so a row recorded for a
- *  specific Function beats a general one for the Department. */
-export function pickAchievement(rows, { businessUnitId, departmentName, functionName }){
-  const same = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
-  const fits = r =>
-    (!r.businessUnitId || !businessUnitId || r.businessUnitId === businessUnitId) &&
-    (!r.department     || same(r.department, departmentName)) &&
-    (!r.function       || same(r.function, functionName));
-  const ranked = (rows || []).filter(fits).sort((a, b) =>
-    (!!b.function + !!b.department + !!b.businessUnitId) -
-    (!!a.function + !!a.department + !!a.businessUnitId));
-  return ranked[0] || null;
+ *  ⚠️ A dimension only DISQUALIFIES a row when BOTH sides name it and they
+ *  disagree. The earlier rule -- reject a row whose Function the report does
+ *  not also name -- matched nothing at all in practice: 1,051 of IT's 1,055
+ *  achievement rows carry a Function (26 Sep), so any report without one found
+ *  no achievement, and every figure including the Target read as "not
+ *  recorded" when the real cause was the report leaving Function blank.
+ *
+ *  Ranking, per dimension: an agreed value is worth most; a row that leaves
+ *  the dimension blank is the "applies to any" row and comes next; a row
+ *  naming a dimension the report does NOT constrain is still eligible but
+ *  ranks last, because choosing between several such rows is a guess.
+ *
+ *  -> { row, candidates, ambiguousOn }  ambiguousOn lists the dimensions on
+ *     which equally-ranked rows disagree, so a caller can say so rather than
+ *     presenting one row's figure as though it were the only one.
+ */
+export function matchAchievement(rows, { businessUnitId, departmentName, functionName }){
+  const dims = [
+    ['Business Unit', r => r.businessUnitId, businessUnitId, (a, b) => a === b],
+    ['Department',    r => r.department,     departmentName, ACH_SAME],
+    ['Function',      r => r.function,       functionName,   ACH_SAME],
+  ];
+
+  const fits = r => dims.every(([, get, want, eq]) => {
+    const have = get(r);
+    return !(ACH_SET(have) && ACH_SET(want) && !eq(have, want));
+  });
+
+  const score = r => dims.reduce((n, [, get, want, eq]) => {
+    const have = get(r);
+    if(ACH_SET(have) && ACH_SET(want)) return n + (eq(have, want) ? 4 : 0);
+    if(!ACH_SET(have) && ACH_SET(want)) return n + 2;   // applies to any
+    if(ACH_SET(have) && !ACH_SET(want)) return n + 0;   // report unconstrained
+    return n + 1;                                       // neither names it
+  }, 0);
+
+  /* Sorted by score, then by id so repeated reads of the same data agree --
+     an export run twice must not pick a different row. */
+  const candidates = (rows || []).filter(fits)
+    .sort((a, b) => score(b) - score(a) || String(a.id).localeCompare(String(b.id)));
+
+  const row = candidates[0] || null;
+  const top = row ? candidates.filter(r => score(r) === score(row)) : [];
+  const ambiguousOn = row
+    ? dims.filter(([, get, want]) =>
+        !ACH_SET(want) && new Set(top.map(r => String(get(r) ?? ''))).size > 1)
+        .map(([label]) => label)
+    : [];
+
+  return { row, candidates, ambiguousOn };
+}
+
+/** The one achievement row that best fits a scope, or null.
+ *  Thin wrapper over matchAchievement() for callers that only want the row. */
+export function pickAchievement(rows, scope){
+  return matchAchievement(rows, scope).row;
 }
 
 /* The fields of one Attendee row, whichever kind it is.
