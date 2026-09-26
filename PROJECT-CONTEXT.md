@@ -5568,6 +5568,48 @@ targeting `lm_reportoccurrencesectionses`, then pin `wlog_decisions` to
 that this lookup is how a Decision attaches to a Report Section, and the
 Decisions screen already creates rows.
 
+### 26 Sep: a reader can raise or attach a Task on a section
+
+Asked for "raise tasks on the report or attach task as a reviewer". Put on
+the section card in **Reports / Plans**, which is the reader's view of
+someone else's report and exactly where the Extension prototype's action row
+sits.
+
+⚠️ **The data model chose the shape, not preference.** `hx_tasks` in IT has
+lookups to BusinessUnit, SystemUser, `hr_Employee`, `strategy_KPIS` and
+`strategy_Process` -- and **nothing report-side**. The only link between a
+Task and a report is `lm_reportsectioncitations.lm_Task`, which hangs off a
+**Section**. So "a task on the report" is storable only as a task cited by
+one of its sections; there is no report-level place to put one.
+
+**New: `citeTaskOnSection(sectionId, task)`.** Writes exactly ONE citation
+row. `saveReportOccurrenceContent()` could not be reused: it reconciles every
+section and citation at once, which is right for the author's editor and
+wrong for a reader adding one task to someone else's report.
+
+`NewTaskForm` is imported from `BuildReport.jsx` rather than copied, so a
+task raised from either side carries identical fields. **No import cycle** --
+BuildReport does not import OrgReports; checked.
+
+⚠️ **This writes into a report the reader does not own.** That is what the
+prototype shows and the citation is the only storage available, but it is a
+governance choice worth knowing was made deliberately.
+
+⚠️ **The reviewer's own screen, `DvReportDetail`, is DEAD CODE.** It holds
+the real review actions -- approve a step, request more information, return --
+and is **rendered nowhere**; its only other mention in the file is inside a
+comment. A reviewer clicking a report in Workspace gets `DvOccurrenceModal`,
+which says of itself *"Read-only here"*. So the review flow exists and is
+unreachable, exactly as `NewReportModal` was. **Third disconnected screen
+found today** -- check whether a thing is rendered before concluding it is
+missing.
+
+⚠️ **Patch-script hazard, hit here:** `patch()` wrote `dataverse.js`
+successfully and then threw on the NEXT file, so the re-run applied the same
+block twice and produced a duplicate export the build caught. Those helpers
+have a growth assert but no idempotency guard -- when a multi-file patch
+fails partway, check what already landed before re-running.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap

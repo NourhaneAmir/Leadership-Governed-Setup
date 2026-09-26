@@ -23,8 +23,11 @@ import { Btn, Tag, Note, Empty } from '../../../shared/ui.jsx';
 import { fmtD, fmtP, MONTHS } from '../../../shared/format.js';
 import { DiagChip, rptTagC, matchesQuery } from '../domain.jsx';
 import { fetchReportOccurrenceContent, fetchKpiAchievements, pickAchievement,
-         fetchBiReportsByKpi } from '../../../services/dataverse.js';
+         fetchBiReportsByKpi, fetchTasks, citeTaskOnSection } from '../../../services/dataverse.js';
 import { BiFrame } from './BusinessIntelligence.jsx';
+/* Reused rather than copied: the same form Build a report/plan raises a task
+   with, so a task raised from either side carries identical fields. */
+import { NewTaskForm } from './BuildReport.jsx';
 
 /* The dashboards behind a cited KPI. Collapsed by default -- a report citing
    eight KPIs would otherwise mount eight Power BI frames at once, each
@@ -63,8 +66,48 @@ const fmtStamp = iso => (iso ? fmtD(String(iso).slice(0, 10)) : '—');
    Direction comes from the report's Creator Position: a report created from
    a Position the signed-in user holds is "Issued by you"; anything else is
    "Received". That is the only authorship the table records. */
+/* Raise a Task, or cite one that exists, against a Section.
+
+   ⚠️ A Task has no report-side lookup of its own -- `hx_tasks` in IT points
+   at BusinessUnit, SystemUser, hr_Employee, KPI and Process, and nothing
+   else. `lm_reportsectioncitations.lm_Task` is the only link there is, and
+   it hangs off a SECTION, so this is where a task on a report has to live. */
+function SectionTaskPanel({ mode, list, q, setQ, busy, onPick, onNew, onCancel, subject, toast }){
+  if (mode === 'new')
+    return <div style={{ marginTop: 8 }}>
+      <NewTaskForm subject={subject} toast={toast} onCancel={onCancel} onDone={onNew}/>
+    </div>;
+
+  const needle = q.trim().toLowerCase();
+  const shown = (list || []).filter(t => !needle || (t.name || '').toLowerCase().includes(needle));
+  return <div style={{ marginTop: 8, border: '1px solid var(--border)', borderRadius: 8, padding: 10 }}>
+    <input type="search" value={q} onChange={e => setQ(e.target.value)}
+      placeholder="Search tasks…" style={{ width: '100%', marginBottom: 8 }}
+      aria-label="Search tasks"/>
+    {list === null
+      ? <div className="holder">Reading tasks…</div>
+      : shown.length === 0
+        ? <div className="holder">{needle ? 'No task matches.' : 'No tasks to attach yet.'}</div>
+        : <div style={{ maxHeight: 190, overflowY: 'auto' }}>
+            {shown.slice(0, 60).map(t =>
+              <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0',
+                                       borderBottom: '1px solid var(--border)' }}>
+                <span style={{ flex: 1, fontSize: 12.5 }}>{t.name}</span>
+                {t.status ? <Tag c="grey">{t.status}</Tag> : null}
+                <Btn k="sm" disabled={busy} onClick={() => onPick(t)}>Attach</Btn>
+              </div>)}
+          </div>}
+  </div>;
+}
+
 export function ScreenOrgReports(){
-  const { dvReportOccs, dvLoading, dvError, dvLookup, go, openNewReport } = use();
+  const { dvReportOccs, dvLoading, dvError, dvLookup, go, openNewReport, toast } = use();
+  /* Which section's Task panel is open, and in which mode:
+     { id, mode: 'pick' | 'new' }. */
+  const [taskFor, setTaskFor] = useState(null);
+  const [taskList, setTaskList] = useState(null);   // null while reading
+  const [taskQ, setTaskQ] = useState('');
+  const [citing, setCiting] = useState(false);
   const L = dvLookup || {};
   const nm = (fn, id) => (id && typeof fn === 'function' ? fn(id) : null);
 
@@ -196,6 +239,33 @@ export function ScreenOrgReports(){
   };
 
   const openReport = id => { setOpenId(id); setOpenSec(null); };
+
+  /* Open the Task panel for a section. The task list is read once, lazily --
+     it is only needed if someone actually opens the panel. */
+  const openTaskPanel = (sectionId, mode) => {
+    setTaskFor({ id: sectionId, mode });
+    if (mode === 'pick' && taskList === null)
+      fetchTasks()
+        .then(rows => setTaskList(rows || []))
+        .catch(e => { console.warn('[dataverse] fetchTasks() failed:', e); setTaskList([]); });
+  };
+
+  /* Cite the task on the section, then re-read so it appears where every
+     other citation does rather than in a separate list of its own. */
+  const attachTask = async (sectionId, task) => {
+    setCiting(true);
+    try {
+      const { id, errors } = await citeTaskOnSection(sectionId, task);
+      if (!id) {
+        console.warn('[dataverse] citeTaskOnSection() failed:', errors);
+        toast('Not attached', 'Citing the task on this section failed. Check the console for details.', 'err');
+        return;
+      }
+      toast('Task attached', `"${task.name}" now hangs off this section as a citation.`, 'ok');
+      setTaskFor(null); setTaskQ('');
+      setTick(t => t + 1);
+    } finally { setCiting(false); }
+  };
 
   return <>
     <div className="ph ph-row">
@@ -372,6 +442,34 @@ export function ScreenOrgReports(){
                                     </div>
                                   : <div className="holder" style={{ marginTop: 8 }}>
                                       Rests on nothing citable — a conclusion with no source under it.</div>}
+
+                                {/* The reader's own actions on someone else's
+                                    section. A Task is the only one of the
+                                    prototype's row that is storable today:
+                                    lm_reportsectioncitations.lm_Task is the
+                                    single link between a report and a task.
+                                    Decision needs lm_citedreportsection on
+                                    wlog_decision in IT, which does not exist. */}
+                                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
+                                  <Btn k="sm" disabled={citing}
+                                    title="Raise a new task against this section"
+                                    onClick={() => openTaskPanel(s.id,
+                                      taskFor?.id === s.id && taskFor.mode === 'new' ? null : 'new')}>
+                                    {taskFor?.id === s.id && taskFor.mode === 'new' ? 'Cancel' : '+ Raise a task'}</Btn>
+                                  <Btn k="sm" disabled={citing}
+                                    title="Attach a task that already exists"
+                                    onClick={() => openTaskPanel(s.id,
+                                      taskFor?.id === s.id && taskFor.mode === 'pick' ? null : 'pick')}>
+                                    {taskFor?.id === s.id && taskFor.mode === 'pick' ? 'Cancel' : 'Attach a task'}</Btn>
+                                </div>
+                                {taskFor?.id === s.id && taskFor.mode
+                                  ? <SectionTaskPanel mode={taskFor.mode} list={taskList}
+                                      q={taskQ} setQ={setTaskQ} busy={citing} toast={toast}
+                                      subject={rec?.name || null}
+                                      onCancel={() => { setTaskFor(null); setTaskQ(''); }}
+                                      onPick={t => attachTask(s.id, t)}
+                                      onNew={t => attachTask(s.id, t)}/>
+                                  : null}
                               </div>
                             : null}
                         </div>;

@@ -3526,6 +3526,30 @@ export async function fetchReportOccurrenceForEdit(occurrenceId){
                  || String(a.created).localeCompare(String(b.created)));
 }
 
+/** Cites an existing Task on one Report Occurrence Section.
+ *
+ *  The whole-report save (saveReportOccurrenceContent) reconciles every
+ *  section and citation at once, which is right for the author's editor and
+ *  wrong here: a reader adding one Task must not rewrite the rest of someone
+ *  else's report. This writes exactly one citation row and touches nothing
+ *  else.
+ *
+ *  -> { id, errors }
+ */
+export async function citeTaskOnSection(sectionId, task){
+  if(!sectionId || !task?.id)
+    return { id:null, errors:[{ table:'lm_reportsectioncitations',
+                                error:new Error('a section and a task are both required') }] };
+  try{
+    const created = await Lm_reportsectioncitationsesService.create(
+      reportCitationRow({ kind:'Task', taskId:task.id,
+                          label:'Task: ' + (task.name || 'task') }, sectionId));
+    return { id: idOrThrow(created, 'lm_reportsectioncitationsid'), errors: [] };
+  }catch(e){
+    return { id:null, errors:[{ table:'lm_reportsectioncitations', error:e }] };
+  }
+}
+
 /* One lm_reportsectioncitations row. Lookups are bound only when they have a
    value -- an empty bind path is a 400 (see PROJECT-CONTEXT section 5, 17 Sep). */
 function reportCitationRow(c, sectionId){
