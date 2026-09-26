@@ -3917,7 +3917,14 @@ const TEMPLATE_ITEM_CITATION_KIND = {
  *
  *  -> { created, citations, skippedFiles, errors }
  */
-export async function migrateTemplateSectionsToOccurrence(occurrenceId, templateId){
+export async function migrateTemplateSectionsToOccurrence(occurrenceId, templateId, onProgress){
+  /* Called as the copy proceeds so a caller can show real progress rather
+     than a spinner. Never allowed to break the copy: a throwing callback
+     would otherwise abort a migration that was succeeding. */
+  const report = (done, total, label) => {
+    try{ if(onProgress) onProgress({ done, total, label }); }
+    catch(e){ console.warn('[dataverse] migration onProgress threw:', e); }
+  };
   const errors = [];
   let detail;
   try{
@@ -3931,6 +3938,7 @@ export async function migrateTemplateSectionsToOccurrence(occurrenceId, template
      renumbered from 1 so a gap in the Template does not leave one here. */
   const rows = (detail.checklist || []).slice()
     .sort((a,b)=>(a.lm_checklistitemstep ?? 1e9) - (b.lm_checklistitemstep ?? 1e9));
+  report(0, rows.length, rows.length ? 'Copying sections from the Setup…' : 'The Setup defines no sections.');
 
   /* Child Template citations: bind a real occurrence of the child where one
      exists, exactly as Build a report/plan's insert does, and keep the
@@ -3977,6 +3985,8 @@ export async function migrateTemplateSectionsToOccurrence(occurrenceId, template
       });
       sectionId = idOrThrow(res, 'lm_reportoccurrencesectionsid');
       created++;
+      report(created, rows.length,
+        `Copied ${created} of ${rows.length} section${rows.length===1?'':'s'}…`);
     }catch(e){
       errors.push({ table:'lm_reportoccurrencesections', error:e, what:`section ${seq}` });
       continue;                       // its citations have nowhere to hang

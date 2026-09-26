@@ -4557,6 +4557,9 @@ function ApprovedSetupPicker({id,list,val,onChange,labelOf,emptyText,extraOption
 
 function NewReportModal({onClose}){
   const {toast,refreshOccurrences,dvLookup}=use();
+  /* What the Create button is doing right now: {label, done, total}. `total`
+     0 means "no count available", which renders as an indeterminate bar. */
+  const [progress,setProgress]=useState(null);
   /* The signed-in user's own Position, resolved by dvLookup.myPositionIds
      (systemuser id first, holder name second -- see myPositionIds where the
      context is built). This is the Position "Created by" means. */
@@ -4742,7 +4745,8 @@ function NewReportModal({onClose}){
       let migrated = null;
       if(!custom){
         try{
-          migrated = await migrateTemplateSectionsToOccurrence(id, f.setup);
+          migrated = await migrateTemplateSectionsToOccurrence(id, f.setup,
+            p => setProgress({ label: p.label, done: p.done, total: p.total }));
           if(migrated.errors.length)
             console.warn('[dataverse] section migration had errors:', migrated.errors);
         }catch(e){
@@ -4763,12 +4767,13 @@ function NewReportModal({onClose}){
           ? 'Saved to lm_reportoccurrences as a Draft, flagged as having no Setup. It now appears in your Workspace.'
           : 'Saved to lm_reportoccurrences as a Draft, linked to its approved Report Template.') + sectionNote,
         migrated && migrated.errors.length ? 'warn' : 'ok');
+      setProgress({ label: 'Refreshing your reports…', done: 0, total: 0 });
       await refreshOccurrences();
       onClose();
     }catch(e){
       console.warn('[dataverse] Report Occurrence create threw unexpectedly:', e);
       toast('Not saved','Creating the Report Occurrence in Dataverse failed. Check the console for details.','err');
-    }finally{ setSaving(false); }
+    }finally{ setSaving(false); setProgress(null); }
   };
 
   return <Modal title="Create a Report" wide onClose={onClose}
@@ -4787,7 +4792,12 @@ function NewReportModal({onClose}){
     </Field>
 
     {f.setup && !custom && tplLoading &&
-      <Note k="info" ic="i">Reading this Setup's organizational placement and review chain from Dataverse…</Note>}
+      <Note k="info" ic="i">
+        Reading this Setup's organizational placement and review chain from Dataverse…
+        {/* Indeterminate: there is nothing to count here, and a bar that
+            invents a percentage is worse than one that admits it. */}
+        <div className="bar indet" style={{marginTop:8}}><i/></div>
+      </Note>}
     {f.setup && !custom && !tplLoading && tplUnits.length>1 &&
       <Field label="Business Unit / Region" req
         hint="This Setup is approved for more than one place — choose which one this Report belongs to.">
@@ -4803,6 +4813,20 @@ function NewReportModal({onClose}){
     {custom && <Note k="info" ic="i">Business Unit, Department and the Creator are read from Dataverse —
       the seeded demo people used elsewhere in this module are not real rows and the lookups would
       reject them. A Custom Report has no Template, so it carries no configured review chain.</Note>}
+
+    {/* The create itself. Determinate while sections are being copied,
+        because the migration reports how many it has written of how many the
+        Setup defines; indeterminate for the row create and the refresh, which
+        have nothing to count. */}
+    {saving && progress &&
+      <Note k="info" ic="i">
+        {progress.label}
+        <div className={'bar' + (progress.total ? '' : ' indet')} style={{marginTop:8}}>
+          <i style={progress.total
+            ? {width: Math.round((progress.done / progress.total) * 100) + '%'}
+            : undefined}/>
+        </div>
+      </Note>}
 
     {(custom || (f.setup && !tplLoading)) && <>
       <Field label="Report name" req><input type="text" value={f.name}

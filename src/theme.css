@@ -329,6 +329,16 @@ fieldset:disabled{opacity:.62}
 .bar.amber > i{background:var(--amber)}
 .bar.red > i{background:var(--red)}
 .bar.green > i{background:var(--green)}
+/* Indeterminate: a short segment travelling the track, for a wait with
+   nothing to count. Deliberately NOT a fake percentage -- a bar that claims
+   progress it cannot know is worse than one that admits it does not. */
+.bar.indet > i{ width:32%; animation:indet 1.1s ease-in-out infinite }
+@keyframes indet{
+  0%{ transform:translateX(-110%) } 100%{ transform:translateX(320%) }
+}
+@media (prefers-reduced-motion:reduce){
+  .bar.indet > i{ animation:none; width:100%; opacity:.45 }
+}
 
 /* ---------- audit question ---------- */
 .q{border:1px solid var(--border);border-radius:8px;margin-bottom:9px;background:#fff;overflow:hidden}

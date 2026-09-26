@@ -5409,6 +5409,40 @@ summary on every run -- checklist rows found, sections created, citations,
 files skipped, errors -- because "it created without the checklist" was not
 diagnosable from outside. The toast already reported counts.
 
+### 26 Sep: progress for the two waits in Create a Report
+
+Two waits, two different indicators, because they are not the same kind of
+wait:
+
+| Wait | Indicator | Why |
+|---|---|---|
+| Reading the Setup | **indeterminate** | nothing countable |
+| Creating the report | **determinate** while sections copy | the migration knows how many checklist rows it has of how many |
+
+The second is the one that mattered: copying sections is **N+M round trips**
+(one per section, one per citation) and previously showed only "Saving…".
+
+`migrateTemplateSectionsToOccurrence()` gained an optional third argument,
+`onProgress({done, total, label})`, called as it goes. ⚠️ It is wrapped in
+try/catch -- a throwing callback would otherwise abort a migration that was
+succeeding, which is a bad trade for a progress bar.
+
+⚠️ **The bar is never faked.** `total: 0` means "no count available" and
+renders as the travelling-segment `indet` variant rather than a made-up
+percentage. A bar that claims progress it cannot know is worse than one that
+admits it.
+
+`.bar.indet` is new in `theme.css`, beside the existing determinate `.bar`,
+and honours `prefers-reduced-motion` by falling back to a static dimmed
+track rather than animating.
+
+⚠️ **Anchoring note for whoever patches this file next.** `NewReportModal`
+and `NewMeetingModal` are near-identical in places -- `const [saving,...]` +
+`const [tplDetail,...]`, `await refreshOccurrences(); onClose();`, and
+`{(custom || (f.setup && !tplLoading)) && <>` all appear in BOTH. Three
+patches in a row matched the wrong count. Anchor on the component signature
+or on text carrying the modal's own title.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap
