@@ -5630,6 +5630,60 @@ the second case says the earlier choice is still selected.
 No stale-filter problem: the kind switcher already resets `q`, `kpiId` and
 `dim` together.
 
+### 26 Sep: a Breakdown citation now shows its members -- stf_kpiachievmentbreakdowns is live at last
+
+Registered 02 Sep and, as section 6 recorded, never given a service or a
+fetch function. It has both now: `fetchKpiBreakdowns(achievementId,
+dimension)`.
+
+**The scope comes free.** Breakdowns hang off the parent `pm_kpiachievments`
+row through `stf_total`, and that parent is whichever row
+`pickAchievement()` already settled on -- so Department, Function, Month,
+Year and Business Unit are fixed by it. This only narrows by dimension;
+nothing is re-filtered by scope.
+
+⚠️⚠️ **THE TWO DIMENSION OPTION SETS ARE DIFFERENT, AND ONLY "ACCOUNT"
+COINCIDES.**
+
+| citation `SECTION_BREAKDOWN_DIM` | table `stf_breakdowntype` |
+|---|---|
+| 1 Account | **1 Account** |
+| 2 Payment Type | 2 Physician |
+| 3 Physician | 3 SourceDepartment |
+| 4 Department | 4 Platform |
+| 5 Platform | 5 Employee |
+| 6 Employee | 6 Specialty |
+| 7 Speciality | 7 PaymentType, 8 SubAccount, 9 ServiceCategory |
+
+Passing the citation's code straight through would mis-read **six of seven**
+dimensions -- "by Department" returning Platform rows -- silently and
+plausibly. Mapped by NAME in `BREAKDOWN_TYPE_BY_DIM`. This is the second
+time today two option sets that looked interchangeable were not; the
+Diagnostic Angle pair genuinely WAS shared, this pair is not, and only
+checking told them apart.
+
+⚠️ **Over 50,000 rows in IT** -- an unfiltered aggregate exceeded Dataverse's
+50k limit. Always filter on the parent AND the dimension. The UI is collapsed
+by default so a report citing several breakdowns does not fire a query per
+citation on open.
+
+**The member name** comes from whichever of nine lookups applies to the row;
+the rest are null. Read as formatted values so one pass finds it without
+knowing the dimension. ⚠️ `stf_paymenttype` is a **choice**, not a lookup, so
+it is read separately -- and `stf_name` is an auto-number (`BRK-115983`), not
+a member name, so it is only a last resort.
+
+**Figures:** `stf_value` = actual, `stf_baseline`, `stf_historical`,
+`comp_breakdowntarget` = target.
+
+⚠️ **Target is empty here too.** On one achievement's 378 breakdown rows:
+value 378 populated, baseline 252, historical 287, **target 0**. Same story
+as the parent table (1 row in 1,055). The column is shown and reads "—"
+until the data exists.
+
+Wired into Build a report/plan. **Not yet in Reports / Plans** -- the same
+citation should eventually show the same thing in both.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap

@@ -439,6 +439,64 @@ export async function fetchKpiAchievements(year, only = {}){
   }));
 }
 
+const Stf_kpiachievmentbreakdownsService =
+  dvTable('stf_kpiachievmentbreakdowns', 'stf_kpiachievmentbreakdownid', IT_ORG);
+
+/* ⚠️ stf_breakdowntype is NOT SECTION_BREAKDOWN_DIM. Only "Account" shares a
+   code; everything else is offset, so passing the citation's own code through
+   would return the wrong dimension's rows while looking entirely correct.
+   Mapped by name, deliberately. */
+const BREAKDOWN_TYPE_BY_DIM = {
+  'Account': 1, 'Physician': 2, 'Department': 3, 'Platform': 4,
+  'Employee': 5, 'Speciality': 6, 'Payment Type': 7,
+};
+
+/* A breakdown names its member through whichever of these applies to its
+   dimension; the rest are null on that row. Read as formatted values, so one
+   pass over the list finds the name without needing to know the dimension.
+   stf_paymenttype is a CHOICE, not a lookup, so it is handled separately. */
+const BREAKDOWN_MEMBER_FIELDS = [
+  '_stf_specialty_value', '_stf_physician_value', '_stf_account_value',
+  '_stf_subaccount_value', '_stf_employee_value', '_stf_platform_value',
+  '_stf_department_value', '_pm_function_value', '_pm_servicecategory_value',
+];
+
+/** The members behind one Breakdown citation, with their figures.
+ *
+ *  `achievementId` is the pm_kpiachievments row pickAchievement() already
+ *  settled on, which is what fixes Department / Function / Month / Year /
+ *  Business Unit -- the breakdowns hang off it through stf_total.
+ *
+ *  ⚠️ The table holds over 50,000 rows in IT, so this ALWAYS filters on the
+ *  parent and the dimension. Never read it unfiltered.
+ *
+ *  -> [{ id, member, actual, target, baseline, historical }], biggest first
+ */
+export async function fetchKpiBreakdowns(achievementId, dimension){
+  const type = BREAKDOWN_TYPE_BY_DIM[dimension];
+  if(!achievementId || !type) return [];
+  const res = await Stf_kpiachievmentbreakdownsService.getAll({
+    select: ['stf_kpiachievmentbreakdownid', 'stf_name', 'stf_breakdowntype',
+             'stf_value', 'stf_baseline', 'comp_breakdowntarget', 'stf_historical',
+             'stf_paymenttype', ...BREAKDOWN_MEMBER_FIELDS],
+    filter: `_stf_total_value eq ${achievementId} and stf_breakdowntype eq ${type}`,
+  });
+  return (res?.data ?? [])
+    .map(r => ({
+      id: r.stf_kpiachievmentbreakdownid,
+      member: BREAKDOWN_MEMBER_FIELDS.map(f => r[f + FV]).find(Boolean)
+           || r['stf_paymenttype' + FV]
+           /* stf_name is an auto-number (BRK-115983), not a member name --
+              only worth showing when every lookup on the row is empty. */
+           || r.stf_name || '(unnamed member)',
+      actual: r.stf_value ?? null,
+      target: r.comp_breakdowntarget ?? null,
+      baseline: r.stf_baseline ?? null,
+      historical: r.stf_historical ?? null,
+    }))
+    .sort((a, b) => (b.actual ?? -Infinity) - (a.actual ?? -Infinity));
+}
+
 /** The one achievement row that best fits a scope, or null.
  *
  *  A row that names a Business Unit, Department or Function must match the one

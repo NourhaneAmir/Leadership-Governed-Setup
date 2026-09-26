@@ -27,6 +27,7 @@ import { BiFrame } from './BusinessIntelligence.jsx';
 import { fetchReportOccurrenceForEdit, saveReportOccurrenceContent, submitReportOccurrence,
          fetchReportTemplateDetail, fetchKpis, fetchProcesses,
          fetchKpiAchievements, pickAchievement, SECTION_SOURCE_MIGRATED,
+         fetchKpiBreakdowns,
          fetchStrategyPocs, fetchExecutionCategories, fetchSpecialties,
          fetchStrategies, fetchBiReportDashboards, fetchTasks, createTask,
          fetchProjects, PROJECT_STATUS, PROJECT_CATEGORY,
@@ -101,7 +102,61 @@ const crefCls = kind =>
    better depends on the KPI's direction, which strategy_kpis carries but the
    report does not read yet; showing a percentage without it would call a
    falling infection rate a miss. Figures only, until the direction is wired. */
-function KpiFigures({ kpiId, rows, rec, L, nm }){
+/* The members behind a Breakdown citation, read on demand.
+
+   Collapsed until asked for: a report citing several breakdowns would
+   otherwise fire one query per citation on open, against a table holding
+   50k+ rows. The parent achievement row fixes the scope -- Department,
+   Function, Month, Year and Business Unit are already decided by whichever
+   row pickAchievement() settled on -- so this only narrows by dimension. */
+function BreakdownMembers({ hit, dimension }){
+  const [open, setOpen] = React.useState(false);
+  const [rows, setRows] = React.useState(null);
+  const [err, setErr] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!open || rows !== null || !hit?.id) return;
+    let live = true;
+    fetchKpiBreakdowns(hit.id, dimension)
+      .then(r => { if (live) setRows(r); })
+      .catch(e => { console.warn('[dataverse] fetchKpiBreakdowns() failed:', e);
+                    if (live) { setErr(true); setRows([]); } });
+    return () => { live = false; };
+  }, [open, rows, hit, dimension]);
+
+  if (!hit || !dimension) return null;
+
+  return <div style={{ marginTop: 6 }}>
+    <Btn k="sm" onClick={() => setOpen(o => !o)}>
+      {open ? 'Hide' : 'Show'} the {dimension.toLowerCase()} breakdown</Btn>
+    {!open ? null
+      : err ? <div className="cite-m">Reading the breakdown failed — see the console.</div>
+      : rows === null ? <div className="cite-m">Reading the breakdown…</div>
+      : rows.length === 0
+        ? <div className="cite-m">
+            No {dimension.toLowerCase()} rows recorded against this figure.</div>
+        : <div className="fv-scroll" style={{ marginTop: 6, maxHeight: 240 }}>
+            <table className="fv-grid">
+              <thead><tr>
+                <th>{dimension}</th><th>Actual</th><th>Target</th>
+                <th>Baseline</th><th>Historical</th>
+              </tr></thead>
+              <tbody>
+                {rows.map(b =>
+                  <tr key={b.id}>
+                    <td title={b.member}>{b.member}</td>
+                    <td className="fv-num">{b.actual ?? '—'}</td>
+                    <td className="fv-num">{b.target ?? '—'}</td>
+                    <td className="fv-num">{b.baseline ?? '—'}</td>
+                    <td className="fv-num">{b.historical ?? '—'}</td>
+                  </tr>)}
+              </tbody>
+            </table>
+          </div>}
+  </div>;
+}
+
+function KpiFigures({ kpiId, rows, rec, L, nm, dimension }){
   if (!kpiId) return null;
   if (rows === null) return <div className="cite-m">Reading achievement…</div>;
 
@@ -128,6 +183,10 @@ function KpiFigures({ kpiId, rows, rec, L, nm }){
     {fig('Target', hit.target)}
     {hit.historical != null ? fig('Historical', hit.historical) : null}
     <span className="dg none">{on || 'not scoped'} · {fmtP(rec?.period)}</span>
+    {/* Only a Breakdown citation carries a dimension; a plain KPI passes
+        none and gets no member table. */}
+    {dimension ? <div style={{ flexBasis: '100%' }}>
+      <BreakdownMembers hit={hit} dimension={dimension}/></div> : null}
   </div>;
 }
 
@@ -741,7 +800,8 @@ function SectionEditor({ s, i, total, busy, patch, move, remove, uncite, cite, p
               {c.label && c.label !== citeTarget(c) ? <div className="cite-m">{c.label}</div> : null}
               {c.kind === 'KPI' || c.kind === 'Breakdown'
                 ? <>
-                    <KpiFigures kpiId={c.kpiId} rows={ach} rec={rec} L={L} nm={nm}/>
+                    <KpiFigures kpiId={c.kpiId} rows={ach} rec={rec} L={L} nm={nm}
+                      dimension={c.kind === 'Breakdown' ? c.breakdown : null}/>
                     <KpiDashboards bis={biByKpi.get(c.kpiId) || []}/>
                   </>
                 : null}
