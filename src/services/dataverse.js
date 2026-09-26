@@ -515,6 +515,43 @@ export async function fetchKpiBreakdowns(achievementId, dimension){
     .sort((a, b) => (b.actual ?? -Infinity) - (a.actual ?? -Infinity));
 }
 
+/* ⚠️ "All Departments" is a real row in cr603_chklst_departments (one row,
+   live 27 Sep) and it means the OPPOSITE of a department: the report covers
+   every one of them. Matched as a plain name it is a Department like any
+   other, so it was compared against the achievement's own "Medical",
+   "Contact Center" and so on, disagreed with all of them, and every row was
+   rejected -- an All-Departments report showed no figures at all, not merely
+   no Target.
+
+   Detected by NAME, not by id: the id differs between IT and DT New, as every
+   id does, and this has to hold in both. There is no "All Functions" row --
+   checked; selecting All Departments releases the Function too, because a
+   report covering every department is not scoped to one department's
+   function either. */
+export const ALL_DEPARTMENTS_NAME = 'All Departments';
+export const isAllDepartments = name =>
+  String(name || '').trim().toLowerCase() === ALL_DEPARTMENTS_NAME.toLowerCase();
+
+/** The scope one report matches achievement rows with.
+ *
+ *  Built in one place because three screens need the identical answer, and
+ *  they have disagreed about achievement scope twice already.
+ *
+ *  -> { businessUnitId, departmentName, functionName, allDepartments }
+ *     with Department and Function released to null for an All-Departments
+ *     report, so it matches on Business Unit and Period alone and every
+ *     department's and function's row qualifies.
+ */
+export function reportAchievementScope({ businessUnitId, departmentName, functionName } = {}){
+  const all = isAllDepartments(departmentName);
+  return {
+    businessUnitId: businessUnitId || null,
+    departmentName: all ? null : (departmentName || null),
+    functionName:   all ? null : (functionName || null),
+    allDepartments: all,
+  };
+}
+
 /* The three scope dimensions an achievement row can be recorded against.
    Period is NOT among them: fetchKpiAchievements() already filters pm_year and
    pm_month server-side, so every row reaching here is the right month. */
@@ -2802,6 +2839,47 @@ export async function fetchMeetingTemplatesList(){
  */
 export async function uploadReportTemplateFile(templateId, fileName, base64Content){
   return uploadFileColumn('lm_report_templates', templateId, 'lm_attachementfile', fileName, base64Content);
+}
+
+/** The KPIs and Processes a Report Setup declares as related to it.
+ *
+ *  These hang off the TEMPLATE, not off a section: they are what the Setup
+ *  says this report is about, independently of what any one section happens to
+ *  cite. fetchReportTemplateDetail() already returns their ids, but it fans out
+ *  into review chains and per-checklist section items to do it -- far too much
+ *  work for a panel that only wants two lists, so this reads just the two link
+ *  tables.
+ *
+ *  Names come from the lookup's own formatted value, so no KPI/Process catalog
+ *  has to be loaded first -- Reports / Plans has none.
+ *
+ *  -> { kpis: [{id, name}], processes: [{id, name}] }
+ */
+export async function fetchReportTemplateRelated(templateId){
+  if(!templateId) return { kpis: [], processes: [] };
+  const filter = `_lm_reporttemplate_value eq ${templateId}`;
+  const [kpiRes, procRes] = await Promise.all([
+    Lm_reporttemplaterelatedkpisesService.getAll({ filter, select: ['_lm_relatedkpi_value'] })
+      .catch(e => { console.warn('[dataverse] related KPIs fetch failed:', e); return null; }),
+    Lm_reporttemplaterelatedprocessesesService.getAll({ filter, select: ['_lm_relatedprocess_value'] })
+      .catch(e => { console.warn('[dataverse] related Processes fetch failed:', e); return null; }),
+  ]);
+
+  /* A Setup can name the same KPI twice; de-duplicated on id so the panel does
+     not show it twice and the achievement read does not ask for it twice. */
+  const uniq = (rows, idField) => {
+    const seen = new Map();
+    for(const r of rows ?? []){
+      const id = r[idField];
+      if(id && !seen.has(id)) seen.set(id, { id, name: r[idField + FV] || null });
+    }
+    return [...seen.values()].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  };
+
+  return {
+    kpis:      uniq(kpiRes?.data,  '_lm_relatedkpi_value'),
+    processes: uniq(procRes?.data, '_lm_relatedprocess_value'),
+  };
 }
 
 export async function fetchReportTemplateDetail(id){

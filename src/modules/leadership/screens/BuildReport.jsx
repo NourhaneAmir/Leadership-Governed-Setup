@@ -25,9 +25,12 @@ import { fmtP, TODAY } from '../../../shared/format.js';
 import { DiagChip, rptTagC, matchesQuery } from '../domain.jsx';
 import { BiFrame } from './BusinessIntelligence.jsx';
 import { ExportReportButtons } from './ExportReport.jsx';
+import { KpiCoverage } from './KpiCoverage.jsx';
+import { AchievementFigures } from './AchievementFigures.jsx';
 import { fetchReportOccurrenceForEdit, saveReportOccurrenceContent, submitReportOccurrence,
          fetchReportTemplateDetail, fetchKpis, fetchProcesses,
-         fetchKpiAchievements, pickAchievement, SECTION_SOURCE_MIGRATED,
+         fetchKpiAchievements, matchAchievement, reportAchievementScope,
+         SECTION_SOURCE_MIGRATED,
          fetchKpiBreakdowns,
          fetchStrategyPocs, fetchExecutionCategories, fetchSpecialties,
          fetchStrategies, fetchBiReportDashboards, fetchTasks, createTask,
@@ -161,34 +164,28 @@ function KpiFigures({ kpiId, rows, rec, L, nm, dimension }){
   if (!kpiId) return null;
   if (rows === null) return <div className="cite-m">Reading achievement…</div>;
 
-  const hit = pickAchievement(rows.filter(r => r.kpiId === kpiId), {
+  /* One scope for the whole report, built in the service layer -- it is also
+     what releases Department and Function for an All-Departments report. */
+  const scope = reportAchievementScope({
     businessUnitId: rec?.businessUnitId || null,
     departmentName: nm(L.dept, rec?.departmentId) || null,
     functionName:   nm(L.func, rec?.functionId) || null,
   });
+  const mine = rows.filter(r => r.kpiId === kpiId);
+  /* The breakdown below still hangs off ONE achievement row, so the match is
+     still needed even where the figures are drawn as a table. */
+  const { row: hit } = matchAchievement(mine, scope);
 
-  if (!hit) return <div className="cite-m">
-    No achievement recorded for {fmtP(rec?.period)}
-    {nm(L.bu, rec?.businessUnitId) ? ' · ' + nm(L.bu, rec.businessUnitId) : ''}.</div>;
-
-  const fig = (label, v) => <span className="mono" style={{ fontSize: 11.5 }}>
-    {label} <b>{v == null ? '—' : v}</b></span>;
-
-  /* What the row was actually matched on, so a figure is never mistaken for one
-     recorded against a narrower scope than it really was. */
-  const on = [hit.businessUnitName, hit.department, hit.function].filter(Boolean).join(' · ');
-
-  return <div className="cite-hd" style={{ marginTop: 5, gap: 10, flexWrap: 'wrap' }}>
-    {fig('Baseline', hit.baseline)}
-    {fig('Actual', hit.actual)}
-    {fig('Target', hit.target)}
-    {hit.historical != null ? fig('Historical', hit.historical) : null}
-    <span className="dg none">{on || 'not scoped'} · {fmtP(rec?.period)}</span>
-    {/* Only a Breakdown citation carries a dimension; a plain KPI passes
-        none and gets no member table. */}
-    {dimension ? <div style={{ flexBasis: '100%' }}>
-      <BreakdownMembers hit={hit} dimension={dimension}/></div> : null}
-  </div>;
+  return <>
+    <AchievementFigures rows={mine} scope={scope} periodLabel={fmtP(rec?.period)}
+      unitLabel={nm(L.bu, rec?.businessUnitId) || null}/>
+    {/* Only a Breakdown citation carries a dimension; a plain KPI passes none
+        and gets no member table. ⚠️ A breakdown hangs off ONE achievement, so
+        for an All-Departments report it shows the members of the best-fitting
+        row, not of every department -- the figures table above is the place
+        that spans them all. */}
+    {dimension && hit ? <BreakdownMembers hit={hit} dimension={dimension}/> : null}
+  </>;
 }
 
 /* The dashboards behind a cited KPI. Collapsed by default: a report citing
@@ -394,6 +391,17 @@ export function ScreenBuildReport(){
 
   /* Every KPI this report cites, from every section. A KPI cited twice is read
      once. */
+  /* One entry per KPI citation, with the section that made it -- the coverage
+     panel needs the section NAMES, which citedKpiIds (a sorted id string, used
+     only as an effect dependency) deliberately throws away. Reads the DRAFT,
+     so a KPI cited a moment ago counts before the report is saved. */
+  const citedKpiList = useMemo(() =>
+    sections.flatMap(s => (s.citations || [])
+      .filter(c => (c.kind === 'KPI' || c.kind === 'Breakdown') && c.kpiId)
+      .map(c => ({ id: c.kpiId, name: c.kpiName || null,
+                   section: s.heading || '(untitled section)' }))),
+    [sections]);
+
   const citedKpiIds = useMemo(() => [...new Set(
     sections.flatMap(s => (s.citations || [])
       .filter(c => c.kind === 'KPI' || c.kind === 'Breakdown')
@@ -675,6 +683,20 @@ export function ScreenBuildReport(){
           {loadErr
             ? <Note k="err">Reading this report’s sections from Dataverse failed.{' '}
                 <Btn k="sm" onClick={() => setReload(n => n + 1)}>Try again</Btn></Note>
+            : null}
+
+          {/* What the approved Setup says this report is about, above the
+              sections it is written in -- an author should see the KPIs they
+              are accountable for before writing, not only if a section happens
+              to cite one. */}
+          {rec?.templateId
+            ? <KpiCoverage templateId={rec.templateId} period={rec.period}
+                unitLabel={nm(L.bu, rec.businessUnitId) || null}
+                citedKpis={citedKpiList}
+                scope={reportAchievementScope({
+                  businessUnitId: rec.businessUnitId || null,
+                  departmentName: nm(L.dept, rec.departmentId) || null,
+                  functionName:   nm(L.func, rec.functionId) || null })}/>
             : null}
 
           {before === null

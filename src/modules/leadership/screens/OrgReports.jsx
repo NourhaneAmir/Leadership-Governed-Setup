@@ -22,13 +22,15 @@ import { use } from '../store.jsx';
 import { Btn, Tag, Note, Empty } from '../../../shared/ui.jsx';
 import { fmtD, fmtP, MONTHS } from '../../../shared/format.js';
 import { DiagChip, rptTagC, matchesQuery } from '../domain.jsx';
-import { fetchReportOccurrenceContent, fetchKpiAchievements, pickAchievement,
+import { fetchReportOccurrenceContent, fetchKpiAchievements, reportAchievementScope,
          fetchBiReportsByKpi, fetchTasks, citeTaskOnSection } from '../../../services/dataverse.js';
 import { BiFrame } from './BusinessIntelligence.jsx';
 /* Reused rather than copied: the same form Build a report/plan raises a task
    with, so a task raised from either side carries identical fields. */
 import { NewTaskForm } from './BuildReport.jsx';
 import { ExportReportButtons } from './ExportReport.jsx';
+import { KpiCoverage } from './KpiCoverage.jsx';
+import { AchievementFigures } from './AchievementFigures.jsx';
 
 /* The dashboards behind a cited KPI. Collapsed by default -- a report citing
    eight KPIs would otherwise mount eight Power BI frames at once, each
@@ -228,16 +230,24 @@ export function ScreenOrgReports(){
     if (!rec?.period || c.kind !== 'KPI' || !c.kpiId) return undefined;
     const year = String(rec.period).slice(0, 4);
     const rows = achByYear[year];
-    if (rows === undefined || rows === null) return undefined;
+    if (rows === undefined || rows === null) return null;   // still reading
     const monAbbr = MONTHS[+String(rec.period).slice(5, 7) - 1];
-    const thisMonth = rows.filter(r => r.kpiId === c.kpiId
+    /* Narrowed to this KPI and this MONTH only. Scope is applied by
+       AchievementFigures through matchAchievement(), which deliberately does
+       not look at period -- whoever calls it must have narrowed that already,
+       and this is where that happens on this screen. */
+    return rows.filter(r => r.kpiId === c.kpiId
       && r.monthLabel && String(r.monthLabel).toLowerCase().startsWith(monAbbr.toLowerCase()));
-    return pickAchievement(thisMonth, {
-      businessUnitId: rec.businessUnitId || null,
-      departmentName: nm(L.dept, rec.departmentId) || null,
-      functionName:   nm(L.func, rec.functionId) || null,
-    });
   };
+
+  /* One scope for the open report, shared by every citation and by the
+     Related-to-Setup panel, so they cannot disagree. Releases Department and
+     Function when the report covers All Departments. */
+  const achScope = reportAchievementScope({
+    businessUnitId: rec?.businessUnitId || null,
+    departmentName: nm(L.dept, rec?.departmentId) || null,
+    functionName:   nm(L.func, rec?.functionId) || null,
+  });
 
   const openReport = id => { setOpenId(id); setOpenSec(null); };
 
@@ -378,6 +388,17 @@ export function ScreenOrgReports(){
                   : null}
               </div>
 
+              {/* The Setup's own KPIs and Processes, which are not the same
+                  thing as the citations on its sections. Scoped with exactly
+                  what achForCitation() uses, so one report cannot show two
+                  different figures for the same KPI. */}
+              <KpiCoverage templateId={rec.templateId} period={rec.period}
+                scope={achScope} unitLabel={nm(L.bu, rec.businessUnitId) || null}
+                citedKpis={secs.flatMap(s2 => (citesBySection[s2.id] || [])
+                  .filter(c => (c.kind === 'KPI' || c.kind === 'Breakdown') && c.kpiId)
+                  .map(c => ({ id: c.kpiId, name: c.kpiName || null,
+                               section: s2.heading || '(untitled section)' })))}/>
+
               {contentErr
                 ? <Note k="err">Reading this report's sections from Dataverse failed.{' '}
                     <Btn k="sm" onClick={() => setTick(t => t + 1)}>Try again</Btn></Note>
@@ -419,20 +440,11 @@ export function ScreenOrgReports(){
                                           {c.label && c.label !== target
                                             ? <div className="cite-m">{c.label}</div> : null}
                                           {c.kind === 'KPI' ? (() => {
-                                            const ach = achForCitation(c);
-                                            if (ach === undefined) return <div className="holder" style={{ marginTop: 6 }}>
-                                              Reading Actual / Target / Baseline…</div>;
-                                            if (ach === null) return <div className="holder" style={{ marginTop: 6 }}>
-                                              No pm_kpiachievments figure for {nm(L.dept, rec.departmentId) || 'this Department'}
-                                              {' · '}{nm(L.func, rec.functionId) || 'this Function'}{' · '}{fmtP(rec.period)}.</div>;
-                                            return <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 6 }}>
-                                              <div><span className="tset-lbl">Actual</span>
-                                                <div style={{ fontFamily: 'var(--mono)', fontWeight: 650 }}>{ach.actual ?? '—'}</div></div>
-                                              <div><span className="tset-lbl">Target</span>
-                                                <div style={{ fontFamily: 'var(--mono)', fontWeight: 650 }}>{ach.target ?? '—'}</div></div>
-                                              <div><span className="tset-lbl">Baseline</span>
-                                                <div style={{ fontFamily: 'var(--mono)', fontWeight: 650 }}>{ach.baseline ?? '—'}</div></div>
-                                            </div>;
+                                            const rows = achForCitation(c);
+                                            if (rows === undefined) return null;
+                                            return <AchievementFigures rows={rows} scope={achScope}
+                                              periodLabel={fmtP(rec.period)}
+                                              unitLabel={nm(L.bu, rec.businessUnitId) || null}/>;
                                           })() : null}
                                           {c.kind === 'KPI' || c.kind === 'Breakdown'
                                             ? <KpiDashboards bis={biByKpi.get(c.kpiId) || []}/>

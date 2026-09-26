@@ -5715,6 +5715,188 @@ behaviour*, not metadata, because Dataverse exposes no max-length column (see §
 The page is **private** until shared from its own Share menu; the admin and the
 product owner cannot open the link before that.
 
+### 27 Sep — KPI coverage: both sources of a report's KPIs, and four kinds of gap
+
+Replaces `RelatedToSetup.jsx` (one day old) with `KpiCoverage.jsx`. The ask was
+for a section reading the KPIs attached to the report **and** to its sections,
+and naming the ones that "doesn't have" — the sentence stopped there, and the
+three plausible endings (no achievement / no Target / not cited) all converge on
+one panel, so it reports all of them rather than guessing which was meant.
+
+A report gets its KPIs from two independent places and neither is the whole
+picture:
+
+| Source | Table | What it means |
+|---|---|---|
+| the Setup | `lm_reporttemplaterelatedkpises` | what the approved Setup says the report is about |
+| its sections | `lm_reportsectioncitations` | what an author actually rested a section on |
+
+Unioned by KPI id, each row marked with where it came from, and four gaps called
+out **above** the table:
+
+- **not cited** — named by the Setup, cited by no section. The governance gap.
+- **not in the Setup** — cited by a section, not named by the Setup.
+- **no achievement** — no row for this scope and period.
+- **no Target** — has figures, Target empty.
+
+⚠️ The last two are worded as **missing data in Dataverse, not the author's
+doing**. Given IT holds a Target on 1 of 1,055 rows, a panel that blamed the
+report for it would be wrong every time.
+
+⚠️ A figure counts as missing only when **every** row serving that KPI leaves it
+empty — under All Departments one department having a Target means the KPI is
+covered.
+
+**Live check on the OPD Monthly Performance Report**, 27 Sep — it produces a
+real answer, not an empty panel:
+
+| | |
+|---|---|
+| Setup names | 4 KPIs |
+| Sections cite | 8 KPIs |
+| Setup KPIs not cited | **0** |
+| Cited but not in the Setup | **4** (Examinations %, Avg No. Service/Case, Referral CPV to IPD, OPD-to-IPD Referral %) |
+
+Build a report/plan feeds it the **draft** sections, so a KPI cited a moment ago
+counts before the report is saved. Reports / Plans feeds it the saved citations.
+
+⚠️ **Rules of hooks.** The panel's `if(!templateId && !cited.length) return null`
+sat above two `useMemo` calls. Vite builds it happily and oxlint caught it:
+React identifies hooks by call order, so the early return would have changed
+that order the moment a report gained its first citation. The bail-out now sits
+below every hook. Worth remembering — nothing about the build output reveals it.
+
+### 27 Sep — Pushed both apps (KPI scope, related KPIs, All Departments)
+
+Both live on the first attempt. Carries, in one push:
+
+- `matchAchievement()` replacing `pickAchievement()`'s reject-on-unconstrained
+  rule, which had been matching nothing for any report without a Function;
+- the `RelatedToSetup` panel on both the author's and the reader's screen;
+- `reportAchievementScope()` and the All-Departments release;
+- the shared `AchievementFigures` renderer;
+- `statecode eq 0` on the breakdown read.
+
+| App | Id | Staging folder |
+|---|---|---|
+| Governance Setup | `4912152c-b5c8-4beb-bb74-c9f43550405b` | `C:\tmp\cad-gov` |
+| Leadership Execution | `83db0ef8-4c62-4eef-84ac-dadab326b704` | `C:\tmp\cad-exec` |
+
+`.power` and `power.config.json` present before and after; `dist` subfolder only
+replaced. Assets: governance 102, leadership 104 — unchanged, since this push
+adds no library.
+
+⚠️ **The Excel regression from 26 Sep is still unconfirmed** and rode along with
+this push. Nothing in this change touches the workbook writer.
+
+### 27 Sep — "All Departments" was rejecting every achievement row
+
+⚠️ **This was not a missing feature, it was a silent total failure.**
+`All Departments` is a real row in `cr603_chklst_departments` (exactly one,
+live 27 Sep) and it means the opposite of a department: the report covers all
+of them. Matched as a plain name it behaved like any other Department, so
+`"All Departments"` was compared against the achievement's own `"Medical"`,
+`"Contact Center"`, `"Finance"` … disagreed with every one, and **every row was
+disqualified**. An All-Departments report showed no figures at all — not merely
+no Target.
+
+New in the service layer, so three screens cannot answer this differently:
+
+```js
+export const ALL_DEPARTMENTS_NAME = 'All Departments';
+export const isAllDepartments = name => …          // by NAME, trimmed, case-insensitive
+export function reportAchievementScope({ … })      // -> { …, allDepartments }
+```
+
+`reportAchievementScope()` releases **Department and Function to null** for an
+All-Departments report, so it matches on **Business Unit and Period alone** and
+every department's and function's row qualifies.
+
+⚠️ **Detected by name, never by id** — the id differs between IT and DT New, as
+every id does. There is **no "All Functions" row** (checked); selecting All
+Departments releases the Function too, because a report covering every
+department is not scoped to one department's function either.
+
+#### The data shape that makes this safe
+
+Grouped live, 27 Sep: **every (KPI, Business Unit) pair has exactly one
+achievement row** — 1,055 pairs, 1,055 rows. So releasing Department and
+Function does not explode the result; it turns *nothing* into *the row that was
+always there*. Where a KPI genuinely spans several departments the table lists
+them all rather than picking one.
+
+#### New shared component
+
+`AchievementFigures.jsx` draws a KPI's figures for both Build a report/plan and
+Reports / Plans — one line for a normal report, a **Department / Function /
+Baseline / Actual / Target / Historical table** for an All-Departments one.
+Those two screens had already disagreed about achievement *matching* once; this
+makes them share the *drawing* too, so a figure cannot look different depending
+on which screen is open. `RelatedToSetup` expands the same way, one row per
+department, with the KPI named once against its first row.
+
+⚠️ **A Breakdown citation still hangs off ONE achievement**, so under All
+Departments it shows the best-fitting row's members, not every department's.
+The figures table above it is the thing that spans them. Noted in the code at
+the call site.
+
+Covered by a test that lifts the real source out of `dataverse.js` rather than
+testing a copy: detection by name, Department and Function released, Business
+Unit **kept** (another BU must not leak in), and a normal report still narrowing
+to its own department.
+
+### 27 Sep — The Setup's own related KPIs and Processes, with figures
+
+A Report Setup declares KPIs and Processes on the **template**, through
+`lm_reporttemplaterelatedkpises` and `lm_reporttemplaterelatedprocesseses`.
+Until now nothing on the execution side read them: they were written by
+Governance Setup, and returned by `fetchReportTemplateDetail()` as bare ids,
+but no screen showed them. They are **not** the section citations — a citation
+is what one section chose to rest on; these say what the report is about at
+all.
+
+New `fetchReportTemplateRelated(templateId)` reads just the two link tables.
+`fetchReportTemplateDetail()` already returns the same ids but fans out into
+review chains and per-checklist section items to do it — far too much work for
+a panel that wants two lists. Names come from the lookup's own formatted value,
+so no KPI/Process catalog has to be loaded first (Reports / Plans has none).
+
+New `RelatedToSetup.jsx`, used by **both** Build a report/plan and
+Reports / Plans, so the two cannot drift apart the way the achievement matching
+once did. Each KPI shows Baseline / Actual / Target / Historical for the
+report's own Business Unit, Department, Function and Period, matched with the
+same `matchAchievement()` the citations use — including its ambiguity note, so
+one report can never show two different figures for the same KPI.
+
+⚠️ **Self-contained by design.** Build a report/plan reads achievements only for
+the KPIs its sections CITE, and Reports / Plans caches a whole year at a time —
+two different shapes, neither covering the Setup's own KPIs. One filtered read
+of its own is less code and fewer ways to disagree than threading a third shape
+through both screens. It only reads when the panel is opened.
+
+**Live in IT, 27 Sep** — this is real, not an empty feature:
+
+| | |
+|---|---|
+| `lm_reporttemplaterelatedkpis` rows | **45**, across 6 Setups |
+| `lm_reporttemplaterelatedprocesses` rows | **12** |
+| "OPD Monthly Performance Report" | **4** related KPIs |
+
+Names resolve through the lookup's formatted value — verified live, e.g.
+"OPD CPV (Charge per Visit)", "OPD - No of Services", "Lab Order → Approval TAT".
+
+⚠️ **Targets will still read as a dash**, for the reason in the entry above:
+IT holds a target on 1 of 1,055 achievement rows. Nothing about this panel
+changes that — it surfaces the KPIs, it cannot invent their targets.
+
+⚠️ **`\uXXXX` in JSX TEXT is literal, not an escape.** Written straight into a
+text node it renders as the eight characters. Caught before the build here;
+inside a string literal (a prop, an argument) it behaves normally. HTML
+entities (`&hellip;` `&mdash;` `&rsquo;`) are the right tool in a text node.
+
+Not wired into the Excel/Word export — the ask was the building and viewing
+screens. The model builder would take it in the same shape if wanted.
+
 ### 27 Sep — KPI target and breakdown scope: one real defect, and a data answer
 
 Asked to make sure the Target is fetched for a section's KPI and its breakdown
