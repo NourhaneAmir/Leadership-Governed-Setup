@@ -4617,12 +4617,27 @@ function NewReportModal({onClose}){
     myPos && !scopedPos.some(p=>p.id===myPos.id) ? [myPos, ...scopedPos] : scopedPos,
   [myPos, scopedPos]);
 
-  /* A Department picked before the Setup's own list arrived may not be on it.
-     Cleared rather than left, so the form cannot submit a Department this
-     Setup does not name. */
+  /* Keep the Department consistent with the Setup's own list. Two rules, one
+     effect, because both turn on the same inputs:
+
+       - a Department picked before that list arrived may not be on it, so it
+         is cleared rather than submitted against a Setup that never named it
+       - when the Setup names exactly ONE there is no decision to make, so it
+         is chosen. The same rule already applies to the Business Unit /
+         Region placement above ("Auto-apply the single placement").
+
+     Only ever fills a BLANK field, so an explicit choice survives.
+
+     ⚠️ Deliberately restricted to `fromSetup`. The fallback list is inferred
+     from Positions, and auto-selecting an inferred Department would put a
+     value the Setup never governed onto a governed record. */
   useEffect(()=>{
-    if(fromSetup && f.dvDepartmentId && !deptOpts.some(d=>d.id===f.dvDepartmentId))
+    if(!fromSetup) return;
+    if(f.dvDepartmentId && !deptOpts.some(d=>d.id===f.dvDepartmentId)){
       set('dvDepartmentId','');
+      return;                      // the next run picks the lone one, if any
+    }
+    if(!f.dvDepartmentId && deptOpts.length===1) set('dvDepartmentId', deptOpts[0].id);
   },[fromSetup, deptOpts, f.dvDepartmentId]);
 
   /* Default to it once a scope exists. Not an initial state value: choosing a

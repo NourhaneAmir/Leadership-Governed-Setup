@@ -5443,6 +5443,27 @@ and `NewMeetingModal` are near-identical in places -- `const [saving,...]` +
 patches in a row matched the wrong count. Anchor on the component signature
 or on text carrying the modal's own title.
 
+### 26 Sep: a Setup naming ONE Department selects it
+
+Asked for, and it matches a rule the modal already had -- *"Auto-apply the
+single placement a Template is approved for"* does exactly this for the
+Business Unit / Region. A Setup naming one Department is the same situation:
+there is no decision to make.
+
+Folded into the existing consistency effect rather than added as a second
+one, since both rules turn on the same inputs: clear a Department that is not
+on the Setup's list, then select the lone one if there is one. Clearing
+returns early and lets the next run do the selecting, so the two cannot
+fight.
+
+Only ever fills a BLANK field, so an explicit choice survives -- the same
+rule as the Created by default.
+
+⚠️ **Restricted to `fromSetup` on purpose.** The fallback list is inferred
+from Positions (see the Department entry below), and auto-selecting from an
+inference would put a Department the Setup never governed onto a governed
+record. A single inferred option stays unselected.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap
