@@ -948,13 +948,32 @@ function CitePicker({ picker, setPicker, onCite, catalog, inScope, reports, take
     else {
       const kpis = catalog.kpis.filter(inScope);
       const K = kpis.find(x => x.id === picker.kpiId);
+      /* The KPI and Process branches above search a list; a Breakdown needs a
+         KPI AND a dimension, so it keeps the two-step select and narrows the
+         options instead. `search()` and `picker.q` are the same ones those
+         branches use.
+
+         ⚠️ The chosen KPI is always kept in the list. Without that, typing a
+         search that excludes it blanks the select while the selection is
+         still live underneath, and the Cite button below goes on naming a KPI
+         that appears nowhere on screen. */
+      const matched = kpis.filter(x => matchesQuery(picker.q, [x.name]));
+      const shown = K && !matched.some(x => x.id === K.id) ? [K, ...matched] : matched;
       body = <>
+        {search('Search KPIs…')}
         <select value={picker.kpiId} onChange={e => set({ kpiId: e.target.value, dim: '' })}
           style={{ width: '100%', marginBottom: 8, border: '1px solid var(--border-d)', borderRadius: 7,
                    padding: '6px 9px', fontSize: 12.5, background: '#fff' }}>
           <option value="">Choose a KPI…</option>
-          {kpis.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
+          {shown.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
         </select>
+        {picker.q.trim() && matched.length === 0
+          ? <div className="holder" style={{ marginBottom: 8 }}>
+              No KPI matches “{picker.q.trim()}”.{K ? ' The one you chose is still selected.' : ''}</div>
+          : picker.q.trim()
+            ? <div className="holder" style={{ marginBottom: 8 }}>
+                {matched.length} of {kpis.length} KPIs match.</div>
+            : null}
         {K ? <>
           <div className="cpick-k">
             {Object.values(SECTION_BREAKDOWN_DIM).map(dim =>

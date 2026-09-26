@@ -5610,6 +5610,26 @@ block twice and produced a duplicate export the build caught. Those helpers
 have a growth assert but no idempotency guard -- when a multi-file patch
 fails partway, check what already landed before re-running.
 
+### 26 Sep: search on the Breakdown citation's KPI list
+
+The KPI and Process branches of the citation picker have always searched a
+list; **Breakdown** used a bare `<select>` of every in-scope KPI, which is
+long enough to need one. It keeps the select, because a Breakdown needs a KPI
+**and** a dimension and that two-step shape is right -- the search narrows the
+options rather than replacing the control. `search()` and `picker.q` are the
+same helpers the other branches use.
+
+⚠️ **The chosen KPI is always kept in the list.** Without that, typing a
+search which excludes it blanks the select while the selection is still live
+underneath -- and the Cite button below goes on naming a KPI that appears
+nowhere on screen.
+
+The count line distinguishes "N of M match" from "nothing matches", and in
+the second case says the earlier choice is still selected.
+
+No stale-filter problem: the kind switcher already resets `q`, `kpiId` and
+`dim` together.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap
