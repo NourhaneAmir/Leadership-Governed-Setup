@@ -5464,6 +5464,41 @@ from Positions (see the Department entry below), and auto-selecting from an
 inference would put a Department the Setup never governed onto a governed
 record. A single inferred option stays unselected.
 
+### 26 Sep: a new report opens itself in Build a report/plan
+
+Creating one now navigates straight to it. `go('build', id)` is called
+**after** `refreshOccurrences()`, not before: that screen picks its record out
+of `reports` via `sel.build`, so navigating first would land on a list the new
+row is not in yet and silently fall back to whatever was top of it.
+
+A new report passes `EDITABLE` (`!locked && (Draft || Returned)`), so it is
+selectable the moment the refresh lands.
+
+### 26 Sep: review-chain holder names -- the code is right, IT has no holder
+
+Asked for the current employee's full name beside each reviewer Position.
+⚠️ **The modal already does this.** Its `pos()` helper renders
+`Position — Holder` whenever `DV_POS_HOLDER[id]` has a value, and the review
+chain has always called `pos()`, not `dvPos()`.
+
+The two Positions in the report resolve to nothing because **IT records no
+holder for them by ANY route**. Checked directly:
+
+| Route in `fetchPositions()` | For these two rows |
+|---|---|
+| `hr_fullnameofcurrentemployee` | **null** |
+| `_hr_currentemployee_value` -> `hr_employees` | **null**, so unusable |
+| ... -> `systemusers` | same, unusable |
+| `hr_employees` by position lookup | **no `hr_employee` in IT points at either Position** |
+
+So this is not the DT-New-employee-index regression it first looked like.
+Moving `hr_employees` to IT would NOT fix these two -- there is no employee
+row to find. IT holds 11,372 Positions of which **4,641 name a current
+employee**; these are among the other 6,731.
+
+**The fix is data**: give those Positions a current employee in IT. The
+display will pick it up with no code change.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap

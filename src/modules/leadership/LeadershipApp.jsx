@@ -4556,7 +4556,7 @@ function ApprovedSetupPicker({id,list,val,onChange,labelOf,emptyText,extraOption
 }
 
 function NewReportModal({onClose}){
-  const {toast,refreshOccurrences,dvLookup}=use();
+  const {toast,refreshOccurrences,dvLookup,go}=use();
   /* What the Create button is doing right now: {label, done, total}. `total`
      0 means "no count available", which renders as an indeterminate bar. */
   const [progress,setProgress]=useState(null);
@@ -4779,11 +4779,16 @@ function NewReportModal({onClose}){
 
       toast(custom?'Ad Hoc Report created':'Report created from the approved Setup',
         (custom
-          ? 'Saved to lm_reportoccurrences as a Draft, flagged as having no Setup. It now appears in your Workspace.'
-          : 'Saved to lm_reportoccurrences as a Draft, linked to its approved Report Template.') + sectionNote,
+          ? 'Saved to lm_reportoccurrences as a Draft, flagged as having no Setup. Opened for editing.'
+          : 'Saved to lm_reportoccurrences as a Draft, linked to its approved Report Template. Opened for editing.') + sectionNote,
         migrated && migrated.errors.length ? 'warn' : 'ok');
       setProgress({ label: 'Refreshing your reports…', done: 0, total: 0 });
       await refreshOccurrences();
+      /* Open the new report in Build a report/plan. AFTER the refresh, not
+         before: that screen picks its record out of `reports`, so navigating
+         first would land on a list the new row is not in yet and fall back to
+         whatever was top of it. */
+      go('build', id);
       onClose();
     }catch(e){
       console.warn('[dataverse] Report Occurrence create threw unexpectedly:', e);
