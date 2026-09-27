@@ -3787,6 +3787,152 @@ function reportCitationRow(c, sectionId){
   return row;
 }
 
+/* ⚠️ The KPI-gap section is identified by its HEADING, because there is
+   nowhere else to mark it: lm_source is a two-value choice (Migrated / Added)
+   with no spare option, and the section table carries no other flag. So
+   renaming this section in the editor means the next sync will not recognise
+   it and will create a second one. Worth a column of its own if this feature
+   stays -- noted in PROJECT-CONTEXT.md.
+
+   It IS a real section: it sequences, exports and round-trips through
+   saveReportOccurrenceContent() like any other, and the author can read and
+   reorder it. */
+export const KPI_GAP_SECTION_HEADING = 'KPI data gaps';
+
+const gapHeadingMatches = h =>
+  String(h || '').trim().toLowerCase() === KPI_GAP_SECTION_HEADING.toLowerCase();
+
+/** Brings the KPI-gap section on one Report Occurrence into line with the gaps
+ *  that exist right now.
+ *
+ *  ⚠️ Never called on open. It WRITES -- creating a section, adding and
+ *  deleting citations -- so it runs only when someone asks for it. A reader
+ *  opening a report must never mutate it, and a submitted or approved report
+ *  must not change after the fact; the caller enforces that.
+ *
+ *  Reconciled, not rewritten: a KPI still missing keeps its existing citation
+ *  row, so re-running this does not churn ids.
+ *
+ *  @param {string} occurrenceId
+ *  @param {Array<{id:string,name?:string}>} gapKpis  the KPIs missing data NOW
+ *  @returns {Promise<{sectionId:string|null, added:string[], removed:string[],
+ *                     kept:number, sectionDeleted:boolean, errors:object[]}>}
+ */
+export async function syncKpiGapSection(occurrenceId, gapKpis = []){
+  const errors = [];
+  const fail = (table, error, what) => errors.push({ table, error, what });
+  if(!occurrenceId) throw new Error('syncKpiGapSection: an occurrence id is required');
+
+  /* De-duplicated: the same KPI can reach here from the Setup and from a
+     section citation, and it is one gap either way. */
+  const want = new Map();
+  for(const k of gapKpis || []) if(k?.id && !want.has(k.id)) want.set(k.id, k.name || null);
+
+  const secRes = await Lm_reportoccurrencesectionsesService.getAll({
+    filter: `_lm_reportoccurrence_value eq ${occurrenceId}`,
+    select: ['lm_reportoccurrencesectionsid', 'lm_heading', 'lm_sequence'],
+  });
+  const sections = secRes?.data ?? [];
+  const found = sections.find(s => gapHeadingMatches(s.lm_heading));
+  let sectionId = found?.lm_reportoccurrencesectionsid || null;
+
+  const citationsOf = id => Lm_reportsectioncitationsesService.getAll({
+    filter: `_lm_citedsection_value eq ${id}`,
+    select: ['lm_reportsectioncitationsid', '_lm_kpi_value', 'lm_name'],
+  }).then(r => r?.data ?? []).catch(e => {
+    fail('lm_reportsectioncitations', e, 'reading the gap section'); return [];
+  });
+
+  /* ---- nothing missing any more: the section has served its purpose ---- */
+  if(!want.size){
+    if(!sectionId)
+      return { sectionId: null, added: [], removed: [], kept: 0, sectionDeleted: false, errors };
+    const removed = [];
+    for(const c of await citationsOf(sectionId)){
+      try{
+        await Lm_reportsectioncitationsesService.delete(c.lm_reportsectioncitationsid);
+        removed.push(c['_lm_kpi_value' + FV] || c.lm_name || 'a KPI');
+      }catch(e){ fail('lm_reportsectioncitations', e, 'removing a filled KPI'); }
+    }
+    try{
+      await Lm_reportoccurrencesectionsesService.delete(sectionId);
+    }catch(e){
+      fail('lm_reportoccurrencesections', e, 'removing the empty gap section');
+      return { sectionId, added: [], removed, kept: 0, sectionDeleted: false, errors };
+    }
+    return { sectionId: null, added: [], removed, kept: 0, sectionDeleted: true, errors };
+  }
+
+  /* ---- the body, rewritten every time so its count cannot go stale ----- */
+  const stamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
+  const body = `${want.size} KPI${want.size === 1 ? '' : 's'} cited here `
+    + `${want.size === 1 ? 'has' : 'have'} no Actual or no Target recorded for this `
+    + `report's Business Unit, Department, Function and period. This is missing source `
+    + `data in Dataverse, not something the report itself can supply. Checked ${stamp}.`;
+
+  if(!sectionId){
+    const maxSeq = sections.reduce((n, s) => Math.max(n, s.lm_sequence ?? 0), 0);
+    try{
+      const created = await Lm_reportoccurrencesectionsesService.create({
+        lm_heading: KPI_GAP_SECTION_HEADING,
+        lm_body: capped(body, 4000, 'Section text'),
+        lm_diagnosticangle: SECTION_ANGLE_KEY.Descriptive ?? SECTION_ANGLE_KEY.Untyped,
+        lm_sequence: maxSeq + 1,
+        lm_source: SECTION_SOURCE_ADDED,
+        'lm_ReportOccurrence@odata.bind': `/lm_reportoccurrences(${occurrenceId})`,
+      });
+      sectionId = idOrThrow(created, 'lm_reportoccurrencesectionsid');
+    }catch(e){
+      fail('lm_reportoccurrencesections', e, 'creating the gap section');
+      return { sectionId: null, added: [], removed: [], kept: 0, sectionDeleted: false, errors };
+    }
+  }else{
+    try{
+      await Lm_reportoccurrencesectionsesService.update(sectionId,
+        { lm_body: capped(body, 4000, 'Section text') });
+    }catch(e){ fail('lm_reportoccurrencesections', e, 'updating the gap section text'); }
+  }
+
+  /* ---- reconcile the citations ----------------------------------------- */
+  const have = await citationsOf(sectionId);
+  const haveByKpi = new Map();
+  const strays = [];
+  for(const c of have){
+    if(c._lm_kpi_value && !haveByKpi.has(c._lm_kpi_value)) haveByKpi.set(c._lm_kpi_value, c);
+    else strays.push(c);           // a duplicate, or a citation naming no KPI
+  }
+
+  const added = [], removed = [];
+  let kept = 0;
+
+  for(const [kpiId, c] of haveByKpi){
+    if(want.has(kpiId)){ kept++; continue; }
+    /* Its data has arrived. Dropping it is the whole point of re-running:
+       the section shrinks as the gaps are filled, and disappears entirely
+       once the last one is. */
+    try{
+      await Lm_reportsectioncitationsesService.delete(c.lm_reportsectioncitationsid);
+      removed.push(c['_lm_kpi_value' + FV] || c.lm_name || 'a KPI');
+    }catch(e){ fail('lm_reportsectioncitations', e, 'removing a filled KPI'); }
+  }
+
+  for(const c of strays){
+    try{ await Lm_reportsectioncitationsesService.delete(c.lm_reportsectioncitationsid); }
+    catch(e){ fail('lm_reportsectioncitations', e, 'removing a stray citation'); }
+  }
+
+  for(const [kpiId, name] of want){
+    if(haveByKpi.has(kpiId)) continue;
+    try{
+      await Lm_reportsectioncitationsesService.create(reportCitationRow(
+        { kind: 'KPI', kpiId, label: 'KPI: ' + (name || 'missing data') }, sectionId));
+      added.push(name || 'a KPI');
+    }catch(e){ fail('lm_reportsectioncitations', e, `citing ${name || kpiId}`); }
+  }
+
+  return { sectionId, added, removed, kept, sectionDeleted: false, errors };
+}
+
 /**
  * Writes an edited report back, changing only what changed.
  *

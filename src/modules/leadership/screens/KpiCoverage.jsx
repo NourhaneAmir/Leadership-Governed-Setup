@@ -27,8 +27,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Btn, Note, Empty, Tag } from '../../../shared/ui.jsx';
 import { fmtP } from '../../../shared/format.js';
-import { fetchReportTemplateRelated, fetchKpiAchievements,
-         matchAchievement } from '../../../services/dataverse.js';
+import { use } from '../store.jsx';
+import { fetchReportTemplateRelated, fetchKpiAchievements, matchAchievement,
+         syncKpiGapSection, KPI_GAP_SECTION_HEADING } from '../../../services/dataverse.js';
 
 const fig = v => (v === null || v === undefined ? '—' : v);
 const NUM = { textAlign: 'right', fontFamily: 'var(--mono)', whiteSpace: 'nowrap' };
@@ -43,11 +44,16 @@ const FIGURES = [['baseline', 'Baseline'], ['actual', 'Actual'],
  *  @param {string}   [p.unitLabel] the Business Unit's name
  *  @param {object[]} [p.citedKpis] [{ id, name, section }] -- one entry per
  *                    citation, so the same KPI may appear more than once
+ *  @param {string}   [p.reportId]  the occurrence, needed only to save the section
+ *  @param {boolean}  [p.canEdit]   false on a locked or submitted report
+ *  @param {Function} [p.onSynced]  re-read the report after the section changes
  *  @param {boolean}  [p.openByDefault]
  */
-export function KpiCoverage({ templateId, period, scope, unitLabel,
-                              citedKpis, openByDefault }){
+export function KpiCoverage({ templateId, period, scope, unitLabel, citedKpis,
+                              reportId, canEdit, onSynced, openByDefault }){
+  const { toast } = use();
   const [open, setOpen] = useState(!!openByDefault);
+  const [syncing, setSyncing] = useState(false);
   const [related, setRelated] = useState(null);   // null while reading
   const [ach, setAch] = useState(null);           // null while reading
   const [err, setErr] = useState(null);
@@ -133,6 +139,41 @@ export function KpiCoverage({ templateId, period, scope, unitLabel,
     };
   }, [resolved]);
 
+  /* The KPIs the saved section cites: no Actual recorded, or no Target.
+     Baseline and Historical are deliberately NOT gaps -- a report is judged on
+     what it achieved against what it aimed at, and widening the rule to every
+     figure would cite almost every KPI while IT holds a Target on 1 row in
+     1,055, so the section would never shrink and would say nothing. */
+  const gapKpis = useMemo(() => (resolved || []).filter(k =>
+    k.missing.includes('Actual') || k.missing.includes('Target')), [resolved]);
+
+  const runSync = async () => {
+    if(!reportId || syncing) return;
+    setSyncing(true);
+    try{
+      const r = await syncKpiGapSection(reportId,
+        gapKpis.map(k => ({ id: k.id, name: k.name })));
+      const parts = [];
+      if(r.added.length)   parts.push(r.added.length + ' added');
+      if(r.removed.length) parts.push(r.removed.length + ' removed (data has arrived)');
+      if(r.kept)           parts.push(r.kept + ' still missing');
+      if(r.sectionDeleted) parts.push('section removed \u2014 nothing is missing now');
+      toast(
+        r.errors.length ? 'Updated, with problems' : 'Gaps section updated',
+        (parts.join(', ') || 'Nothing to change')
+          + (r.errors.length ? '. ' + r.errors.length + ' write(s) failed \u2014 see the console.' : '.'),
+        r.errors.length ? 'warn' : 'ok');
+      if(r.errors.length) console.warn('[dataverse] syncKpiGapSection:', r.errors);
+      /* The report is re-read because the section list has changed underneath
+         the screen -- an editor left holding a stale draft would otherwise
+         delete the section again on its next save. */
+      if(onSynced) onSynced();
+    }catch(e){
+      console.warn('[dataverse] syncKpiGapSection() failed:', e);
+      toast('Could not update the section', e?.message || 'unknown error', 'err');
+    }finally{ setSyncing(false); }
+  };
+
   /* ⚠️ Every hook above runs unconditionally. This bail-out has to come
      AFTER them: React identifies hooks by call order, so returning early
      above the useMemos would change that order the moment a report gained
@@ -150,6 +191,20 @@ export function KpiCoverage({ templateId, period, scope, unitLabel,
       <span className="holder" style={{ flex: 1, minWidth: 0, fontSize: 12 }}>
         Every KPI this report answers for &mdash; from its Setup and from its sections{head}
       </span>
+      {/* Writes, so it is never automatic: a reader opening a report must not
+          mutate it, and a submitted report must not change after the fact.
+          Re-running is also what REMOVES a KPI whose data has since arrived. */}
+      {open && reportId && resolved
+        ? <Btn k="sm" disabled={!canEdit || syncing} onClick={runSync}
+            title={canEdit
+              ? 'Rechecks every KPI and rewrites the "' + KPI_GAP_SECTION_HEADING
+                + '" section: adds the ones still missing data, drops the ones now filled.'
+              : 'Only a Draft or Returned report can be changed.'}>
+            {syncing ? 'Checking\u2026'
+              : gapKpis.length ? 'Save ' + gapKpis.length + ' gap'
+                                 + (gapKpis.length === 1 ? '' : 's') + ' as a section'
+                               : 'Clear the gaps section'}</Btn>
+        : null}
       <Btn k="sm" onClick={() => setOpen(o => !o)}>{open ? 'Hide' : 'Show'}</Btn>
     </div>
 

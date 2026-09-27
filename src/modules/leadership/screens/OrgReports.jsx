@@ -394,6 +394,9 @@ export function ScreenOrgReports(){
                   different figures for the same KPI. */}
               <KpiCoverage templateId={rec.templateId} period={rec.period}
                 scope={achScope} unitLabel={nm(L.bu, rec.businessUnitId) || null}
+                reportId={rec.id}
+                canEdit={!rec.locked && (rec.status === 'Draft' || rec.status === 'Returned')}
+                onSynced={() => setTick(t => t + 1)}
                 citedKpis={secs.flatMap(s2 => (citesBySection[s2.id] || [])
                   .filter(c => (c.kind === 'KPI' || c.kind === 'Breakdown') && c.kpiId)
                   .map(c => ({ id: c.kpiId, name: c.kpiName || null,

@@ -5715,6 +5715,83 @@ behaviour*, not metadata, because Dataverse exposes no max-length column (see §
 The page is **private** until shared from its own Share menu; the admin and the
 product owner cannot open the link before that.
 
+### 27 Sep — Pushed both apps (KPI gaps section)
+
+Both live on the first attempt. Carries `syncKpiGapSection()`, the gap-section
+button in KPI coverage, the generated-section marking in both export formats,
+and the `xlTitle` argument-order fix.
+
+| App | Id | Staging folder |
+|---|---|---|
+| Governance Setup | `4912152c-b5c8-4beb-bb74-c9f43550405b` | `C:\tmp\cad-gov` |
+| Leadership Execution | `83db0ef8-4c62-4eef-84ac-dadab326b704` | `C:\tmp\cad-exec` |
+
+`.power` and `power.config.json` present before and after; `dist` subfolder only
+replaced. Assets: governance 102, leadership 104 — unchanged, no new library.
+
+⚠️ **The 26 Sep Excel regression is still unconfirmed.** The `xlTitle` fix in
+this push repairs sheet subtitles, which were rendering as bare column counts,
+but that was checked and is **not** the cause of "Excel cannot open the file" —
+`mergeCells()` given a string emits no merge rather than malformed XML. If the
+export still fails after this push, the cause is still unidentified and the
+failing file is the fastest way to find it.
+
+
+### 27 Sep — The KPI gaps saved as a real section, refreshed on demand
+
+Two decisions were the user's, asked before building because both change the
+deliverable and one writes to Dataverse:
+
+| Decision | Chosen |
+|---|---|
+| What counts as a gap | **no Actual, or no Target** (Baseline/Historical ignored) |
+| When it re-checks | **an explicit button only** — never on open |
+
+`syncKpiGapSection(occurrenceId, gapKpis)` reconciles a real
+`lm_reportoccurrencesections` row and its KPI citations:
+
+- a KPI still missing **keeps** its citation row, so re-running churns no ids;
+- a KPI whose data has arrived has its citation **deleted** — this is the whole
+  point of re-running;
+- when the last gap is filled the **section itself is deleted**;
+- duplicate or KPI-less citations on that section are swept.
+
+⚠️ **Never called on open.** A reader opening a report must not mutate it and a
+submitted report must not change after the fact, so the button is disabled
+unless the report is Draft/Returned and unlocked. After a sync the screen
+re-reads, because an editor left holding a stale draft would delete the section
+again on its next save (`saveReportOccurrenceContent` deletes any section not
+in `after`).
+
+⚠️ **The section is identified by its HEADING** (`KPI data gaps`). There is
+nowhere else to mark it: `lm_source` is a two-value choice (Migrated / Added)
+with no spare option, and the section table carries no other flag. **Rename it
+in the editor and the next sync creates a second one.** A dedicated column
+would fix this properly — a candidate for the schema list if the feature stays.
+
+**Exports needed no new plumbing** — it is a real section, so it already got a
+sheet in the workbook and a sub-heading in the document. What was added is that
+both now *say* it is generated rather than authored, and the cover/notes carry
+a line naming how many KPIs it cites. A reader who could not tell them apart
+would read a generated list as someone's analysis.
+
+#### ⚠️ A real bug found while testing this, and what it was NOT
+
+`xlTitle(ws, text, span, sub)` — but all **six** call sites pass
+`(ws, text, sub, span)`. So since the ExcelJS rewrite every sheet's subtitle
+rendered as a bare column count ("4", "7", "11", "25") and every title merge was
+handed a string.
+
+**It is not the cause of the "Excel cannot open the file" regression.** Checked
+directly rather than assumed: `mergeCells()` given a string does not throw and
+emits **no mergeCell element at all**, so the merge was silently skipped and the
+XML stayed well-formed. The damage was cosmetic. That regression is still open.
+
+The earlier writer tests all passed against this because they asserted content
+presence and never the subtitle. The test now fails if any sheet contains a row
+that is a bare number, which is exactly the fingerprint this left.
+
+
 ### 27 Sep — KPI coverage: both sources of a report's KPIs, and four kinds of gap
 
 Replaces `RelatedToSetup.jsx` (one day old) with `KpiCoverage.jsx`. The ask was

@@ -693,6 +693,13 @@ export function ScreenBuildReport(){
             ? <KpiCoverage templateId={rec.templateId} period={rec.period}
                 unitLabel={nm(L.bu, rec.businessUnitId) || null}
                 citedKpis={citedKpiList}
+                reportId={rec.id}
+                /* This screen only ever opens an editable report, but a save
+                   in another tab can lock one underneath us. */
+                canEdit={!rec.locked && (rec.status === 'Draft' || rec.status === 'Returned')}
+                /* Re-reads the report: the section list changed underneath the
+                   editor, and a stale draft would delete it on the next save. */
+                onSynced={() => setReload(n => n + 1)}
                 scope={reportAchievementScope({
                   businessUnitId: rec.businessUnitId || null,
                   departmentName: nm(L.dept, rec.departmentId) || null,
