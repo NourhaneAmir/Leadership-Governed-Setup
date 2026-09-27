@@ -5782,6 +5782,81 @@ single-argument `dvTable('x')` shape — the latter misses `dvTable('x','xid')`
 and undercounted this exact list by two on 27 Sep.
 
 
+### 28 Sep — Pushed both apps (citation multi-select and filters)
+
+Both live on the first attempt. Carries the multi-select / select-all pickers,
+the Task and Strategy filters, the enriched Decisions tab, and the bounded
+parallel citation writes.
+
+| App | Id |
+|---|---|
+| Governance Setup | `4912152c-b5c8-4beb-bb74-c9f43550405b` |
+| Leadership Execution | `83db0ef8-4c62-4eef-84ac-dadab326b704` |
+
+`.power` and `power.config.json` present before and after; `dist` subfolder
+only replaced. Assets: governance 102, leadership 104 — unchanged.
+
+⚠️ **Untested at scale.** The ten-at-a-time citation write was verified as a
+code path, not against a real multi-thousand-row save. The first genuinely
+large select-all is the thing to watch.
+
+
+### 28 Sep — Multi-select, select-all and the missing citation filters
+
+Four decisions were the product owner's, asked before building:
+
+| Decision | Chosen |
+|---|---|
+| What "delayed" means | offer **every** value, not a yes/no |
+| Select-all cap | **none** — cite whatever is filtered |
+| Which kinds | Task, Project, POC, KPI, Process, Strategy |
+| BU filter | **pre-set** to the report's own BU, still clearable |
+
+#### ⚠️ The task columns were chosen by counting, and two obvious ones are useless
+
+Measured on IT's 44,552 tasks before writing any filter:
+
+| Column | Populated | Verdict |
+|---|---|---|
+| `tms_isdelayed` | 44,552 | ⚠️ a **STRING with three values** — "Delayed" 15,900, "Delayed Submission" 8,946, "No" 19,706. Not a boolean. |
+| `tms_bu` | 44,537 | real BU codes as text — AHQ 11,822, ASH 6,084, AMH 3,957 … |
+| `hx_businessunit` | 44,552 | ⚠️ **useless** — a choice reading `BU1` on every single row |
+| `hx_targeteddepartment` | 44,552 | ⚠️ **useless** — `HR` on 44,551 of them |
+| `tms_department` | 42,257 | usable |
+
+So the BU filter matches `tms_bu` **as text**, case-insensitively, against the
+report's Business Unit name — the same rule the achievement table's
+`stf_department` needs, and for the same reason.
+
+#### What was built
+
+`MULTI_KINDS` gates it. Breakdown is **excluded on purpose**: each Breakdown
+citation also carries a dimension, so a batch would silently apply one
+dimension to every KPI picked.
+
+⚠️ **Selection operates on every filtered row, not the 200 drawn.** The list has
+always capped rendering at 200; "select all 8,431" means 8,431. The note under
+the list says so, because that difference is otherwise invisible.
+
+Citing a batch calls the SAME `pick()` a single click calls, once per selection
+— so a batch and a one-by-one pick produce byte-identical citation rows, and
+each becomes its own `lm_reportsectioncitations` row as asked.
+
+New filters: **Task** — BU, delay state, status, priority, department.
+**Strategy** — level, status, region. Both built from `valuesOf(rows, key)`, so
+they offer only values that exist and can never list one nothing carries.
+
+#### ⚠️ The uncapped decision has a cost, and it is paid at SAVE
+
+`cite()` only edits the draft, so picking 8,000 is instant. The writes happen in
+`saveReportOccurrenceContent`, which created citations **one at a time** — at a
+round trip each, "every delayed task in AHQ" would have taken tens of minutes.
+
+Now written **ten at a time**: fast enough to be usable, far below Dataverse's
+per-user request limit, and each create keeps its own try/catch so one failure
+is still attributed to its own citation instead of losing the batch.
+
+
 ### 27 Sep — The Decisions tab now shows what IT actually holds
 
 Asked whether Decisions could be worked on without the missing lookup. Yes —

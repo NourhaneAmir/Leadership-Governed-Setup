@@ -891,6 +891,7 @@ function SectionEditor({ s, i, total, busy, patch, move, remove, uncite, cite, p
 
       {picker
         ? <CitePicker exec={exec} addTask={addTask} toast={toast} rec={rec} tplChildren={tplChildren} picker={picker} setPicker={setPicker} onCite={c => cite(s.key, c)}
+            buName={nm(L.bu, rec?.businessUnitId) || null}
             catalog={catalog} inScope={inScope} reports={reports} taken={s.citations}/>
         : null}
     </div>
@@ -908,6 +909,19 @@ function Sel({ v, on, all, opts }){
 }
 
 const TASK_PRIORITIES = ['Low', 'Medium', 'High', 'Critical'];
+
+/* The kinds a person can cite in bulk. Breakdown is deliberately absent: each
+   Breakdown citation also carries a dimension, so a batch would silently apply
+   one dimension to every KPI picked. BI Report and Child Report are absent
+   because they are short lists nobody needs to sweep. */
+const MULTI_KINDS = new Set(['KPI', 'Process', 'POC', 'Strategy', 'Task', 'Project']);
+
+/* Distinct non-empty values of one field, for a filter built from the DATA
+   rather than a hard-coded list -- the same reasoning the POC and Project
+   pickers already use: a filter offering a value no row carries only ever
+   empties the list. */
+const valuesOf = (rows, key) =>
+  [...new Set((rows || []).map(r => r[key]).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b)));
 
 /* Raise a task without leaving the report.
    Mirrors the Create Task Decision form: Title, Description, Action to be
@@ -1013,9 +1027,14 @@ export function NewTaskForm({ subject, onCancel, onDone, toast }){
 }
 
 function CitePicker({ picker, setPicker, onCite, catalog, inScope, reports, taken,
-                      exec, addTask, toast, rec, tplChildren = [] }){
+                      exec, addTask, toast, rec, buName, tplChildren = [] }){
   const set = f => setPicker(p => ({ ...p, ...f }));
   const k = picker.kind;
+  const multi = MULTI_KINDS.has(k);
+  /* Ids of what is ticked. Lives on the picker so it clears when the picker
+     closes or the kind changes, which is what a person expects. */
+  const sel = picker.sel || [];
+  const selSet = new Set(sel);
   const has = pred => taken.some(pred);
   /* Ids now survive a save -- lm_POC, lm_Strategy, lm_BIReport and lm_Task were
      added 20 Sep. The label is still compared as well, because a citation
@@ -1023,18 +1042,66 @@ function CitePicker({ picker, setPicker, onCite, catalog, inScope, reports, take
   const cited = (kind, id, idKey, label) =>
     has(c => c.kind === kind && ((id && c[idKey] === id) || (!c[idKey] && c.label === label)));
 
-  const list = (rows, pick) =>
-    <div className="cpick-l">
-      {rows.length === 0
-        ? <div className="holder" style={{ padding: 10 }}>Nothing matches.</div>
-        : rows.slice(0, 200).map(r =>
-            <button type="button" key={r.id} className={'cpick-i' + (r.taken ? ' taken' : '')}
-              disabled={r.taken} onClick={() => pick(r)}>
-              <div style={{ textAlign: 'left' }}>
-                <div>{r.n}</div>{r.m ? <div className="m">{r.m}</div> : null}
-              </div>
-            </button>)}
-    </div>;
+  /* ⚠️ Only 200 rows are DRAWN, but selection works on every filtered row --
+     "select all" on 8,000 delayed tasks means 8,000, not the 200 on screen.
+     The note under the list says so, because the difference is invisible. */
+  const list = (rows, pick) => {
+    const pickable = rows.filter(r => !r.taken);
+    const chosen = pickable.filter(r => selSet.has(r.id));
+    const allOn = pickable.length > 0 && chosen.length === pickable.length;
+
+    const citeChosen = () => {
+      /* Each one becomes its own citation row -- pick() is exactly what a
+         single click does, called once per selection, so a batch and a
+         one-by-one pick produce identical rows. */
+      chosen.forEach(pick);
+      set({ sel: [], q: '' });
+    };
+
+    return <>
+      {multi && pickable.length > 0
+        ? <div className="cpick-sel">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+              <input type="checkbox" checked={allOn}
+                ref={el => { if (el) el.indeterminate = chosen.length > 0 && !allOn; }}
+                onChange={e => set({ sel: e.target.checked ? pickable.map(r => r.id) : [] })}/>
+              <span>Select all {pickable.length}</span>
+            </label>
+            <span className="holder" style={{ flex: 1 }}>
+              {chosen.length ? `${chosen.length} selected` : ''}</span>
+            <Btn k="sm pri" disabled={!chosen.length} onClick={citeChosen}>
+              Cite {chosen.length || ''} as separate items</Btn>
+          </div>
+        : null}
+
+      <div className="cpick-l">
+        {rows.length === 0
+          ? <div className="holder" style={{ padding: 10 }}>Nothing matches.</div>
+          : rows.slice(0, 200).map(r => {
+              const btn = <button type="button" className={'cpick-i' + (r.taken ? ' taken' : '')}
+                  disabled={r.taken} onClick={() => pick(r)} style={multi ? { flex: 1 } : undefined}>
+                  <div style={{ textAlign: 'left' }}>
+                    <div>{r.n}</div>{r.m ? <div className="m">{r.m}</div> : null}
+                  </div>
+                </button>;
+              return multi
+                ? <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input type="checkbox" disabled={r.taken} checked={selSet.has(r.id)}
+                      aria-label={'Select ' + r.n}
+                      onChange={e => set({ sel: e.target.checked
+                        ? [...sel, r.id] : sel.filter(x => x !== r.id) })}/>
+                    {btn}
+                  </div>
+                : <React.Fragment key={r.id}>{btn}</React.Fragment>;
+            })}
+        {rows.length > 200
+          ? <div className="holder" style={{ padding: '7px 10px' }}>
+              Showing the first 200 of {rows.length}.
+              {multi ? ' Select all takes every ' + pickable.length + ', not only these.' : ''}</div>
+          : null}
+      </div>
+    </>;
+  };
 
   const search = placeholder =>
     <input type="search" value={picker.q} placeholder={placeholder}
@@ -1170,9 +1237,21 @@ function CitePicker({ picker, setPicker, onCite, catalog, inScope, reports, take
     const rows = exec.strategies;
     if (!rows) body = <div className="holder">Reading strategies…</div>;
     else {
-      const shown = rows.filter(x => matchesQuery(picker.q, [x.name, x.status, x.level, x.kpiName]));
+      const shown = rows.filter(x =>
+        (!picker.level  || x.level === picker.level) &&
+        (!picker.status || x.status === picker.status) &&
+        (!picker.region || x.regionName === picker.region) &&
+        matchesQuery(picker.q, [x.name, x.status, x.level, x.kpiName, x.regionName]));
       body = <>
         {search('Search strategies…')}
+        <div className="cpick-f">
+          <Sel v={picker.level} on={v => set({ level: v })} all="Any level"
+               opts={valuesOf(rows, 'level').map(x => ({ id: x, n: x }))}/>
+          <Sel v={picker.status} on={v => set({ status: v })} all="Any status"
+               opts={valuesOf(rows, 'status').map(x => ({ id: x, n: x }))}/>
+          <Sel v={picker.region} on={v => set({ region: v })} all="All regions"
+               opts={valuesOf(rows, 'regionName').map(x => ({ id: x, n: x }))}/>
+        </div>
         {list(shown.map(x => ({
           id: x.id, n: x.name,
           m: [x.level, x.status, x.regionName, x.kpiName].filter(Boolean).join(' · '),
@@ -1222,18 +1301,57 @@ function CitePicker({ picker, setPicker, onCite, catalog, inScope, reports, take
         onDone={t => { addTask(t); onCite({ kind: 'Task', taskId: t.id, label: 'Task: ' + t.name }); }}
         toast={toast}/>;
     } else {
-      const shown = rows.filter(x => matchesQuery(picker.q, [x.name, x.status, x.assigneeName]));
+      /* ⚠️ Every one of these is built from the rows themselves, and every one
+         was chosen by counting what IT's 44,552 tasks actually hold (see
+         fetchTasks). tms_isdelayed is a STRING with three values -- "Delayed",
+         "Delayed Submission", "No" -- not a boolean, so it is offered as a
+         dropdown of whatever is present rather than a yes/no toggle. */
+      const buOpts = valuesOf(rows, 'bu');
+      /* Pre-set to the report's own Business Unit, because that is what an
+         author is nearly always after -- and still clearable. undefined means
+         "not touched yet", '' means "deliberately all". */
+      const defaultBu = buOpts.find(b =>
+        String(b).trim().toLowerCase() === String(buName || '').trim().toLowerCase()) || '';
+      const buSel = picker.bu === undefined ? defaultBu : picker.bu;
+
+      const shown = rows.filter(x =>
+        (!buSel            || x.bu === buSel) &&
+        (!picker.delayed   || x.delayed === picker.delayed) &&
+        (!picker.status    || x.status === picker.status) &&
+        (!picker.priority  || x.priority === picker.priority) &&
+        (!picker.dept      || x.department === picker.dept) &&
+        matchesQuery(picker.q, [x.name, x.status, x.assigneeName, x.bu, x.department]));
+
       body = <>
         {search('Search tasks…')}
+        <div className="cpick-f">
+          <Sel v={buSel} on={v => set({ bu: v })} all="All business units"
+               opts={buOpts.map(b => ({ id: b, n: b }))}/>
+          <Sel v={picker.delayed} on={v => set({ delayed: v })} all="Any delay state"
+               opts={valuesOf(rows, 'delayed').map(d => ({ id: d, n: d }))}/>
+          <Sel v={picker.status} on={v => set({ status: v })} all="Any status"
+               opts={valuesOf(rows, 'status').map(x => ({ id: x, n: x }))}/>
+          <Sel v={picker.priority} on={v => set({ priority: v })} all="Any priority"
+               opts={valuesOf(rows, 'priority').map(x => ({ id: x, n: x }))}/>
+          <Sel v={picker.dept} on={v => set({ dept: v })} all="All departments"
+               opts={valuesOf(rows, 'department').map(x => ({ id: x, n: x }))}/>
+        </div>
         {list(shown.map(x => ({
           id: x.id, n: x.name,
-          m: [x.status, x.priority, x.assigneeName, x.due ? 'due ' + x.due : null]
+          m: [x.delayed && x.delayed !== 'No' ? x.delayed : null, x.status, x.priority,
+              x.bu, x.assigneeName, x.due ? 'due ' + x.due : null]
                .filter(Boolean).join(' · '),
           taken: cited('Task', x.id, 'taskId', 'Task: ' + x.name),
         })), x => {
           const src = shown.find(y => y.id === x.id);
           onCite({ kind: 'Task', taskId: src.id, label: 'Task: ' + src.name });
         })}
+        <div className="holder" style={{ marginTop: 6 }}>
+          {shown.length} of {rows.length} tasks
+          {buSel ? ` in ${buSel}` : ''}
+          {picker.bu === undefined && defaultBu
+            ? ' — pre-filtered to this report’s Business Unit; clear it to see every unit.'
+            : '.'}</div>
         <Btn k="sm pri" style={{ marginTop: 8 }} onClick={() => set({ newTask: true })}>
           + Raise a new task</Btn>
       </>;

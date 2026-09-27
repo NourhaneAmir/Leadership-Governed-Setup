@@ -2174,8 +2174,20 @@ export const TASK_STATUS = {
 /** Tasks -- hx_tasks. A large shared table; only what a citation needs is read. */
 export async function fetchTasks(){
   const res = await Hx_taskesService.getAll({
+    /* ⚠️ The filter columns were chosen by counting what IT's 44,552 rows
+       actually hold (27 Sep), not from the column list:
+
+         tms_isdelayed  44,552 -- and it is a STRING with THREE values, not a
+                        boolean: "Delayed" 15,900, "Delayed Submission" 8,946,
+                        "No" 19,706.
+         tms_bu         44,537 -- real BU codes as text (AHQ 11,822, ASH 6,084,
+                        AMH 3,957 ...). ⚠️ hx_businessunit is NOT usable: it is
+                        a choice reading "BU1" on all 44,552 rows.
+         tms_department 42,257 -- ⚠️ hx_targeteddepartment is not usable either,
+                        it is "HR" on 44,551 of them. */
     select: ['hx_tasksid','hx_tasktitle','hx_taskdescription','hx_status','hx_priority',
-             'hx_duedate','hx_startdate','_hx_assignee_value'],
+             'hx_duedate','hx_startdate','_hx_assignee_value',
+             'tms_isdelayed','tms_bu','tms_department'],
     filter: 'statecode eq 0',
     orderby: 'createdon desc',
   });
@@ -2189,6 +2201,12 @@ export async function fetchTasks(){
     start: isoDay(r.hx_startdate),
     assigneeId: r._hx_assignee_value || null,
     assigneeName: r['_hx_assignee_value' + FV] || null,
+    /* Free text, so it is compared case-insensitively wherever it is matched
+       against a Business Unit's name -- same rule as the achievement table's
+       stf_department. */
+    bu: r.tms_bu || null,
+    department: r.tms_department || null,
+    delayed: r.tms_isdelayed || null,
   }));
 }
 
@@ -4087,12 +4105,24 @@ export async function saveReportOccurrenceContent(occurrenceId, { name, before =
       try{ await Lm_reportsectioncitationsesService.delete(c.id); }
       catch(e){ fail('lm_reportsectioncitations', e, `removing a citation from section ${seq}`); }
     }
-    for(const c of (s.citations || [])){
-      if(c.id) continue;
-      try{
-        const created = await Lm_reportsectioncitationsesService.create(reportCitationRow(c, sectionId));
-        idOrThrow(created, 'lm_reportsectioncitationsid');
-      }catch(e){ fail('lm_reportsectioncitations', e, `citing "${c.label}" in section ${seq}`); }
+    /* ⚠️ Written in bounded parallel, not one at a time. The picker's
+       select-all is deliberately uncapped (product owner's call, 27 Sep), so a
+       section can arrive with thousands of new citations -- and serially, at a
+       round trip each, "every delayed task in AHQ" took tens of minutes.
+
+       Ten at a time: enough to turn that into minutes, far enough below
+       Dataverse's per-user request limit to be safe, and each one keeps its own
+       try/catch so a single failure is still attributed to its own citation
+       rather than losing the whole batch. */
+    const fresh = (s.citations || []).filter(c => !c.id);
+    const CITE_CONCURRENCY = 10;
+    for(let i = 0; i < fresh.length; i += CITE_CONCURRENCY){
+      await Promise.all(fresh.slice(i, i + CITE_CONCURRENCY).map(async c => {
+        try{
+          const created = await Lm_reportsectioncitationsesService.create(reportCitationRow(c, sectionId));
+          idOrThrow(created, 'lm_reportsectioncitationsid');
+        }catch(e){ fail('lm_reportsectioncitations', e, `citing "${c.label}" in section ${seq}`); }
+      }));
     }
   }
 

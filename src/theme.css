@@ -1328,6 +1328,15 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 /* ---- POC filter row, and the Raise-a-task form in the citation picker ----
    Both live inside .cpick, which is already a bordered panel, so neither
    draws its own frame -- they are sections of one control, not cards. */
+/* The multi-select toolbar above a citation list. Sticky so "Cite N" stays
+   reachable while scrolling 200 rows -- a select-all that scrolls out of
+   reach is a select-all nobody uses. */
+.cpick-sel{ display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  padding:7px 9px; margin-bottom:6px; border:1px solid var(--border-d);
+  border-radius:7px; background:var(--teal-ll); font-size:12.5px;
+  position:sticky; top:0; z-index:2 }
+.cpick-sel input[type=checkbox]{ accent-color:var(--teal-d) }
+
 .cpick-f{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px }
 .cpick-s{
   flex:1 1 130px; min-width:0; font-family:inherit; font-size:12px;
