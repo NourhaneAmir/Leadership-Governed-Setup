@@ -80,8 +80,10 @@ comes up.
 The BRD **contradicts itself** in three places, and the code picked a side:
 
 1. **Setup Type** — §6 says "Business Meeting / Accreditation Committee"; §7.2 says
-   "Business Meeting / Committee". `lm_setuptype` follows §6. **This decides which
-   meetings get an Audit Grid at all** and is still open (see §7).
+   "Business Meeting / Committee". `lm_setuptype` follows §6. This was read as
+   deciding **which meetings get an Audit Grid at all**; **answered 28 Sep — it
+   decides no such thing.** Every meeting is scored, and the Setup Type now only
+   decides whether **AG-01**'s TOR question applies (§7 decision 1).
 2. **Team of Teams** — a Category in FR-SET-02, a classification under
    Cross-functional in §7.2. Schema follows §7.2.
 3. **Report Category** — three values in FR-RPT-07, four in FR-SET-12. Schema has four;
@@ -102,7 +104,7 @@ The BRD **contradicts itself** in three places, and the code picked a side:
 | **Reports / Plans tab** (Artifact group, `ScreenOrgReports`) | ✅ **live** (17 Sep) — reads `lm_reportoccurrences`, `lm_reportoccurrencesections` and `lm_reportsectioncitations`. See §5. |
 | **Reports & Plans composer** (hidden `rpt` screen, not the visible tab above) | 🔴 **reverted from live to seeded, on purpose, 02 Sep** — was reading `lm_reportoccurrences` directly as of 01 Sep; rebuilt this session as the citation-based composer from `prototype.html` (sections that cite live KPIs/tactics/PM entries/issues/tasks/other reports), which has no Dataverse equivalent yet, so it now runs on seeded `db.reports`/`db.paragraphs`/`db.templates` instead. This was an explicit product-owner instruction, not a regression found by accident — see §5. |
 | Authority Matrix + Approval Cycles | ✅ live, read-only by design (`AuthorityMatrixPanel`, embedded in Governance Settings) |
-| **Audit Grid scoring** — Meeting Occurrence's own Grid tab | ✅ **live** (this session) — `liveScoreGrid()` computes all 16 questions from the live occurrence/Minutes/Template; full Facilitator→Chair lifecycle (score, evidence, submit, approve+publish, return, open a correction version) writes through the backend functions that were already built |
+| **Audit Grid scoring** — Meeting Occurrence's own Grid tab | ✅ **live** — `liveScoreGrid()` computes all 16 questions from the live occurrence/Minutes/Template; full Facilitator→Chair lifecycle (score, evidence, submit, approve+publish, return, open a correction version) writes through the backend functions that were already built. **28 Sep:** the tab is no longer gated on Setup Type — **every** meeting is scored, Committee or Business Meeting (§7 decision 1). ⚠️ A Grid is created **on Minutes closure**, so meetings already closed do not backfill. |
 | **My Workspace (nav screen)** | ✅ **live** — reads its Work Queue, Upcoming panel and This Month stats directly off the full `dvMeetingOccs`/`dvReportOccs` arrays via `dvWorkItems()`. Two silent-data-loss bugs fixed here 01 Sep — see §5: an overdue Meeting with partial attendance recording used to vanish from Work Queue, and a blank/unrecognized status code used to vanish a row from every screen at once. Its Decisions filter tab still shows 0 because Decisions (below) only just went live. |
 | **Decisions register** | 🟡 **partially live, and richer since 27 Sep** — reads IT's `wlog_decisions` (**39 rows**: 21 Completed, 15 Pending, 3 Escalated) with search, a status filter, a review filter and expandable rows showing decision taken, expected output, manager note, reviewer, evidence link and the escalation block. Every decision names its parent **Work Log** (39/39). Minimal create still wired alongside the seeded Decision workflow. ⚠️ **Still cannot be linked to the Report Section that raised it**: IT's `wlog_decision` has **36 columns to DT New's 59**, and the 23 it lacks include `lm_citedreportsection`, `wlog_wlogworklogid` and the whole `pms_` corrective-action family. Blocked on schema + a product decision (§7/§9), not on app code. |
 | **Committee Scores (nav screen)** | ✅ **live** (01 Sep) — `ScreenGrid` now reads `fetchAuditGridInstances()` joined against `dvMeetingOccs`, instead of seeded `db.grids`. See §5 for the join details and the Approved-only Coverage/Score rule. |
@@ -5715,6 +5717,66 @@ everything still standing between the apps and real day-to-day use, grouped by
 Composition, execution side — nothing reads or writes them" is now false; the
 composer, the citations and the migration are all live. §9 should be re-read against
 the page rather than trusted on its own.
+
+### 28 Sep — Pushed both apps (every meeting is scored)
+
+Both live on the first attempt. Carries the four removed Audit Grid gates and
+the corrected wording.
+
+| App | Id |
+|---|---|
+| Governance Setup | `4912152c-b5c8-4beb-bb74-c9f43550405b` |
+| Leadership Execution | `83db0ef8-4c62-4eef-84ac-dadab326b704` |
+
+`.power` and `power.config.json` present before and after; `dist` subfolder
+only replaced. Assets: governance 102, leadership 104 — unchanged.
+
+⚠️ **The existing Business Meeting will NOT backfill.** Its Minutes are already
+Closed, and the Grid is created *on closure* — so nothing runs for it
+retroactively. Seeing a Grid needs either a new occurrence taken through to
+Closed Minutes, or a "create the Grid now" action for meetings whose Minutes
+closed before this change. Offered, not built.
+
+### 28 Sep — Every meeting is scored. §7 open decision 1 is answered.
+
+**Product owner: the Audit Grid is for Committees AND Business Meetings.** That
+closes the oldest open decision in this file, and it was not theoretical — the
+two code paths disagreed about it and one of them was live.
+
+**Four gates removed**, so the paths can no longer diverge:
+
+| Where | Was |
+|---|---|
+| live tab | `{accred && <button>Audit Grid</button>}` — the tab was **hidden** |
+| live creation | `if(accred && grids.length===0)` on Minutes closure |
+| seeded tab | `{isCommittee(rec) && …}` |
+| seeded close | a toast saying "This is a Business Meeting, so no Audit Grid is created." |
+
+⚠️ **This is why IT looked broken.** Its one meeting is a **Business Meeting**
+("Bio-Medical Planning Meeting", Setup Type = Business Meeting) whose Minutes
+are already **Closed**. The trigger fired, hit `accred === false`, and silently
+produced nothing — so `lm_auditgridinstance` held 0 rows and the feature looked
+unbuilt when it was working exactly as written.
+
+⚠️ **`accred` was NOT deleted, and that is deliberate.** It answered two
+different questions and only one of them was asked about:
+
+- *Is this meeting scored?* — now always yes, gate gone.
+- *Does AG-01's TOR/Policy question apply?* — **unchanged**: mandatory for an
+  Accreditation Committee, Not Applicable elsewhere.
+
+Conflating those would have made every Business Meeting fail AG-01 for lacking
+a TOR it was never required to hold.
+
+Also corrected, because they now state the opposite of the rule: Committee
+Scores' subtitle ("A Business Meeting is never scored"), the Minutes close
+button's help text, the release toast, and `ScreenGrid`'s comment explaining
+why it applies no Committee filter — it still applies none, now for the
+opposite reason.
+
+⚠️ **Still capped:** AG-10 to AG-14 score Not Applicable until Decisions link to
+Agenda Items (§9). Scoring every meeting does not change that.
+
 ### 28 Sep — Second structural audit of this file
 
 §5 was current, as it has been. The structural sections had drifted again, and
@@ -8399,13 +8461,16 @@ original single-environment wiring and no longer gates anything.
 
 ## 7. Open decisions — these block work
 
-1. **Is Setup Type "Accreditation Committee" or "Committee"?**
-   Decides which occurrences get an Audit Grid. **The code currently disagrees with
-   itself** — the seeded path scores every Committee, the live path (now built and
-   in use) scores only accreditation ones. This is no longer a theoretical gap:
-   the live Grid tab is real and gated on `accred` today, so resolving this
-   decides whether real Committees are being under- or over-scored right now,
-   not just whether a future feature gets built correctly.
+1. ~~**Is Setup Type "Accreditation Committee" or "Committee"?**~~
+   **ANSWERED 28 Sep: neither — EVERY meeting is scored**, Committees and
+   Business Meetings alike. The two paths had disagreed (seeded scored every
+   Committee, live scored only accreditation ones); both gates are removed, so
+   Minutes closing creates a Grid for any meeting.
+   ⚠️ **`accred` still exists and still matters**, but only for **AG-01**: a
+   TOR or Policy reference stays mandatory for an Accreditation Committee and
+   Not Applicable elsewhere. That is a different question from "is this meeting
+   scored", and it was deliberately left alone — conflating them would fail
+   every Business Meeting for lacking a TOR it never had to hold.
 2. **Where does the 0–6 authority level live?**
    The only candidate is `hr_level` (an HR grade). Visibility scope and role family
    exist nowhere. *Blocks the full Decisions workflow* (Direct vs. Authority-Check
@@ -8939,11 +9004,13 @@ Organized by what actually unblocks each item — not by how big it feels.
 ### Done
 - [x] **Audit Grid scoring UI.** Built — `liveScoreGrid()` computes all 16
       questions from live data, and the full Facilitator→Chair lifecycle writes
-      through the backend functions. **Still gated by Open Decision §7.1** —
-      the UI only appears for `accred` (Accreditation Committee) occurrences,
-      so resolving that decision may mean it should show for more (or fewer)
-      occurrences than it does today. AG-10…AG-14 stay Not Applicable until
-      Tasks/Decisions exist.
+      through the backend functions. **§7.1 answered 28 Sep**: the tab is no
+      longer gated on `accred`, so it appears for **every** meeting occurrence.
+      AG-10…AG-14 stay Not Applicable until Tasks/Decisions exist.
+      ⚠️ Remaining gap: a meeting whose
+      Minutes closed **before** 28 Sep has no Grid and will not backfill, since
+      creation happens on closure. A "create the Grid now" action was offered
+      and not built.
 - [x] **Committee Scores tab gone live** (01 Sep) — `ScreenGrid` reads
       `fetchAuditGridInstances()` joined against `dvMeetingOccs` instead of
       seeded `db.grids`. See §5.
@@ -9124,9 +9191,10 @@ none is blocked on design.
       largely lapsed.
 
 ### Blocked — needs a decision, not a table
-See §7 in full. In priority order by what they unblock: Setup Type (Audit Grid),
-authority-level location (seeded Decision workflow), Custom Report reviewers,
-quorum definition, Decision↔Meeting/Report linking (§7.7, deferred on purpose).
+See §7 in full. In priority order by what they unblock: authority-level location
+(seeded Decision workflow), Custom Report reviewers, quorum definition,
+Decision↔Meeting/Report linking (§7.7, deferred on purpose). ~~Setup Type (Audit
+Grid)~~ — **answered 28 Sep**, and it turned out not to gate the Grid at all.
 
 ### Paused — by explicit instruction, not by a blocker
 - [ ] Real file storage for Report working copies (SharePoint upload or

@@ -2539,8 +2539,7 @@ function App({onSwitch}){
   momClose:(momId)=>mut(n=>{ const m=n.moms.find(x=>x.id===momId);
     const occ=n.occs.find(o=>o.id===m.occ); closeMom(n,m,occ);
     toast('Meeting Minutes closed',
-      isCommittee(occ)?'The Audit Grid has been created and auto-scored for this Committee occurrence.'
-                      :'This is a Business Meeting, so no Audit Grid is created.','ok'); }),
+      'The Audit Grid has been created and auto-scored.','ok'); }),
   retryTaskSync:(taskId)=>mut(n=>{ const t=n.tasks.find(x=>x.id===taskId);
     t.syncFailed=false; t.status='Open';
     const m=n.moms.find(x=>x.id===t.src.id);
@@ -5843,7 +5842,12 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload}){
     const ok = await run('close', ()=>updateMeetingMinutesStatus(minutes.id,'Closed'),
       'Minutes closed','The record is final.');
     if(!ok) return;
-    if(accred && grids.length===0){
+    /* ⚠️ No longer gated on the Setup Type. This used to read
+       `accred && grids.length===0`, which meant a Business Meeting's Minutes
+       could close and silently produce nothing -- the behaviour that made an
+       IT environment holding one Business Meeting look as though the Grid
+       feature was broken. */
+    if(grids.length===0){
       const g = await createAuditGridInstance({
         occurrenceId: rec.id,
         name: `Audit Grid — ${rec.name}`,
@@ -5853,7 +5857,7 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload}){
         facilitatorPositionId: rec.facilitatorPositionId || undefined,
         chairPositionId: rec.chairPositionId || undefined,
       });
-      if(g.id) toast('Audit Grid released','An Instance was created for this Committee occurrence.','ok');
+      if(g.id) toast('Audit Grid released','An Instance was created for this meeting.','ok');
       else { console.warn('[dataverse] createAuditGridInstance() failed:', g.errors);
              toast('Grid not created','The Minutes are Closed, but the Audit Grid Instance failed. Check the console.','warn'); }
     }
@@ -5954,7 +5958,7 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload}){
 
       {approved && <>
         <div className="csub">Approved and signed. Closing finalises the record
-          {accred ? ' and releases the Meeting Governance Audit Grid.' : '.'}</div>
+          and releases the Meeting Governance Audit Grid.</div>
         <Btn k="pri" disabled={busy==='close'} onClick={close}>
           {busy==='close'?'Closing…':'Close the Minutes'}</Btn>
       </>}
@@ -6667,9 +6671,12 @@ function DvMeetingDetail({rec,back}){
         {minutes && <span className="c">{minutes.notes.length}</span>}</button>
       <button className={tab==='docs'?'on':''} onClick={()=>setTab('docs')}>Documents
         {docs && docs.length>0 && <span className="c">{docs.length}</span>}</button>
-      {accred &&
-        <button className={tab==='grid'?'on':''} onClick={()=>setTab('grid')}>Audit Grid
-          {grids.length>0 && <span className="c">{grids.length}</span>}</button>}
+      {/* Every meeting is scored (product owner, 28 Sep) — Committees and
+          Business Meetings alike — so the tab is no longer gated on the Setup
+          Type. `accred` still exists, but now decides only whether AG-01's TOR
+          question APPLIES, not whether a Grid exists at all. */}
+      <button className={tab==='grid'?'on':''} onClick={()=>setTab('grid')}>Audit Grid
+        {grids.length>0 && <span className="c">{grids.length}</span>}</button>
     </div>
 
     {tab==='detail' && <div className="wa-grid">
@@ -7481,8 +7488,10 @@ function MeetingDetail({rec,back}){
         {actionsAll.length>0 && <span className="c">{actionsAll.length}</span>}</button>
       <button className={tab==='minutes'?'on':''} onClick={()=>setTab('minutes')}>Minutes
         {mom && <span className="c">{mom.status==='Closed'?'✓':mom.status==='Approved'?'●':'…'}</span>}</button>
-      {isCommittee(rec) && <button className={tab==='grid'?'on':''} onClick={()=>setTab('grid')}>
-        Audit Grid{grid && <span className="c">{grid.state==='Approved'?grid.score+'%':'…'}</span>}</button>}
+      {/* Ungated to match the live path — the two disagreeing about which
+          meetings are scored is exactly what §7 open decision 1 was about. */}
+      <button className={tab==='grid'?'on':''} onClick={()=>setTab('grid')}>
+        Audit Grid{grid && <span className="c">{grid.state==='Approved'?grid.score+'%':'…'}</span>}</button>
     </div>
 
     {tab==='detail' && <div className="wa-grid">
@@ -9152,20 +9161,19 @@ function ScreenGrid(){
   const occById = useMemo(()=>{
     const m=new Map(); dvMeetingOccs.forEach(o=>m.set(o.id,o)); return m;
   },[dvMeetingOccs]);
-  /* Every live Grid Instance was created for an Accreditation Committee
-     occurrence in the first place -- createAuditGridInstance() is only ever
-     called from an accred-gated path (DvMeetingDetail/DvGridBody) -- so
-     unlike the seeded version there's no separate Committee-vs-Business-
-     Meeting filter to apply here: every row already is one. */
+  /* No Committee-vs-Business-Meeting filter here, and since 28 Sep that is
+     because there is no such distinction to make: a Grid Instance is created
+     on Minutes closure for EVERY meeting. (It previously read the same way for
+     the opposite reason -- only accreditation occurrences could produce one.) */
   const list = dvGridInstances.filter(g=>occById.has(g.occurrenceId));
   const approved=list.filter(g=>g.state==='Approved');
   const avg=approved.length?Math.round(approved.reduce((s,g)=>s+g.score,0)/approved.length*10)/10:null;
 
   return <>
     <div className="ph"><h1>Committee Scores</h1>
-      <div className="sub">Governance scores across every Committee occurrence in Dataverse. Each occurrence
-        keeps its own score, so the same Committee may score differently in different periods. A Business
-        Meeting is never scored. To work on a Grid, open its Meeting and use the Audit Grid tab.</div></div>
+      <div className="sub">Governance scores across every meeting occurrence in Dataverse. Each occurrence
+        keeps its own score, so the same meeting may score differently in different periods. Committees and
+        Business Meetings are both scored. To work on a Grid, open its Meeting and use the Audit Grid tab.</div></div>
 
     <div className="stats">
       <Stat label="Approved scores" v={approved.length} d="published" c="green"/>
