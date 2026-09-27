@@ -5718,6 +5718,52 @@ Composition, execution side — nothing reads or writes them" is now false; the
 composer, the citations and the migration are all live. §9 should be re-read against
 the page rather than trusted on its own.
 
+### 28 Sep — Pushed both apps (manual Audit Grid answering)
+
+Both live on the first attempt, no `generateResourceStorage` retry needed.
+Carries **two commits**, split because they are two separate decisions:
+
+| Commit | |
+|---|---|
+| `43a567e` | Score every meeting, not only accreditation Committees |
+| `be6923f` | Let a person answer any Audit Grid question the system could not compute |
+
+| App | Id | Assets |
+|---|---|---|
+| Governance Setup | `4912152c-b5c8-4beb-bb74-c9f43550405b` | 102 |
+| Leadership Execution | `83db0ef8-4c62-4eef-84ac-dadab326b704` | 104 |
+
+`.power` and `power.config.json` verified present **before and after** each
+push; only the `dist` subfolder was replaced. Asset counts unchanged from the
+previous deploy, as expected — nothing was added to `public/`.
+`origin/CrossEnv-Leadership` is at `be6923f`, matching local.
+
+⚠️ **Splitting the two commits found a defect that would have gone into
+history.** The intermediate state was reconstructed twice — forward from
+`e4277cd` plus the gate edits, backward from the finished file minus the
+manual-answer edits — and the two disagreed by 173 characters:
+
+1. A gate edit made outside `gridgate.py`: the Minutes-closure note read
+   `{accred ? ' and releases the ... Audit Grid.' : '.'}`. Belongs to commit 1.
+2. **The submit-gate message, which references `needEvidence`** — a variable
+   only commit 2 defines. Splitting on the first revert list would have put a
+   **commit that does not build** into history.
+
+Both routes then matched at exactly **577,429 characters**, which is the
+pre-manual-answer size recorded in the entry below. *A split reconstructed only
+one way is not verified — the same lesson as the `stage.py` duplication on
+27 Sep, where a fixed base commit replaced reading `HEAD`.*
+
+**Three stale statements corrected while here**, all of them consequences of
+§7 decision 1 being answered: the §4 Audit Grid row, the §3 BRD-contradiction
+note (Setup Type turned out **not** to gate the Grid at all), and the §9
+checklist item that still read "the UI only appears for `accred`".
+
+⚠️ **Still not built, and still the reason a Business Meeting shows an empty
+tab:** a Grid is created **on Minutes closure**, so any meeting closed before
+28 Sep has none and will not backfill. A "create the Grid now" action for those
+was offered twice and not built.
+
 ### 28 Sep — A person can now answer any question the system could not compute
 
 **The request:** "Make the user able to add the answer for the questions that
@@ -5785,7 +5831,7 @@ state, so an answered question starts counting toward coverage and the category
 score with no further change.
 
 `LeadershipApp.jsx` 577,429 → 579,604. Both apps build; oxlint clean apart from
-the two pre-existing unused-catch warnings. Not yet pushed.
+the two pre-existing unused-catch warnings. **Pushed — see the entry above.**
 
 ### 28 Sep — Pushed both apps (every meeting is scored)
 
