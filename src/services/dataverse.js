@@ -175,7 +175,7 @@ const Pm_kpiachievmentsService = dvTable('pm_kpiachievments', undefined, IT_ORG)
 /* IT: lm_Speciality / lm_ReportSpeciality on Report and Meeting Templates
    all bind to this, and those rows are IT. */
 const Cr301_specialtyksa_service_hubsService = dvTable('cr301_specialtyksa_service_hubs', undefined, IT_ORG);
-const And_microsoftgroupmembersService = dvTable('and_microsoftgroupmembers');
+const And_microsoftgroupmembersService = dvTable('and_microsoftgroupmembers', undefined, IT_ORG);
 /* IT, not the app's own org. Every record that binds lm_CreatorPosition /
    lm_ChairPosition / lm_ReviewerPosition and friends to
    /cr603_organizationstructures(id) is now written to IT, so the id has to be
@@ -196,18 +196,26 @@ const And_microsoftgroupmembersService = dvTable('and_microsoftgroupmembers');
 
    ⚠️ Cost: ~11.4k rows at app load, three pages instead of one. */
 const Cr603_organizationstructuresService = dvTable('cr603_organizationstructures', undefined, IT_ORG);
-const SystemusersService = dvTable('systemusers');
-/* A deliberate FORK, not a repoint (27 Sep) -- SystemusersService above must
-   stay on DT New: fetchUserNameMap()'s systemuserid keys come from
-   hr_employees.hr_User, and hr_employees is itself still DT New on purpose
-   (see the note above), so that whole chain only resolves within the same
-   org. This sibling is for the opposite case -- picking a user FRESH, with
-   no hr_employees chain behind it at all -- and both its callers write into
-   IT-hosted tables (hx_tasks, lm_reportoccurrenceshares), so the id it
-   supplies has to be an IT systemuserid or the @odata.bind on create 404s
-   with "Entity 'SystemUser' ... Does Not Exist" -- the exact live failure
-   that surfaced this. */
-const SystemusersItService = dvTable('systemusers', undefined, IT_ORG);
+/* ⚠️ IT_ORG (27 Sep). This was a FORK -- one service on DT New for name
+   resolution, an IT-pinned sibling for picking a user to bind -- and the fork
+   collapsed the moment hr_employees moved to IT (26 Sep, below). Its stated
+   reason was that fetchUserNameMap()'s systemuserid keys come from
+   hr_employees.hr_User "and hr_employees is itself still DT New". It is not,
+   any more, so on DT New that map was joining IT employee ids against DT New
+   users and could never match.
+
+   Everything this app binds a systemuser INTO now lives in IT --
+   hx_tasks.hx_Assignee, lm_reportoccurrenceshares.lm_SharedUser and
+   lm_reportoccurrencehistories.lm_ActorUser -- and a DT New id in any of them
+   fails with "Entity 'SystemUser' With Id = ... Does Not Exist". Nothing on
+   the remaining DT New tables binds a user at all, so there is no case left
+   that wants the old org.
+
+   ⚠️ This also changes fetchCurrentUser(): currentUser.systemUserId is now an
+   IT id, so myPositionIds can finally match it against holderUserId (which
+   hr_employees, also IT, supplies) instead of always falling through to the
+   name comparison. */
+const SystemusersService = dvTable('systemusers', undefined, IT_ORG);
 /* ⚠️ IT_ORG (26 Sep), and it has to be. Its ONLY caller is
    fetchEmployeeIndex(), whose whole job is to join employees to Positions --
    and cr603_organizationstructures is IT-pinned above. On this app's own
@@ -1967,14 +1975,14 @@ export const POC_STATUS = { 1:'Active', 2:'Succeeded', 3:'Failed', 4:'Retired' }
  *  `isdisabled eq false` rather than statecode, which systemuser does not use
  *  the way a custom table does.
  *
- *  ⚠️ IT_ORG (via SystemusersItService), not DT New: both callers -- the Task
+ *  ⚠️ IT_ORG (via SystemusersService), not DT New: both callers -- the Task
  *  assignee picker and the "send a report" recipient picker -- bind the id
  *  straight into a create on an IT-hosted table (hx_tasks,
  *  lm_reportoccurrenceshares). A DT New systemuserid bound there 404s with
  *  "Entity 'SystemUser' ... Does Not Exist", since a lookup can't resolve
  *  across environments. */
 export async function fetchAssignableUsers(){
-  const res = await SystemusersItService.getAll({
+  const res = await SystemusersService.getAll({
     select: ['systemuserid', 'fullname', 'internalemailaddress'],
     filter: 'isdisabled eq false',
   });
@@ -3132,9 +3140,22 @@ const Lm_meetingminutesesService = dvTable('lm_meetingminuteses', 'lm_meetingmin
 const Lm_momnotesesService = dvTable('lm_momnoteses', 'lm_momnotesid', IT_ORG);
 const Lm_auditgridinstancesService = dvTable('lm_auditgridinstances', 'lm_auditgridinstanceid', IT_ORG);
 const Lm_auditgridanswersService = dvTable('lm_auditgridanswers', 'lm_auditgridanswerid', IT_ORG);
-const Lm_approvalcyclesService = dvTable('lm_approvalcycles');
-const Lm_approvalcyclestepsService = dvTable('lm_approvalcyclesteps');
-const Lm_authoritymatrixrowsService = dvTable('lm_authoritymatrixrows');
+/* ⚠️ IT_ORG (27 Sep) -- every table this app reads now points at IT.
+
+   These three have NO TABLE in IT: lm_approvalcycle, lm_approvalcyclestep and
+   lm_authoritymatrixrow simply do not exist there. That is deliberate rather
+   than an oversight: they hold **0 rows in DT New as well**, so nothing is
+   lost, and showing one environment's governance rules against the other
+   environment's records was worse than showing none.
+
+   Safe because getAll() RETURNS { success:false } rather than throwing (see
+   xenv.js's fail()), so `res?.data ?? []` degrades to an empty list and the
+   Authority Matrix and Approval Cycle panels render empty with a console
+   warning instead of failing. When the tables are created in IT they will
+   start reading with no code change. */
+const Lm_approvalcyclesService = dvTable('lm_approvalcycles', undefined, IT_ORG);
+const Lm_approvalcyclestepsService = dvTable('lm_approvalcyclesteps', undefined, IT_ORG);
+const Lm_authoritymatrixrowsService = dvTable('lm_authoritymatrixrows', undefined, IT_ORG);
 const Lm_reportoccurrencehistoriesService =
   dvTable('lm_reportoccurrencehistories', 'lm_reportoccurrencehistoryid', IT_ORG);
 /* A Report Occurrence's content: its Sections, and the Citations inside them.
@@ -3143,7 +3164,7 @@ const Lm_reportoccurrencesectionsesService =
   dvTable('lm_reportoccurrencesectionses', 'lm_reportoccurrencesectionsid', IT_ORG);
 const Lm_reportsectioncitationsesService =
   dvTable('lm_reportsectioncitationses', 'lm_reportsectioncitationsid', IT_ORG);
-const Wlog_decisionsService = dvTable('wlog_decisions', 'wlog_decisionid');
+const Wlog_decisionsService = dvTable('wlog_decisions', 'wlog_decisionid', IT_ORG);
 const Lm_reportoccurrencesharesService =
   dvTable('lm_reportoccurrenceshares', 'lm_reportoccurrenceshareid', IT_ORG);
 
@@ -5538,6 +5559,8 @@ export async function fetchWorkLogDecisions(){
     filter: 'statecode eq 0',
     /* The three choice columns are selected by their own names only; their
        display text rides along as a formatted-value annotation. */
+    /* The three choice columns are selected by their own names only; their
+       display text rides along as a formatted-value annotation. */
     select: ['wlog_decisionid','wlog_name','wlog_decisiontaken','wlog_expectedoutput',
              'wlog_managernote','wlog_evidenceurl','wlog_decisionstatus',
              'wlog_reviewstatus','wlog_reviewedon',
@@ -5594,7 +5617,7 @@ export async function createWorkLogDecision({ name, decisionTaken, expectedOutpu
    `createdon` is the timestamp; there is deliberately no lm_occurredon column
    to keep in sync with it.
    ========================================================================= */
-const Lm_setupactivitiesService = dvTable('lm_setupactivities', 'lm_setupactivityid');
+const Lm_setupactivitiesService = dvTable('lm_setupactivities', 'lm_setupactivityid', IT_ORG);
 
 /* Dataverse renders option 3 as "Editopened" with no space -- the label was
    typed without one. Both directions go through these maps rather than the

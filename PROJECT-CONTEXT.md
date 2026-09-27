@@ -5715,6 +5715,124 @@ Composition, execution side — nothing reads or writes them" is now false; the
 composer, the citations and the migration are all live. §9 should be re-read against
 the page rather than trusted on its own.
 
+### 27 Sep — Pushed both apps (everything reads IT)
+
+Both live on the first attempt. Carries `systemusers` pinned to IT (the fix for
+the Task assignee 0x80040217) and the last six tables repointed, so **no table
+reads DT New any more**.
+
+| App | Id |
+|---|---|
+| Governance Setup | `4912152c-b5c8-4beb-bb74-c9f43550405b` |
+| Leadership Execution | `83db0ef8-4c62-4eef-84ac-dadab326b704` |
+
+`.power` and `power.config.json` present before and after; `dist` subfolder
+only replaced. Assets: governance 102, leadership 104 — unchanged.
+
+⚠️ **The Task failure is not confirmed fixed, only unblocked on every path I
+could find.** The assignee picker was *already* IT-pinned in the previous
+deployed build, so the DT New id in the reported error is still unexplained —
+a stale browser bundle is the hypothesis, not a finding. The id in any repeat
+failure is the evidence: `94b4a138…` (IT) means the bind is now right and the
+cause is elsewhere; `7b309a13…` (DT New) means something still reads the wrong
+org, and §4's grep lists every place that could.
+
+
+### 27 Sep — Every table now reads IT. The cross-environment split is closed.
+
+The last six were repointed. Counted live in both orgs first, because three of
+them turned out not to exist in IT at all:
+
+| Table | IT | DT New | Effect of pinning |
+|---|---|---|---|
+| `wlog_decision` | **39** | 26 | more data, not less |
+| `lm_setupactivity` | **209** | 73 | more data, not less |
+| `and_microsoftgroupmember` | 0 (table exists) | 3 | the group-attendee picker empties |
+| `lm_approvalcycle` | **no such table** | 0 | panel empty — it already was |
+| `lm_approvalcyclestep` | **no such table** | 0 | same |
+| `lm_authoritymatrixrow` | **no such table** | 0 | same |
+
+⚠️ **The three missing tables lose nothing**, because DT New holds **0 rows** in
+all three. The Authority Matrix and Approval Cycle panels were already empty;
+they are now empty *for the right reason*, and stop showing one environment's
+governance rules against the other's records.
+
+⚠️ **Safe because `getAll()` RETURNS `{success:false}` rather than throwing** —
+see `fail()` in `xenv.js`. So `res?.data ?? []` degrades to an empty list and a
+console warning, not a crash. Checked before repointing, not after. When those
+tables are created in IT they will start reading with **no code change**.
+
+⚠️ **`and_microsoftgroupmembers` is a real visible loss**: 3 options become 0.
+Accepted rather than overlooked — binding a DT New group id into IT's attendee
+table would have failed on save anyway, so an empty picker replaces a broken
+save. Loading those rows into IT is already on §9's list.
+
+⚠️ **Leadership's `__DATA_ORG__` is now vestigial.** It still says DT New in
+`apps/leadership/vite.config.js`, and every one of the 64 tables overrides it.
+Deliberately left: an explicit per-table pin is auditable in a grep, whereas
+flipping the default would silently relocate any table someone forgets to pin.
+The grep that proves the state is:
+
+```
+grep -E "dvTable\(" src/services/dataverse.js | grep -v IT_ORG
+```
+
+⚠️ …and that grep must test for the **absence of `IT_ORG`**, not for a
+single-argument `dvTable('x')` shape — the latter misses `dvTable('x','xid')`
+and undercounted this exact list by two on 27 Sep.
+
+
+### 27 Sep — `systemusers` pinned to IT; the DT New / IT fork collapsed
+
+Live failure raising a Task:
+
+```
+0x80040217  Entity 'SystemUser' With Id = 7b309a13-ab0c-f111-8407-000d3a4b5321 Does Not Exist
+```
+
+That id is **the signed-in user's own record in DT New** — confirmed by querying
+both orgs for it: absent in IT, present in DT New as "Nourhan Amir Mahmoud
+AbdElSalam". In IT the same person is `94b4a138-070c-f111-8406-000d3a287191`
+(the id that also appears in every privilege error from this environment).
+
+#### The fork had already stopped being true
+
+`SystemusersService` was deliberately left on DT New, with a comment saying
+`fetchUserNameMap()`'s keys come from `hr_employees.hr_User` "and hr_employees
+is itself still DT New on purpose". **It is not — it moved to IT on 26 Sep.**
+So that map had been joining IT employee ids against DT New users and could
+never match; a silent miss of exactly the kind the 26 Sep entry describes.
+
+Collapsed to one IT-pinned service. Everything this app binds a systemuser
+INTO lives in IT — `hx_tasks.hx_Assignee`, `lm_reportoccurrenceshares.lm_SharedUser`,
+`lm_reportoccurrencehistories.lm_ActorUser` — and **nothing on the six
+remaining DT New tables binds a user at all**, so no case wanted the old org.
+Checked before changing, not after.
+
+⚠️ **`fetchCurrentUser()` now returns an IT `systemUserId`.** That is a
+behaviour change worth knowing: `myPositionIds` can finally match it against
+`holderUserId` (which IT `hr_employees` supplies) by **id**, instead of always
+falling through to the full-name comparison. The name route stays as the
+fallback it was designed to be.
+
+⚠️ **`lm_ActorUser` on the history table was the same bug waiting.** It binds
+`currentUser.systemUserId` into an IT table, so every history entry written
+with a DT New id would have failed identically. Fixed by the same change, not
+separately.
+
+#### ⚠️ What this does NOT explain
+
+`fetchAssignableUsers()` already used the IT-pinned sibling before this, and
+`b1401ff` (which added it) **is** an ancestor of the deployed HEAD. So the
+picker in the deployed build should already have offered the IT id. The most
+likely remaining cause of the reported failure is a **stale browser bundle**
+from before that commit. If it recurs after a hard refresh, the id in the error
+is the evidence to bring back — a DT New id means something still reads the
+wrong org, and this entry lists everywhere that could be.
+
+Tables still reading DT New: **6** (was 7).
+
+
 Every count on the page was read live from `org2f45e702` and `org319b4ea9` — none is
 carried over from an earlier note. Text column widths are stated as *observed
 ### 27 Sep — Pushed both apps (objective widened to 4000)
