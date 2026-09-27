@@ -104,16 +104,17 @@ The BRD **contradicts itself** in three places, and the code picked a side:
 | Authority Matrix + Approval Cycles | ✅ live, read-only by design (`AuthorityMatrixPanel`, embedded in Governance Settings) |
 | **Audit Grid scoring** — Meeting Occurrence's own Grid tab | ✅ **live** (this session) — `liveScoreGrid()` computes all 16 questions from the live occurrence/Minutes/Template; full Facilitator→Chair lifecycle (score, evidence, submit, approve+publish, return, open a correction version) writes through the backend functions that were already built |
 | **My Workspace (nav screen)** | ✅ **live** — reads its Work Queue, Upcoming panel and This Month stats directly off the full `dvMeetingOccs`/`dvReportOccs` arrays via `dvWorkItems()`. Two silent-data-loss bugs fixed here 01 Sep — see §5: an overdue Meeting with partial attendance recording used to vanish from Work Queue, and a blank/unrecognized status code used to vanish a row from every screen at once. Its Decisions filter tab still shows 0 because Decisions (below) only just went live. |
-| **Decisions register** | 🟡 **partially live** — `wlog_decisions` read + minimal create wired as its own list on the Decisions tab, alongside (not replacing) the existing seeded Decision workflow. **Cannot yet be linked to the Report Section that raised it** — checked live 27 Sep: `wlog_decision` has zero report-side columns in IT, where Report Sections live, and DT New's copy has the lookup (`lm_citedreportsection`) but no Sections to point it at. Blocked on a Dataverse schema change (§6/§7), not on app code. |
+| **Decisions register** | 🟡 **partially live, and richer since 27 Sep** — reads IT's `wlog_decisions` (**39 rows**: 21 Completed, 15 Pending, 3 Escalated) with search, a status filter, a review filter and expandable rows showing decision taken, expected output, manager note, reviewer, evidence link and the escalation block. Every decision names its parent **Work Log** (39/39). Minimal create still wired alongside the seeded Decision workflow. ⚠️ **Still cannot be linked to the Report Section that raised it**: IT's `wlog_decision` has **36 columns to DT New's 59**, and the 23 it lacks include `lm_citedreportsection`, `wlog_wlogworklogid` and the whole `pms_` corrective-action family. Blocked on schema + a product decision (§7/§9), not on app code. |
 | **Committee Scores (nav screen)** | ✅ **live** (01 Sep) — `ScreenGrid` now reads `fetchAuditGridInstances()` joined against `dvMeetingOccs`, instead of seeded `db.grids`. See §5 for the join details and the Approved-only Coverage/Score rule. |
 | **Setup Activity trail** — the Activity tab on a Report/Meeting Setup | ✅ **live** (10 Sep) — `lm_setupactivity` is written on create, edit, publish, approve and expire, and the tab reads the real rows back for any Setup that has a `_dataverseId`. A Setup that has never been saved still shows the seeded sample trail. |
 | **Artifact group** — Business intelligence, Reporting hierarchy | ✅ **live** (superseding the 11 Sep "mixed" note) — Business intelligence reads `lm_bireportdashboards`, and the Reporting hierarchy reads real Report Templates, occurrences, checklists and citations. (Reports / Plans and Build a report/plan, in the same group, are live since 17 Sep — rows above.) The Power BI report itself **cannot be embedded** — see §8. |
-| **How every table is reached** | 🟡 **changed 16 Sep, counted again 27 Sep** — all **64** tables go through `dvTable()` in `src/services/xenv.js`. **56 are pinned to IT**; **7 still read DT New**: `and_microsoftgroupmembers`, `systemusers`, `lm_approvalcycles`, `lm_approvalcyclesteps`, `lm_authoritymatrixrows`, `wlog_decisions`, `lm_setupactivities`. (`hr_employees` was the eighth until 26 Sep.) `getAll()` follows `@odata.nextLink` to a 200-page cap, so a filtered read is never silently truncated at Dataverse's 5,000-row page. The generated per-table services are no longer imported anywhere. Behaviour is identical while an app is hosted in DT New; the point is that it stays identical when it is not. Creates supply their own primary key since 17 Sep, so a new row's id no longer depends on the response — see §6. |
+| **How every table is reached** | 🟡 **changed 16 Sep, counted again 27 Sep** — all **64** tables go through `dvTable()` in `src/services/xenv.js`, and as of 27 Sep **every one of them is pinned to IT**. Nothing reads DT New any more. ⚠️ Leadership's `__DATA_ORG__` still says DT New and is now **vestigial** — every table overrides it explicitly. Left that way on purpose: an explicit per-table pin is auditable, and flipping the default instead would silently move any table anyone forgets to pin. `getAll()` follows `@odata.nextLink` to a 200-page cap, so a filtered read is never silently truncated at Dataverse's 5,000-row page. The generated per-table services are no longer imported anywhere. Behaviour is identical while an app is hosted in DT New; the point is that it stays identical when it is not. Creates supply their own primary key since 17 Sep, so a new row's id no longer depends on the response — see §6. |
 | **Export a report to Excel or Word** (`reportExport.js` + `reportWriters.js`) | ✅ **live** (26 Sep) — a sheet per section plus five cross-cutting sheets; a sub-heading per section in the document. Carries every citation's metadata, KPI figures and breakdown members. Written with **ExcelJS** (SheetJS cannot write a fill, font or table style at all) and **docx**, both dynamically imported. ⚠️ One user-reported failure to open the workbook is **still unexplained** — see §5, 26 Sep. |
 | **Dashboard images in the exports** | 🟡 **manual** (27 Sep) — a person attaches a PNG per cited dashboard at export time and it is embedded (inline in Word, on the BI reports sheet in Excel). Nothing is stored. The automatic route (Power BI `exportToFile`) is blocked on three things, none of them code — see §5, 27 Sep. |
 | **KPI coverage** (`KpiCoverage.jsx`, both the author's and the reader's screen) | ✅ **live** (27 Sep) — unions the KPIs the Setup declares (`lm_reporttemplaterelatedkpises`) with the KPIs its sections cite, and names four gaps: not cited, not in the Setup, no achievement, no Target. Processes the Setup names are listed too. |
 | **KPI data gaps section** | ✅ **live** (27 Sep) — an explicit button writes a real `lm_reportoccurrencesections` row citing every KPI with no Actual or no Target, and re-running drops the ones whose data has arrived, deleting the section when the last gap is filled. ⚠️ Identified by its **heading**; there is no spare column to mark it with. Never runs on open, and only on a Draft/Returned, unlocked report. |
 | **KPI achievement scope** | ✅ **live** (27 Sep) — `matchAchievement()` disqualifies a row only on a real conflict and reports which dimensions were ambiguous; `reportAchievementScope()` releases Department and Function for an **All Departments** report so it matches on Business Unit and Period alone. Both replaced rules that had been matching **nothing** for common reports. |
+| **Citing in bulk** (Build a report/plan) | ✅ **live** (28 Sep) — multi-select and select-all on KPI, Process, POC, Strategy, Task and Project; each selection becomes its own `lm_reportsectioncitations` row. ⚠️ **Uncapped by explicit decision**, so the writes go ten at a time in `saveReportOccurrenceContent` rather than one at a time. Breakdown is excluded on purpose: it carries a dimension per citation. Task gains BU / delay state / status / priority / department filters, Strategy gains level / status / region. |
 | Tasks, Comments, Governance Settings (persisted values) | ❌ **seeded demo data only** |
 | **Meeting Setup "Completion Periods"** (MOM Write-up / MOM Approval / Audit Grid Completion-Submission, each an hours field) | ✅ **live** (15 Sep) — three plain columns on `lm_meetingtemplates` (`lm_momwriteuphours`, `lm_momapprovalhours`, `lm_gridsubmithours`), written/read alongside `quorum`/`torLink` in `dataverse.js` and `GovernanceApp.jsx`. **Persistence only — not yet consumed.** AG-16/AG-05 scoring still reads the global `DEFAULT_SETTINGS` values (§9), not this per-Setup one; the UI says so. |
 | **`lm_meetingoccurrencelinkedreports`** | 🔴 **registered, not wired to any screen** (15 Sep) — table + generated models exist (`lm_reportname`, lookups to `lm_meetingoccurrences`, `lm_reportoccurrences`, `lm_report_templates`); no app code reads or writes it yet. |
@@ -5714,72 +5715,33 @@ everything still standing between the apps and real day-to-day use, grouped by
 Composition, execution side — nothing reads or writes them" is now false; the
 composer, the citations and the migration are all live. §9 should be re-read against
 the page rather than trusted on its own.
+### 28 Sep — Second structural audit of this file
 
-### 27 Sep — Pushed both apps (everything reads IT)
+§5 was current, as it has been. The structural sections had drifted again, and
+one of them was actively misleading:
 
-Both live on the first attempt. Carries `systemusers` pinned to IT (the fix for
-the Task assignee 0x80040217) and the last six tables repointed, so **no table
-reads DT New any more**.
+⚠️ **§7's open decision 7 claimed `wlog_decisions` "now carries
+`_lm_citedreportsection_value`".** True of **DT New**, written before the
+environment move — and everything reads **IT** now, where that column does not
+exist. A reader would have concluded the Decision→Report Section link was
+available. Corrected with what is actually true: DT New has the column but no
+Report Sections to point it at; IT has the Sections but not the column.
 
-| App | Id |
-|---|---|
-| Governance Setup | `4912152c-b5c8-4beb-bb74-c9f43550405b` |
-| Leadership Execution | `83db0ef8-4c62-4eef-84ac-dadab326b704` |
+**§4** — the Decisions row rewritten (39 rows, the new filters and expandable
+detail, the 36-vs-59 column gap), and a new row for citing in bulk.
 
-`.power` and `power.config.json` present before and after; `dist` subfolder
-only replaced. Assets: governance 102, leadership 104 — unchanged.
+**§6** — added the `hx_tasks` trap, which is exactly the kind of thing this
+section exists for: **both obviously-named filter columns are useless**.
+`hx_businessunit` is a choice reading `BU1` on all 44,552 rows;
+`hx_targeteddepartment` is `HR` on 44,551 of them. The real ones are `tms_bu`
+(free text, BU codes) and `tms_department`. And `tms_isdelayed` is a **string
+with three values**, not a boolean — `isdelayed eq true` is simply wrong.
 
-⚠️ **The Task failure is not confirmed fixed, only unblocked on every path I
-could find.** The assignee picker was *already* IT-pinned in the previous
-deployed build, so the DT New id in the reported error is still unexplained —
-a stale browser bundle is the hypothesis, not a finding. The id in any repeat
-failure is the evidence: `94b4a138…` (IT) means the bind is now right and the
-cause is elsewhere; `7b309a13…` (DT New) means something still reads the wrong
-org, and §4's grep lists every place that could.
-
-
-### 27 Sep — Every table now reads IT. The cross-environment split is closed.
-
-The last six were repointed. Counted live in both orgs first, because three of
-them turned out not to exist in IT at all:
-
-| Table | IT | DT New | Effect of pinning |
-|---|---|---|---|
-| `wlog_decision` | **39** | 26 | more data, not less |
-| `lm_setupactivity` | **209** | 73 | more data, not less |
-| `and_microsoftgroupmember` | 0 (table exists) | 3 | the group-attendee picker empties |
-| `lm_approvalcycle` | **no such table** | 0 | panel empty — it already was |
-| `lm_approvalcyclestep` | **no such table** | 0 | same |
-| `lm_authoritymatrixrow` | **no such table** | 0 | same |
-
-⚠️ **The three missing tables lose nothing**, because DT New holds **0 rows** in
-all three. The Authority Matrix and Approval Cycle panels were already empty;
-they are now empty *for the right reason*, and stop showing one environment's
-governance rules against the other's records.
-
-⚠️ **Safe because `getAll()` RETURNS `{success:false}` rather than throwing** —
-see `fail()` in `xenv.js`. So `res?.data ?? []` degrades to an empty list and a
-console warning, not a crash. Checked before repointing, not after. When those
-tables are created in IT they will start reading with **no code change**.
-
-⚠️ **`and_microsoftgroupmembers` is a real visible loss**: 3 options become 0.
-Accepted rather than overlooked — binding a DT New group id into IT's attendee
-table would have failed on save anyway, so an empty picker replaces a broken
-save. Loading those rows into IT is already on §9's list.
-
-⚠️ **Leadership's `__DATA_ORG__` is now vestigial.** It still says DT New in
-`apps/leadership/vite.config.js`, and every one of the 64 tables overrides it.
-Deliberately left: an explicit per-table pin is auditable in a grep, whereas
-flipping the default would silently relocate any table someone forgets to pin.
-The grep that proves the state is:
-
-```
-grep -E "dvTable\(" src/services/dataverse.js | grep -v IT_ORG
-```
-
-⚠️ …and that grep must test for the **absence of `IT_ORG`**, not for a
-single-argument `dvTable('x')` shape — the latter misses `dvTable('x','xid')`
-and undercounted this exact list by two on 27 Sep.
+**§9** — the Decision blocker widened from "add one lookup" to the real choice:
+23 missing columns, and a product decision about whether IT should model a
+decision as free text with a status or as root cause → KPI before/after →
+owner → outcome. Settling that comes *before* adding the column, or the work is
+wasted.
 
 
 ### 28 Sep — Pushed both apps (citation multi-select and filters)
@@ -5799,7 +5761,6 @@ only replaced. Assets: governance 102, leadership 104 — unchanged.
 ⚠️ **Untested at scale.** The ten-at-a-time citation write was verified as a
 code path, not against a real multi-thousand-row save. The first genuinely
 large select-all is the thing to watch.
-
 
 ### 28 Sep — Multi-select, select-all and the missing citation filters
 
@@ -5856,7 +5817,6 @@ Now written **ten at a time**: fast enough to be usable, far below Dataverse's
 per-user request limit, and each create keeps its own try/catch so one failure
 is still attributed to its own citation instead of losing the batch.
 
-
 ### 27 Sep — The Decisions tab now shows what IT actually holds
 
 Asked whether Decisions could be worked on without the missing lookup. Yes —
@@ -5910,6 +5870,70 @@ actually wants is a **product decision**, not a code task, and it should be
 settled before the column is designed — otherwise the wrong lookup gets added.
 The card now says so on its face rather than only in this file.
 
+### 27 Sep — Pushed both apps (everything reads IT)
+
+Both live on the first attempt. Carries `systemusers` pinned to IT (the fix for
+the Task assignee 0x80040217) and the last six tables repointed, so **no table
+reads DT New any more**.
+
+| App | Id |
+|---|---|
+| Governance Setup | `4912152c-b5c8-4beb-bb74-c9f43550405b` |
+| Leadership Execution | `83db0ef8-4c62-4eef-84ac-dadab326b704` |
+
+`.power` and `power.config.json` present before and after; `dist` subfolder
+only replaced. Assets: governance 102, leadership 104 — unchanged.
+
+⚠️ **The Task failure is not confirmed fixed, only unblocked on every path I
+could find.** The assignee picker was *already* IT-pinned in the previous
+deployed build, so the DT New id in the reported error is still unexplained —
+a stale browser bundle is the hypothesis, not a finding. The id in any repeat
+failure is the evidence: `94b4a138…` (IT) means the bind is now right and the
+cause is elsewhere; `7b309a13…` (DT New) means something still reads the wrong
+org, and §4's grep lists every place that could.
+
+### 27 Sep — Every table now reads IT. The cross-environment split is closed.
+
+The last six were repointed. Counted live in both orgs first, because three of
+them turned out not to exist in IT at all:
+
+| Table | IT | DT New | Effect of pinning |
+|---|---|---|---|
+| `wlog_decision` | **39** | 26 | more data, not less |
+| `lm_setupactivity` | **209** | 73 | more data, not less |
+| `and_microsoftgroupmember` | 0 (table exists) | 3 | the group-attendee picker empties |
+| `lm_approvalcycle` | **no such table** | 0 | panel empty — it already was |
+| `lm_approvalcyclestep` | **no such table** | 0 | same |
+| `lm_authoritymatrixrow` | **no such table** | 0 | same |
+
+⚠️ **The three missing tables lose nothing**, because DT New holds **0 rows** in
+all three. The Authority Matrix and Approval Cycle panels were already empty;
+they are now empty *for the right reason*, and stop showing one environment's
+governance rules against the other's records.
+
+⚠️ **Safe because `getAll()` RETURNS `{success:false}` rather than throwing** —
+see `fail()` in `xenv.js`. So `res?.data ?? []` degrades to an empty list and a
+console warning, not a crash. Checked before repointing, not after. When those
+tables are created in IT they will start reading with **no code change**.
+
+⚠️ **`and_microsoftgroupmembers` is a real visible loss**: 3 options become 0.
+Accepted rather than overlooked — binding a DT New group id into IT's attendee
+table would have failed on save anyway, so an empty picker replaces a broken
+save. Loading those rows into IT is already on §9's list.
+
+⚠️ **Leadership's `__DATA_ORG__` is now vestigial.** It still says DT New in
+`apps/leadership/vite.config.js`, and every one of the 64 tables overrides it.
+Deliberately left: an explicit per-table pin is auditable in a grep, whereas
+flipping the default would silently relocate any table someone forgets to pin.
+The grep that proves the state is:
+
+```
+grep -E "dvTable\(" src/services/dataverse.js | grep -v IT_ORG
+```
+
+⚠️ …and that grep must test for the **absence of `IT_ORG`**, not for a
+single-argument `dvTable('x')` shape — the latter misses `dvTable('x','xid')`
+and undercounted this exact list by two on 27 Sep.
 
 ### 27 Sep — `systemusers` pinned to IT; the DT New / IT fork collapsed
 
@@ -5960,7 +5984,6 @@ is the evidence to bring back — a DT New id means something still reads the
 wrong org, and this entry lists everywhere that could be.
 
 Tables still reading DT New: **6** (was 7).
-
 
 Every count on the page was read live from `org2f45e702` and `org319b4ea9` — none is
 carried over from an earlier note. Text column widths are stated as *observed
@@ -7630,6 +7653,26 @@ same way, and the three must not be substituted for one another. **Anything citi
 id at pick time, and never resolve it back by name — the Meeting side's Linked
 Report Templates picker already did this correctly and is the pattern to copy.
 
+### ⚠️ `hx_tasks` — the two obviously-named filter columns are both useless
+
+Counted live on IT's **44,552** tasks (27 Sep), before building any filter. The
+column a reasonable person would reach for is, in both cases, the wrong one:
+
+| Column | Populated | Reality |
+|---|---|---|
+| `hx_businessunit` | 44,552 | a **choice reading `BU1` on every single row**. Filtering by it offers exactly one meaningless option. |
+| `hx_targeteddepartment` | 44,552 | **`HR` on 44,551** of them, `IT` on the remaining one. |
+| `tms_bu` | 44,537 | ✅ the real one — BU **codes as text**: AHQ 11,822, ASH 6,084, AMH 3,957, CHQ 783, GEO 621, AKW 483, AHBS 448, AFW 375, EGY 224, ALW 160, Andalusia 138, Alex 69 |
+| `tms_department` | 42,257 | ✅ usable |
+
+⚠️ **`tms_isdelayed` is a STRING with three values, not a boolean**:
+`"Delayed"` 15,900, `"Delayed Submission"` 8,946, `"No"` 19,706. Anything
+written as `isdelayed eq true` is wrong, and "delayed" is not one condition.
+
+⚠️ **`tms_bu` is free text, so it is matched case-insensitively against a
+Business Unit's NAME**, exactly like `pm_kpiachievment.stf_department`. There is
+no id join available here.
+
 ### `lm_reportsectioncitations` has no explicit parent-section lookup
 Its four lookups are `lm_KPI`, `lm_Process`, `lm_CitedSection` and
 `lm_CitedReportOccurrence` — all of which read as *targets*. Confirmed by a fresh
@@ -8418,12 +8461,30 @@ original single-environment wiring and no longer gates anything.
    this schema already handles "either/or" scope elsewhere (Business Unit vs.
    Region on occurrences) rather than one polymorphic field.
    **Partly answered 04 Sep, differently from that candidate.** `wlog_decisions`
-   now carries **`_lm_citedreportsection_value`** — so a Decision links to a
-   **Report Section**, not to a Report or an Agenda Item. What that still leaves
-   open: there is **no path from a Decision to a Meeting Agenda Item**, so the
-   Meeting-side half of the original ask ("Decisions raised here") has nothing to
-   join on yet. Decide whether Meeting-raised Decisions are in scope; if they
-   are, that lookup still has to be added.
+   gained **`_lm_citedreportsection_value`** — so a Decision links to a
+   **Report Section**, not to a Report or an Agenda Item.
+
+   ⚠️ **That answer was overtaken by the environment move and is no longer
+   usable as written (checked live 27 Sep).** The column exists in **DT New
+   only**. Decisions now read **IT**, where `wlog_decision` has **36 columns to
+   DT New's 59** and no `lm_citedreportsection` at all. So there is currently no
+   link in either place that the app can use: DT New has the column but no
+   Report Sections to point it at, and IT has the Sections but not the column.
+
+   ⚠️ **And the choice is bigger than one lookup.** The 23 columns IT lacks
+   include the whole `pms_` corrective-action family — root cause, KPI
+   current/expected actual and target, outcome KPI, raised by, task owner,
+   relevancy, validity, feedback, employee BU/department/sector. IT therefore
+   models a Decision as **free text with a status**; DT New models it as
+   **root cause → KPI before/after → owner → outcome**. Deciding which shape the
+   process actually wants comes FIRST — adding the lookup to a table that is
+   then migrated wholesale would be wasted work.
+
+   Still open, unchanged: there is **no path from a Decision to a Meeting Agenda
+   Item** in either environment, so the Meeting-side half of the original ask
+   ("Decisions raised here") has nothing to join on. Decide whether
+   Meeting-raised Decisions are in scope; if they are, that lookup has to be
+   added too.
 8. **How does the new Reports & Plans citation composer (02 Sep, §5) reconcile
    with the already-live `lm_reportoccurrences` occurrence flow
    (`NewReportModal`/`DvReportDetail`/`dvReportOccs`)?** — **Answered, later
@@ -8952,6 +9013,17 @@ none is blocked on design.
       **`lm_citedreportsection`** to `wlog_decision` **in IT**, targeting
       `lm_reportoccurrencesectionses`. DT New's copy has it; IT's does not, and
       the sections live in IT, so today neither environment can hold the link.
+      ⚠️ **The gap is wider than one lookup.** Compared live 27 Sep: IT's
+      `wlog_decision` has **36 columns, DT New's has 59**. The 23 missing
+      include `wlog_wlogworklogid` and the entire `pms_` corrective-action
+      family — `pms_rootcausedescription`, `pms_currentkpiactual` /
+      `pms_currentkpitarget`, `pms_expectedkpiactual` / `pms_expectedkpitarget`,
+      `pms_outcomekpi`, `pms_raisedby`, `pms_taskowner`, `pms_relevancy`,
+      `pms_validity`, the feedback fields and employee BU/department/sector.
+      So IT models a decision as **free text with a status** while DT New models
+      it as **root cause → KPI before/after → owner → outcome**. Which of those
+      the process wants is §7's question and should be settled *before* the
+      column is designed, or the wrong lookup gets added.
 - [x] ~~**Widen `lm_reportobjective`**~~ — done by the product owner, 27 Sep:
       **100 → 4000**. `REPORT_OBJECTIVE_MAX` now lives in `dataverse.js` and is
       imported by the UI, so the two cannot disagree. ⚠️ **Four columns are
