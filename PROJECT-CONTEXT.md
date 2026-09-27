@@ -6463,6 +6463,311 @@ is a licensing and flow decision, not code.
 the image replaces the placeholder; nothing else changes. A test confirmed the
 image appears and the placeholder disappears.
 
+### 27 Sep: a session pushed to the wrong pair for three turns — caught by re-reading this file, corrected
+
+A separate work thread (the `pm_kpiachievments` IT pin, and a `BuildReport.jsx`
+IT-lookup fork for the Scope panel — both real, both already recorded earlier
+in §5 under their own 24 Sep entries) had been pushing to `786c1b14…`/
+`d61c6237…`, believing that pair was live — the belief was correct **as of
+24 Sep**, but **stale by three days**: the 25 Sep entry above had already
+settled `4912152c…`/`83db0ef8…` as canonical, and every push since (Meeting
+family to IT, all master data to IT, New Report reconnect, KPI coverage/gaps,
+Excel/Word export) had gone there instead. Asked to "read the project context
+file," which surfaced the mismatch before more work piled onto the wrong copy.
+
+**Confirmed, not assumed, before touching anything:** `git log` showed HEAD
+already at `ce1aa20` — every commit behind the 25–27 Sep entries was already
+in this working tree. The pending local edits (the pin and the fork) sat
+cleanly on top, no conflict. So nothing was lost; it had just gone to a
+branch of the deployment that had stopped receiving new features three days
+earlier.
+
+**Recovered like the 24 Sep incident, because the local staging folders were
+in the same state**: `C:\tmp\cad-gov`/`cad-exec` (the canonical pair's
+folders) did not exist on this machine either. Same recipe — `pac code init`
+into a throwaway folder, `pac code add-data-source -a
+shared_commondataserviceforapps -c c83ec8cc…`, hand-set `appId` to the real
+one (`4912152c-b5c8-4beb-bb74-c9f43550405b` / `83db0ef8-4c62-4eef-84ac-dadab326b704`),
+then `pac code push`. Both succeeded; `pac code list` showed the same 6 apps
+before and after, no duplicates. The working reconnected folders were saved
+back as `C:\tmp\cad-gov`/`C:\tmp\cad-exec` — the plain names §5's 25 Sep
+entry expects — so the documented procedure works again without another
+reconnect next time.
+
+**Also found and fixed in passing:** `npm install` was needed before the
+build would succeed at all — `docx` is in `package.json` (added by the 26 Sep
+"Export a report to Excel or Word" commit) but was missing from
+`node_modules` on this machine, so `apps/leadership` failed to bundle with
+"Rolldown failed to resolve import 'docx'" until dependencies were
+resynced. `exceljs` was already present; only `docx` was missing.
+
+⚠️ **`786c1b14…`/`d61c6237…` now carries three days of orphaned work**: the
+`pm_kpiachievments` IT pin and the `BuildReport.jsx` IT-lookup fork landed
+there and nowhere else, since they were built as uncommitted local edits, not
+commits — pushing to the canonical pair carried them over automatically once
+the local edits existed in the same working tree the canonical folders now
+build from. No further action needed on that account. The stale pair itself,
+and the also-still-live stray DT New pair (`7caa2fb2…`/`0f077a0a…`, pushed in
+error 23 Sep), remain undeleted — no CLI delete-app command exists, and
+nobody has decided what should happen to either. See §7/§8 TODOs.
+
+### 27 Sep: the Breakdown citation's KPI search moved into the dropdown itself
+
+Reported from a screenshot: a separate search box sat above a plain
+`<select>` for choosing a KPI when citing a Breakdown, with a "N of M KPIs
+match" line underneath — asked for the search to be part of the dropdown
+control instead.
+
+**Reused, not rebuilt.** `shared/ui.jsx` already has `Combo` — "a dropdown
+you can type in," a button that opens a popover with its own search box and
+a clickable option list, already used by `Communication.jsx`,
+`BusinessIntelligence.jsx` and `Hierarchy.jsx`. `BuildReport.jsx` just wasn't
+importing it yet. The Breakdown branch's hand-rolled `search()` + `<select>`
++ match-count text is now one `<Combo opts={kpis.map(...)} value={picker.kpiId}
+onChange={id => set({kpiId:id, dim:''})} all="Choose a KPI…"
+placeholder="Search KPIs…"/>`. `Combo` already guarantees the chosen option
+survives a search that would otherwise filter it out — the exact behaviour
+the old code's own comment called out as essential — so nothing was lost
+dropping the hand-rolled version.
+
+**Not touched:** the KPI and Process branches' own search-above-a-clickable-
+list pattern (`search()` + `list()`) — only Breakdown's plain `<select>` was
+the reported problem. Whether those two should also become `Combo` for
+consistency is a separate, not-yet-asked question.
+
+### 27 Sep: Reports / Plans restyled against a reference screenshot — presentation only
+
+Asked to match a supplied screenshot's visual hierarchy, spacing, card
+structure, gold/olive balance, table readability, button hierarchy and
+density, explicitly as a presentation-layer change only. Read the screenshot
+against the live JSX/CSS rather than assuming a gap — most of the screen
+(the rail/detail split, the card structure, the KPI coverage panel's own
+copy, the section stack) already matched near-verbatim; four concrete,
+evidenced deltas were found and fixed, nothing else was touched:
+
+1. **The KPI coverage table had no base styling at all.** `KpiCoverage.jsx`
+   rendered `<table className="t">` — `.t` is not a table style anywhere in
+   `theme.css` (it's reused elsewhere for unrelated text tweaks); the real
+   shared table look lives on `table.data` (uppercase muted headers on a
+   cream surface, bottom-border rows), used everywhere else in the app.
+   Switched the class. This alone likely explains most of the "table
+   readability" gap — nothing else about the table changed.
+2. **The All/Received/Issued by you tabs were the underline-tab style
+   (`.tabs`), not the filled pill-segment style the screenshot shows.**
+   Rather than reskin the shared `.tabs` class (used by every other screen's
+   tab bar — would have changed screens nobody asked about), this screen's
+   own three buttons now use `.pill-set`/`.pill` — an existing shared
+   component already used for exactly this kind of filter control elsewhere
+   (`Hierarchy.jsx`, `LeadershipApp.jsx`'s quick filters). A `.pill .c` /
+   `.pill.on .c` count-badge style was added since nothing used a count
+   badge inside a `.pill` before.
+3. **The stacked full-width gap Notes became a wrapped chip row**
+   (`.gap-chips`/`.gap-chip`, new in `theme.css`). Same four gap categories,
+   same counts, same KPI names — `chipGroup()` renders each category as one
+   headline chip (its fuller wording moved to a `title` tooltip) followed by
+   that category's own KPI-name chips, capped at 8 with a "+N more" chip.
+   Categories were deliberately kept separate rather than merged into one
+   pool: the code's own comments are explicit that "not covered" (a
+   governance gap), "no achievement" (a data gap, not the author's fault)
+   and "not in the Setup" mean different things, and collapsing them would
+   have lost that distinction — a functional regression dressed as a
+   restyle.
+4. **A small per-row status dot** (`.kpi-dot`, red/blue/green) was added to
+   the KPI table, and a `Layers` icon (already this screen's own sidebar
+   icon, `lucide-react`, already a dependency) before each report title in
+   the rail and the detail header. ⚠️ **The dot is deliberately derived only
+   from data the code already computes** — `k.noRows` (red) and whether a
+   specific row has literally every figure empty (blue) vs at least one
+   present (green) — never from comparing actual to target. The screenshot
+   showed more than three dot colours and their exact rule couldn't be
+   read back with confidence from an image; inventing a performance
+   judgment to match colours seen in a screenshot risked shipping a
+   plausible-looking but wrong verdict on real KPI data, which is worse
+   than a simpler, verifiably-correct 3-colour version.
+
+**Not changed:** any data fetching, gap computation, button behaviour or
+copy wording beyond what's listed above — `matchAchievement()`,
+`reportAchievementScope()`, `syncKpiGapSection()` and every other function
+in `KpiCoverage.jsx` are untouched. Both apps build clean. Pushed — see the
+27 Sep Build a report/plan entry below, which went out in the same push.
+
+### 27 Sep: Build a report/plan restyled against a second reference screenshot — same discipline, less to do
+
+A second screenshot, this time of Build a report/plan (`BuildReport.jsx`),
+same brief: match it, presentation layer only. Most of the screen already
+matched — `.bld-grid`/`.bld-fld` (Report/Status/Period, then Department/
+Function/Business Unit/Created by), the Edit/Preview underline tabs, and
+`KpiCoverage` (already fixed the previous entry, shared by both screens so
+this one inherited the table/chip/dot work for free). Two real deltas:
+
+1. **The diagnostic-angle segmented control's active state was one of four
+   per-angle colours** (`.dg-seg button.on.d1..d4`, blue-grey/brown/purple/
+   green — built for `DiagChip`, a read-only badge that needs to stay
+   scannable-by-colour across many sections at a glance) **where the
+   screenshot shows a single gold "on" state.** Rather than recolour the
+   shared `.dg-seg` class — which would have flattened those read-only
+   badges everywhere else they appear, the exact scannability they exist
+   for — added a higher-specificity override scoped to `.sec-h .dg-seg`
+   (this screen's own editable control only). `DiagChip` and every other
+   `.dg-seg` reader keep their per-angle colours.
+2. **A small icon on `KpiCoverage`'s own header** (`Target` from
+   `lucide-react`, in a small tinted square) — cheap, decorative, matches
+   the icon-before-title treatment the previous entry already added to
+   Reports / Plans' report titles. Being on the shared component, both
+   screens get it.
+
+**Deliberately NOT done, flagged rather than silently added or silently
+skipped:**
+- The screenshot's later sections (below the first, open one) render as
+  collapsed one-line summary rows with a chevron — `BuildReport.jsx` has no
+  such state today; every section always renders fully open
+  (`SectionEditor`, unconditional). Building that would mean new expand/
+  collapse state, which is an interaction change, not a restyle — out of
+  scope for "presentation layer only" without being asked for directly.
+- The screenshot shows a "+ New Report" button on this screen's own header.
+  `BuildReport.jsx` doesn't render one today (only Reports / Plans and
+  Workspace do); adding it would add a new capability to this screen
+  (create-a-report from here), not just redraw an existing one — held back
+  for the same reason.
+- A citation's achievement figures (`AchievementFigures.jsx`, also shared)
+  were left exactly as they render today. The screenshot appeared to show a
+  second, larger number treatment beside the existing compact line, but two
+  of its four figures didn't reconcile against each other closely enough to
+  be confident that's a real second element rather than a misread digit —
+  guessing wrong on a number shown to whoever reviews a KPI's figures is a
+  worse outcome than leaving it alone.
+
+Both apps built clean, pushed to the canonical pair (`4912152c…`/`83db0ef8…`)
+alongside the Reports / Plans restyle above — one push carried both
+screenshot-driven passes. `App pushed successfully` read from the output for
+both; `pac code list` showed the same 6 apps before and after, no duplicates.
+
+### 27 Sep: raw Dataverse table/column names stripped out of every user-visible screen
+
+Asked to "remove the table names from the views." Grepped both modules for
+the nine schema prefixes (`lm_`, `pm_`, `hr_`, `cr603_`, `crd04_`,
+`strategy_`, `stf_`, `hx_`, `wlog_`, `and_`) appearing in actual rendered
+text — JSX children, `hint`/`sub` props, `toast()` calls, headings — as
+opposed to code comments or `.property` access, which were left alone since
+nobody sees those. Found roughly 30 real instances across `LeadershipApp.jsx`,
+`GovernanceApp.jsx`, `BuildReport.jsx`, `OrgReports.jsx`, `Hierarchy.jsx`,
+`BusinessIntelligence.jsx` and `Communication.jsx` — leftover developer
+shorthand from whichever session first wired each screen to Dataverse,
+apparently never revisited once the plumbing worked. Three shapes:
+
+1. **Pure noise** — a subtitle or badge that named the backing table for no
+   reason a user would need (`<h2>Occurrence</h2>` followed by a line that
+   just said `lm_meetingoccurrences`; `Documents` next to
+   `lm_meetingoccurrencelinkedreports`; a Communication tab's own name
+   repeated as `hx_tasks`/`lm_reportoccurrenceshares`). Removed outright.
+2. **A real sentence with the table name welded into it** ("Written to
+   lm_meetingoccurrences with its agenda and attendees", "Saved to
+   lm_reportoccurrences as a Draft", a field hint reading "Written to
+   lm_ReportObjective — max 100 characters"). Reworded to keep the actual
+   information (what happens, what the character limit is) and drop the
+   identifier — e.g. "Max 100 characters."
+3. **A genuine schema-gap explanation that named the missing column** (the
+   Annual Meeting month-of-year note in `GovernanceApp.jsx`, which used to
+   say "Add `lm_month` (1–12) to `lm_meetingtemplates`"). Reworded to
+   describe the gap in plain terms — nowhere yet to store which month an
+   Annual Meeting falls in — without the identifier. The underlying facts
+   these notes were built from are unchanged and still in `PROJECT-CONTEXT.md`
+   §6 for whoever actually goes to add the column.
+
+One partial exception, kept deliberately: a `toast()` on a partially-failed
+Meeting Occurrence save used to list which child tables failed
+(`errors.map(e=>e.table)`); the count stays in the user-facing toast, the
+table list stays in the `console.warn` right above it, matching the
+"check the console for details" split already used everywhere else in this
+app for genuine error diagnostics.
+
+**Not touched:** `LeadershipApp-Nourhane.jsx`, an orphaned duplicate of
+`LeadershipApp.jsx` that isn't imported by anything — confirmed via grep for
+its own filename before deciding it was dead weight, not a second copy in
+active use. It still has all the same table-name leaks; irrelevant unless
+someone starts building from it.
+
+Both apps build clean. Not yet pushed.
+
+### 27 Sep: a full design-system doc (`leadership-ui-style-guide.md`) audited against `theme.css` — mostly already matched
+
+Handed a 32-section written style guide (colors, typography, radius, shadows,
+buttons, badges, tables, forms, alerts, modals, dropdowns, wizards, nav,
+responsive rules) and asked to apply it, explicitly as a presentation-layer
+pass with functionality untouched. Read the whole thing against the actual
+`theme.css` before changing anything, rather than assuming a gap existed.
+
+**The headline finding: this is very nearly the same design system already.**
+Every core colour token in the guide — `#A5845B` gold, `#49604C` green,
+`#F7F4EE` canvas, `#E8E0D3` border, `#211C1E` ink, the exact navbar gradient
+(`90deg,#071506→#122412→#2C3A2F`) and sidebar gradient
+(`160deg,#0D1A0B→#0A150A`) — is already in `theme.css`, verbatim or within a
+shade. `--sh`/`--sh-l` already equal the guide's shadow-sm/shadow-lg exactly.
+The nav active-item treatment, tabs, notes/alerts, wizard steps, progress
+bars, filter pills and the Combo dropdown were all already close matches.
+This document reads as the spec this theme was already built from, not a
+different reference.
+
+**Three real, confirmed gaps, fixed:**
+
+1. **No font was actually loading.** Neither app's `index.html` had a
+   Google Fonts `<link>` at all — `theme.css` names `'Inter'` and
+   `'JetBrains Mono'`, but with nothing to load them the browser was silently
+   falling back to the OS UI font the whole time. Added the guide's own
+   font link (Outfit + Inter + JetBrains Mono) to both `apps/governance/
+   index.html` and `apps/leadership/index.html`.
+2. **Outfit — the guide's UI/heading font — didn't exist anywhere in the
+   app.** `--sans` was a second copy of the Inter stack, not a distinct
+   font. Split it: `--font` stays Inter (body copy, unchanged), `--sans` is
+   now Outfit. `h1–h4` already read `--sans`, so headings picked it up for
+   free; explicitly added `font-family:var(--sans)` to the rest of what the
+   guide calls UI chrome that was quietly inheriting Inter from `body` —
+   `.btn`, `.tag`, `.pill`, tab buttons, `.seg`/`.dg-seg` buttons, form
+   labels, table headers, `.stat label`, nav items. Left form INPUT/SELECT
+   text and typed values in Inter, not Outfit — the guide's own Forms
+   section says inputs should use `--sans` too, but rendering someone's
+   typed data in a display/geometric font is a real readability trade a
+   written style guide can't verify and I couldn't test visually; the
+   labels above those inputs already carry Outfit either way.
+3. **No radius scale existed as tokens** — every rule carried its own
+   literal px value. Added `--r-sm/md/lg/xl/pill` (8/12/16/22/999) and
+   `--sh-m`/`--sh-gold` to `:root`, and repointed the handful of rules the
+   guide's own checklist calls out by name to them: `.card` (14→16),
+   `.btn`/`.btn.sm`/`.f input,select,textarea`/`.bld-fld input,select`/
+   `.cmb-btn` (7-8→12, i.e. buttons and form controls), `.cmb-pop` (9→12),
+   and the modal shell `.modal`/`.m-ft` (11→22, the guide's explicit "large
+   modal/container" value). Did **not** convert the other 60-odd rules that
+   also hardcode a radius to `var()` — same visual result, and rewriting
+   every literal in the file for its own sake isn't what was asked.
+
+**Deliberately not done, judgment calls flagged rather than guessed at:**
+- **`.note.info`'s colour** (currently blue) was NOT changed to the guide's
+  gold, even though its own §19 alert sample shows Info as gold-tinted.
+  Its own §2 colour-token table lists `--info` as a muted green-**gray**,
+  not gold and not blue — the guide disagrees with itself here. `.note
+  k="info"` is used dozens of times across both apps for plain neutral
+  information; recolouring it gold risks reading as "primary action," the
+  one thing gold is reserved for everywhere else in the same guide. Left
+  as the existing, distinct blue rather than resolving the guide's own
+  contradiction by guesswork.
+- **No `.card:hover` elevation was added**, though §11 specifies one. This
+  app's `.card` is the universal layout container — nearly every panel in
+  both apps, not a curated set of clickable "bento" tiles — so a hover
+  affordance on all of them would imply interactivity on panels that mostly
+  aren't clickable.
+- **Sidebar width** (242px here vs. the guide's 220px) was left alone: the
+  layout is flexbox (`.main{flex:1}`), so narrowing it is mechanically
+  safe, but several nav labels ("Meetings & Committees") were sized against
+  242px and there's no way to check for new wrapping without a browser.
+- Cosmetic micro-differences that don't change how anything reads —
+  `--grad-gold`'s exact light-gold stop, the topbar's 52px vs. the guide's
+  48px, a handful of shadow rgba tints — were left as-is rather than
+  chasing pixel-for-pixel parity the guide itself says is only "as closely
+  as practical."
+
+Both apps build clean; the font link survives the Vite build (checked in
+the built `dist/index.html`). Not yet pushed.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap

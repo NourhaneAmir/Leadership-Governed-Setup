@@ -25,6 +25,7 @@
    Processes the Setup names are listed too; they carry no figures.
    ========================================================================= */
 import React, { useState, useEffect, useMemo } from 'react';
+import { Target } from 'lucide-react';
 import { Btn, Note, Empty, Tag } from '../../../shared/ui.jsx';
 import { fmtP } from '../../../shared/format.js';
 import { use } from '../store.jsx';
@@ -35,6 +36,26 @@ const fig = v => (v === null || v === undefined ? '—' : v);
 const NUM = { textAlign: 'right', fontFamily: 'var(--mono)', whiteSpace: 'nowrap' };
 const FIGURES = [['baseline', 'Baseline'], ['actual', 'Actual'],
                  ['target', 'Target'], ['historical', 'Historical']];
+
+/* How many named KPIs a gap chip-group shows before folding the rest into a
+   "+N more" chip -- purely a display cap, every name is still in `items`. */
+const GAP_CAP = 8;
+
+/** One gap category as a headline chip (bold, `title` for the fuller
+ *  explanation a paragraph used to carry) followed by that category's own
+ *  KPI-name chips, capped, with a "+N more" chip for the remainder. Returns
+ *  null when the category is empty, so the caller can just list every
+ *  category without an `if` at each call site. */
+function chipGroup(headline, items, hint){
+  if(!items.length) return null;
+  const shown = items.slice(0, GAP_CAP);
+  const more = items.length - shown.length;
+  return <React.Fragment key={headline}>
+    <span className="gap-chip hl" title={hint}>{headline}</span>
+    {shown.map(k => <span key={k.id} className="gap-chip">{k.name || k.id}</span>)}
+    {more > 0 ? <span className="gap-chip more">+{more} more</span> : null}
+  </React.Fragment>;
+}
 
 /** Every KPI this report answers for, from the Setup and from its sections.
  *
@@ -187,6 +208,9 @@ export function KpiCoverage({ templateId, period, scope, unitLabel, citedKpis,
 
   return <div className="card" style={{ padding: '11px 13px', marginTop: 12 }}>
     <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
+      <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26,
+                     flex: '0 0 auto', borderRadius: 7, background: 'var(--teal-l)', color: 'var(--teal-d)' }}>
+        <Target size={14} strokeWidth={2.25}/></span>
       <span className="tset-lbl">KPI coverage</span>
       <span className="holder" style={{ flex: 1, minWidth: 0, fontSize: 12 }}>
         Every KPI this report answers for &mdash; from its Setup and from its sections{head}
@@ -216,32 +240,39 @@ export function KpiCoverage({ templateId, period, scope, unitLabel, citedKpis,
           ? <Empty>Neither this Setup nor any of its sections names a KPI.</Empty>
           : <div style={{ marginTop: 9 }}>
 
-              {/* ---- what is missing, before the detail ---- */}
+              {/* ---- what is missing, before the detail ----
+                  Same four categories as before, same names, same counts --
+                  only the container changed, from a stack of full-width
+                  paragraph Notes to a wrapped row of compact chips. Each
+                  category keeps its own headline chip (the fuller wording a
+                  Note used to carry now lives in that chip's `title`
+                  tooltip) directly followed by its own KPI-name chips, so
+                  categories never blur into one undifferentiated list. */}
               {gaps.notCovered.length || gaps.noRows.length || gaps.noTarget.length || gaps.notInSetup.length
-                ? <div style={{ marginBottom: 10, display: 'grid', gap: 6 }}>
-                    {gaps.notCovered.length ? <Note k="warn">
-                      <b>{gaps.notCovered.length} KPI{gaps.notCovered.length === 1 ? '' : 's'} named by the
-                      Setup {gaps.notCovered.length === 1 ? 'is' : 'are'} not cited by any section:</b>{' '}
-                      {gaps.notCovered.map(k => k.name || k.id).join(', ')}.
-                    </Note> : null}
+                ? <div className="gap-chips">
+                    {chipGroup(
+                      `${gaps.notCovered.length} KPI${gaps.notCovered.length === 1 ? '' : 's'} named by the Setup `
+                        + `${gaps.notCovered.length === 1 ? 'is' : 'are'} not cited`,
+                      gaps.notCovered,
+                      'Named by the Setup, not cited by any section — a governance gap.')}
 
-                    {gaps.noRows.length ? <Note k="info">
-                      <b>{gaps.noRows.length} KPI{gaps.noRows.length === 1 ? '' : 's'} {gaps.noRows.length === 1 ? 'has' : 'have'} no
-                      achievement recorded</b> for {unitLabel || 'this Business Unit'}
-                      {' '}in {fmtP(period)}: {gaps.noRows.map(k => k.name || k.id).join(', ')}.
-                      {' '}This is missing data in Dataverse, not something the report can fix.
-                    </Note> : null}
+                    {chipGroup(
+                      `${gaps.noRows.length} KPI${gaps.noRows.length === 1 ? '' : 's'} `
+                        + `${gaps.noRows.length === 1 ? 'has' : 'have'} no achievement recorded `
+                        + `for ${unitLabel || 'this Business Unit'} in ${fmtP(period)}`,
+                      gaps.noRows,
+                      'This is missing data in Dataverse, not something the report can fix.')}
 
-                    {gaps.noTarget.length ? <Note k="info">
-                      <b>{gaps.noTarget.length} KPI{gaps.noTarget.length === 1 ? '' : 's'} {gaps.noTarget.length === 1 ? 'has' : 'have'} figures
-                      but no Target</b>: {gaps.noTarget.map(k => k.name || k.id).join(', ')}.
-                    </Note> : null}
+                    {chipGroup(
+                      `${gaps.noTarget.length} KPI${gaps.noTarget.length === 1 ? '' : 's'} `
+                        + `${gaps.noTarget.length === 1 ? 'has' : 'have'} figures but no Target`,
+                      gaps.noTarget)}
 
-                    {gaps.notInSetup.length ? <Note k="info">
-                      <b>{gaps.notInSetup.length} KPI{gaps.notInSetup.length === 1 ? '' : 's'} cited by a
-                      section {gaps.notInSetup.length === 1 ? 'is' : 'are'} not named by the Setup:</b>{' '}
-                      {gaps.notInSetup.map(k => k.name || k.id).join(', ')}.
-                    </Note> : null}
+                    {chipGroup(
+                      `${gaps.notInSetup.length} KPI${gaps.notInSetup.length === 1 ? '' : 's'} cited by a section `
+                        + `${gaps.notInSetup.length === 1 ? 'is' : 'are'} not named by the Setup`,
+                      gaps.notInSetup,
+                      'Not wrong, but worth seeing — the Setup never asked for this one.')}
                   </div>
                 : <Note k="ok">Every KPI is cited and has figures recorded.</Note>}
 
@@ -251,7 +282,7 @@ export function KpiCoverage({ templateId, period, scope, unitLabel, citedKpis,
                 {scope?.allDepartments ? ' · all Departments and Functions' : ''}
               </div>
               <div style={{ overflowX: 'auto' }}>
-                <table className="t" style={{ width: '100%', minWidth: 720 }}>
+                <table className="data" style={{ width: '100%', minWidth: 720 }}>
                   <thead><tr>
                     <th>KPI</th><th>From</th><th>Department</th><th>Function</th>
                     <th style={NUM}>Baseline</th><th style={NUM}>Actual</th>
@@ -270,16 +301,25 @@ export function KpiCoverage({ templateId, period, scope, unitLabel, citedKpis,
                             : null}
                       </>;
 
+                      /* The dot repeats what the row already says in words --
+                         red when there is no achievement row at all (the
+                         message below), blue when a row exists but every
+                         figure on it is empty, green otherwise. Nothing here
+                         compares actual to target; it only visualises data
+                         presence, the same fact `missing`/`noRows` already
+                         carry. */
                       if(k.noRows) return [<tr key={k.id}>
-                        <td>{label}</td><td>{from}</td>
+                        <td><span className="kpi-dot bad"/>{label}</td><td>{from}</td>
                         <td colSpan={6} className="holder">
                           No achievement recorded for this scope and period.</td>
                       </tr>];
 
-                      return k.rows.map((r, i) => <tr key={k.id + ':' + r.id}>
+                      return k.rows.map((r, i) => {
+                        const empty = FIGURES.every(([f]) => r[f] === null || r[f] === undefined);
+                        return <tr key={k.id + ':' + r.id}>
                         {/* Named once per block, so a KPI spanning eight
                             departments reads as one KPI, not eight. */}
-                        <td>{i === 0 ? label : ''}</td>
+                        <td>{i === 0 ? <><span className={'kpi-dot ' + (empty ? 'empty' : 'ok')}/>{label}</> : ''}</td>
                         <td>{i === 0 ? from : null}</td>
                         <td>{r.department || <span className="holder">any</span>}</td>
                         <td>{r.function || <span className="holder">any</span>}</td>
@@ -287,7 +327,8 @@ export function KpiCoverage({ templateId, period, scope, unitLabel, citedKpis,
                         <td style={NUM}><b>{fig(r.actual)}</b></td>
                         <td style={NUM}>{fig(r.target)}</td>
                         <td style={NUM}>{fig(r.historical)}</td>
-                      </tr>);
+                      </tr>;
+                      });
                     })}
                   </tbody>
                 </table>

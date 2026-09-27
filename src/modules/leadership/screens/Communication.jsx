@@ -134,9 +134,7 @@ export function ScreenComms(){
       : null}
 
     <div className="card flush">
-      <div className="card-hd"><h2 style={{flex:1}}>{tab}</h2>
-        <span className="t-sub" style={{fontWeight:400}}>
-          {tab==='Tasks' ? 'hx_tasks' : 'lm_reportoccurrenceshares'}</span></div>
+      <div className="card-hd"><h2 style={{flex:1}}>{tab}</h2></div>
       <div style={{padding:'8px 17px 17px'}}>
         {loading
           ? <Empty ic="…">Reading shares and tasks…</Empty>

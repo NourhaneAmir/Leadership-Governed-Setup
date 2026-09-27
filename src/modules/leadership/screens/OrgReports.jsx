@@ -18,6 +18,7 @@
    signed-in user's Position ids arrive through context as `dvLookup`.
    ========================================================================= */
 import React, { useState, useEffect, useMemo } from 'react';
+import { Layers } from 'lucide-react';
 import { use } from '../store.jsx';
 import { Btn, Tag, Note, Empty } from '../../../shared/ui.jsx';
 import { fmtD, fmtP, MONTHS } from '../../../shared/format.js';
@@ -297,9 +298,9 @@ export function ScreenOrgReports(){
           Check the console for details.</Note>
       : null}
 
-    <div className="tabs">
+    <div className="pill-set" style={{ marginBottom: 15 }}>
       {[['all', 'All'], ['in', 'Received'], ['out', 'Issued by you']].map(([k, l]) =>
-        <button key={k} className={dir === k ? 'on' : ''}
+        <button type="button" key={k} className={'pill' + (dir === k ? ' on' : '')}
           onClick={() => { setDir(k); setOpenId(null); setOpenSec(null); }}>
           {l}<span className="c">{reports.filter(r => inTab(r, k)).length}</span>
         </button>)}
@@ -309,7 +310,7 @@ export function ScreenOrgReports(){
       ? <div className="card"><Empty ic={dvLoading ? '…' : '📄'}>
           <b>{dvLoading ? 'Reading reports…' : 'No report occurrences yet'}</b>
           <div style={{ marginTop: 5 }}>{dvLoading
-            ? 'Reading lm_reportoccurrences from Dataverse.'
+            ? 'Reading reports from Dataverse.'
             : 'Report occurrences appear here once they are created — by the weekly generator, or from a Report Setup.'}</div>
         </Empty></div>
 
@@ -340,7 +341,9 @@ export function ScreenOrgReports(){
                     return <button key={r.id} type="button"
                       className={'org-node' + (rec && rec.id === r.id ? ' on' : '')}
                       onClick={() => openReport(r.id)}>
-                      <span className="n">{r.name}</span>
+                      <span className="n" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Layers size={13} strokeWidth={2.25} style={{ flex: '0 0 auto', color: 'var(--teal)' }}/>
+                        {r.name}</span>
                       <span className="s">{[nm(L.pos, r.creatorPositionId), fmtP(r.period)]
                         .filter(Boolean).join(' · ')}</span>
                       <span className="s">
@@ -359,7 +362,9 @@ export function ScreenOrgReports(){
           <div className="card">
             {!rec ? <Empty>Nothing selected.</Empty> : <>
               <div className="ph-row" style={{ gap: 9, alignItems: 'baseline', flexWrap: 'wrap' }}>
-                <h2 style={{ flex: 1, minWidth: 0 }}>{rec.name}</h2>
+                <h2 style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Layers size={16} strokeWidth={2.25} style={{ flex: '0 0 auto', color: 'var(--teal)' }}/>
+                  {rec.name}</h2>
                 <Tag c={rptTagC(rec.status)}>{rec.status}</Tag>
                 {/* the same rule Build a report/plan applies */}
                 {!rec.locked && (rec.status === 'Draft' || rec.status === 'Returned')

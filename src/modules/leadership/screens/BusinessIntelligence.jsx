@@ -358,7 +358,7 @@ export function ScreenBI(){
         <h2 style={{flex:1}}>{loading ? 'Reading BI reports…' : `${matches.length} of ${reports.length} reports`}</h2>
       </div>
       {loading
-        ? <div style={{padding:'8px 17px 17px'}}><Empty ic="…">Reading lm_bireportdashboards from Dataverse.</Empty></div>
+        ? <div style={{padding:'8px 17px 17px'}}><Empty ic="…">Reading BI reports from Dataverse.</Empty></div>
         : matches.length===0
         ? <div style={{padding:'8px 17px 17px'}}>
             <Empty>{reports.length ? 'No report matches this combination.' : 'No BI report is registered yet.'}</Empty>

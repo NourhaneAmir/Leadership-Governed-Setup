@@ -20,7 +20,7 @@
    ========================================================================= */
 import React, { useState, useEffect, useMemo } from 'react';
 import { use } from '../store.jsx';
-import { Btn, Tag, Note, Empty } from '../../../shared/ui.jsx';
+import { Btn, Tag, Note, Empty, Combo } from '../../../shared/ui.jsx';
 import { fmtP, TODAY } from '../../../shared/format.js';
 import { DiagChip, rptTagC, matchesQuery } from '../domain.jsx';
 import { BiFrame } from './BusinessIntelligence.jsx';
@@ -607,7 +607,7 @@ export function ScreenBuildReport(){
       ? <div className="card"><Empty ic={dvLoading ? '…' : '📝'}>
           <b>{dvLoading ? 'Reading reports…' : 'No report is waiting to be written'}</b>
           <div style={{ marginTop: 5 }}>{dvLoading
-            ? 'Reading lm_reportoccurrences from Dataverse.'
+            ? 'Reading reports from Dataverse.'
             : 'A report can be built while it is Draft or Returned and not locked. Reports in review or approved are read in Reports / Plans.'}</div>
           {!dvLoading
             ? <div className="btn-row" style={{ justifyContent: 'center', marginTop: 12 }}>
@@ -991,7 +991,7 @@ export function NewTaskForm({ subject, onCancel, onDone, toast }){
         {saving ? 'Raising…' : 'Raise task'}</Btn>
     </div>
     <div className="holder" style={{ marginTop: 8 }}>
-      Written to <b>hx_tasks</b> and cited here in one step. Status is left to
+      Written as a new Task and cited here in one step. Status is left to
       Dataverse's own default.</div>
   </div>;
 }
@@ -1049,31 +1049,18 @@ function CitePicker({ picker, setPicker, onCite, catalog, inScope, reports, take
       const kpis = catalog.kpis.filter(inScope);
       const K = kpis.find(x => x.id === picker.kpiId);
       /* The KPI and Process branches above search a list; a Breakdown needs a
-         KPI AND a dimension, so it keeps the two-step select and narrows the
-         options instead. `search()` and `picker.q` are the same ones those
-         branches use.
-
-         ⚠️ The chosen KPI is always kept in the list. Without that, typing a
-         search that excludes it blanks the select while the selection is
-         still live underneath, and the Cite button below goes on naming a KPI
-         that appears nowhere on screen. */
-      const matched = kpis.filter(x => matchesQuery(picker.q, [x.name]));
-      const shown = K && !matched.some(x => x.id === K.id) ? [K, ...matched] : matched;
+         KPI AND a dimension, so this stays a two-step choice -- but the KPI
+         step is now a Combo (shared/ui.jsx), the same searchable dropdown
+         used elsewhere in the app, instead of a separate search box above a
+         plain select. Combo keeps the chosen option in its list regardless
+         of what's typed, so a search that excludes it never strands the
+         selection -- same guarantee the old hand-rolled version had. */
       body = <>
-        {search('Search KPIs…')}
-        <select value={picker.kpiId} onChange={e => set({ kpiId: e.target.value, dim: '' })}
-          style={{ width: '100%', marginBottom: 8, border: '1px solid var(--border-d)', borderRadius: 7,
-                   padding: '6px 9px', fontSize: 12.5, background: '#fff' }}>
-          <option value="">Choose a KPI…</option>
-          {shown.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
-        </select>
-        {picker.q.trim() && matched.length === 0
-          ? <div className="holder" style={{ marginBottom: 8 }}>
-              No KPI matches “{picker.q.trim()}”.{K ? ' The one you chose is still selected.' : ''}</div>
-          : picker.q.trim()
-            ? <div className="holder" style={{ marginBottom: 8 }}>
-                {matched.length} of {kpis.length} KPIs match.</div>
-            : null}
+        <div style={{ marginBottom: 8 }}>
+          <Combo value={picker.kpiId} onChange={id => set({ kpiId: id, dim: '' })}
+            opts={kpis.map(x => ({ id: x.id, name: x.name }))} all="Choose a KPI…"
+            placeholder="Search KPIs…"/>
+        </div>
         {K ? <>
           <div className="cpick-k">
             {Object.values(SECTION_BREAKDOWN_DIM).map(dim =>
