@@ -8227,7 +8227,21 @@ function NewMeetingModal({kind,onClose}){
   const stageBU     = f.stage==='Business Unit';
   const stageRegion = f.stage==='Region';
   const scopeOk = stageBU ? !!f.dvBusinessUnitId : stageRegion ? !!f.dvRegionId : true;
-  const deptOpts = departmentsForScope(f.stage, f.dvBusinessUnitId, f.dvRegionId);
+  /* ⚠️ Same rule the Report-side New Report modal already has (see its own
+     comment, above): the Setup's own Departments --
+     lm_meetingtemplatedepartmentfunctions, already on tplDetail as `lines`
+     -- beat departmentsForScope()'s Position-inference when the Setup names
+     any, since the inference can offer a Department the Setup never named
+     and miss one it did. Falls back to the inference for a Custom Meeting,
+     while the Setup is still loading, or when it names no Department. */
+  const tplDeptIds = useMemo(()=>new Set(
+    (tplDetail?.lines || []).map(l=>l._lm_department_value).filter(Boolean)),
+  [tplDetail]);
+  const tplDepts = DV_DEPT_LIST.filter(d=>tplDeptIds.has(d.id));
+  const fromSetup = !custom && tplDepts.length > 0;
+  const deptOpts = fromSetup
+    ? tplDepts
+    : departmentsForScope(f.stage, f.dvBusinessUnitId, f.dvRegionId);
   const chairOpts = positionsForScope(f.stage, f.dvBusinessUnitId, f.dvRegionId);
   const scopeChosen = !(stageBU && !f.dvBusinessUnitId) && !(stageRegion && !f.dvRegionId);
   const scopeHint = stageBU
@@ -8293,6 +8307,25 @@ function NewMeetingModal({kind,onClose}){
         : x.tz,
     }));
   };
+
+  /* Keep the Department consistent with the Setup's own list -- the same
+     rule and the same reason the Report-side New Report modal already has
+     it: a Department picked before the Setup's detail arrives may not be on
+     its list (cleared, rather than submitted against a Setup that never
+     named it), and a Setup naming exactly ONE Department has no decision to
+     make (selected automatically). Only ever fills a BLANK field, so an
+     explicit choice survives. Restricted to `fromSetup` on purpose -- the
+     fallback list is inferred from Positions, and auto-selecting from an
+     inference would put a Department the Setup never governed onto a
+     governed record. */
+  useEffect(()=>{
+    if(!fromSetup) return;
+    if(f.dvDepartmentId && !deptOpts.some(d=>d.id===f.dvDepartmentId)){
+      set('dvDepartmentId','');
+      return;                      // the next run picks the lone one, if any
+    }
+    if(!f.dvDepartmentId && deptOpts.length===1) set('dvDepartmentId', deptOpts[0].id);
+  },[fromSetup, deptOpts, f.dvDepartmentId]);
 
   /* Reading a Setup's own per-unit placement, roles and Attendees is a
      separate, heavier call than the lightweight list the picker below is
@@ -8520,17 +8553,20 @@ function NewMeetingModal({kind,onClose}){
       <DvAttendeePicker value={f.dvAttend} onChange={v=>set('dvAttend',v)}
         opts={chairOpts} scopeChosen={scopeChosen} scopeHint={scopeHint}/>
       <Field label="Department"
-        hint={stageBU
-          ? 'Narrowed to the Departments inside the chosen Business Unit.'
-          : stageRegion
-            ? 'Narrowed to the Departments inside every Business Unit in the chosen Region.'
-            : 'Group and ExCom Meetings are not narrowed — every Department is offered.'}>
+        hint={fromSetup
+          ? `The ${deptOpts.length} Department${deptOpts.length===1?'':'s'} this Setup is for.`
+          : stageBU
+            ? 'Narrowed to the Departments inside the chosen Business Unit.'
+            : stageRegion
+              ? 'Narrowed to the Departments inside every Business Unit in the chosen Region.'
+              : 'Group and ExCom Meetings are not narrowed — every Department is offered.'}>
         <select value={f.dvDepartmentId} onChange={e=>set('dvDepartmentId',e.target.value)}
           disabled={(stageBU&&!f.dvBusinessUnitId)||(stageRegion&&!f.dvRegionId)}>
           <option value="">{
             stageBU&&!f.dvBusinessUnitId ? 'Choose a Business Unit first'
             : stageRegion&&!f.dvRegionId ? 'Choose a Region first'
-            : deptOpts.length ? 'Select…' : 'No Departments in this scope'}</option>
+            : deptOpts.length ? 'Select…'
+            : fromSetup ? 'This Setup names no Department' : 'No Departments in this scope'}</option>
           {deptOpts.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
         </select></Field>
     </>}

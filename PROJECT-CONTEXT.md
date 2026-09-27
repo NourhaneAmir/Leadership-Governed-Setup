@@ -75,6 +75,7 @@ comes up.
 | `Leadership Practice Extension.html` | A **second**, richer prototype — shared in chat 02 Sep, **not saved to the repo** | Defines the full "Report/Plan Composition" feature: Sections with a Diagnostic Angle, KPI/Breakdown/Process/child-report citations, the Build-a-Report screen, Reports-received review actions, Sharing, Reporting Hierarchy. Source for the plan below — re-request it from the user if it's needed again, it only exists in that chat turn. |
 | `C:\Users\Nourhan.AbdElSalam\.claude\plans\gleaming-greeting-zephyr.md` | Approved implementation plan (02 Sep), not part of the repo | Dataverse schema + phased implementation steps for the Report/Plan Composition feature above. Read this before doing any further work on Reports & Plans — see §5/§7.8/§9. ⚠️ **Not readable from the `nourh` Windows user this repo is checked out as** — copy it into the repo or it will keep being worked around. |
 | `REPORT-OCCURRENCE-FLOW-PLAN.md` (repo root, added 05 Sep) | Plan only, no code | The weekly Power Automate flow that creates next week's Report Occurrences from approved Setups — frequency rules, field mapping, section/citation copying, duplicate guard, and five open items. Written against the live schema. |
+| `leadership-ui-style-guide.md` (shared in chat 27 Sep, **not saved to the repo**) | Visual design system only — colours, typography, radius, shadows, component patterns | Audited against `theme.css` rather than applied wholesale; see §5's 27 Sep "design-system doc" entry for what already matched and what was a real gap (fonts, radius tokens). Explicitly scoped to presentation, not content/behaviour/navigation — re-request from the user if revisited, it only exists in that chat turn. |
 
 The BRD **contradicts itself** in three places, and the code picked a side:
 
@@ -103,7 +104,7 @@ The BRD **contradicts itself** in three places, and the code picked a side:
 | Authority Matrix + Approval Cycles | ✅ live, read-only by design (`AuthorityMatrixPanel`, embedded in Governance Settings) |
 | **Audit Grid scoring** — Meeting Occurrence's own Grid tab | ✅ **live** (this session) — `liveScoreGrid()` computes all 16 questions from the live occurrence/Minutes/Template; full Facilitator→Chair lifecycle (score, evidence, submit, approve+publish, return, open a correction version) writes through the backend functions that were already built |
 | **My Workspace (nav screen)** | ✅ **live** — reads its Work Queue, Upcoming panel and This Month stats directly off the full `dvMeetingOccs`/`dvReportOccs` arrays via `dvWorkItems()`. Two silent-data-loss bugs fixed here 01 Sep — see §5: an overdue Meeting with partial attendance recording used to vanish from Work Queue, and a blank/unrecognized status code used to vanish a row from every screen at once. Its Decisions filter tab still shows 0 because Decisions (below) only just went live. |
-| **Decisions register** | 🟡 **partially live** (this session) — `wlog_decisions` read + minimal create wired as its own list on the Decisions tab, alongside (not replacing) the existing seeded Decision workflow. Not yet linked to the Meeting Agenda Item or Report that raised it — deferred by explicit instruction, see §5/§6/§7. |
+| **Decisions register** | 🟡 **partially live** — `wlog_decisions` read + minimal create wired as its own list on the Decisions tab, alongside (not replacing) the existing seeded Decision workflow. **Cannot yet be linked to the Report Section that raised it** — checked live 27 Sep: `wlog_decision` has zero report-side columns in IT, where Report Sections live, and DT New's copy has the lookup (`lm_citedreportsection`) but no Sections to point it at. Blocked on a Dataverse schema change (§6/§7), not on app code. |
 | **Committee Scores (nav screen)** | ✅ **live** (01 Sep) — `ScreenGrid` now reads `fetchAuditGridInstances()` joined against `dvMeetingOccs`, instead of seeded `db.grids`. See §5 for the join details and the Approved-only Coverage/Score rule. |
 | **Setup Activity trail** — the Activity tab on a Report/Meeting Setup | ✅ **live** (10 Sep) — `lm_setupactivity` is written on create, edit, publish, approve and expire, and the tab reads the real rows back for any Setup that has a `_dataverseId`. A Setup that has never been saved still shows the seeded sample trail. |
 | **Artifact group** — Business intelligence, Reporting hierarchy | ✅ **live** (superseding the 11 Sep "mixed" note) — Business intelligence reads `lm_bireportdashboards`, and the Reporting hierarchy reads real Report Templates, occurrences, checklists and citations. (Reports / Plans and Build a report/plan, in the same group, are live since 17 Sep — rows above.) The Power BI report itself **cannot be embedded** — see §8. |
@@ -4843,7 +4844,8 @@ Report Occurrence / citation screens already IT-hosted — no Meeting-side
 code touches this table. `stf_kpiachievmentbreakdowns` (the richer
 breakdown table §6 documents) has no service or fetch function implemented
 in this codebase yet, so nothing else needed the same pin. Both apps built
-clean. Not yet pushed.
+clean. Pushed — see the 27 Sep entries below for the corrected push target
+and the actual push.
 
 ### 26 Sep: the Meeting family moved to IT — asked for as "Workspace", delivered as a data-layer move
 
@@ -6687,7 +6689,8 @@ its own filename before deciding it was dead weight, not a second copy in
 active use. It still has all the same table-name leaks; irrelevant unless
 someone starts building from it.
 
-Both apps build clean. Not yet pushed.
+Both apps build clean, pushed alongside everything else this date — see
+the final push note below.
 
 ### 27 Sep: a full design-system doc (`leadership-ui-style-guide.md`) audited against `theme.css` — mostly already matched
 
@@ -6766,7 +6769,110 @@ different reference.
   as practical."
 
 Both apps build clean; the font link survives the Vite build (checked in
-the built `dist/index.html`). Not yet pushed.
+the built `dist/index.html`).
+
+### 27 Sep — committed, then pushed
+
+All of this date's uncommitted work — the two screenshot-driven restyles,
+the table-name cleanup, and the design-system pass above — went into one
+commit (`7929765`, "Restyle Reports/Plans and Build a report/plan, strip
+schema names from the UI, apply the design system") at the user's request,
+then built and pushed to the canonical pair (`4912152c…`/`83db0ef8…`).
+`App pushed successfully` read from the output for both; `pac code list`
+showed the same 6 apps before and after, no duplicates. `dataverse.js` and
+`xenv.js` were not part of the commit — `git status` showed them unmodified
+against `HEAD`, meaning the edits made to them earlier this session already
+matched content other, already-committed work had landed independently.
+
+### 27 Sep: New Meeting's Department field now follows the Setup too — the open question from 26 Sep, answered
+
+§5's 26 Sep "New Report's Department list comes from the Setup, not from
+Positions" entry left one thing explicitly unresolved: *"Not changed: the
+second `departmentsForScope()` caller (the Meeting-side modal, same file)
+still infers. Whether a Meeting Setup's own Departments should govern there
+too is the same question and has not been asked."* Asked, via a screenshot
+of `NewMeetingModal`'s Department field — answer: yes, same rule.
+
+Ported the Report-side pattern into `NewMeetingModal` line for line, since
+the data was already there to support it: `fetchMeetingTemplateDetail()`
+already returns `.lines` from `lm_meetingtemplatedepartmentfunctions` (it
+feeds nothing else yet) with the same `_lm_department_value` shape the
+Report side reads. `deptOpts` now prefers the Setup's own named Departments
+(`tplDepts`) over `departmentsForScope()`'s Position-inference whenever the
+Setup names any (`fromSetup`), falling back to the inference for a Custom
+Ad Hoc Meeting, while the Setup is still loading, or when it names none.
+Added the matching consistency effect the Report side already had and this
+modal never did: a Department picked before the Setup's detail arrives is
+cleared if the real list doesn't include it, and a Setup naming exactly one
+Department selects it automatically — restricted to `fromSetup` so an
+inferred (not Setup-governed) Department is never auto-picked. The field's
+hint and empty-state text now say "The N Department(s) this Setup is for"
+/ "This Setup names no Department" when `fromSetup`, matching the Report
+side's wording exactly.
+
+⚠️ **Deliberately unlike the Report side in one way, checked before
+copying**: the Report modal's Department select is `disabled={!scopeChosen}`
+unconditionally, even when `fromSetup` — Business Unit/Region there is a
+requirement independent of the Setup, not something the Setup satisfies by
+existing. The same is true here (Chair/Facilitator/Attendees all still gate
+on `scopeChosen` regardless of Setup), so the Meeting-side field keeps the
+same scope-gated `disabled`, not a `fromSetup`-bypassed one — an earlier
+draft of this fix loosened it and was reverted before building.
+
+**Not changed:** this modal has no Function field at all (confirmed by
+grep — Function only exists in `NewReportModal`), so there was no
+equivalent Function-follows-Department pairing to port. Both apps build
+clean. Not yet pushed.
+
+### 27 Sep: attaching a Decision to a report section — still blocked, re-verified live, plus a local `pac` fix
+
+Asked directly to wire up "attach a Decision to a report section, or raise
+a new one" — the same request the 26 Sep "'+Task' on a section" entry
+already flagged as blocked on IT schema. Did not trust that note at face
+value; pulled both environments' live `wlog_decision` schema fresh via
+`pac modelbuilder build -enf wlog_decision` before answering.
+
+**Still blocked, identical finding to 26 Sep:**
+
+| | IT | DT New |
+|---|---|---|
+| `wlog_decision` columns | 17, **zero** `lm_`-prefixed | 18, including `lm_citedreportsection` (`EntityReference` → `lm_reportoccurrencesectionses`) |
+| Report Sections live in | **IT** | — |
+
+Report Occurrences and their Sections have lived in IT since 22 Sep;
+`wlog_decisions` is still one of the few services reading DT New. Neither
+side can bind: IT's copy of the table has nothing to point the lookup at,
+and DT New's copy has the lookup but not the Sections it would need to
+target — a Dataverse lookup cannot cross environments. IT's full column
+list (`wlog_decisionstatus`, `wlog_decisiontaken`, the `wlog_escalated*`
+family, `wlog_evidenceurl`, `wlog_expectedoutput`, `wlog_managernote`,
+`wlog_name`, the `wlog_review*` family, `wlog_worklog`) was read in full,
+not just checked for the one expected name — no free-text field was
+repurposed as an informal substitute, since overloading e.g.
+`wlog_managernote` to secretly also mean "which section this came from"
+would be a worse trap than no feature at all: a report reopened later would
+show nothing linking the Decision back to it, unlike the real citation a
+Task gets.
+
+**To unblock**: a Dataverse admin adds a lookup column to `wlog_decision`
+in **IT** — matching DT New's own `lm_citedreportsection`, targeting
+`lm_reportoccurrencesectionses` — then `wlog_decisions` gets pinned to
+`IT_ORG` in `dataverse.js`, same move already made for `pm_kpiachievments`
+and the citation-source tables. At that point this is straightforward:
+same shape as the existing `citeTaskOnSection()`/`+ Raise a task` /
+`Attach a task` pattern in `OrgReports.jsx` and `BuildReport.jsx`, reusing
+`hx_tasks`'s door-not-new-capability precedent.
+
+**Also fixed, unrelated to the schema question but blocking the check
+itself**: `pac org select` crashed every time
+(`System.InvalidOperationException: Sequence contains more than one
+matching element`, inside `AuthProfiles.Update`) — `pac auth list` showed
+**two** active profiles (`andalusiaEnv` and `codeAppDev`) both pointing at
+the identical user+org, and the CLI's own profile-update code assumes
+exactly one match. `pac auth select --index 1` alone did not clear it;
+`pac auth delete --index 2` (removing the redundant duplicate outright) did.
+`pac org select`/`modelbuilder` both work normally now. Worth knowing if
+`pac auth list` ever again shows more than one `*` for the same org.
 
 ## 6. Schema facts that are expensive to rediscover
 
