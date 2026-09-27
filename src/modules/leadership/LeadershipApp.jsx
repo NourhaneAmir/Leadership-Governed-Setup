@@ -993,6 +993,26 @@ function attendance(occ, setup, mode){
 
 /* ---------- Audit Grid --------------------------------------------------- */
 /* Returns one row per question. state: auto | manual | blank | na | retired  */
+/* ⚠️ A saved manual answer outranks "could not compute".
+   Every rule above decides its own state, and the ones that cannot reach a
+   value push 'na' (not applicable / no data) or 'blank' (a Manual question
+   nobody has answered). Those score nothing AND count nothing toward
+   coverage, which is why a Business Meeting, or any meeting whose Decisions
+   are not yet linked, sat at a low coverage with no way for a person to say
+   what they knew.
+
+   Applied here, once, rather than inside sixteen separate rules -- so a rule
+   stays a statement about the DATA and this stays a statement about who may
+   override it. A question the system DID compute ('auto') is never touched:
+   an auto-scored value still cannot be overridden by anyone. */
+const applyManualOverrides = (rows, manual, evid) => rows.map(r =>
+  (r.state === 'na' || r.state === 'blank') && manual[r.id] != null
+    ? { ...r, state: 'manual', score: manual[r.id], ev: evid[r.id] || null,
+        /* the original reason is kept, so the grid can still say what the
+           system thought before a person overrode it */
+        na: r.na, overrode: r.state }
+    : r);
+
 function scoreGrid(grid, db, S){
   const occ   = db.occs.find(o=>o.id===grid.occ);
   const setup = occ.setup ? MS(occ.setup) : null;
@@ -1149,7 +1169,7 @@ function scoreGrid(grid, db, S){
       `Meeting ended ${fmtD(occ.date)} ${occ.end}; MOM submitted ${fmtDT(mom.submittedAt)} → ${h} hours against a ${S.momWriteupHours}-hour write-up period → ${s===5?'on time':s===2?'late':'missed'}.`);
   }
 
-  return R.sort((x,y)=>x.id.localeCompare(y.id));
+  return applyManualOverrides(R, manual, evid).sort((x,y)=>x.id.localeCompare(y.id));
 }
 
 function gridTotals(rows){
@@ -1276,7 +1296,7 @@ function liveScoreGrid(occ, minutes, quorumPct, torLink, accred, S, grid, allOcc
       `Submitted ${h} hour${h===1?'':'s'} after the Meeting ended (limit ${S.momWriteupHours}h).`);
   }
 
-  return R.sort((a,b)=>a.id.localeCompare(b.id));
+  return applyManualOverrides(R, manual, evid).sort((a,b)=>a.id.localeCompare(b.id));
 }
 
 /* Outputs of one MOM, resolved to their target records */
@@ -6063,11 +6083,15 @@ function DvGridQuestion({r,editable,savingId,onScore,onEvidence,onClear}){
     </div>
     {open && <div style={{padding:'0 0 14px 58px'}}>
       {r.state==='retired' && <Note k="lock" ic="—">{r.q.rule}</Note>}
-      {r.state==='na' && <Note k="info" ic="i">{r.na} System-set — no user can change this.</Note>}
-      {r.state!=='retired' && r.state!=='na' && <>
+      {/* The reason is still shown once a person has overridden it, so the
+          grid says what the system thought as well as what they decided. */}
+      {(r.state==='na' || r.overrode==='na') && r.na
+        && <Note k="info" ic="i">{r.na}{r.state==='na'
+          ? ' You can record a score below if you know the answer.' : ''}</Note>}
+      {r.state!=='retired' && <>
         <div style={{fontSize:12,color:'var(--muted)',marginBottom:6}}>{r.q.rule}</div>
         {r.ev && <div style={{fontSize:12,marginBottom:8}}><b>Computed from:</b> {r.ev}</div>}
-        {r.q.src==='Auto' && <>
+        {r.state==='auto' && <>
           <Note k="lock" ic="🔒">An auto-scored value cannot be changed by any user. An evidence note may
             still be attached.</Note>
           {editable
@@ -6077,7 +6101,9 @@ function DvGridQuestion({r,editable,savingId,onScore,onEvidence,onClear}){
                   onBlur={()=>{ if(draft!==evVal && !evTooLong) onEvidence(r.id,draft); }}/></Field>
             : evVal ? <div style={{fontSize:12,marginTop:6}}><b>Facilitator note:</b> {evVal}</div> : null}
         </>}
-        {r.q.src==='Manual' && <>
+        {/* ⚠️ Keyed on the STATE, not on q.src: an Auto question the system
+            could not compute is answerable too, which is the whole point. */}
+        {r.state!=='auto' && <>
           <Field label="Score">
             {editable
               ? <div className="btn-row">{[0,1,2,3,4,5].map(n=>
@@ -6127,9 +6153,11 @@ function DvGridBody({rec,grid,olderVersions,minutes,quorumPct,torLink,accred,S,p
 
   const editable = grid.state==='Pending Facilitator Review' || grid.state==='Returned for Revision';
   const blanks = rows.filter(r=>r.state==='blank');
-  const ag2 = rows.find(r=>r.id==='AG-02');
-  const missingEv = !!ag2 && ag2.state==='manual' && !(ag2.ev||'').trim();
-  const canSubmit = blanks.length===0 && !missingEv;
+  /* ⚠️ Was hard-coded to AG-02, the only Manual question at the time. Any
+     question can now carry a manual score, so every one of them needs its
+     evidence note -- otherwise a score a person typed has nothing behind it. */
+  const needEvidence = rows.filter(r=>r.state==='manual' && !(r.ev||'').trim());
+  const canSubmit = blanks.length===0 && needEvidence.length===0;
 
   const answerIdFor = qid => grid.answers.find(a=>a.questionId===qid)?.id;
 
@@ -6275,7 +6303,10 @@ function DvGridBody({rec,grid,olderVersions,minutes,quorumPct,torLink,accred,S,p
       {editable && <>
         {!canSubmit && <Note k="warn">
           {blanks.length>0 && `${blanks.length} question${blanks.length===1?'':'s'} still blank. `}
-          {missingEv && 'AG-02 needs an evidence note.'}</Note>}
+          {needEvidence.length>0 && `${needEvidence.length} manual score${
+            needEvidence.length===1?'':'s'} still need${
+            needEvidence.length===1?'s':''} an evidence note: ${
+            needEvidence.map(r=>r.id).join(', ')}.`}</Note>}
         <Btn k="pri" disabled={!canSubmit||submitting} onClick={submit}>
           {submitting?'Submitting…':'Submit for Chair approval'}</Btn>
       </>}
@@ -9289,9 +9320,12 @@ function GridBody({rec,occ}){
   const [ver,setVer]=useState(false);
   const isFac = acting(rec.facilitator), isChair = acting(rec.chair);
   const editable = isFac && (rec.state==='Pending Facilitator Review'||rec.state==='Returned for Revision');
-  const manualRows = rows.filter(r=>r.q.src==='Manual' && r.state!=='na');
+  /* Keyed on the STATE, matching the live grid: any question a person scored
+     by hand needs its evidence note, not only the ones declared Manual in the
+     template. The two paths disagreeing about the rules is what §7's open
+     decision 1 was about. */
   const blanks = rows.filter(r=>r.state==='blank');
-  const missingEv = manualRows.filter(r=>r.state==='manual' && !(rec.evidence||{})[r.id]);
+  const missingEv = rows.filter(r=>r.state==='manual' && !(rec.evidence||{})[r.id]);
   const canSubmit = blanks.length===0 && missingEv.length===0;
 
   const display = rec.frozen

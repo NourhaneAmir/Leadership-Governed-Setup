@@ -104,7 +104,7 @@ The BRD **contradicts itself** in three places, and the code picked a side:
 | **Reports / Plans tab** (Artifact group, `ScreenOrgReports`) | ✅ **live** (17 Sep) — reads `lm_reportoccurrences`, `lm_reportoccurrencesections` and `lm_reportsectioncitations`. See §5. |
 | **Reports & Plans composer** (hidden `rpt` screen, not the visible tab above) | 🔴 **reverted from live to seeded, on purpose, 02 Sep** — was reading `lm_reportoccurrences` directly as of 01 Sep; rebuilt this session as the citation-based composer from `prototype.html` (sections that cite live KPIs/tactics/PM entries/issues/tasks/other reports), which has no Dataverse equivalent yet, so it now runs on seeded `db.reports`/`db.paragraphs`/`db.templates` instead. This was an explicit product-owner instruction, not a regression found by accident — see §5. |
 | Authority Matrix + Approval Cycles | ✅ live, read-only by design (`AuthorityMatrixPanel`, embedded in Governance Settings) |
-| **Audit Grid scoring** — Meeting Occurrence's own Grid tab | ✅ **live** — `liveScoreGrid()` computes all 16 questions from the live occurrence/Minutes/Template; full Facilitator→Chair lifecycle (score, evidence, submit, approve+publish, return, open a correction version) writes through the backend functions that were already built. **28 Sep:** the tab is no longer gated on Setup Type — **every** meeting is scored, Committee or Business Meeting (§7 decision 1). ⚠️ A Grid is created **on Minutes closure**, so meetings already closed do not backfill. |
+| **Audit Grid scoring** — Meeting Occurrence's own Grid tab | ✅ **live** — `liveScoreGrid()` computes all 16 questions from the live occurrence/Minutes/Template; full Facilitator→Chair lifecycle (score, evidence, submit, approve+publish, return, open a correction version) writes through the backend functions that were already built. **28 Sep:** the tab is no longer gated on Setup Type — **every** meeting is scored, Committee or Business Meeting (§7 decision 1) — and a person can now **answer any question the system could not compute** (`applyManualOverrides`), so the six that sit at Not Applicable on a live meeting (AG-10–AG-14, and AG-01 off an accreditation Committee) are answerable with an evidence note. ⚠️ A question the system **did** compute stays locked to every user. ⚠️ A Grid is created **on Minutes closure**, so meetings already closed do not backfill. |
 | **My Workspace (nav screen)** | ✅ **live** — reads its Work Queue, Upcoming panel and This Month stats directly off the full `dvMeetingOccs`/`dvReportOccs` arrays via `dvWorkItems()`. Two silent-data-loss bugs fixed here 01 Sep — see §5: an overdue Meeting with partial attendance recording used to vanish from Work Queue, and a blank/unrecognized status code used to vanish a row from every screen at once. Its Decisions filter tab still shows 0 because Decisions (below) only just went live. |
 | **Decisions register** | 🟡 **partially live, and richer since 27 Sep** — reads IT's `wlog_decisions` (**39 rows**: 21 Completed, 15 Pending, 3 Escalated) with search, a status filter, a review filter and expandable rows showing decision taken, expected output, manager note, reviewer, evidence link and the escalation block. Every decision names its parent **Work Log** (39/39). Minimal create still wired alongside the seeded Decision workflow. ⚠️ **Still cannot be linked to the Report Section that raised it**: IT's `wlog_decision` has **36 columns to DT New's 59**, and the 23 it lacks include `lm_citedreportsection`, `wlog_wlogworklogid` and the whole `pms_` corrective-action family. Blocked on schema + a product decision (§7/§9), not on app code. |
 | **Committee Scores (nav screen)** | ✅ **live** (01 Sep) — `ScreenGrid` now reads `fetchAuditGridInstances()` joined against `dvMeetingOccs`, instead of seeded `db.grids`. See §5 for the join details and the Approved-only Coverage/Score rule. |
@@ -5718,6 +5718,75 @@ Composition, execution side — nothing reads or writes them" is now false; the
 composer, the citations and the migration are all live. §9 should be re-read against
 the page rather than trusted on its own.
 
+### 28 Sep — A person can now answer any question the system could not compute
+
+**The request:** "Make the user able to add the answer for the questions that
+are not automatically computed."
+
+Manual answering already existed — but only for questions the *template* had
+declared `src: 'Manual'`, which is AG-02 alone. The real gap was the other
+direction: questions declared **Auto** that cannot reach a value. In the live
+scorer, `AG-10`–`AG-14` are pushed `'na'` **unconditionally** (Decisions and TMS
+Tasks are not live), and `AG-01` is `'na'` on any meeting that is not an
+accreditation Committee. Six of sixteen questions were therefore unanswerable by
+anyone — scoring nothing *and* counting nothing toward coverage, which is why a
+Business Meeting sat at a coverage figure no user could improve.
+
+**One helper rather than sixteen edited rules.** Each rule stays a statement
+about the data; who may override it is stated once, above both scorers:
+
+```js
+const applyManualOverrides = (rows, manual, evid) => rows.map(r =>
+  (r.state === 'na' || r.state === 'blank') && manual[r.id] != null
+    ? { ...r, state: 'manual', score: manual[r.id], ev: evid[r.id] || null,
+        na: r.na, overrode: r.state }
+    : r);
+```
+
+Applied at the return of **both** `scoreGrid` (seeded) and `liveScoreGrid`.
+
+⚠️ **`state === 'auto'` is never touched.** A value the system *did* compute
+stays locked to every user, which is the whole point of an auto-scored grid.
+The override is only ever a way to answer what the system could not.
+
+`overrode` and `na` are kept on the row, so the grid still shows what the system
+thought *before* a person answered it — the reason appears as a note above the
+score they recorded, rather than being replaced by it.
+
+**The renderer now keys on `r.state`, not `r.q.src`** — the old test asked what
+*kind* of question it was, when the thing that matters is whether a value
+exists. Three places changed:
+
+| Branch | Was | Now |
+|---|---|---|
+| "locked, auto-scored" note | `r.q.src==='Auto'` | `r.state==='auto'` |
+| Score buttons + evidence | `r.q.src==='Manual'` | `r.state!=='auto'` |
+| Wrapper visibility | `state!=='retired' && state!=='na'` | `state!=='retired'` |
+
+**The submit gate was hard-coded to AG-02:**
+
+```js
+const ag2 = rows.find(r=>r.id==='AG-02');
+const missingEv = !!ag2 && ag2.state==='manual' && !(ag2.ev||'').trim();
+```
+
+Now every hand-entered score needs its evidence note, because any question can
+carry one: `rows.filter(r=>r.state==='manual' && !(r.ev||'').trim())`.
+
+⚠️ **Both gates were changed, not just the live one.** The seeded body still
+read `rows.filter(r=>r.q.src==='Manual' && ...)`, which would have let an
+overridden Auto question through with no evidence — the two paths disagreeing
+about the rules is exactly what §7's open decision 1 turned out to be. Both now
+filter on `state==='manual'`.
+
+**What this fixes downstream, for free:** `gridTotals`' `na` count and the
+per-category `applicable = catRows.filter(r=>r.state!=='na')` both read the
+state, so an answered question starts counting toward coverage and the category
+score with no further change.
+
+`LeadershipApp.jsx` 577,429 → 579,604. Both apps build; oxlint clean apart from
+the two pre-existing unused-catch warnings. Not yet pushed.
+
 ### 28 Sep — Pushed both apps (every meeting is scored)
 
 Both live on the first attempt. Carries the four removed Audit Grid gates and
@@ -9006,8 +9075,9 @@ Organized by what actually unblocks each item — not by how big it feels.
       questions from live data, and the full Facilitator→Chair lifecycle writes
       through the backend functions. **§7.1 answered 28 Sep**: the tab is no
       longer gated on `accred`, so it appears for **every** meeting occurrence.
-      AG-10…AG-14 stay Not Applicable until Tasks/Decisions exist.
-      ⚠️ Remaining gap: a meeting whose
+      AG-10…AG-14 still cannot be *computed* until Tasks/Decisions exist, but
+      they are **no longer dead ends** — a person can answer them by hand with
+      an evidence note (§5, 28 Sep). ⚠️ Remaining gap: a meeting whose
       Minutes closed **before** 28 Sep has no Grid and will not backfill, since
       creation happens on closure. A "create the Grid now" action was offered
       and not built.
