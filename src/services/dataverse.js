@@ -5559,13 +5559,19 @@ export async function fetchWorkLogDecisions(){
     filter: 'statecode eq 0',
     /* The three choice columns are selected by their own names only; their
        display text rides along as a formatted-value annotation. */
-    /* The three choice columns are selected by their own names only; their
-       display text rides along as a formatted-value annotation. */
+    /* ⚠️ The lookups were added 27 Sep after counting what IT actually holds
+       on its 39 rows: wlog_worklog 39/39, wlog_reviewstatus 39/39,
+       wlog_reviewer 24, wlog_evidenceurl 24, wlog_expectedoutput 24,
+       wlog_managernote 13, wlog_revieweruser 3, wlog_escalatedtouser 2,
+       wlog_escalatedto 0. Every decision belongs to a Work Log, so that is the
+       one piece of context the register cannot sensibly omit. */
     select: ['wlog_decisionid','wlog_name','wlog_decisiontaken','wlog_expectedoutput',
              'wlog_managernote','wlog_evidenceurl','wlog_decisionstatus',
              'wlog_reviewstatus','wlog_reviewedon',
              'wlog_escalatedon','wlog_escalationreason','wlog_escalationreply',
              'wlog_escalationresolvedon','wlog_escalationresult',
+             '_wlog_worklog_value','_wlog_reviewer_value','_wlog_revieweruser_value',
+             '_wlog_escalatedto_value','_wlog_escalatedtouser_value',
              'createdon','modifiedon'],
   });
   return (res?.data ?? []).map(d => ({
@@ -5583,6 +5589,15 @@ export async function fetchWorkLogDecisions(){
     escalationReply: d.wlog_escalationreply || null,
     escalationResolvedOn: isoDay(d.wlog_escalationresolvedon),
     escalationResult: d['wlog_escalationresult' + FV] || null,
+    /* Names ride along as formatted values, so naming the reviewer or the
+       parent Work Log costs no second read. */
+    workLogId: d._wlog_worklog_value || null,
+    workLog: d['_wlog_worklog_value' + FV] || null,
+    reviewerId: d._wlog_reviewer_value || null,
+    reviewer: d['_wlog_reviewer_value' + FV] || null,
+    reviewerUser: d['_wlog_revieweruser_value' + FV] || null,
+    escalatedTo: d['_wlog_escalatedto_value' + FV] || null,
+    escalatedToUser: d['_wlog_escalatedtouser_value' + FV] || null,
     created: d.createdon || null,
     updated: d.modifiedon || d.createdon || null,
   })).sort((a,b)=> (b.created||'').localeCompare(a.created||''));

@@ -9498,6 +9498,25 @@ function ScreenDecisions(){
   const [liveNew,setLiveNew]=useState(false);
   const [fSt,setFSt]=useState('All'), [fPa,setFPa]=useState('All');
   const [fSr,setFSr]=useState('All'), [fNa,setFNa]=useState('All'), [q,setQ]=useState('');
+  /* The live Work Log Decisions card below keeps its own search/filter state --
+     the register above it is a different list with different columns. */
+  const [dq,setDq]=useState(''), [dSt,setDSt]=useState('All'), [dRv,setDRv]=useState('All');
+  const [dOpen,setDOpen]=useState(null);
+  /* Status options come from the DATA, not a hard-coded list: wlog_decisionstatus
+     is a choice someone else owns, and a fixed list would quietly drop a value
+     the moment they add one. */
+  const dStatuses=[...new Set(dvDecisions.map(d=>d.status).filter(Boolean))].sort();
+  const dReviews=[...new Set(dvDecisions.map(d=>d.reviewStatus).filter(Boolean))].sort();
+  const dvRows=dvDecisions.filter(d=>{
+    if(dSt!=='All' && d.status!==dSt) return false;
+    if(dRv!=='All' && d.reviewStatus!==dRv) return false;
+    const n=dq.trim().toLowerCase();
+    if(!n) return true;
+    return [d.name,d.decisionTaken,d.expectedOutput,d.managerNote,d.workLog,
+            d.reviewer,d.reviewerUser,d.escalatedToUser,d.escalationReason]
+      .some(v=>v && String(v).toLowerCase().includes(n));
+  });
+
   const id=sel.dec;
   const list=db.decisions.filter(d=>canSeeDec(d,me));
   const rec=list.find(d=>d.id===id);
@@ -9607,25 +9626,96 @@ function ScreenDecisions(){
       <div className="card-hd" style={{display:'flex',alignItems:'flex-start',gap:12}}>
         <div style={{flex:1}}><h2>Live Decisions</h2>
           <div className="csub">Read from the Work Log Decisions table — a pre-existing table, separate
-            from the Decision register above. Not yet linked to a specific Meeting Agenda Item or Report;
-            that comes once the table carries a lookup for it.</div></div>
+            from the Decision register above. Every one belongs to a Work Log, shown below.
+            ⚠️ Not yet linked to the Meeting Agenda Item or Report Section that raised it: that needs
+            a lookup column on <span className="mono">wlog_decision</span> in IT, which does not exist
+            (see §9).</div></div>
         <Btn k="sm" onClick={()=>setLiveNew(true)}>+ Log a Decision</Btn>
       </div>
+
       {dvDecisions.length===0 ? <div style={{padding:'8px 17px 17px'}}>
           <Empty>No live Decisions logged yet.</Empty></div>
-      : <div className="t-wrap"><table className="data">
-          <thead><tr><th>Decision</th><th>Decision Taken</th><th>Expected Output</th>
-            <th>Status</th><th>Logged</th></tr></thead>
-          <tbody>{dvDecisions.map(d=>
-            <tr key={d.id}>
-              <td><div className="t-main">{d.name}</div>
-                {d.evidenceUrl && <div className="t-sub">{d.evidenceUrl}</div>}</td>
-              <td className="dim">{d.decisionTaken||'—'}</td>
-              <td className="dim">{d.expectedOutput||'—'}</td>
-              <td>{d.status ? <Tag c="grey">{d.status}</Tag> : '—'}</td>
-              <td className="dim">{fmtISODT(d.created)}</td>
-            </tr>)}
-          </tbody></table></div>}
+      : <>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',
+                     padding:'0 17px 11px'}}>
+          <input type="search" value={dq} onChange={e=>setDq(e.target.value)}
+            placeholder="Search decisions, work logs, reviewers…"
+            aria-label="Search live decisions" style={{flex:'1 1 240px',minWidth:0}}/>
+          <select value={dSt} onChange={e=>setDSt(e.target.value)} aria-label="Filter by status">
+            {['All',...dStatuses].map(x=><option key={x} value={x}>{x==='All'?'Any status':x}</option>)}
+          </select>
+          <select value={dRv} onChange={e=>setDRv(e.target.value)} aria-label="Filter by review status">
+            {['All',...dReviews].map(x=><option key={x} value={x}>{x==='All'?'Any review':x}</option>)}
+          </select>
+          <span className="holder" style={{fontSize:11.5}}>
+            {dvRows.length} of {dvDecisions.length}</span>
+        </div>
+
+        {dvRows.length===0
+          ? <div style={{padding:'0 17px 17px'}}><Empty>No decision matches.</Empty></div>
+          : <div className="t-wrap"><table className="data">
+              <thead><tr><th>Decision</th><th>Work Log</th><th>Status</th>
+                <th>Review</th><th>Logged</th></tr></thead>
+              <tbody>{dvRows.map(d=>{
+                const open = dOpen===d.id;
+                return <React.Fragment key={d.id}>
+                  <tr onClick={()=>setDOpen(open?null:d.id)} style={{cursor:'pointer'}}>
+                    <td><div className="t-main">{d.name}</div>
+                      {/* The full text is in the expanded row; this keeps the
+                          table scannable rather than three columns of prose. */}
+                      {d.decisionTaken
+                        ? <div className="t-sub">{d.decisionTaken.slice(0,90)}
+                            {d.decisionTaken.length>90?'…':''}</div>
+                        : null}</td>
+                    <td className="dim">{d.workLog||'—'}</td>
+                    <td>{d.status ? <Tag c={d.status==='Completed'?'green'
+                                          :d.status==='Escalated'?'amber':'grey'}>{d.status}</Tag> : '—'}</td>
+                    <td className="dim">{d.reviewStatus||'—'}
+                      {d.reviewer ? <div className="t-sub">{d.reviewer}</div> : null}</td>
+                    <td className="dim">{fmtISODT(d.created)}</td>
+                  </tr>
+                  {open ? <tr><td colSpan={5} style={{background:'var(--teal-ll)'}}>
+                    <div style={{display:'grid',gap:7,padding:'4px 2px'}}>
+                      {[['Decision taken',d.decisionTaken],
+                        ['Expected output',d.expectedOutput],
+                        ['Manager note',d.managerNote],
+                        ['Reviewer',[d.reviewer,d.reviewerUser].filter(Boolean).join(' · ')],
+                        ['Reviewed on',fmtISODT(d.reviewedOn)],
+                       ].filter(([,v])=>v).map(([k,v])=>
+                        <div key={k}><span className="tset-lbl">{k}</span>
+                          <div style={{fontSize:12.5}}>{v}</div></div>)}
+
+                      {d.evidenceUrl
+                        ? <div><span className="tset-lbl">Evidence</span>
+                            <div><a href={d.evidenceUrl} target="_blank" rel="noopener noreferrer"
+                              style={{fontSize:12.5,color:'var(--teal-d)'}}>{d.evidenceUrl}</a></div></div>
+                        : null}
+
+                      {/* Only drawn when this decision was actually escalated --
+                          an empty escalation block reads as missing data. */}
+                      {(d.escalatedOn||d.escalationReason||d.escalationResult||d.escalatedToUser)
+                        ? <div style={{borderTop:'1px solid var(--border)',paddingTop:7}}>
+                            <span className="tset-lbl">Escalation</span>
+                            <div style={{fontSize:12.5}}>
+                              {[d.escalatedToUser&&('to '+d.escalatedToUser),
+                                d.escalatedOn&&('on '+fmtISODT(d.escalatedOn)),
+                                d.escalationResult].filter(Boolean).join(' · ')||'—'}</div>
+                            {d.escalationReason
+                              ? <div className="holder" style={{fontSize:12}}>{d.escalationReason}</div>
+                              : null}
+                            {d.escalationReply
+                              ? <div style={{fontSize:12.5,marginTop:3}}>↳ {d.escalationReply}</div>
+                              : null}
+                            {d.escalationResolvedOn
+                              ? <div className="holder" style={{fontSize:12}}>
+                                  Resolved {fmtISODT(d.escalationResolvedOn)}</div>
+                              : null}
+                          </div>
+                        : null}
+                    </div></td></tr> : null}
+                </React.Fragment>;})}
+              </tbody></table></div>}
+      </>}
     </div>
 
     {intake && <DecisionIntakeModal onClose={()=>setIntake(false)}/>}

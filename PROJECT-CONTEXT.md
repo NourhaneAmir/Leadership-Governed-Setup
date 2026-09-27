@@ -5782,6 +5782,60 @@ single-argument `dvTable('x')` shape — the latter misses `dvTable('x','xid')`
 and undercounted this exact list by two on 27 Sep.
 
 
+### 27 Sep — The Decisions tab now shows what IT actually holds
+
+Asked whether Decisions could be worked on without the missing lookup. Yes —
+the tab was discarding data it already had, and ignoring more.
+
+**Counted first, on IT's 39 rows, so the UI reflects the data rather than a
+guess about it:**
+
+| Column | Populated |
+|---|---|
+| `wlog_worklog` | **39/39** — every decision belongs to a Work Log |
+| `wlog_reviewstatus` | **39/39** — and it was already fetched and **thrown away** |
+| `wlog_reviewer` | 24 |
+| `wlog_evidenceurl` | 24 |
+| `wlog_expectedoutput` | 24 |
+| `wlog_managernote` | 13 |
+| `wlog_revieweruser` | 3 |
+| `wlog_escalatedtouser` | 2 |
+| `wlog_escalatedto` | **0** — exists, never used |
+
+The read now also takes the five lookups (`wlog_worklog`, `wlog_reviewer`,
+`wlog_revieweruser`, `wlog_escalatedto`, `wlog_escalatedtouser`). Their names
+arrive as formatted values, so naming a reviewer or a parent Work Log costs no
+second query.
+
+**The card was rebuilt**: search across nine fields, a status filter and a
+review filter, and an expandable row. Five columns of prose became
+Decision / Work Log / Status / Review / Logged, with decision taken, expected
+output, manager note, reviewer, evidence link and the escalation block in the
+expansion.
+
+⚠️ **The filter options are derived from the DATA**, not hard-coded:
+`wlog_decisionstatus` is a choice someone else owns, and a fixed list would
+silently drop a value the day they add one.
+
+⚠️ **The escalation block is only drawn when the decision was escalated.** An
+always-present empty block reads as missing data rather than as "not escalated"
+— and only 2 of 39 rows have an escalation target at all.
+
+#### Still blocked, and unchanged by this
+
+A Decision cannot reference the Report Section or Meeting Agenda Item that
+raised it. IT's `wlog_decision` has **36 columns; DT New's has 59**, and the 23
+it lacks include `lm_citedreportsection`, `wlog_wlogworklogid` and the whole
+`pms_` corrective-action family (root cause, KPI current/expected actual and
+target, outcome KPI, raised by, task owner, relevancy, validity, feedback).
+
+So IT models a decision as free text with a status; DT New models it as
+root cause → KPI before/after → owner → outcome. Which of those the process
+actually wants is a **product decision**, not a code task, and it should be
+settled before the column is designed — otherwise the wrong lookup gets added.
+The card now says so on its face rather than only in this file.
+
+
 ### 27 Sep — `systemusers` pinned to IT; the DT New / IT fork collapsed
 
 Live failure raising a Task:
