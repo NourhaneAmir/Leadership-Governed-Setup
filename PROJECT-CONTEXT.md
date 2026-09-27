@@ -6983,6 +6983,62 @@ new number isn't known here to write in its place.
 
 Both apps build clean. Not yet pushed.
 
+### 27 Sep: Process/Project citations now show — and export — their real metadata
+
+Asked for a cited Process/Project's full metadata to show in the view and
+in both exports, in Leadership Execution. Checked the live schema before
+adding anything (`pac modelbuilder build` against IT) rather than guess
+which columns exist:
+
+- **`strategy_process`** carries a whole `btm_`-prefixed column family
+  belonging to a different, unrelated app sharing the same table (same
+  "pre-existing, shared, multi-prefix table" situation §6 already
+  documents for `pm_kpiachievments`) — left alone. This app's own columns:
+  Department (already read), **Function, Process Type, Scope, Section,
+  Main Process** (a self-referencing parent lookup) — all now read in
+  `fetchProcesses()`.
+- **`cr603_projects`** already read Status/Category/Region/BU/Department;
+  added **Sub-category, Strategic Type, Priority, Approval Status, Period**
+  (a choice despite the name — not a date), **Progress** (a plain decimal,
+  shown as `N%`) **and Sponsor**. Deliberately NOT read:
+  `cr603_assigned`/`projectcreator`/`oldcreator` (unclear, overlapping
+  ownership fields), `cr603_company`/`entity`/`id` (not this app's
+  concept), `cr603_mainproject`/`subproject` (a hierarchy this app doesn't
+  otherwise surface), `cr603_resubmissionstatus`/`followup`/`smopmo1`/
+  `smopmo2` (not reviewed closely enough to show with confidence).
+
+**Two new shared functions, `processMetaRows()`/`projectMetaRows()`
+(`domain.jsx`)**, turn a full catalog record into `[label, value]` pairs,
+used by both `BuildReport.jsx` and `OrgReports.jsx` so a citation cannot
+show different metadata depending on which screen is open — the same
+reasoning `AchievementFigures.jsx` already documents for KPI figures.
+⚠️ `KVBlock` (`shared/ui.jsx`) only drops a whole falsy `[k,v]` entry, not a
+blank `v` inside one, so both functions end with `.filter(([,v]) => v)`
+themselves — passing a row with a blank value straight through would have
+rendered a label over an empty box.
+
+**Resolved live, not stored on the citation.** A citation only ever stored
+an id and a name (same as KPI figures); a new `CiteMeta` component
+(`BuildReport.jsx`, exported so `OrgReports.jsx` can import it — the same
+pattern already used for `NewTaskForm`) resolves the id against whichever
+catalog the screen already has loaded and renders nothing if there's
+nothing to show. **`OrgReports.jsx` didn't load Process/Project catalogues
+at all before this** — added a `fetchProcesses()`/`fetchProjects()` effect
+there, mirroring the existing `biByKpi` one.
+
+**Export**: `reportExport.js` already resolved `c.process`/`c.project`
+against these same fetches (for the small subset it read before) — widened
+what it copies onto the export model's `process`/`project` objects to
+match. `reportWriters.js`'s three places that lay these out: the per-section
+compact "Detail" column (joined with `·`, same style already used there),
+the cross-cutting "Citations" sheet (grew from 25 to **38** columns — POC
+target's index moved from 20 to 33, checked and updated everywhere it's
+referenced: the `numeric` array and the BI-link `links` column index), and
+the Word per-citation metadata table (its own `add(k,v)` helper already
+skips blanks, so no filtering needed there).
+
+Both apps build clean. Not yet pushed.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap

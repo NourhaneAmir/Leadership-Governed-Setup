@@ -382,8 +382,15 @@ export async function fetchKpis(){
 export async function fetchProcesses(){
   const res = await Strategy_processesService.getAll({
     // same strategy_newcolumn caveat as fetchKpis above.
-    /* same rule as fetchKpis above -- no name columns in $select */
-    select: ['strategy_processid', 'strategy_newcolumn', '_strategy_department_value'],
+    /* same rule as fetchKpis above -- no name columns in $select. The extra
+       columns below are this table's own metadata -- Function, Type, Scope,
+       Section, Main Process -- read for citation display/export (27 Sep).
+       Deliberately NOT read: the several btm_-prefixed columns also on this
+       table -- a different, unrelated app's overlay data on the same shared
+       table, not this app's concept of a Process at all. */
+    select: ['strategy_processid', 'strategy_newcolumn', '_strategy_department_value',
+             '_strategy_function_value', '_strategy_mainprocess_value',
+             'strategy_processtype', 'strategy_scope', '_strategy_section_value'],
   });
   const rows = rowsOrThrow(res);
   return rows.filter(r=>r.strategy_newcolumn).map(r => ({
@@ -391,6 +398,11 @@ export async function fetchProcesses(){
     name: r.strategy_newcolumn,
     dept: r._strategy_department_value ?? null,
     deptName: r['_strategy_department_value' + FV] || null,
+    functionName: r['_strategy_function_value' + FV] || null,
+    mainProcessName: r['_strategy_mainprocess_value' + FV] || null,
+    processType: r['strategy_processtype' + FV] || null,
+    scope: r['strategy_scope' + FV] || null,
+    sectionName: r['_strategy_section_value' + FV] || null,
   }));
 }
 
@@ -2044,8 +2056,22 @@ export const PROJECT_CATEGORY = {
  *  value no Project carries only ever empties the list. */
 export async function fetchProjects(){
   const res = await Cr603_projectsesService.getAll({
+    /* Beyond status/category (already read, both hand-mapped since PROJECT_
+       STATUS/PROJECT_CATEGORY predate the FormattedValue convention used
+       everywhere else): sub-category, strategic type, priority, approval
+       status, period and sponsor, for citation display/export (27 Sep).
+       Deliberately NOT read: cr603_assigned/projectcreator/oldcreator
+       (unclear ownership fields, redundant with sponsor), cr603_company/
+       entity/id (not this app's concept), cr603_mainproject/subproject
+       (a project hierarchy this app doesn't otherwise surface),
+       cr603_resubmissionstatus/followup/smopmo1/smopmo2 (process-internal
+       to whichever team owns this table, not reviewed closely enough to
+       show with confidence). */
     select: ['cr603_projectsid','cr603_projectname','cr603_projectstatus','cr603_projectcategory',
-             '_cr603_region_value','_cr603_bu_value','_cr603_department_value'],
+             '_cr603_region_value','_cr603_bu_value','_cr603_department_value',
+             'cr603_projectsubcategory','cr603_projectstrategictype','cr603_prioritylevel',
+             'cr603_approvalstatus','cr603_projectperiod','cr603_progress',
+             '_cr603_projectsponsor_value'],
     filter: 'statecode eq 0',
   });
   return (res?.data ?? []).map(r => ({
@@ -2061,6 +2087,13 @@ export async function fetchProjects(){
     buName: r['_cr603_bu_value' + FV] || null,
     deptId: r._cr603_department_value || null,
     deptName: r['_cr603_department_value' + FV] || null,
+    subCategory: r['cr603_projectsubcategory' + FV] || null,
+    strategicType: r['cr603_projectstrategictype' + FV] || null,
+    priority: r['cr603_prioritylevel' + FV] || null,
+    approvalStatus: r['cr603_approvalstatus' + FV] || null,
+    period: r['cr603_projectperiod' + FV] || null,
+    progress: r.cr603_progress ?? null,
+    sponsorName: r['_cr603_projectsponsor_value' + FV] || null,
   })).sort((a,b)=>a.name.localeCompare(b.name));
 }
 

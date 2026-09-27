@@ -233,6 +233,32 @@ export const matchesQuery = (q, fields) => {
   return needle.split(/\s+/).every(term => hay.includes(term));
 };
 
+/* Metadata rows for a cited Process/Project, shared by Build a report/plan
+   and Reports / Plans so a citation cannot show different metadata depending
+   on which screen is open (same reasoning AchievementFigures.jsx already
+   documents for KPI figures). Takes the FULL catalog row (from
+   fetchProcesses()/fetchProjects()), resolved by the caller from its own
+   loaded catalog -- not the citation itself, which only ever stored an id
+   and a name. Read live, same as KPI figures, so a Process/Project's
+   metadata reflects what it is now, not what it was when cited. */
+/* KVBlock (shared/ui.jsx) only filters out a whole falsy [k,v] ENTRY, not a
+   blank v within one -- so a row with no value has to be dropped here, or
+   it would render as a label over an empty box. */
+export const processMetaRows = p => !p ? [] : [
+  ['Department', p.deptName], ['Function', p.functionName],
+  ['Type', p.processType], ['Scope', p.scope],
+  ['Section', p.sectionName], ['Main process', p.mainProcessName],
+].filter(([, v]) => v);
+
+export const projectMetaRows = p => !p ? [] : [
+  ['Status', p.status], ['Category', p.category], ['Sub-category', p.subCategory],
+  ['Strategic type', p.strategicType], ['Priority', p.priority],
+  ['Approval status', p.approvalStatus], ['Period', p.period],
+  ['Progress', p.progress != null ? `${p.progress}%` : null],
+  ['Sponsor', p.sponsorName], ['Region', p.regionName],
+  ['Business Unit', p.buName], ['Department', p.deptName],
+].filter(([, v]) => v);
+
 export function CiteCard({cite,scope,onRemove}){
   const {db,go} = use();
   const kind = citeKind(cite), id = citeId(cite);

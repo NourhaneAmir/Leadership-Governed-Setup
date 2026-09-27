@@ -403,12 +403,19 @@ export async function reportToXlsx(model, biImages){
                  || c.childReport?.name || c.bi?.name || '';
         if(c.bi?.link) links.push({ row: ri, col: 2, url: c.bi.link });
         const detail = [
-          c.project && [c.project.status, c.project.category, c.project.buName,
-                        c.project.deptName].filter(Boolean).join(' · '),
+          c.project && [c.project.status, c.project.category, c.project.subCategory,
+                        c.project.strategicType, c.project.priority, c.project.approvalStatus,
+                        c.project.period, c.project.progress != null && c.project.progress + '%',
+                        c.project.buName, c.project.deptName, c.project.regionName,
+                        c.project.sponsorName && 'sponsor ' + c.project.sponsorName]
+                        .filter(Boolean).join(' · '),
           c.task && [c.task.status, c.task.priority,
                      c.task.assigneeName && 'to ' + c.task.assigneeName,
                      c.task.due && 'due ' + c.task.due].filter(Boolean).join(' · '),
-          c.process && c.process.departmentName,
+          c.process && [c.process.departmentName, c.process.functionName, c.process.processType,
+                        c.process.scope, c.process.sectionName,
+                        c.process.mainProcessName && 'under ' + c.process.mainProcessName]
+                        .filter(Boolean).join(' · '),
           c.poc && [c.poc.status, c.poc.target != null && 'target ' + c.poc.target]
                      .filter(Boolean).join(' · '),
           c.kpi && (c.kpi.recorded ? `matched on ${c.kpi.matchedOn}` : 'no achievement recorded'),
@@ -500,8 +507,11 @@ export async function reportToXlsx(model, biImages){
   /* ---- cross-cutting: every citation, all metadata ------------------- */
   {
     const ws = wb.addWorksheet(sheetName('Citations', used));
-    const widths = [26, 14, 30, 14, 30, 26, 22, 28, 16, 18, 20, 20, 28, 14, 13,
-                    22, 12, 12, 26, 14, 12, 26, 26, 28, 40];
+    const widths = [26, 14, 30, 14, 30,
+                    26, 22, 22, 16, 16, 20, 24,
+                    28, 16, 18, 18, 18, 14, 18, 16, 12, 20, 20, 16, 22,
+                    28, 14, 13, 22, 12, 12,
+                    26, 14, 12, 26, 26, 28, 40];
     ws.columns = widths.map(width => ({ width }));
     xlTitle(ws, 'Every citation in this report, with its metadata',
       'Filter on Kind to see one sort at a time.', 25);
@@ -510,25 +520,34 @@ export async function reportToXlsx(model, biImages){
     const links = [];
     for(const s of model.sections)
       for(const c of s.citations){
-        if(c.bi?.link) links.push({ row: rows.length, col: 24, url: c.bi.link });
+        if(c.bi?.link) links.push({ row: rows.length, col: 37, url: c.bi.link });
         rows.push([
           s.heading, c.kind, c.label, c.dimension || '',
           c.kpi?.name || '',
-          c.process?.name || '', c.process?.departmentName || '',
+          c.process?.name || '', c.process?.departmentName || '', c.process?.functionName || '',
+          c.process?.processType || '', c.process?.scope || '', c.process?.sectionName || '',
+          c.process?.mainProcessName || '',
           c.project?.name || '', c.project?.status || '', c.project?.category || '',
-          c.project?.buName || '', c.project?.deptName || '',
+          c.project?.subCategory || '', c.project?.strategicType || '', c.project?.priority || '',
+          c.project?.approvalStatus || '', c.project?.period || '', c.project?.progress,
+          c.project?.buName || '', c.project?.deptName || '', c.project?.regionName || '',
+          c.project?.sponsorName || '',
           c.task?.name || '', c.task?.status || '', c.task?.priority || '',
           c.task?.assigneeName || '', c.task?.start || '', c.task?.due || '',
           c.poc?.name || '', c.poc?.status || '', c.poc?.target,
           c.strategy?.name || '', c.childReport?.name || '',
           c.bi?.name || '', c.bi?.link || '']);
       }
-    xlTable(ws, { name: tname(), span: 25, numeric: [20], links,
+    xlTable(ws, { name: tname(), span: 38, numeric: [20, 33], links,
       theme: 'TableStyleMedium2',
-      columns: ['Section', 'Kind', 'Label', 'Dimension', 'KPI', 'Process',
-                'Process department', 'Project', 'Project status', 'Project category',
-                'Project BU', 'Project department', 'Task', 'Task status',
-                'Task priority', 'Task assignee', 'Task start', 'Task due',
+      columns: ['Section', 'Kind', 'Label', 'Dimension', 'KPI',
+                'Process', 'Process department', 'Process function', 'Process type',
+                'Process scope', 'Process section', 'Process main process',
+                'Project', 'Project status', 'Project category', 'Project sub-category',
+                'Project strategic type', 'Project priority', 'Project approval status',
+                'Project period', 'Project progress', 'Project BU', 'Project department',
+                'Project region', 'Project sponsor',
+                'Task', 'Task status', 'Task priority', 'Task assignee', 'Task start', 'Task due',
                 'POC', 'POC status', 'POC target', 'Strategy', 'Child report',
                 'BI report', 'BI link'],
       rows, empty: 'This report has no citations.' });
@@ -763,13 +782,25 @@ export async function reportToDocx(model, biImages){
       const add = (k, v) => { if(v !== null && v !== undefined && v !== '') rows.push([k, String(v)]); };
       if(c.kpi)         add('KPI', c.kpi.name);
       if(c.process){    add('Process', c.process.name);
-                        add('Process department', c.process.departmentName); }
+                        add('Process department', c.process.departmentName);
+                        add('Process function', c.process.functionName);
+                        add('Process type', c.process.processType);
+                        add('Process scope', c.process.scope);
+                        add('Process section', c.process.sectionName);
+                        add('Part of', c.process.mainProcessName); }
       if(c.project){    add('Project', c.project.name);
                         add('Project status', c.project.status);
                         add('Project category', c.project.category);
+                        add('Project sub-category', c.project.subCategory);
+                        add('Project strategic type', c.project.strategicType);
+                        add('Project priority', c.project.priority);
+                        add('Project approval status', c.project.approvalStatus);
+                        add('Project period', c.project.period);
+                        add('Project progress', c.project.progress != null ? c.project.progress + '%' : null);
                         add('Project Business Unit', c.project.buName);
                         add('Project region', c.project.regionName);
-                        add('Project department', c.project.deptName); }
+                        add('Project department', c.project.deptName);
+                        add('Project sponsor', c.project.sponsorName); }
       if(c.task){       add('Task', c.task.name);
                         add('Task status', c.task.status);
                         add('Task priority', c.task.priority);

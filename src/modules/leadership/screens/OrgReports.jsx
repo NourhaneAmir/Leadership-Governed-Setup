@@ -22,13 +22,14 @@ import { Layers } from 'lucide-react';
 import { use } from '../store.jsx';
 import { Btn, Tag, Note, Empty } from '../../../shared/ui.jsx';
 import { fmtD, fmtP, MONTHS } from '../../../shared/format.js';
-import { DiagChip, rptTagC, matchesQuery } from '../domain.jsx';
+import { DiagChip, rptTagC, matchesQuery, processMetaRows, projectMetaRows } from '../domain.jsx';
 import { fetchReportOccurrenceContent, fetchKpiAchievements, reportAchievementScope,
-         fetchBiReportsByKpi, fetchTasks, citeTaskOnSection } from '../../../services/dataverse.js';
+         fetchBiReportsByKpi, fetchTasks, citeTaskOnSection,
+         fetchProcesses, fetchProjects } from '../../../services/dataverse.js';
 import { BiFrame } from './BusinessIntelligence.jsx';
 /* Reused rather than copied: the same form Build a report/plan raises a task
    with, so a task raised from either side carries identical fields. */
-import { NewTaskForm } from './BuildReport.jsx';
+import { NewTaskForm, CiteMeta } from './BuildReport.jsx';
 import { ExportReportButtons } from './ExportReport.jsx';
 import { KpiCoverage } from './KpiCoverage.jsx';
 import { AchievementFigures } from './AchievementFigures.jsx';
@@ -123,6 +124,11 @@ export function ScreenOrgReports(){
   const [contentErr, setContentErr] = useState(null);
   const [tick, setTick]         = useState(0);       // bump to re-read
   const [biByKpi, setBiByKpi]   = useState(new Map()); // KPI id -> its dashboards
+  /* Full Process/Project catalogues, for a cited one's metadata (department,
+     type, status, sponsor...) -- the citation itself only ever stored an id
+     and a name, same reasoning as catalog.processes/exec.projects in
+     Build a report/plan (processMetaRows()/projectMetaRows(), domain.jsx). */
+  const [procProj, setProcProj] = useState({ processes: null, projects: null });
 
   /* Which dashboards sit behind each cited KPI -- lm_bireportdashboard.lm_kpi. */
   useEffect(() => {
@@ -130,6 +136,13 @@ export function ScreenOrgReports(){
     fetchBiReportsByKpi()
       .then(m => { if (live) setBiByKpi(m); })
       .catch(e => { console.warn('[dataverse] fetchBiReportsByKpi() failed:', e); });
+    return () => { live = false; };
+  }, []);
+
+  useEffect(() => {
+    let live = true;
+    Promise.all([fetchProcesses().catch(() => []), fetchProjects().catch(() => [])])
+      .then(([processes, projects]) => { if (live) setProcProj({ processes, projects }); });
     return () => { live = false; };
   }, []);
 
@@ -456,6 +469,14 @@ export function ScreenOrgReports(){
                                           })() : null}
                                           {c.kind === 'KPI' || c.kind === 'Breakdown'
                                             ? <KpiDashboards bis={biByKpi.get(c.kpiId) || []}/>
+                                            : null}
+                                          {c.kind === 'Process'
+                                            ? <CiteMeta rows={processMetaRows(
+                                                (procProj.processes || []).find(p => p.id === c.processId))}/>
+                                            : null}
+                                          {c.kind === 'Project'
+                                            ? <CiteMeta rows={projectMetaRows(
+                                                (procProj.projects || []).find(p => p.id === c.projectId))}/>
                                             : null}
                                           {c.citedReportId && reports.some(r => r.id === c.citedReportId)
                                             ? <div style={{ marginTop: 6 }}>

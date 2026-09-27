@@ -20,9 +20,9 @@
    ========================================================================= */
 import React, { useState, useEffect, useMemo } from 'react';
 import { use } from '../store.jsx';
-import { Btn, Tag, Note, Empty, Combo } from '../../../shared/ui.jsx';
+import { Btn, Tag, Note, Empty, Combo, KVBlock } from '../../../shared/ui.jsx';
 import { fmtP, TODAY } from '../../../shared/format.js';
-import { DiagChip, rptTagC, matchesQuery } from '../domain.jsx';
+import { DiagChip, rptTagC, matchesQuery, processMetaRows, projectMetaRows } from '../domain.jsx';
 import { BiFrame } from './BusinessIntelligence.jsx';
 import { ExportReportButtons } from './ExportReport.jsx';
 import { KpiCoverage } from './KpiCoverage.jsx';
@@ -199,6 +199,16 @@ function KpiDashboards({ bis }){
       {open ? 'Hide' : 'Show'} {bis.length === 1 ? 'the BI report' : `${bis.length} BI reports`}</Btn>
     {open ? bis.map(b => <BiFrame key={b.id} bi={{ n: b.name, link: b.link }}/>) : null}
   </div>;
+}
+
+/* Metadata for a cited Process/Project -- rows built by processMetaRows()/
+   projectMetaRows() (domain.jsx) from the full catalog record, resolved by
+   id from whichever catalog the caller already loaded. Renders nothing when
+   the record isn't loaded yet or has no metadata worth a row (every entry
+   in `rows` already came through a truthy filter upstream). */
+export function CiteMeta({ rows }){
+  if (!rows || !rows.length) return null;
+  return <div style={{ marginTop: 6 }}><KVBlock items={rows}/></div>;
 }
 
 /* A Child Report citation that names a report but points at none.
@@ -844,6 +854,12 @@ function SectionEditor({ s, i, total, busy, patch, move, remove, uncite, cite, p
                       dimension={c.kind === 'Breakdown' ? c.breakdown : null}/>
                     <KpiDashboards bis={biByKpi.get(c.kpiId) || []}/>
                   </>
+                : null}
+              {c.kind === 'Process'
+                ? <CiteMeta rows={processMetaRows((catalog.processes || []).find(p => p.id === c.processId))}/>
+                : null}
+              {c.kind === 'Project'
+                ? <CiteMeta rows={projectMetaRows((exec.projects || []).find(p => p.id === c.projectId))}/>
                 : null}
               {c.kind === 'Child Report' && !c.citedReportId
                 ? <AttachChild cite={c} occsOfTemplate={occsOfTemplate} tplChildren={tplChildren}
