@@ -291,13 +291,18 @@ export async function buildReportExportModel({ report, sections, citations,
            name Dataverse formatted, so a citation is never exported blank. */
         process: c.processId
           ? { id: c.processId, name: proc?.name || c.processName || '(unnamed process)',
-              departmentName: proc?.deptName || null }
+              departmentName: proc?.deptName || null, functionName: proc?.functionName || null,
+              processType: proc?.processType || null, scope: proc?.scope || null,
+              sectionName: proc?.sectionName || null, mainProcessName: proc?.mainProcessName || null }
           : null,
         project: c.projectId
           ? { id: c.projectId, name: proj?.name || c.projectName || '(unnamed project)',
               status: proj?.status || null, category: proj?.category || null,
               regionName: proj?.regionName || null, buName: proj?.buName || null,
-              deptName: proj?.deptName || null }
+              deptName: proj?.deptName || null, subCategory: proj?.subCategory || null,
+              strategicType: proj?.strategicType || null, priority: proj?.priority || null,
+              approvalStatus: proj?.approvalStatus || null, period: proj?.period || null,
+              progress: proj?.progress ?? null, sponsorName: proj?.sponsorName || null }
           : null,
         task: c.taskId
           ? { id: c.taskId, name: task?.name || c.taskName || '(untitled task)',

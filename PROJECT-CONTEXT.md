@@ -75,6 +75,7 @@ comes up.
 | `Leadership Practice Extension.html` | A **second**, richer prototype — shared in chat 02 Sep, **not saved to the repo** | Defines the full "Report/Plan Composition" feature: Sections with a Diagnostic Angle, KPI/Breakdown/Process/child-report citations, the Build-a-Report screen, Reports-received review actions, Sharing, Reporting Hierarchy. Source for the plan below — re-request it from the user if it's needed again, it only exists in that chat turn. |
 | `C:\Users\Nourhan.AbdElSalam\.claude\plans\gleaming-greeting-zephyr.md` | Approved implementation plan (02 Sep), not part of the repo | Dataverse schema + phased implementation steps for the Report/Plan Composition feature above. Read this before doing any further work on Reports & Plans — see §5/§7.8/§9. ⚠️ **Not readable from the `nourh` Windows user this repo is checked out as** — copy it into the repo or it will keep being worked around. |
 | `REPORT-OCCURRENCE-FLOW-PLAN.md` (repo root, added 05 Sep) | Plan only, no code | The weekly Power Automate flow that creates next week's Report Occurrences from approved Setups — frequency rules, field mapping, section/citation copying, duplicate guard, and five open items. Written against the live schema. |
+| `leadership-ui-style-guide.md` (shared in chat 27 Sep, **not saved to the repo**) | Visual design system only — colours, typography, radius, shadows, component patterns | Audited against `theme.css` rather than applied wholesale; see §5's 27 Sep "design-system doc" entry for what already matched and what was a real gap (fonts, radius tokens). Explicitly scoped to presentation, not content/behaviour/navigation — re-request from the user if revisited, it only exists in that chat turn. |
 
 The BRD **contradicts itself** in three places, and the code picked a side:
 
@@ -103,7 +104,7 @@ The BRD **contradicts itself** in three places, and the code picked a side:
 | Authority Matrix + Approval Cycles | ✅ live, read-only by design (`AuthorityMatrixPanel`, embedded in Governance Settings) |
 | **Audit Grid scoring** — Meeting Occurrence's own Grid tab | ✅ **live** (this session) — `liveScoreGrid()` computes all 16 questions from the live occurrence/Minutes/Template; full Facilitator→Chair lifecycle (score, evidence, submit, approve+publish, return, open a correction version) writes through the backend functions that were already built |
 | **My Workspace (nav screen)** | ✅ **live** — reads its Work Queue, Upcoming panel and This Month stats directly off the full `dvMeetingOccs`/`dvReportOccs` arrays via `dvWorkItems()`. Two silent-data-loss bugs fixed here 01 Sep — see §5: an overdue Meeting with partial attendance recording used to vanish from Work Queue, and a blank/unrecognized status code used to vanish a row from every screen at once. Its Decisions filter tab still shows 0 because Decisions (below) only just went live. |
-| **Decisions register** | 🟡 **partially live** (this session) — `wlog_decisions` read + minimal create wired as its own list on the Decisions tab, alongside (not replacing) the existing seeded Decision workflow. Not yet linked to the Meeting Agenda Item or Report that raised it — deferred by explicit instruction, see §5/§6/§7. |
+| **Decisions register** | 🟡 **partially live** — `wlog_decisions` read + minimal create wired as its own list on the Decisions tab, alongside (not replacing) the existing seeded Decision workflow. **Cannot yet be linked to the Report Section that raised it** — checked live 27 Sep: `wlog_decision` has zero report-side columns in IT, where Report Sections live, and DT New's copy has the lookup (`lm_citedreportsection`) but no Sections to point it at. Blocked on a Dataverse schema change (§6/§7), not on app code. |
 | **Committee Scores (nav screen)** | ✅ **live** (01 Sep) — `ScreenGrid` now reads `fetchAuditGridInstances()` joined against `dvMeetingOccs`, instead of seeded `db.grids`. See §5 for the join details and the Approved-only Coverage/Score rule. |
 | **Setup Activity trail** — the Activity tab on a Report/Meeting Setup | ✅ **live** (10 Sep) — `lm_setupactivity` is written on create, edit, publish, approve and expire, and the tab reads the real rows back for any Setup that has a `_dataverseId`. A Setup that has never been saved still shows the seeded sample trail. |
 | **Artifact group** — Business intelligence, Reporting hierarchy | ✅ **live** (superseding the 11 Sep "mixed" note) — Business intelligence reads `lm_bireportdashboards`, and the Reporting hierarchy reads real Report Templates, occurrences, checklists and citations. (Reports / Plans and Build a report/plan, in the same group, are live since 17 Sep — rows above.) The Power BI report itself **cannot be embedded** — see §8. |
@@ -4843,7 +4844,8 @@ Report Occurrence / citation screens already IT-hosted — no Meeting-side
 code touches this table. `stf_kpiachievmentbreakdowns` (the richer
 breakdown table §6 documents) has no service or fetch function implemented
 in this codebase yet, so nothing else needed the same pin. Both apps built
-clean. Not yet pushed.
+clean. Pushed — see the 27 Sep entries below for the corrected push target
+and the actual push.
 
 ### 26 Sep: the Meeting family moved to IT — asked for as "Workspace", delivered as a data-layer move
 
@@ -6535,6 +6537,619 @@ is a licensing and flow decision, not code.
 `biImages = { [biReportId]: { base64, width, height } }` to either writer and
 the image replaces the placeholder; nothing else changes. A test confirmed the
 image appears and the placeholder disappears.
+
+### 27 Sep: a session pushed to the wrong pair for three turns — caught by re-reading this file, corrected
+
+A separate work thread (the `pm_kpiachievments` IT pin, and a `BuildReport.jsx`
+IT-lookup fork for the Scope panel — both real, both already recorded earlier
+in §5 under their own 24 Sep entries) had been pushing to `786c1b14…`/
+`d61c6237…`, believing that pair was live — the belief was correct **as of
+24 Sep**, but **stale by three days**: the 25 Sep entry above had already
+settled `4912152c…`/`83db0ef8…` as canonical, and every push since (Meeting
+family to IT, all master data to IT, New Report reconnect, KPI coverage/gaps,
+Excel/Word export) had gone there instead. Asked to "read the project context
+file," which surfaced the mismatch before more work piled onto the wrong copy.
+
+**Confirmed, not assumed, before touching anything:** `git log` showed HEAD
+already at `ce1aa20` — every commit behind the 25–27 Sep entries was already
+in this working tree. The pending local edits (the pin and the fork) sat
+cleanly on top, no conflict. So nothing was lost; it had just gone to a
+branch of the deployment that had stopped receiving new features three days
+earlier.
+
+**Recovered like the 24 Sep incident, because the local staging folders were
+in the same state**: `C:\tmp\cad-gov`/`cad-exec` (the canonical pair's
+folders) did not exist on this machine either. Same recipe — `pac code init`
+into a throwaway folder, `pac code add-data-source -a
+shared_commondataserviceforapps -c c83ec8cc…`, hand-set `appId` to the real
+one (`4912152c-b5c8-4beb-bb74-c9f43550405b` / `83db0ef8-4c62-4eef-84ac-dadab326b704`),
+then `pac code push`. Both succeeded; `pac code list` showed the same 6 apps
+before and after, no duplicates. The working reconnected folders were saved
+back as `C:\tmp\cad-gov`/`C:\tmp\cad-exec` — the plain names §5's 25 Sep
+entry expects — so the documented procedure works again without another
+reconnect next time.
+
+**Also found and fixed in passing:** `npm install` was needed before the
+build would succeed at all — `docx` is in `package.json` (added by the 26 Sep
+"Export a report to Excel or Word" commit) but was missing from
+`node_modules` on this machine, so `apps/leadership` failed to bundle with
+"Rolldown failed to resolve import 'docx'" until dependencies were
+resynced. `exceljs` was already present; only `docx` was missing.
+
+⚠️ **`786c1b14…`/`d61c6237…` now carries three days of orphaned work**: the
+`pm_kpiachievments` IT pin and the `BuildReport.jsx` IT-lookup fork landed
+there and nowhere else, since they were built as uncommitted local edits, not
+commits — pushing to the canonical pair carried them over automatically once
+the local edits existed in the same working tree the canonical folders now
+build from. No further action needed on that account. The stale pair itself,
+and the also-still-live stray DT New pair (`7caa2fb2…`/`0f077a0a…`, pushed in
+error 23 Sep), remain undeleted — no CLI delete-app command exists, and
+nobody has decided what should happen to either. See §7/§8 TODOs.
+
+### 27 Sep: the Breakdown citation's KPI search moved into the dropdown itself
+
+Reported from a screenshot: a separate search box sat above a plain
+`<select>` for choosing a KPI when citing a Breakdown, with a "N of M KPIs
+match" line underneath — asked for the search to be part of the dropdown
+control instead.
+
+**Reused, not rebuilt.** `shared/ui.jsx` already has `Combo` — "a dropdown
+you can type in," a button that opens a popover with its own search box and
+a clickable option list, already used by `Communication.jsx`,
+`BusinessIntelligence.jsx` and `Hierarchy.jsx`. `BuildReport.jsx` just wasn't
+importing it yet. The Breakdown branch's hand-rolled `search()` + `<select>`
++ match-count text is now one `<Combo opts={kpis.map(...)} value={picker.kpiId}
+onChange={id => set({kpiId:id, dim:''})} all="Choose a KPI…"
+placeholder="Search KPIs…"/>`. `Combo` already guarantees the chosen option
+survives a search that would otherwise filter it out — the exact behaviour
+the old code's own comment called out as essential — so nothing was lost
+dropping the hand-rolled version.
+
+**Not touched:** the KPI and Process branches' own search-above-a-clickable-
+list pattern (`search()` + `list()`) — only Breakdown's plain `<select>` was
+the reported problem. Whether those two should also become `Combo` for
+consistency is a separate, not-yet-asked question.
+
+### 27 Sep: Reports / Plans restyled against a reference screenshot — presentation only
+
+Asked to match a supplied screenshot's visual hierarchy, spacing, card
+structure, gold/olive balance, table readability, button hierarchy and
+density, explicitly as a presentation-layer change only. Read the screenshot
+against the live JSX/CSS rather than assuming a gap — most of the screen
+(the rail/detail split, the card structure, the KPI coverage panel's own
+copy, the section stack) already matched near-verbatim; four concrete,
+evidenced deltas were found and fixed, nothing else was touched:
+
+1. **The KPI coverage table had no base styling at all.** `KpiCoverage.jsx`
+   rendered `<table className="t">` — `.t` is not a table style anywhere in
+   `theme.css` (it's reused elsewhere for unrelated text tweaks); the real
+   shared table look lives on `table.data` (uppercase muted headers on a
+   cream surface, bottom-border rows), used everywhere else in the app.
+   Switched the class. This alone likely explains most of the "table
+   readability" gap — nothing else about the table changed.
+2. **The All/Received/Issued by you tabs were the underline-tab style
+   (`.tabs`), not the filled pill-segment style the screenshot shows.**
+   Rather than reskin the shared `.tabs` class (used by every other screen's
+   tab bar — would have changed screens nobody asked about), this screen's
+   own three buttons now use `.pill-set`/`.pill` — an existing shared
+   component already used for exactly this kind of filter control elsewhere
+   (`Hierarchy.jsx`, `LeadershipApp.jsx`'s quick filters). A `.pill .c` /
+   `.pill.on .c` count-badge style was added since nothing used a count
+   badge inside a `.pill` before.
+3. **The stacked full-width gap Notes became a wrapped chip row**
+   (`.gap-chips`/`.gap-chip`, new in `theme.css`). Same four gap categories,
+   same counts, same KPI names — `chipGroup()` renders each category as one
+   headline chip (its fuller wording moved to a `title` tooltip) followed by
+   that category's own KPI-name chips, capped at 8 with a "+N more" chip.
+   Categories were deliberately kept separate rather than merged into one
+   pool: the code's own comments are explicit that "not covered" (a
+   governance gap), "no achievement" (a data gap, not the author's fault)
+   and "not in the Setup" mean different things, and collapsing them would
+   have lost that distinction — a functional regression dressed as a
+   restyle.
+4. **A small per-row status dot** (`.kpi-dot`, red/blue/green) was added to
+   the KPI table, and a `Layers` icon (already this screen's own sidebar
+   icon, `lucide-react`, already a dependency) before each report title in
+   the rail and the detail header. ⚠️ **The dot is deliberately derived only
+   from data the code already computes** — `k.noRows` (red) and whether a
+   specific row has literally every figure empty (blue) vs at least one
+   present (green) — never from comparing actual to target. The screenshot
+   showed more than three dot colours and their exact rule couldn't be
+   read back with confidence from an image; inventing a performance
+   judgment to match colours seen in a screenshot risked shipping a
+   plausible-looking but wrong verdict on real KPI data, which is worse
+   than a simpler, verifiably-correct 3-colour version.
+
+**Not changed:** any data fetching, gap computation, button behaviour or
+copy wording beyond what's listed above — `matchAchievement()`,
+`reportAchievementScope()`, `syncKpiGapSection()` and every other function
+in `KpiCoverage.jsx` are untouched. Both apps build clean. Pushed — see the
+27 Sep Build a report/plan entry below, which went out in the same push.
+
+### 27 Sep: Build a report/plan restyled against a second reference screenshot — same discipline, less to do
+
+A second screenshot, this time of Build a report/plan (`BuildReport.jsx`),
+same brief: match it, presentation layer only. Most of the screen already
+matched — `.bld-grid`/`.bld-fld` (Report/Status/Period, then Department/
+Function/Business Unit/Created by), the Edit/Preview underline tabs, and
+`KpiCoverage` (already fixed the previous entry, shared by both screens so
+this one inherited the table/chip/dot work for free). Two real deltas:
+
+1. **The diagnostic-angle segmented control's active state was one of four
+   per-angle colours** (`.dg-seg button.on.d1..d4`, blue-grey/brown/purple/
+   green — built for `DiagChip`, a read-only badge that needs to stay
+   scannable-by-colour across many sections at a glance) **where the
+   screenshot shows a single gold "on" state.** Rather than recolour the
+   shared `.dg-seg` class — which would have flattened those read-only
+   badges everywhere else they appear, the exact scannability they exist
+   for — added a higher-specificity override scoped to `.sec-h .dg-seg`
+   (this screen's own editable control only). `DiagChip` and every other
+   `.dg-seg` reader keep their per-angle colours.
+2. **A small icon on `KpiCoverage`'s own header** (`Target` from
+   `lucide-react`, in a small tinted square) — cheap, decorative, matches
+   the icon-before-title treatment the previous entry already added to
+   Reports / Plans' report titles. Being on the shared component, both
+   screens get it.
+
+**Deliberately NOT done, flagged rather than silently added or silently
+skipped:**
+- The screenshot's later sections (below the first, open one) render as
+  collapsed one-line summary rows with a chevron — `BuildReport.jsx` has no
+  such state today; every section always renders fully open
+  (`SectionEditor`, unconditional). Building that would mean new expand/
+  collapse state, which is an interaction change, not a restyle — out of
+  scope for "presentation layer only" without being asked for directly.
+- The screenshot shows a "+ New Report" button on this screen's own header.
+  `BuildReport.jsx` doesn't render one today (only Reports / Plans and
+  Workspace do); adding it would add a new capability to this screen
+  (create-a-report from here), not just redraw an existing one — held back
+  for the same reason.
+- A citation's achievement figures (`AchievementFigures.jsx`, also shared)
+  were left exactly as they render today. The screenshot appeared to show a
+  second, larger number treatment beside the existing compact line, but two
+  of its four figures didn't reconcile against each other closely enough to
+  be confident that's a real second element rather than a misread digit —
+  guessing wrong on a number shown to whoever reviews a KPI's figures is a
+  worse outcome than leaving it alone.
+
+Both apps built clean, pushed to the canonical pair (`4912152c…`/`83db0ef8…`)
+alongside the Reports / Plans restyle above — one push carried both
+screenshot-driven passes. `App pushed successfully` read from the output for
+both; `pac code list` showed the same 6 apps before and after, no duplicates.
+
+### 27 Sep: raw Dataverse table/column names stripped out of every user-visible screen
+
+Asked to "remove the table names from the views." Grepped both modules for
+the nine schema prefixes (`lm_`, `pm_`, `hr_`, `cr603_`, `crd04_`,
+`strategy_`, `stf_`, `hx_`, `wlog_`, `and_`) appearing in actual rendered
+text — JSX children, `hint`/`sub` props, `toast()` calls, headings — as
+opposed to code comments or `.property` access, which were left alone since
+nobody sees those. Found roughly 30 real instances across `LeadershipApp.jsx`,
+`GovernanceApp.jsx`, `BuildReport.jsx`, `OrgReports.jsx`, `Hierarchy.jsx`,
+`BusinessIntelligence.jsx` and `Communication.jsx` — leftover developer
+shorthand from whichever session first wired each screen to Dataverse,
+apparently never revisited once the plumbing worked. Three shapes:
+
+1. **Pure noise** — a subtitle or badge that named the backing table for no
+   reason a user would need (`<h2>Occurrence</h2>` followed by a line that
+   just said `lm_meetingoccurrences`; `Documents` next to
+   `lm_meetingoccurrencelinkedreports`; a Communication tab's own name
+   repeated as `hx_tasks`/`lm_reportoccurrenceshares`). Removed outright.
+2. **A real sentence with the table name welded into it** ("Written to
+   lm_meetingoccurrences with its agenda and attendees", "Saved to
+   lm_reportoccurrences as a Draft", a field hint reading "Written to
+   lm_ReportObjective — max 100 characters"). Reworded to keep the actual
+   information (what happens, what the character limit is) and drop the
+   identifier — e.g. "Max 100 characters."
+3. **A genuine schema-gap explanation that named the missing column** (the
+   Annual Meeting month-of-year note in `GovernanceApp.jsx`, which used to
+   say "Add `lm_month` (1–12) to `lm_meetingtemplates`"). Reworded to
+   describe the gap in plain terms — nowhere yet to store which month an
+   Annual Meeting falls in — without the identifier. The underlying facts
+   these notes were built from are unchanged and still in `PROJECT-CONTEXT.md`
+   §6 for whoever actually goes to add the column.
+
+One partial exception, kept deliberately: a `toast()` on a partially-failed
+Meeting Occurrence save used to list which child tables failed
+(`errors.map(e=>e.table)`); the count stays in the user-facing toast, the
+table list stays in the `console.warn` right above it, matching the
+"check the console for details" split already used everywhere else in this
+app for genuine error diagnostics.
+
+**Not touched:** `LeadershipApp-Nourhane.jsx`, an orphaned duplicate of
+`LeadershipApp.jsx` that isn't imported by anything — confirmed via grep for
+its own filename before deciding it was dead weight, not a second copy in
+active use. It still has all the same table-name leaks; irrelevant unless
+someone starts building from it.
+
+Both apps build clean, pushed alongside everything else this date — see
+the final push note below.
+
+### 27 Sep: a full design-system doc (`leadership-ui-style-guide.md`) audited against `theme.css` — mostly already matched
+
+Handed a 32-section written style guide (colors, typography, radius, shadows,
+buttons, badges, tables, forms, alerts, modals, dropdowns, wizards, nav,
+responsive rules) and asked to apply it, explicitly as a presentation-layer
+pass with functionality untouched. Read the whole thing against the actual
+`theme.css` before changing anything, rather than assuming a gap existed.
+
+**The headline finding: this is very nearly the same design system already.**
+Every core colour token in the guide — `#A5845B` gold, `#49604C` green,
+`#F7F4EE` canvas, `#E8E0D3` border, `#211C1E` ink, the exact navbar gradient
+(`90deg,#071506→#122412→#2C3A2F`) and sidebar gradient
+(`160deg,#0D1A0B→#0A150A`) — is already in `theme.css`, verbatim or within a
+shade. `--sh`/`--sh-l` already equal the guide's shadow-sm/shadow-lg exactly.
+The nav active-item treatment, tabs, notes/alerts, wizard steps, progress
+bars, filter pills and the Combo dropdown were all already close matches.
+This document reads as the spec this theme was already built from, not a
+different reference.
+
+**Three real, confirmed gaps, fixed:**
+
+1. **No font was actually loading.** Neither app's `index.html` had a
+   Google Fonts `<link>` at all — `theme.css` names `'Inter'` and
+   `'JetBrains Mono'`, but with nothing to load them the browser was silently
+   falling back to the OS UI font the whole time. Added the guide's own
+   font link (Outfit + Inter + JetBrains Mono) to both `apps/governance/
+   index.html` and `apps/leadership/index.html`.
+2. **Outfit — the guide's UI/heading font — didn't exist anywhere in the
+   app.** `--sans` was a second copy of the Inter stack, not a distinct
+   font. Split it: `--font` stays Inter (body copy, unchanged), `--sans` is
+   now Outfit. `h1–h4` already read `--sans`, so headings picked it up for
+   free; explicitly added `font-family:var(--sans)` to the rest of what the
+   guide calls UI chrome that was quietly inheriting Inter from `body` —
+   `.btn`, `.tag`, `.pill`, tab buttons, `.seg`/`.dg-seg` buttons, form
+   labels, table headers, `.stat label`, nav items. Left form INPUT/SELECT
+   text and typed values in Inter, not Outfit — the guide's own Forms
+   section says inputs should use `--sans` too, but rendering someone's
+   typed data in a display/geometric font is a real readability trade a
+   written style guide can't verify and I couldn't test visually; the
+   labels above those inputs already carry Outfit either way.
+3. **No radius scale existed as tokens** — every rule carried its own
+   literal px value. Added `--r-sm/md/lg/xl/pill` (8/12/16/22/999) and
+   `--sh-m`/`--sh-gold` to `:root`, and repointed the handful of rules the
+   guide's own checklist calls out by name to them: `.card` (14→16),
+   `.btn`/`.btn.sm`/`.f input,select,textarea`/`.bld-fld input,select`/
+   `.cmb-btn` (7-8→12, i.e. buttons and form controls), `.cmb-pop` (9→12),
+   and the modal shell `.modal`/`.m-ft` (11→22, the guide's explicit "large
+   modal/container" value). Did **not** convert the other 60-odd rules that
+   also hardcode a radius to `var()` — same visual result, and rewriting
+   every literal in the file for its own sake isn't what was asked.
+
+**Deliberately not done, judgment calls flagged rather than guessed at:**
+- **`.note.info`'s colour** (currently blue) was NOT changed to the guide's
+  gold, even though its own §19 alert sample shows Info as gold-tinted.
+  Its own §2 colour-token table lists `--info` as a muted green-**gray**,
+  not gold and not blue — the guide disagrees with itself here. `.note
+  k="info"` is used dozens of times across both apps for plain neutral
+  information; recolouring it gold risks reading as "primary action," the
+  one thing gold is reserved for everywhere else in the same guide. Left
+  as the existing, distinct blue rather than resolving the guide's own
+  contradiction by guesswork.
+- **No `.card:hover` elevation was added**, though §11 specifies one. This
+  app's `.card` is the universal layout container — nearly every panel in
+  both apps, not a curated set of clickable "bento" tiles — so a hover
+  affordance on all of them would imply interactivity on panels that mostly
+  aren't clickable.
+- **Sidebar width** (242px here vs. the guide's 220px) was left alone: the
+  layout is flexbox (`.main{flex:1}`), so narrowing it is mechanically
+  safe, but several nav labels ("Meetings & Committees") were sized against
+  242px and there's no way to check for new wrapping without a browser.
+- Cosmetic micro-differences that don't change how anything reads —
+  `--grad-gold`'s exact light-gold stop, the topbar's 52px vs. the guide's
+  48px, a handful of shadow rgba tints — were left as-is rather than
+  chasing pixel-for-pixel parity the guide itself says is only "as closely
+  as practical."
+
+Both apps build clean; the font link survives the Vite build (checked in
+the built `dist/index.html`).
+
+### 27 Sep — committed, then pushed
+
+All of this date's uncommitted work — the two screenshot-driven restyles,
+the table-name cleanup, and the design-system pass above — went into one
+commit (`7929765`, "Restyle Reports/Plans and Build a report/plan, strip
+schema names from the UI, apply the design system") at the user's request,
+then built and pushed to the canonical pair (`4912152c…`/`83db0ef8…`).
+`App pushed successfully` read from the output for both; `pac code list`
+showed the same 6 apps before and after, no duplicates. `dataverse.js` and
+`xenv.js` were not part of the commit — `git status` showed them unmodified
+against `HEAD`, meaning the edits made to them earlier this session already
+matched content other, already-committed work had landed independently.
+
+### 27 Sep: New Meeting's Department field now follows the Setup too — the open question from 26 Sep, answered
+
+§5's 26 Sep "New Report's Department list comes from the Setup, not from
+Positions" entry left one thing explicitly unresolved: *"Not changed: the
+second `departmentsForScope()` caller (the Meeting-side modal, same file)
+still infers. Whether a Meeting Setup's own Departments should govern there
+too is the same question and has not been asked."* Asked, via a screenshot
+of `NewMeetingModal`'s Department field — answer: yes, same rule.
+
+Ported the Report-side pattern into `NewMeetingModal` line for line, since
+the data was already there to support it: `fetchMeetingTemplateDetail()`
+already returns `.lines` from `lm_meetingtemplatedepartmentfunctions` (it
+feeds nothing else yet) with the same `_lm_department_value` shape the
+Report side reads. `deptOpts` now prefers the Setup's own named Departments
+(`tplDepts`) over `departmentsForScope()`'s Position-inference whenever the
+Setup names any (`fromSetup`), falling back to the inference for a Custom
+Ad Hoc Meeting, while the Setup is still loading, or when it names none.
+Added the matching consistency effect the Report side already had and this
+modal never did: a Department picked before the Setup's detail arrives is
+cleared if the real list doesn't include it, and a Setup naming exactly one
+Department selects it automatically — restricted to `fromSetup` so an
+inferred (not Setup-governed) Department is never auto-picked. The field's
+hint and empty-state text now say "The N Department(s) this Setup is for"
+/ "This Setup names no Department" when `fromSetup`, matching the Report
+side's wording exactly.
+
+⚠️ **Deliberately unlike the Report side in one way, checked before
+copying**: the Report modal's Department select is `disabled={!scopeChosen}`
+unconditionally, even when `fromSetup` — Business Unit/Region there is a
+requirement independent of the Setup, not something the Setup satisfies by
+existing. The same is true here (Chair/Facilitator/Attendees all still gate
+on `scopeChosen` regardless of Setup), so the Meeting-side field keeps the
+same scope-gated `disabled`, not a `fromSetup`-bypassed one — an earlier
+draft of this fix loosened it and was reverted before building.
+
+**Not changed:** this modal has no Function field at all (confirmed by
+grep — Function only exists in `NewReportModal`), so there was no
+equivalent Function-follows-Department pairing to port. Both apps build
+clean. Not yet pushed.
+
+### 27 Sep: attaching a Decision to a report section — still blocked, re-verified live, plus a local `pac` fix
+
+Asked directly to wire up "attach a Decision to a report section, or raise
+a new one" — the same request the 26 Sep "'+Task' on a section" entry
+already flagged as blocked on IT schema. Did not trust that note at face
+value; pulled both environments' live `wlog_decision` schema fresh via
+`pac modelbuilder build -enf wlog_decision` before answering.
+
+**Still blocked, identical finding to 26 Sep:**
+
+| | IT | DT New |
+|---|---|---|
+| `wlog_decision` columns | 17, **zero** `lm_`-prefixed | 18, including `lm_citedreportsection` (`EntityReference` → `lm_reportoccurrencesectionses`) |
+| Report Sections live in | **IT** | — |
+
+Report Occurrences and their Sections have lived in IT since 22 Sep;
+`wlog_decisions` is still one of the few services reading DT New. Neither
+side can bind: IT's copy of the table has nothing to point the lookup at,
+and DT New's copy has the lookup but not the Sections it would need to
+target — a Dataverse lookup cannot cross environments. IT's full column
+list (`wlog_decisionstatus`, `wlog_decisiontaken`, the `wlog_escalated*`
+family, `wlog_evidenceurl`, `wlog_expectedoutput`, `wlog_managernote`,
+`wlog_name`, the `wlog_review*` family, `wlog_worklog`) was read in full,
+not just checked for the one expected name — no free-text field was
+repurposed as an informal substitute, since overloading e.g.
+`wlog_managernote` to secretly also mean "which section this came from"
+would be a worse trap than no feature at all: a report reopened later would
+show nothing linking the Decision back to it, unlike the real citation a
+Task gets.
+
+**To unblock**: a Dataverse admin adds a lookup column to `wlog_decision`
+in **IT** — matching DT New's own `lm_citedreportsection`, targeting
+`lm_reportoccurrencesectionses` — then `wlog_decisions` gets pinned to
+`IT_ORG` in `dataverse.js`, same move already made for `pm_kpiachievments`
+and the citation-source tables. At that point this is straightforward:
+same shape as the existing `citeTaskOnSection()`/`+ Raise a task` /
+`Attach a task` pattern in `OrgReports.jsx` and `BuildReport.jsx`, reusing
+`hx_tasks`'s door-not-new-capability precedent.
+
+**Also fixed, unrelated to the schema question but blocking the check
+itself**: `pac org select` crashed every time
+(`System.InvalidOperationException: Sequence contains more than one
+matching element`, inside `AuthProfiles.Update`) — `pac auth list` showed
+**two** active profiles (`andalusiaEnv` and `codeAppDev`) both pointing at
+the identical user+org, and the CLI's own profile-update code assumes
+exactly one match. `pac auth select --index 1` alone did not clear it;
+`pac auth delete --index 2` (removing the redundant duplicate outright) did.
+`pac org select`/`modelbuilder` both work normally now. Worth knowing if
+`pac auth list` ever again shows more than one `*` for the same org.
+
+### 27 Sep: live console errors from the pushed app — two real bugs, one live-diagnosed as a privilege gap, not code
+
+The user pasted a real browser console dump from the live Leadership app.
+Two separate, unrelated things in it:
+
+**1. Creating a Task 404s** (`POST .../commondataserviceforapps/connections//
+c83ec8cc.../api/data/v9.1.0/hx_taskses 404`), surfaced to the user as the
+unhelpful "The task could not be created — created but no id returned."
+Diagnosed live rather than guessed at:
+- `pac org fetch` against `hx_tasks` (the correct logical name — confirmed:
+  the primary key is `hx_tasksid`, so `hx_tasks` is the entity, and
+  Dataverse's own pluralization-of-an-already-plural-name convention
+  makes `hx_taskses` the right entity SET name, matching what the code
+  already used) returned a real count: **44,455 rows**, as the exact same
+  signed-in identity the app's connection uses. **Reads work fine.**
+- This rules out a wrong entity/collection name and points at something
+  CREATE-specific — almost certainly a missing Create privilege on
+  `hx_task` for this connection's security role in IT. Same class of gap
+  §8 already flags for a different set of tables: *"the connection is not
+  the permission, and the failure looks like a bug rather than a denial."*
+  Not something app code can fix — needs a Dataverse admin to check/grant
+  Create on `hx_task`.
+- **What was fixable, and fixed**: `createTask()` in `dataverse.js` wasn't
+  using this file's own `idOrThrow()` helper — it hand-rolled `if(!id)
+  push a generic "created but no id returned"`, discarding whatever real
+  error the connector actually captured (a 404, in this case) exactly the
+  blind spot `idOrThrow()` exists to close everywhere else. Switched it
+  over. The next time this happens, the toast should show the real
+  connector/Dataverse message instead of the generic fallback — worth
+  reproducing again post-fix to confirm what it actually says.
+
+**2. A real CSP violation, self-inflicted the same day**: `Loading the
+stylesheet 'https://fonts.googleapis.com/css2?...' violates ... "style-src
+'self' 'unsafe-inline'"`. This confirms, live, what the design-system
+entry above only guessed at as a risk: the Power Apps player's CSP blocks
+external stylesheets outright, so the Google Fonts `<link>` added earlier
+today never worked in production — it just silently failed every load,
+and now also logs a real console error. Removed the `<link>`/`preconnect`
+tags from both `index.html` files. `--sans`/`--font` in `theme.css` are
+left naming `'Outfit'`/`'Inter'`/`'JetBrains Mono'` — harmless, since an
+unavailable family name just falls through to the system stack, which is
+what has always actually rendered — but the file now carries an explicit
+warning not to re-attempt an external font link here; it needs the actual
+`.woff2` files self-hosted as build assets (served from `'self'`) to ever
+really take effect, not attempted in this pass.
+
+Both apps build clean. Not yet pushed.
+
+### 27 Sep: "Write my own conclusion" as a reviewer — also blocked, held off rather than faked
+
+Asked to add three reviewer actions per section, from a screenshot of the
+Extension prototype's action row (Cite/Cite-what-it-rests-on aside):
+**Write my own conclusion**, **+Task**, **+Decision**. Same three-way split
+as the Decision investigation earlier today:
+
+- **+Task** already exists — `+ Raise a task`/`Attach a task` on
+  `OrgReports.jsx`'s section cards, live since 26 Sep. Nothing to do.
+- **+Decision** — still the same IT schema gap (§5's earlier 27 Sep entry).
+- **Write my own conclusion** — checked `lm_reportsectioncitations.lm_kind`
+  live (`pac modelbuilder build -enf lm_reportsectioncitations`) rather than
+  assume: exactly 11 values (`KPI=1 … ChildReport=11`), **no Conclusion**.
+  The closest existing kind, `Paragraph`, specifically means *citing another
+  report's section* — reusing it for a reviewer's own free-standing remark
+  (no citation target at all) would conflate two different meanings under
+  one stored value, the same trap already avoided for Decisions.
+
+**Smaller than the Decision gap**: this only needs one new option value on
+an existing choice column (e.g. `12 = Conclusion`), not a new lookup
+relationship — no cross-environment binding question, no new table.
+Offered three ways forward (wait for the schema value; build now by
+overloading `Paragraph` with a UI-only "Conclusion" label, flagged clearly
+in code; or hold off entirely) — **user chose to hold off**. Nothing built
+this pass; revisit once `lm_kind` gets its 12th value, or if asked to
+reconsider the interim `Paragraph`-based approach.
+
+### 27 Sep: `lm_reportobjective`'s 100-character guard removed — the column was widened in Dataverse
+
+User confirmed they widened `lm_reportoccurrence.lm_reportobjective` in
+Dataverse and asked for the app's matching 100-character guard removed
+(not replaced with a new number — removed). Every place that guard lived:
+
+- `REPORT_OBJECTIVE_MAX = 100` (`LeadershipApp.jsx`) — deleted, along with
+  every read of it: the `ok` (ready-to-save) check's length clause, the
+  Field's `hint`/`err` props on the objective textarea, and the
+  Template-objective-copy's `.slice(0, REPORT_OBJECTIVE_MAX)` truncation
+  (a Setup's own longer `lm_objective` now copies onto a new occurrence
+  whole, since the occurrence's column no longer risks rejecting it).
+- `createReportOccurrence()`'s (`dataverse.js`) hardcoded `if(objective.length
+  > 100)` diagnostic `console.warn` — removed; it named an exact number
+  and error code (0x80044331) that no longer apply.
+
+⚠️ **Could not verify the actual new length live** — tried the same
+`pac modelbuilder`-against-IT approach used everywhere else this session,
+but hit a real dead end: `pac code add-data-source` (the only tool found
+that surfaces column `maxLength`, unlike bare `modelbuilder`) needs a
+`shared_commondataserviceforapps` connection instance that already exists
+*in that specific environment* — `pac connection list --environment
+<IT>` shows Word/Office 365 Users/Teams/OneDrive/SharePoint, but no
+Dataverse connection at all, only Office/SharePoint ones. Nothing wrong
+was found or fixed here; the check simply couldn't be done with the
+tooling available, so the new length is taken on the user's word alone.
+**`apps/leadership/.power/schemas/dataverse/reportoccurrences.Schema.json`
+still says `"maxLength": 100` for this column and is now stale** — it was
+pulled against DT New (this repo root's dev binding), not IT, where the
+live data and the real change both are; not corrected, since the actual
+new number isn't known here to write in its place.
+
+Both apps build clean. Not yet pushed.
+
+### 27 Sep: Process/Project citations now show — and export — their real metadata
+
+Asked for a cited Process/Project's full metadata to show in the view and
+in both exports, in Leadership Execution. Checked the live schema before
+adding anything (`pac modelbuilder build` against IT) rather than guess
+which columns exist:
+
+- **`strategy_process`** carries a whole `btm_`-prefixed column family
+  belonging to a different, unrelated app sharing the same table (same
+  "pre-existing, shared, multi-prefix table" situation §6 already
+  documents for `pm_kpiachievments`) — left alone. This app's own columns:
+  Department (already read), **Function, Process Type, Scope, Section,
+  Main Process** (a self-referencing parent lookup) — all now read in
+  `fetchProcesses()`.
+- **`cr603_projects`** already read Status/Category/Region/BU/Department;
+  added **Sub-category, Strategic Type, Priority, Approval Status, Period**
+  (a choice despite the name — not a date), **Progress** (a plain decimal,
+  shown as `N%`) **and Sponsor**. Deliberately NOT read:
+  `cr603_assigned`/`projectcreator`/`oldcreator` (unclear, overlapping
+  ownership fields), `cr603_company`/`entity`/`id` (not this app's
+  concept), `cr603_mainproject`/`subproject` (a hierarchy this app doesn't
+  otherwise surface), `cr603_resubmissionstatus`/`followup`/`smopmo1`/
+  `smopmo2` (not reviewed closely enough to show with confidence).
+
+**Two new shared functions, `processMetaRows()`/`projectMetaRows()`
+(`domain.jsx`)**, turn a full catalog record into `[label, value]` pairs,
+used by both `BuildReport.jsx` and `OrgReports.jsx` so a citation cannot
+show different metadata depending on which screen is open — the same
+reasoning `AchievementFigures.jsx` already documents for KPI figures.
+⚠️ `KVBlock` (`shared/ui.jsx`) only drops a whole falsy `[k,v]` entry, not a
+blank `v` inside one, so both functions end with `.filter(([,v]) => v)`
+themselves — passing a row with a blank value straight through would have
+rendered a label over an empty box.
+
+**Resolved live, not stored on the citation.** A citation only ever stored
+an id and a name (same as KPI figures); a new `CiteMeta` component
+(`BuildReport.jsx`, exported so `OrgReports.jsx` can import it — the same
+pattern already used for `NewTaskForm`) resolves the id against whichever
+catalog the screen already has loaded and renders nothing if there's
+nothing to show. **`OrgReports.jsx` didn't load Process/Project catalogues
+at all before this** — added a `fetchProcesses()`/`fetchProjects()` effect
+there, mirroring the existing `biByKpi` one.
+
+**Export**: `reportExport.js` already resolved `c.process`/`c.project`
+against these same fetches (for the small subset it read before) — widened
+what it copies onto the export model's `process`/`project` objects to
+match. `reportWriters.js`'s three places that lay these out: the per-section
+compact "Detail" column (joined with `·`, same style already used there),
+the cross-cutting "Citations" sheet (grew from 25 to **38** columns — POC
+target's index moved from 20 to 33, checked and updated everywhere it's
+referenced: the `numeric` array and the BI-link `links` column index), and
+the Word per-citation metadata table (its own `add(k,v)` helper already
+skips blanks, so no filtering needed there).
+
+Both apps build clean. Not yet pushed.
+
+### 27 Sep: the hx_taskses 404 was never a privilege gap — the real error, once surfaced, named the actual cause
+
+§5's earlier 27 Sep entry ("live console errors from the pushed app") diagnosed
+the `hx_taskses` create 404 as a likely missing Create privilege, since reads
+worked and the entity name checked out — a reasonable read of the evidence
+available at the time, but wrong, and worth recording as a caution: **that
+`idOrThrow()` fix was itself what surfaced the real cause.** Once the user hit
+it again post-fix, the toast showed the actual connector error instead of the
+old generic one:
+
+    0x80040217 -- Entity 'SystemUser' With Id = <guid> Does Not Exist
+
+Not a permission problem at all — a cross-environment id. `createTask()`
+binds `hx_Assignee@odata.bind` to `/systemusers(id)` on the same IT-hosted
+create as the Task row itself, but the id offered by the assignee picker
+came from `fetchAssignableUsers()`, which read `SystemusersService` — the
+**DT New** systemusers service. A DT New systemuserid cannot resolve inside
+an IT create, same rule as every other cross-org lookup in this app.
+
+**Why this wasn't just a repoint.** `SystemusersService` (DT New) has other
+callers that must stay exactly where they are: `fetchUserNameMap()`'s ids
+come from `hr_employees.hr_User`, and `hr_employees` is itself deliberately
+still DT New (26 Sep note, same reasoning) — moving `SystemusersService`
+would have broken that chain instead, trading one cross-org mismatch for
+its mirror image. Forked instead: a new sibling,
+`SystemusersItService = dvTable('systemusers', undefined, IT_ORG)`, used
+only by `fetchAssignableUsers()` — whose two callers (the Task assignee
+picker in `BuildReport.jsx`, and the "send a report" recipient picker in
+`Communication.jsx`'s `ShareForm`) both write into IT-hosted tables
+(`hx_tasks`, `lm_reportoccurrenceshares`). Checked both callers before
+concluding the fork was safe, not just the one that was reported.
+
+⚠️ **`shareReportOccurrence()` almost certainly had the identical bug**,
+unreported — same `/systemusers(userId)` bind, same IT-hosted target table,
+same DT-New-sourced id before this fix. Not separately confirmed live, but
+the fix already covers it since both callers share `fetchAssignableUsers()`.
+
+Both apps build clean. Not yet pushed.
 
 ## 6. Schema facts that are expensive to rediscover
 

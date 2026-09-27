@@ -197,6 +197,17 @@ const And_microsoftgroupmembersService = dvTable('and_microsoftgroupmembers');
    ⚠️ Cost: ~11.4k rows at app load, three pages instead of one. */
 const Cr603_organizationstructuresService = dvTable('cr603_organizationstructures', undefined, IT_ORG);
 const SystemusersService = dvTable('systemusers');
+/* A deliberate FORK, not a repoint (27 Sep) -- SystemusersService above must
+   stay on DT New: fetchUserNameMap()'s systemuserid keys come from
+   hr_employees.hr_User, and hr_employees is itself still DT New on purpose
+   (see the note above), so that whole chain only resolves within the same
+   org. This sibling is for the opposite case -- picking a user FRESH, with
+   no hr_employees chain behind it at all -- and both its callers write into
+   IT-hosted tables (hx_tasks, lm_reportoccurrenceshares), so the id it
+   supplies has to be an IT systemuserid or the @odata.bind on create 404s
+   with "Entity 'SystemUser' ... Does Not Exist" -- the exact live failure
+   that surfaced this. */
+const SystemusersItService = dvTable('systemusers', undefined, IT_ORG);
 /* ⚠️ IT_ORG (26 Sep), and it has to be. Its ONLY caller is
    fetchEmployeeIndex(), whose whole job is to join employees to Positions --
    and cr603_organizationstructures is IT-pinned above. On this app's own
@@ -382,8 +393,15 @@ export async function fetchKpis(){
 export async function fetchProcesses(){
   const res = await Strategy_processesService.getAll({
     // same strategy_newcolumn caveat as fetchKpis above.
-    /* same rule as fetchKpis above -- no name columns in $select */
-    select: ['strategy_processid', 'strategy_newcolumn', '_strategy_department_value'],
+    /* same rule as fetchKpis above -- no name columns in $select. The extra
+       columns below are this table's own metadata -- Function, Type, Scope,
+       Section, Main Process -- read for citation display/export (27 Sep).
+       Deliberately NOT read: the several btm_-prefixed columns also on this
+       table -- a different, unrelated app's overlay data on the same shared
+       table, not this app's concept of a Process at all. */
+    select: ['strategy_processid', 'strategy_newcolumn', '_strategy_department_value',
+             '_strategy_function_value', '_strategy_mainprocess_value',
+             'strategy_processtype', 'strategy_scope', '_strategy_section_value'],
   });
   const rows = rowsOrThrow(res);
   return rows.filter(r=>r.strategy_newcolumn).map(r => ({
@@ -391,6 +409,11 @@ export async function fetchProcesses(){
     name: r.strategy_newcolumn,
     dept: r._strategy_department_value ?? null,
     deptName: r['_strategy_department_value' + FV] || null,
+    functionName: r['_strategy_function_value' + FV] || null,
+    mainProcessName: r['_strategy_mainprocess_value' + FV] || null,
+    processType: r['strategy_processtype' + FV] || null,
+    scope: r['strategy_scope' + FV] || null,
+    sectionName: r['_strategy_section_value' + FV] || null,
   }));
 }
 
@@ -1942,9 +1965,16 @@ export const POC_STATUS = { 1:'Active', 2:'Succeeded', 3:'Failed', 4:'Retired' }
  *  rather than from five more reads. */
 /** Users who can be assigned a task -- systemusers, enabled ones only.
  *  `isdisabled eq false` rather than statecode, which systemuser does not use
- *  the way a custom table does. */
+ *  the way a custom table does.
+ *
+ *  ⚠️ IT_ORG (via SystemusersItService), not DT New: both callers -- the Task
+ *  assignee picker and the "send a report" recipient picker -- bind the id
+ *  straight into a create on an IT-hosted table (hx_tasks,
+ *  lm_reportoccurrenceshares). A DT New systemuserid bound there 404s with
+ *  "Entity 'SystemUser' ... Does Not Exist", since a lookup can't resolve
+ *  across environments. */
 export async function fetchAssignableUsers(){
-  const res = await SystemusersService.getAll({
+  const res = await SystemusersItService.getAll({
     select: ['systemuserid', 'fullname', 'internalemailaddress'],
     filter: 'isdisabled eq false',
   });
@@ -2044,8 +2074,22 @@ export const PROJECT_CATEGORY = {
  *  value no Project carries only ever empties the list. */
 export async function fetchProjects(){
   const res = await Cr603_projectsesService.getAll({
+    /* Beyond status/category (already read, both hand-mapped since PROJECT_
+       STATUS/PROJECT_CATEGORY predate the FormattedValue convention used
+       everywhere else): sub-category, strategic type, priority, approval
+       status, period and sponsor, for citation display/export (27 Sep).
+       Deliberately NOT read: cr603_assigned/projectcreator/oldcreator
+       (unclear ownership fields, redundant with sponsor), cr603_company/
+       entity/id (not this app's concept), cr603_mainproject/subproject
+       (a project hierarchy this app doesn't otherwise surface),
+       cr603_resubmissionstatus/followup/smopmo1/smopmo2 (process-internal
+       to whichever team owns this table, not reviewed closely enough to
+       show with confidence). */
     select: ['cr603_projectsid','cr603_projectname','cr603_projectstatus','cr603_projectcategory',
-             '_cr603_region_value','_cr603_bu_value','_cr603_department_value'],
+             '_cr603_region_value','_cr603_bu_value','_cr603_department_value',
+             'cr603_projectsubcategory','cr603_projectstrategictype','cr603_prioritylevel',
+             'cr603_approvalstatus','cr603_projectperiod','cr603_progress',
+             '_cr603_projectsponsor_value'],
     filter: 'statecode eq 0',
   });
   return (res?.data ?? []).map(r => ({
@@ -2061,6 +2105,13 @@ export async function fetchProjects(){
     buName: r['_cr603_bu_value' + FV] || null,
     deptId: r._cr603_department_value || null,
     deptName: r['_cr603_department_value' + FV] || null,
+    subCategory: r['cr603_projectsubcategory' + FV] || null,
+    strategicType: r['cr603_projectstrategictype' + FV] || null,
+    priority: r['cr603_prioritylevel' + FV] || null,
+    approvalStatus: r['cr603_approvalstatus' + FV] || null,
+    period: r['cr603_projectperiod' + FV] || null,
+    progress: r.cr603_progress ?? null,
+    sponsorName: r['_cr603_projectsponsor_value' + FV] || null,
   })).sort((a,b)=>a.name.localeCompare(b.name));
 }
 
@@ -2158,8 +2209,11 @@ export async function createTask(t){
   if(t.assigneeId) row['hx_Assignee@odata.bind'] = `/systemusers(${t.assigneeId})`;
   try{
     const created = await Hx_taskesService.create(row);
-    const id = created?.data?.hx_tasksid || null;
-    if(!id) errors.push({ table:'hx_taskses', error:new Error('created but no id returned') });
+    /* idOrThrow() (top of file) surfaces created.error.message when the
+       create genuinely fails -- e.g. a 404/insufficient-privilege response
+       from the connector -- instead of the generic "created but no id
+       returned" this used to always show regardless of the real cause. */
+    const id = idOrThrow(created, 'hx_tasksid');
     return { id, errors };
   }catch(e){
     return { id:null, errors:[{ table:'hx_taskses', error:e }] };
@@ -4419,17 +4473,13 @@ export async function migrateTemplateSectionsToOccurrence(occurrenceId, template
 export const REPORT_OBJECTIVE_MAX = 4000;
 
 export async function createReportOccurrence(payload){
-  if((payload.objective || '').length > REPORT_OBJECTIVE_MAX){
-    console.warn('[dataverse] createReportOccurrence: lm_reportobjective is %d characters; ' +
-      'the column allows %d and Dataverse will reject this with 0x80044331.',
-      payload.objective.length, REPORT_OBJECTIVE_MAX);
-  }
   const row = {
     lm_name: payload.name || 'Untitled Report',
-    /* Dataverse 400s rather than truncating (0x80044331). Not capped here on
-       purpose -- silently shortening what someone typed is worse than refusing
-       it -- but a caller that skips its own validation gets a named cause
-       instead of an opaque error code. See REPORT_OBJECTIVE_MAX above. */
+    /* Was capped at 100 characters (Dataverse 400s rather than truncating,
+       0x80044331); the column was widened in Dataverse 27 Sep, so the old
+       hardcoded length check and its warning are gone. Not capped here on
+       purpose either way -- silently shortening what someone typed is worse
+       than refusing it. */
     lm_reportobjective: payload.objective || null,
     lm_period: payload.period || null,
     lm_status: REPORT_OCC_STATUS_KEY[payload.status || 'Draft'] ?? REPORT_OCC_STATUS_KEY.Draft,

@@ -551,7 +551,7 @@ export function ScreenHierarchy(){
           {edgeStats.byName>0
             ? <> {edgeStats.byName} link{edgeStats.byName===1?'':'s'} {edgeStats.byName===1?'was':'were'} resolved
                 from the citation's text, which names a <b>Report Template</b> rather than one
-                occurrence — <code>lm_citedreportoccurrence</code> is empty on those rows. The
+                occurrence — the exact occurrence isn't recorded on those rows. The
                 occurrence shown is the closest match in this report's own scope and period. Citing
                 through the picker records the exact one instead.</>
             : null}

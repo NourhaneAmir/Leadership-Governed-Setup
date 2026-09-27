@@ -1831,7 +1831,7 @@ function SectionRowEditor({sec,index,templateId,onPatch,onRemove}){
 
       {picking==='KPI' && <>
         {!KPIS_LIVE && <div className="holder" style={{marginBottom:6,color:'var(--amber)'}}>
-          ⚠ Showing built-in sample KPIs — strategy_kpises could not be read from Dataverse
+          ⚠ Showing built-in sample KPIs — live KPIs could not be read from Dataverse
           {KPI_FETCH_ERROR ? <> ({KPI_FETCH_ERROR})</> : <> (or this is running under plain
           `npm run dev`, which has no Dataverse connection at all)</>}. Open this app from its
           Power Apps play URL to pick real KPIs.</div>}
@@ -1841,7 +1841,7 @@ function SectionRowEditor({sec,index,templateId,onPatch,onRemove}){
 
       {picking==='Process' && <>
         {!PROCESSES_LIVE && <div className="holder" style={{marginBottom:6,color:'var(--amber)'}}>
-          ⚠ Showing built-in sample Processes — strategy_processes could not be read from Dataverse
+          ⚠ Showing built-in sample Processes — live Processes could not be read from Dataverse
           {PROCESS_FETCH_ERROR ? <> ({PROCESS_FETCH_ERROR})</> : <> (or this is running under plain
           `npm run dev`, which has no Dataverse connection at all)</>}. Open this app from its
           Power Apps play URL to pick real Processes.</div>}
@@ -2420,10 +2420,9 @@ function CadenceFields({s,set,noMonth}){
         hint={noMonth?null:"The calendar month the report is due in each year."}>
         {noMonth
           ? <div className="holder">
-              Not recorded. <b>lm_meetingtemplates has no month-of-year column</b>, so an
-              Annual Meeting cannot say which month it falls in — and the generator flow
-              cannot create it. Day of month below is stored and will be used once the
-              column exists. Add <b>lm_month</b> (1–12) to match the Report Template table.
+              Not recorded. There is nowhere yet to store which month an Annual Meeting
+              falls in, so the generator flow cannot create it from this field. Day of
+              month below is stored and will be used once that's added.
             </div>
           : <Sel id="f-month" val={s.month} opts={MONTHS_OF_YEAR}
               onChange={v=>set({month:v})}/>}</Field>
@@ -4504,7 +4503,7 @@ function ScreenDetail({rec,onClose}){
     {tab==='usage'? <div className="card flush">
       <div className="card-hd"><h2>Records created from this Setup</h2>
         <div className="csub">{rec._dataverseId
-          ? `Read live from ${rec.kind==='Report Template'?'lm_reportoccurrences':'lm_meetingoccurrences'}, filtered to this Setup's Template.`
+          ? 'Read live from Dataverse, filtered to this Setup\'s Template.'
           : 'This Setup has no Dataverse Template yet, so live usage cannot be checked.'}
           {' '}Each carries the unit it was held in.</div></div>
       {dvUsageError && <div style={{padding:'8px 17px 0'}}><Note k="warn" ic="⚠">{dvUsageError}</Note></div>}

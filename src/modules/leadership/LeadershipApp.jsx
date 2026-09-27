@@ -60,11 +60,6 @@ import { fetchMeetingOccurrences, fetchReportOccurrences, createMeetingOccurrenc
    rejects the whole create/update with a 400 rather than truncating, so
    this is enforced client-side before either request. */
 const FILE_URL_MAX = 300;
-/* lm_reportobjective is 100 characters on lm_reportoccurrence -- NOT the same
-   as the Template's own lm_objective, which is longer. Dataverse rejects an
-   over-length value with a 400 (0x80044331) instead of truncating it. */
-/* Re-exported from the service layer rather than declared again here: two
-   copies of a Dataverse column's width is how they end up disagreeing. */
 
 const REGIONS = ['KSA','Egypt'];
 const BUS = [
@@ -1580,7 +1575,7 @@ function DvOccurrenceModal({item,onClose}){
     const h=id&&DV_POS_HOLDER[id]; return h?`${n} — ${h}`:n; };
 
   return <Modal wide onClose={onClose} title={r.name}
-    sub={`Read live from ${isMeeting?'lm_meetingoccurrences':'lm_reportoccurrences'}. Read-only here — the execution screens run on the seeded demo records.`}
+    sub="Read live from Dataverse. Read-only here — the execution screens run on the seeded demo records."
     footer={<Btn onClick={onClose}>Close</Btn>}>
     {isMeeting ? <>
       <Row label="Date" value={r.date?fmtD(r.date):null}/>
@@ -4730,15 +4725,12 @@ function NewReportModal({onClose}){
         if(cancelled) return;
         setTplDetail(d);
         /* The Template's own objective is a reasonable starting point for
-           this occurrence's -- still freely editable below.
-
-           ⚠️ Capped on the way in. The Template's lm_objective is a longer
-           column than the occurrence's lm_reportobjective, so copying it
-           whole produced a form that looked fine and could not be saved.
-           Truncating a machine-supplied DEFAULT is safe; the field below
-           validates what the person actually types rather than cutting it. */
+           this occurrence's -- still freely editable below. No longer
+           capped on the way in: lm_reportoccurrence.lm_reportobjective was
+           widened in Dataverse, so copying the Template's lm_objective
+           whole no longer risks a save the column can't hold. */
         if(d?.parent?.lm_objective) setF(x=>({...x,
-          objective: x.objective || d.parent.lm_objective.slice(0, REPORT_OBJECTIVE_MAX)}));
+          objective: x.objective || d.parent.lm_objective}));
         if(d?.parent?.lm_newcolumn) setF(x=>({...x, name: x.name||d.parent.lm_newcolumn}));
       })
       .catch(e=>console.warn('[dataverse] fetchReportTemplateDetail() failed:', e))
@@ -4757,7 +4749,6 @@ function NewReportModal({onClose}){
 
   const ok = !!f.setup && f.name.trim() && f.objective.trim() && scopeChosen
     && f.dvCreatorPositionId && f.period && f.fileUrl.trim().length<=FILE_URL_MAX
-    && f.objective.trim().length<=REPORT_OBJECTIVE_MAX
     && (custom || (!tplLoading && (tplUnits.length<=1 || !!f.tplUnitKey)));
 
   const save=async()=>{
@@ -4813,8 +4804,8 @@ function NewReportModal({onClose}){
 
       toast(custom?'Ad Hoc Report created':'Report created from the approved Setup',
         (custom
-          ? 'Saved to lm_reportoccurrences as a Draft, flagged as having no Setup. Opened for editing.'
-          : 'Saved to lm_reportoccurrences as a Draft, linked to its approved Report Template. Opened for editing.') + sectionNote,
+          ? 'Saved as a Draft, flagged as having no Setup. Opened for editing.'
+          : 'Saved as a Draft, linked to its approved Report Template. Opened for editing.') + sectionNote,
         migrated && migrated.errors.length ? 'warn' : 'ok');
       setProgress({ label: 'Refreshing your reports…', done: 0, total: 0 });
       await refreshOccurrences();
@@ -4831,13 +4822,13 @@ function NewReportModal({onClose}){
   };
 
   return <Modal title="Create a Report" wide onClose={onClose}
-    sub="Pick an approved Report Template, or use Custom where none exists. Either way this writes straight to lm_reportoccurrences as a Draft."
+    sub="Pick an approved Report Template, or use Custom where none exists. Either way this creates a Draft."
     footer={<><Btn onClick={onClose} disabled={saving}>Cancel</Btn>
       <Btn k="pri" disabled={!ok||saving} onClick={save}>
         {saving?'Saving…':(custom?'Create the Report':'Create from the Setup')}</Btn></>}>
 
     <Field label="Report Setup" req
-      hint="Approved Setups only, read live from Dataverse — lm_report_templates.">
+      hint="Approved Setups only, read live from Dataverse.">
       <ApprovedSetupPicker list={DV_RPT_TPL_LIST} val={f.setup}
         onChange={v=>set('setup',v)}
         emptyText="No Report Templates loaded from Dataverse"
@@ -4886,10 +4877,7 @@ function NewReportModal({onClose}){
       <Field label="Report name" req><input type="text" value={f.name}
         onChange={e=>set('name',e.target.value)}
         placeholder="e.g. Ophthalmology Laser Utilisation Review"/></Field>
-      <Field label="Report objective" req
-        hint={`Written to lm_ReportObjective — max ${REPORT_OBJECTIVE_MAX} characters.`}
-        err={f.objective.trim().length>REPORT_OBJECTIVE_MAX
-          ? `${f.objective.trim().length} characters — ${REPORT_OBJECTIVE_MAX} max.` : null}>
+      <Field label="Report objective" req>
         <textarea value={f.objective} onChange={e=>set('objective',e.target.value)}
           placeholder="What this Report is for."/></Field>
 
@@ -4906,7 +4894,7 @@ function NewReportModal({onClose}){
           : null}
 
         {custom && stageBU
-          ? <Field label="Business Unit" req hint="Written to the lm_BusinessUnit lookup.">
+          ? <Field label="Business Unit" req>
               <select value={f.dvBusinessUnitId} onChange={e=>setF(x=>({...x,
                 dvBusinessUnitId:e.target.value, dvDepartmentId:'', dvFunctionId:'', dvCreatorPositionId:''}))}>
                 <option value="">{DV_BU_LIST.length?'Select…':'No Business Units loaded'}</option>
@@ -4914,7 +4902,7 @@ function NewReportModal({onClose}){
                   return <option key={b.id} value={b.id}>{rn?`${b.name} — ${rn}`:b.name}</option>; })}
               </select></Field>
           : custom && stageRegion
-            ? <Field label="Region" req hint="Written to the lm_Region lookup.">
+            ? <Field label="Region" req>
                 <select value={f.dvRegionId} onChange={e=>setF(x=>({...x,
                   dvRegionId:e.target.value, dvDepartmentId:'', dvFunctionId:'', dvCreatorPositionId:''}))}>
                   <option value="">{DV_REGION_LIST.length?'Select…':'No Regions loaded'}</option>
@@ -4965,8 +4953,8 @@ function NewReportModal({onClose}){
           </select></Field>
         <Field label="Created by" req
           hint={myPos
-            ? `Defaults to your own Position (${myPos.name}). Written to lm_CreatorPosition.`
-            : 'The Position accountable for preparing it. Written to lm_CreatorPosition.'}>
+            ? `Defaults to your own Position (${myPos.name}).`
+            : 'The Position accountable for preparing it.'}>
           <PositionSelect value={f.dvCreatorPositionId} onChange={v=>set('dvCreatorPositionId',v)}
             opts={posOpts} disabled={!scopeChosen}
             placeholder={scopeChosen?'Search a Position…':'Choose the scope first'}
@@ -5003,7 +4991,7 @@ function NewReportModal({onClose}){
           </div></Field>}
 
       <Field label="File"
-        hint={`The location the working copy lives in. Dataverse keeps the URL (lm_FileURL) — max ${FILE_URL_MAX} characters.`}
+        hint={`The location the working copy lives in — max ${FILE_URL_MAX} characters.`}
         err={f.fileUrl.trim().length>FILE_URL_MAX
           ? `${f.fileUrl.trim().length} characters — ${FILE_URL_MAX} max.` : null}>
         <input type="text" value={f.fileUrl} onChange={e=>set('fileUrl',e.target.value)}
@@ -5237,8 +5225,7 @@ function ScreenMeetings(){
       <div className="card flush">
         <div className="card-hd" style={{display:'flex',alignItems:'center',gap:12}}>
           <div className="wa-icon gold">👥</div>
-          <h2 style={{flex:1}}>{tab==='due'?'Upcoming Meetings':TABS.find(t=>t.id===tab).label}
-            <span className="t-sub" style={{fontWeight:400}}> · lm_meetingoccurrences</span></h2>
+          <h2 style={{flex:1}}>{tab==='due'?'Upcoming Meetings':TABS.find(t=>t.id===tab).label}</h2>
           <TableSearch value={q} onChange={setQ} placeholder="Search meetings…"
             shown={rows.length} total={typedRows.length}/>
           <Tag c="teal">{rows.length} in the table</Tag>
@@ -5495,7 +5482,7 @@ function ScreenMinutes(){
   return <>
     <div className="ph ph-row">
       <div style={{flex:1}}><h1>Meeting Minutes</h1>
-        <div className="sub">Every Minutes row in Dataverse — lm_meetingminuteses.</div></div>
+        <div className="sub">Every Minutes row in Dataverse.</div></div>
       <Btn k="pri" onClick={()=>go('mtg')}>Go to Meetings →</Btn>
     </div>
 
@@ -5506,7 +5493,7 @@ function ScreenMinutes(){
     </div>
 
     <div className="stats">
-      <Stat label="Total MOMs" v={list.length} d="from lm_meetingminuteses"/>
+      <Stat label="Total MOMs" v={list.length} d="all time"/>
       <Stat label="Approved" v={approved.length+closed.length}
         d={approvalRate==null?'—':approvalRate+'% approval rate'} c="green"/>
       <Stat label="Pending Signature" v={pending.length}
@@ -5599,7 +5586,7 @@ function DvEditOccModal({rec,onClose}){
         toast('Not saved','Saving this occurrence failed. Check the console for details.','err');
         return;
       }
-      toast('Occurrence updated','Saved to lm_meetingoccurrences.','ok');
+      toast('Occurrence updated','Your changes are saved.','ok');
       await refreshOccurrences();
       onClose();
     }catch(e){
@@ -6747,7 +6734,6 @@ function DvMeetingDetail({rec,back}){
       <div className="wa-side">
         <div className="card">
           <h2>Occurrence</h2>
-          <div className="csub" style={{marginBottom:6}}>lm_meetingoccurrences</div>
           <Row label="Meeting name" value={rec.name}/>
           <Row label="Status" value={rec.status}/>
           <Row label="Stage" value={rec.stage}/>
@@ -6858,8 +6844,7 @@ function DvMeetingDetail({rec,back}){
     {tab==='agenda' && <div className="card flush">
       <div className="card-hd" style={{display:'flex',alignItems:'center',gap:12}}>
         <div className="wa-icon gold">📋</div>
-        <h2 style={{flex:1}}>Agenda
-          <span className="t-sub" style={{fontWeight:400}}> · lm_meetingoccurrenceagendas</span></h2>
+        <h2 style={{flex:1}}>Agenda</h2>
         {rec.status==='Held' && <Tag c={covered<rec.agenda.length?'amber':'green'}>
           {covered} of {rec.agenda.length} covered</Tag>}
         {rec.status==='Scheduled' && (rec.agendaSent
@@ -6906,8 +6891,7 @@ function DvMeetingDetail({rec,back}){
     {tab==='att' && <div className="card flush">
       <div className="card-hd" style={{display:'flex',alignItems:'center',gap:12}}>
         <div className="wa-icon teal">👥</div>
-        <h2 style={{flex:1}}>Attendance
-          <span className="t-sub" style={{fontWeight:400}}> · lm_meetingoccurrenceattendeeses</span></h2>
+        <h2 style={{flex:1}}>Attendance</h2>
         {rec.status==='Held' && <Tag c={requiredPresent<required.length?'amber':'green'}>
           {requiredPresent} of {required.length} Required present</Tag>}
       </div>
@@ -6943,7 +6927,7 @@ function DvMeetingDetail({rec,back}){
     </div>}
 
     {tab==='minutes' && <>
-      {govLoading && <div className="card"><Empty>Reading lm_meetingminuteses…</Empty></div>}
+      {govLoading && <div className="card"><Empty>Reading minutes…</Empty></div>}
       {!govLoading && !minutes &&
         <div className="card"><Empty ic="📝">No Minutes row exists for this occurrence.</Empty>
           <div style={{fontSize:12,color:'var(--muted)',textAlign:'center',padding:'0 17px 14px'}}>
@@ -6954,7 +6938,7 @@ function DvMeetingDetail({rec,back}){
     </>}
 
     {tab==='grid' && <>
-      {govLoading && <div className="card"><Empty>Reading lm_auditgridinstances…</Empty></div>}
+      {govLoading && <div className="card"><Empty>Reading the Audit Grid…</Empty></div>}
       {!govLoading && grids.length===0 &&
         <div className="card"><Empty ic="▦">No Audit Grid Instance exists for this occurrence.</Empty>
           <div style={{fontSize:12,color:'var(--muted)',textAlign:'center',padding:'0 17px 14px'}}>
@@ -6968,7 +6952,6 @@ function DvMeetingDetail({rec,back}){
     {tab==='docs' && <div className="card flush">
       <div className="card-hd" style={{display:'flex',alignItems:'center',gap:10}}>
         <h2 style={{flex:1}}>Documents</h2>
-        <span className="t-sub" style={{fontWeight:400}}>lm_meetingoccurrencelinkedreports</span>
       </div>
       <div style={{padding:'8px 17px 17px'}}>
         {docsLoading ? <Empty ic="…">Reading linked documents…</Empty> : <>
@@ -7177,7 +7160,7 @@ function DvReportDetail({rec,back}){
 
   const saveFileUrl = async url => {
     if(url.length>FILE_URL_MAX){
-      toast('Too long',`lm_FileURL allows at most ${FILE_URL_MAX} characters — this is ${url.length}.`,'err');
+      toast('Too long',`This field allows at most ${FILE_URL_MAX} characters — this is ${url.length}.`,'err');
       return;
     }
     setSavingFile(true);
@@ -7369,8 +7352,7 @@ function DvReportDetail({rec,back}){
                 'The reason is recorded and the prior review history is kept. Re-submission restarts the configured route.');
             }}/>}
           <h2>Review History</h2>
-          <div className="csub">Every review action, retained across a Request More Information —
-            read from lm_reportoccurrencehistories.</div>
+          <div className="csub">Every review action, retained across a Request More Information.</div>
           {histLoading
             ? <Empty>Reading the history…</Empty>
             : history.length===0
@@ -8235,7 +8217,21 @@ function NewMeetingModal({kind,onClose}){
   const stageBU     = f.stage==='Business Unit';
   const stageRegion = f.stage==='Region';
   const scopeOk = stageBU ? !!f.dvBusinessUnitId : stageRegion ? !!f.dvRegionId : true;
-  const deptOpts = departmentsForScope(f.stage, f.dvBusinessUnitId, f.dvRegionId);
+  /* ⚠️ Same rule the Report-side New Report modal already has (see its own
+     comment, above): the Setup's own Departments --
+     lm_meetingtemplatedepartmentfunctions, already on tplDetail as `lines`
+     -- beat departmentsForScope()'s Position-inference when the Setup names
+     any, since the inference can offer a Department the Setup never named
+     and miss one it did. Falls back to the inference for a Custom Meeting,
+     while the Setup is still loading, or when it names no Department. */
+  const tplDeptIds = useMemo(()=>new Set(
+    (tplDetail?.lines || []).map(l=>l._lm_department_value).filter(Boolean)),
+  [tplDetail]);
+  const tplDepts = DV_DEPT_LIST.filter(d=>tplDeptIds.has(d.id));
+  const fromSetup = !custom && tplDepts.length > 0;
+  const deptOpts = fromSetup
+    ? tplDepts
+    : departmentsForScope(f.stage, f.dvBusinessUnitId, f.dvRegionId);
   const chairOpts = positionsForScope(f.stage, f.dvBusinessUnitId, f.dvRegionId);
   const scopeChosen = !(stageBU && !f.dvBusinessUnitId) && !(stageRegion && !f.dvRegionId);
   const scopeHint = stageBU
@@ -8301,6 +8297,25 @@ function NewMeetingModal({kind,onClose}){
         : x.tz,
     }));
   };
+
+  /* Keep the Department consistent with the Setup's own list -- the same
+     rule and the same reason the Report-side New Report modal already has
+     it: a Department picked before the Setup's detail arrives may not be on
+     its list (cleared, rather than submitted against a Setup that never
+     named it), and a Setup naming exactly ONE Department has no decision to
+     make (selected automatically). Only ever fills a BLANK field, so an
+     explicit choice survives. Restricted to `fromSetup` on purpose -- the
+     fallback list is inferred from Positions, and auto-selecting from an
+     inference would put a Department the Setup never governed onto a
+     governed record. */
+  useEffect(()=>{
+    if(!fromSetup) return;
+    if(f.dvDepartmentId && !deptOpts.some(d=>d.id===f.dvDepartmentId)){
+      set('dvDepartmentId','');
+      return;                      // the next run picks the lone one, if any
+    }
+    if(!f.dvDepartmentId && deptOpts.length===1) set('dvDepartmentId', deptOpts[0].id);
+  },[fromSetup, deptOpts, f.dvDepartmentId]);
 
   /* Reading a Setup's own per-unit placement, roles and Attendees is a
      separate, heavier call than the lightweight list the picker below is
@@ -8403,13 +8418,13 @@ function NewMeetingModal({kind,onClose}){
       if(errors.length){
         console.warn('[dataverse] Meeting Occurrence saved with some child rows failing:', errors);
         toast('Saved, with gaps',
-          `The Meeting Occurrence was created, but ${errors.length} related row(s) (${errors.map(e=>e.table).join(', ')}) failed. Check the console for details.`,'warn');
+          `The Meeting Occurrence was created, but ${errors.length} related row(s) failed. Check the console for details.`,'warn');
       }else if(custom){
         toast('Custom Ad Hoc Meeting saved',
-          'Written to lm_meetingoccurrences with its agenda and attendees. It now appears on the Calendar.','ok');
+          'Saved with its agenda and attendees. It now appears on the Calendar.','ok');
       }else{
         toast('Ad Hoc occurrence created',
-          'Created from the approved Setup and written to lm_meetingoccurrences. The Setup and its classification are unchanged.','ok');
+          'Created from the approved Setup. The Setup and its classification are unchanged.','ok');
       }
       await refreshOccurrences();
       onClose();
@@ -8429,7 +8444,7 @@ function NewMeetingModal({kind,onClose}){
 
     {!custom && <>
       <Field label="Approved Setup" req
-        hint="Approved Setups only, read live from Dataverse — lm_meetingtemplates.">
+        hint="Approved Setups only, read live from Dataverse.">
         <ApprovedSetupPicker list={DV_TPL_LIST} val={f.setup}
           onChange={v=>set('setup',v)}
           emptyText="No Meeting Templates loaded from Dataverse"
@@ -8457,11 +8472,11 @@ function NewMeetingModal({kind,onClose}){
     </>}
 
     {(custom || (f.setup && !tplLoading)) && <>
-      {custom && <Note k="info" ic="i">This form writes straight to <b>lm_meetingoccurrences</b>, with its agenda and
+      {custom && <Note k="info" ic="i">This form creates a real Meeting Occurrence, with its agenda and
         attendees. Business Unit, Chair and Attendees are therefore read from Dataverse — the seeded demo
         people used elsewhere in this module are not real rows and the lookups would reject them.
-        <div style={{marginTop:6}}><b>Purpose</b> is the one field not saved — the occurrence table has
-        no column for it.</div></Note>}
+        <div style={{marginTop:6}}><b>Purpose</b> is the one field not saved — there is nowhere to store
+        it yet.</div></Note>}
       {custom && <Field label="Meeting name" req><input type="text" value={f.name}
         onChange={e=>set('name',e.target.value)} placeholder="e.g. Sterilisation incident review"/></Field>}
       {custom && <Field label="Purpose" req hint="Not stored — the occurrence table has no Purpose column.">
@@ -8480,7 +8495,7 @@ function NewMeetingModal({kind,onClose}){
           {['Business Unit','Region','Group','ExCom'].map(s=><option key={s}>{s}</option>)}</select></Field>
 
         {stageBU
-          ? <Field label="Business Unit" req hint="Written to the lm_BusinessUnit lookup. Shown as Business Unit — Region.">
+          ? <Field label="Business Unit" req hint="Shown as Business Unit — Region.">
               <select value={f.dvBusinessUnitId} onChange={e=>{
                 const id=e.target.value;
                 const bu=DV_BU_LIST.find(b=>b.id===id);
@@ -8495,7 +8510,7 @@ function NewMeetingModal({kind,onClose}){
                   return <option key={b.id} value={b.id}>{rn?`${b.name} — ${rn}`:b.name}</option>; })}
               </select></Field>
           : stageRegion
-            ? <Field label="Region" req hint="Written to the lm_Region lookup.">
+            ? <Field label="Region" req>
                 <select value={f.dvRegionId} onChange={e=>{
                   const id=e.target.value;
                   const rg=DV_REGION_LIST.find(r=>r.id===id);
@@ -8516,11 +8531,11 @@ function NewMeetingModal({kind,onClose}){
             opts={chairOpts} disabled={!scopeChosen}
             placeholder={scopePlaceholder} emptyText="No Positions in this scope"/></Field>
         <Field label="Facilitator" req
-          hint="Writes to lm_FacilitatorPosition. The Facilitator owns the agenda items and writes up the Minutes.">
+          hint="The Facilitator owns the agenda items and writes up the Minutes.">
           <PositionSelect value={f.dvFacilitatorPositionId} onChange={v=>set('dvFacilitatorPositionId',v)}
             opts={chairOpts} disabled={!scopeChosen}
             placeholder={scopePlaceholder} emptyText="No Positions in this scope"/></Field>
-        <Field label="Time zone" req hint="Written to lm_timezone.">
+        <Field label="Time zone" req>
           <select value={f.tz} onChange={e=>set('tz',e.target.value)}>
             <option value="">Select…</option>
             {TIME_ZONES.map(t=><option key={t.id} value={t.id}>{t.label}</option>)}</select></Field>
@@ -8528,17 +8543,20 @@ function NewMeetingModal({kind,onClose}){
       <DvAttendeePicker value={f.dvAttend} onChange={v=>set('dvAttend',v)}
         opts={chairOpts} scopeChosen={scopeChosen} scopeHint={scopeHint}/>
       <Field label="Department"
-        hint={stageBU
-          ? 'Narrowed to the Departments inside the chosen Business Unit.'
-          : stageRegion
-            ? 'Narrowed to the Departments inside every Business Unit in the chosen Region.'
-            : 'Group and ExCom Meetings are not narrowed — every Department is offered.'}>
+        hint={fromSetup
+          ? `The ${deptOpts.length} Department${deptOpts.length===1?'':'s'} this Setup is for.`
+          : stageBU
+            ? 'Narrowed to the Departments inside the chosen Business Unit.'
+            : stageRegion
+              ? 'Narrowed to the Departments inside every Business Unit in the chosen Region.'
+              : 'Group and ExCom Meetings are not narrowed — every Department is offered.'}>
         <select value={f.dvDepartmentId} onChange={e=>set('dvDepartmentId',e.target.value)}
           disabled={(stageBU&&!f.dvBusinessUnitId)||(stageRegion&&!f.dvRegionId)}>
           <option value="">{
             stageBU&&!f.dvBusinessUnitId ? 'Choose a Business Unit first'
             : stageRegion&&!f.dvRegionId ? 'Choose a Region first'
-            : deptOpts.length ? 'Select…' : 'No Departments in this scope'}</option>
+            : deptOpts.length ? 'Select…'
+            : fromSetup ? 'This Setup names no Department' : 'No Departments in this scope'}</option>
           {deptOpts.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
         </select></Field>
     </>}
@@ -9163,8 +9181,7 @@ function ScreenGrid(){
 
     <div className="card flush">
       <div className="card-hd"><h2>Audit Grid Instances</h2>
-        <div className="csub">One Instance per Committee occurrence, created on closure of its Minutes.
-          Read from <code>lm_auditgridinstances</code>.</div></div>
+        <div className="csub">One Instance per Committee occurrence, created on closure of its Minutes.</div></div>
       {list.length===0?<Empty>No Instances yet.</Empty>:
       <div className="t-wrap"><table className="data">
         <thead><tr><th>Committee</th><th>Occurrence</th><th>Template</th><th>State</th>
@@ -9588,7 +9605,7 @@ function ScreenDecisions(){
 
     <div className="card flush" style={{marginTop:16}}>
       <div className="card-hd" style={{display:'flex',alignItems:'flex-start',gap:12}}>
-        <div style={{flex:1}}><h2>Live Decisions (wlog_decisions)</h2>
+        <div style={{flex:1}}><h2>Live Decisions</h2>
           <div className="csub">Read from the Work Log Decisions table — a pre-existing table, separate
             from the Decision register above. Not yet linked to a specific Meeting Agenda Item or Report;
             that comes once the table carries a lookup for it.</div></div>
@@ -9642,7 +9659,7 @@ function WorkLogDecisionModal({onClose}){
         return;
       }
       toast('Decision logged',
-        'Written to wlog_decisions. Not yet linked to a Meeting or Report — that comes once the table carries a lookup for it.','ok');
+        'Not yet linked to a Meeting or Report — that comes once there\'s somewhere to store the link.','ok');
       await refreshOccurrences();
       onClose();
     }catch(e){
@@ -9652,7 +9669,7 @@ function WorkLogDecisionModal({onClose}){
   };
 
   return <Modal title="Log a Decision" onClose={onClose}
-    sub="Written to wlog_decisions. Base fields only for now — no link to a Meeting or Report yet."
+    sub="Base fields only for now — no link to a Meeting or Report yet."
     footer={<><Btn onClick={onClose} disabled={saving}>Cancel</Btn>
       <Btn k="pri" disabled={!ok||saving} onClick={save}>{saving?'Saving…':'Log Decision'}</Btn></>}>
     <Field label="Title" req err={!f.name.trim()?'Required.':null}>
