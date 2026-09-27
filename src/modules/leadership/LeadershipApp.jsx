@@ -47,7 +47,8 @@ import { fetchMeetingOccurrences, fetchReportOccurrences, createMeetingOccurrenc
          MEETING_SETUP_TYPE, MEETING_CATEGORY, MEETING_FREQUENCY, MEETING_DAY_OF_WEEK,
          MEETING_MONTH_IN_QUARTER,
          ATTENDEE_TYPE, REPORT_TYPE, REPORT_CATEGORY, REPORT_FREQUENCY,
-         fetchMeetingUnitRoles, fetchReportUnitRoles } from '../../services/dataverse.js';
+         fetchMeetingUnitRoles, fetchReportUnitRoles,
+         REPORT_OBJECTIVE_MAX } from '../../services/dataverse.js';
 
 /* =========================================================================
    REFERENCE DATA + SEED
@@ -62,7 +63,8 @@ const FILE_URL_MAX = 300;
 /* lm_reportobjective is 100 characters on lm_reportoccurrence -- NOT the same
    as the Template's own lm_objective, which is longer. Dataverse rejects an
    over-length value with a 400 (0x80044331) instead of truncating it. */
-const REPORT_OBJECTIVE_MAX = 100;
+/* Re-exported from the service layer rather than declared again here: two
+   copies of a Dataverse column's width is how they end up disagreeing. */
 
 const REGIONS = ['KSA','Egypt'];
 const BUS = [

@@ -5715,10 +5715,49 @@ the page rather than trusted on its own.
 
 Every count on the page was read live from `org2f45e702` and `org319b4ea9` — none is
 carried over from an earlier note. Text column widths are stated as *observed
-behaviour*, not metadata, because Dataverse exposes no max-length column (see §8).
+### 27 Sep — Pushed both apps (objective widened to 4000)
 
-The page is **private** until shared from its own Share menu; the admin and the
-product owner cannot open the link before that.
+Both live on the first attempt. Carries `REPORT_OBJECTIVE_MAX` 100 → 4000, the
+constant moved into `dataverse.js` so the UI imports it instead of keeping a
+second copy, and the `pm_targetversion` revert (Target reads `pm_target`, as
+before).
+
+| App | Id |
+|---|---|
+| Governance Setup | `4912152c-b5c8-4beb-bb74-c9f43550405b` |
+| Leadership Execution | `83db0ef8-4c62-4eef-84ac-dadab326b704` |
+
+`.power` and `power.config.json` present before and after; `dist` subfolder
+only replaced. Assets: governance 102, leadership 104 — unchanged.
+
+### 27 Sep — `lm_reportobjective` widened to 4000, and there is no way to read that from here
+
+The column was widened in IT by the product owner. `REPORT_OBJECTIVE_MAX` is
+now **4000** (was 100), which also matches the 4000 the section body already
+uses.
+
+⚠️ **The value is declared once, in `dataverse.js`, and imported by the UI.**
+It used to be a second `const` in `LeadershipApp.jsx` — two copies of a
+Dataverse column's width is how they end up disagreeing.
+
+#### ⚠️ A column's max length cannot be read from this environment. Five routes, all closed:
+
+| Route | Why not |
+|---|---|
+| FetchXML `attribute` metadata entity | has no `maxlength` column — the query errors by name |
+| `pac modelbuilder` | emits the property and **zero** length metadata (`grep -c maxlength` = 0) |
+| The stored values | all exactly 100 — the app's own `.slice()` had truncated every one, so the data only reflected the guard |
+| `pac solution export` (its XML **does** carry `MaxLength`) | **no `prvReadSolution` privilege** for this user |
+| The local `.power/schemas/*.Schema.json` | do not contain this column at all |
+
+So the number came from the product owner, and the code says so. **If a save
+ever 400s with `0x80044331` again, Dataverse's own message names the real
+width — believe it over the constant**, which is exactly how the original 100
+was discovered.
+
+The `.slice()` on the Template pre-fill was kept, now at 4000: it cannot lose
+text while the occurrence column is at least as wide as the Template's, and it
+still guarantees no 400 if that ever stops being true.
 
 ### 27 Sep — Context file audited, not just appended to
 
@@ -8017,12 +8056,11 @@ none is blocked on design.
       **`lm_citedreportsection`** to `wlog_decision` **in IT**, targeting
       `lm_reportoccurrencesectionses`. DT New's copy has it; IT's does not, and
       the sections live in IT, so today neither environment can hold the link.
-- [ ] **Widen `lm_reportobjective`** on `lm_reportoccurrences` (100 characters
-      today). Dataverse rejects an over-long value rather than trimming it, so
-      an objective copied down from its Setup is cut mid-sentence —
-      `REPORT_OBJECTIVE_MAX` and a `.slice()` exist only to avoid the 400.
-      Widening a text column is non-destructive. Four more columns are equally
-      narrow: `lm_auditgridanswers.lm_evidence`,
+- [x] ~~**Widen `lm_reportobjective`**~~ — done by the product owner, 27 Sep:
+      **100 → 4000**. `REPORT_OBJECTIVE_MAX` now lives in `dataverse.js` and is
+      imported by the UI, so the two cannot disagree. ⚠️ **Four columns are
+      still equally narrow** and each will 400 the same way:
+      `lm_auditgridanswers.lm_evidence`,
       `lm_auditgridinstances.lm_returnreason`, `lm_correctionreason`,
       `lm_reportoccurrencehistories.lm_note`.
 - [ ] **Dashboard screenshots** — add an **image or file column** to

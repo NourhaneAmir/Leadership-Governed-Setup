@@ -4409,18 +4409,27 @@ export async function migrateTemplateSectionsToOccurrence(occurrenceId, template
   return { created, citations, skippedFiles, errors, checklistRows: rows.length };
 }
 
+/* ⚠️ Must match lm_reportobjective's real width in Dataverse, and there is no
+   way to read that from here -- the FetchXML `attribute` metadata entity has no
+   maxlength column, modelbuilder emits none, and exporting the solution (whose
+   XML does carry MaxLength) needs a prvReadSolution privilege this user does
+   not have. Widened from 100 to 4000 on 27 Sep on the product owner's word,
+   after they changed the column. If a save ever 400s with 0x80044331 again,
+   Dataverse's own message names the real number -- believe it over this. */
+export const REPORT_OBJECTIVE_MAX = 4000;
+
 export async function createReportOccurrence(payload){
-  if((payload.objective || '').length > 100){
+  if((payload.objective || '').length > REPORT_OBJECTIVE_MAX){
     console.warn('[dataverse] createReportOccurrence: lm_reportobjective is %d characters; ' +
-      'the column allows 100 and Dataverse will reject this with 0x80044331.',
-      payload.objective.length);
+      'the column allows %d and Dataverse will reject this with 0x80044331.',
+      payload.objective.length, REPORT_OBJECTIVE_MAX);
   }
   const row = {
     lm_name: payload.name || 'Untitled Report',
-    /* 100 characters, and Dataverse 400s rather than truncating (0x80044331).
-       Not capped here on purpose -- silently shortening what someone typed is
-       worse than refusing it -- but a caller that skips its own validation
-       gets a named cause instead of an opaque error code. */
+    /* Dataverse 400s rather than truncating (0x80044331). Not capped here on
+       purpose -- silently shortening what someone typed is worse than refusing
+       it -- but a caller that skips its own validation gets a named cause
+       instead of an opaque error code. See REPORT_OBJECTIVE_MAX above. */
     lm_reportobjective: payload.objective || null,
     lm_period: payload.period || null,
     lm_status: REPORT_OCC_STATUS_KEY[payload.status || 'Draft'] ?? REPORT_OCC_STATUS_KEY.Draft,
