@@ -197,6 +197,17 @@ const And_microsoftgroupmembersService = dvTable('and_microsoftgroupmembers');
    ⚠️ Cost: ~11.4k rows at app load, three pages instead of one. */
 const Cr603_organizationstructuresService = dvTable('cr603_organizationstructures', undefined, IT_ORG);
 const SystemusersService = dvTable('systemusers');
+/* A deliberate FORK, not a repoint (27 Sep) -- SystemusersService above must
+   stay on DT New: fetchUserNameMap()'s systemuserid keys come from
+   hr_employees.hr_User, and hr_employees is itself still DT New on purpose
+   (see the note above), so that whole chain only resolves within the same
+   org. This sibling is for the opposite case -- picking a user FRESH, with
+   no hr_employees chain behind it at all -- and both its callers write into
+   IT-hosted tables (hx_tasks, lm_reportoccurrenceshares), so the id it
+   supplies has to be an IT systemuserid or the @odata.bind on create 404s
+   with "Entity 'SystemUser' ... Does Not Exist" -- the exact live failure
+   that surfaced this. */
+const SystemusersItService = dvTable('systemusers', undefined, IT_ORG);
 /* ⚠️ IT_ORG (26 Sep), and it has to be. Its ONLY caller is
    fetchEmployeeIndex(), whose whole job is to join employees to Positions --
    and cr603_organizationstructures is IT-pinned above. On this app's own
@@ -1954,9 +1965,16 @@ export const POC_STATUS = { 1:'Active', 2:'Succeeded', 3:'Failed', 4:'Retired' }
  *  rather than from five more reads. */
 /** Users who can be assigned a task -- systemusers, enabled ones only.
  *  `isdisabled eq false` rather than statecode, which systemuser does not use
- *  the way a custom table does. */
+ *  the way a custom table does.
+ *
+ *  ⚠️ IT_ORG (via SystemusersItService), not DT New: both callers -- the Task
+ *  assignee picker and the "send a report" recipient picker -- bind the id
+ *  straight into a create on an IT-hosted table (hx_tasks,
+ *  lm_reportoccurrenceshares). A DT New systemuserid bound there 404s with
+ *  "Entity 'SystemUser' ... Does Not Exist", since a lookup can't resolve
+ *  across environments. */
 export async function fetchAssignableUsers(){
-  const res = await SystemusersService.getAll({
+  const res = await SystemusersItService.getAll({
     select: ['systemuserid', 'fullname', 'internalemailaddress'],
     filter: 'isdisabled eq false',
   });

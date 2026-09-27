@@ -7039,6 +7039,45 @@ skips blanks, so no filtering needed there).
 
 Both apps build clean. Not yet pushed.
 
+### 27 Sep: the hx_taskses 404 was never a privilege gap — the real error, once surfaced, named the actual cause
+
+§5's earlier 27 Sep entry ("live console errors from the pushed app") diagnosed
+the `hx_taskses` create 404 as a likely missing Create privilege, since reads
+worked and the entity name checked out — a reasonable read of the evidence
+available at the time, but wrong, and worth recording as a caution: **that
+`idOrThrow()` fix was itself what surfaced the real cause.** Once the user hit
+it again post-fix, the toast showed the actual connector error instead of the
+old generic one:
+
+    0x80040217 -- Entity 'SystemUser' With Id = <guid> Does Not Exist
+
+Not a permission problem at all — a cross-environment id. `createTask()`
+binds `hx_Assignee@odata.bind` to `/systemusers(id)` on the same IT-hosted
+create as the Task row itself, but the id offered by the assignee picker
+came from `fetchAssignableUsers()`, which read `SystemusersService` — the
+**DT New** systemusers service. A DT New systemuserid cannot resolve inside
+an IT create, same rule as every other cross-org lookup in this app.
+
+**Why this wasn't just a repoint.** `SystemusersService` (DT New) has other
+callers that must stay exactly where they are: `fetchUserNameMap()`'s ids
+come from `hr_employees.hr_User`, and `hr_employees` is itself deliberately
+still DT New (26 Sep note, same reasoning) — moving `SystemusersService`
+would have broken that chain instead, trading one cross-org mismatch for
+its mirror image. Forked instead: a new sibling,
+`SystemusersItService = dvTable('systemusers', undefined, IT_ORG)`, used
+only by `fetchAssignableUsers()` — whose two callers (the Task assignee
+picker in `BuildReport.jsx`, and the "send a report" recipient picker in
+`Communication.jsx`'s `ShareForm`) both write into IT-hosted tables
+(`hx_tasks`, `lm_reportoccurrenceshares`). Checked both callers before
+concluding the fork was safe, not just the one that was reported.
+
+⚠️ **`shareReportOccurrence()` almost certainly had the identical bug**,
+unreported — same `/systemusers(userId)` bind, same IT-hosted target table,
+same DT-New-sourced id before this fix. Not separately confirmed live, but
+the fix already covers it since both callers share `fetchAssignableUsers()`.
+
+Both apps build clean. Not yet pushed.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap
