@@ -95,9 +95,9 @@ The BRD **contradicts itself** in three places, and the code picked a side:
 | Governance Setup module (Meeting + Report Template register) | ✅ live |
 | **Group-wide (Stage 3/4) Chairman/Co-Chairman/Facilitator (Meeting) and Owner/Submitting Position/Team Channel/Speciality (Report)** | ✅ **live** (this session) |
 | Meeting Occurrences — create, edit, **cancel**, **reschedule**, mark Held, **Agenda add/remove/reorder/record-distribution**, attendance | ✅ live (Attendance/Held/Edit from an earlier session; Cancel/Reschedule/Agenda edit **this session**) |
-| Report Occurrences — create (Template **and** Custom), file URL, review chain (submit / approve / RMI) + history | ⚠️ **built, but disconnected from the nav as of 02 Sep** — `NewReportModal`/`DvReportDetail`/`dvReportOccs` still exist and still work end to end against `lm_reportoccurrences`, but nothing currently opens them (see the row below and §5's 02 Sep entry) |
+| Report Occurrences — create (Template **and** Custom), file URL, review chain (submit / approve / RMI) + history | 🟡 **half reconnected (26 Sep)** — `NewReportModal` is wired again: Workspace and Reports / Plans both open it, it defaults Created-by to the signed-in user's Position, offers only the Setup's own Department/Function pairs, copies the Setup's checklist down into Sections and Citations, and opens the new report. ⚠️ **`DvReportDetail` is still rendered nowhere**, so nothing can approve, return or request information on a report — see §9. The 02 Sep "disconnected" note above it is superseded. |
 | **Meeting Minutes tab** (nav screen) — reads `lm_meetingminuteses` directly | ✅ **live** (01 Sep — the write path itself, `DvMinutesBody`, was already live from an earlier session; only the top-level list screen was still seeded until now) |
-| **Build a report/plan tab** (Artifact group, `ScreenBuildReport`) | ✅ **live, read + write** (17 Sep) — opens a Draft or Returned, unlocked `lm_reportoccurrences` row; edits its title, Sections and Citations; saves only what changed; submits it for review. ⚠️ Not yet exercised against real Dataverse — see §9. |
+| **Build a report/plan tab** (Artifact group, `ScreenBuildReport`) | ✅ **live, read + write** (17 Sep) — opens a Draft or Returned, unlocked `lm_reportoccurrences` row; edits its title, Sections and Citations; saves only what changed; submits it for review. Exercised against real IT data repeatedly since 24 Sep — the "not yet exercised" caveat that stood here is superseded. |
 | **Reports / Plans tab** (Artifact group, `ScreenOrgReports`) | ✅ **live** (17 Sep) — reads `lm_reportoccurrences`, `lm_reportoccurrencesections` and `lm_reportsectioncitations`. See §5. |
 | **Reports & Plans composer** (hidden `rpt` screen, not the visible tab above) | 🔴 **reverted from live to seeded, on purpose, 02 Sep** — was reading `lm_reportoccurrences` directly as of 01 Sep; rebuilt this session as the citation-based composer from `prototype.html` (sections that cite live KPIs/tactics/PM entries/issues/tasks/other reports), which has no Dataverse equivalent yet, so it now runs on seeded `db.reports`/`db.paragraphs`/`db.templates` instead. This was an explicit product-owner instruction, not a regression found by accident — see §5. |
 | Authority Matrix + Approval Cycles | ✅ live, read-only by design (`AuthorityMatrixPanel`, embedded in Governance Settings) |
@@ -106,8 +106,13 @@ The BRD **contradicts itself** in three places, and the code picked a side:
 | **Decisions register** | 🟡 **partially live** (this session) — `wlog_decisions` read + minimal create wired as its own list on the Decisions tab, alongside (not replacing) the existing seeded Decision workflow. Not yet linked to the Meeting Agenda Item or Report that raised it — deferred by explicit instruction, see §5/§6/§7. |
 | **Committee Scores (nav screen)** | ✅ **live** (01 Sep) — `ScreenGrid` now reads `fetchAuditGridInstances()` joined against `dvMeetingOccs`, instead of seeded `db.grids`. See §5 for the join details and the Approved-only Coverage/Score rule. |
 | **Setup Activity trail** — the Activity tab on a Report/Meeting Setup | ✅ **live** (10 Sep) — `lm_setupactivity` is written on create, edit, publish, approve and expire, and the tab reads the real rows back for any Setup that has a `_dataverseId`. A Setup that has never been saved still shows the seeded sample trail. |
-| **Artifact group** — Business intelligence, Reporting hierarchy | 🟡 **mixed** (11 Sep) — both run on the app's own data rather than the prototype's parallel seed model, but that data is itself seeded: BI reports from `BI_REPORTS`, hierarchy edges derived from seeded `RPT:` paragraph citations. (Reports / Plans and Build a report/plan, in the same group, are live since 17 Sep — rows above.) The Power BI report itself **cannot be embedded** — see §8. |
-| **How every table is reached** | 🟡 **changed 16 Sep** — all 42 tables now go through `dvTable()` in `src/services/xenv.js`, which calls the Dataverse connector against `DATA_ORG` (currently DT New). The generated per-table services are no longer imported anywhere. Behaviour is identical while an app is hosted in DT New; the point is that it stays identical when it is not. Creates supply their own primary key since 17 Sep, so a new row's id no longer depends on the response — see §6. |
+| **Artifact group** — Business intelligence, Reporting hierarchy | ✅ **live** (superseding the 11 Sep "mixed" note) — Business intelligence reads `lm_bireportdashboards`, and the Reporting hierarchy reads real Report Templates, occurrences, checklists and citations. (Reports / Plans and Build a report/plan, in the same group, are live since 17 Sep — rows above.) The Power BI report itself **cannot be embedded** — see §8. |
+| **How every table is reached** | 🟡 **changed 16 Sep, counted again 27 Sep** — all **64** tables go through `dvTable()` in `src/services/xenv.js`. **56 are pinned to IT**; **7 still read DT New**: `and_microsoftgroupmembers`, `systemusers`, `lm_approvalcycles`, `lm_approvalcyclesteps`, `lm_authoritymatrixrows`, `wlog_decisions`, `lm_setupactivities`. (`hr_employees` was the eighth until 26 Sep.) `getAll()` follows `@odata.nextLink` to a 200-page cap, so a filtered read is never silently truncated at Dataverse's 5,000-row page. The generated per-table services are no longer imported anywhere. Behaviour is identical while an app is hosted in DT New; the point is that it stays identical when it is not. Creates supply their own primary key since 17 Sep, so a new row's id no longer depends on the response — see §6. |
+| **Export a report to Excel or Word** (`reportExport.js` + `reportWriters.js`) | ✅ **live** (26 Sep) — a sheet per section plus five cross-cutting sheets; a sub-heading per section in the document. Carries every citation's metadata, KPI figures and breakdown members. Written with **ExcelJS** (SheetJS cannot write a fill, font or table style at all) and **docx**, both dynamically imported. ⚠️ One user-reported failure to open the workbook is **still unexplained** — see §5, 26 Sep. |
+| **Dashboard images in the exports** | 🟡 **manual** (27 Sep) — a person attaches a PNG per cited dashboard at export time and it is embedded (inline in Word, on the BI reports sheet in Excel). Nothing is stored. The automatic route (Power BI `exportToFile`) is blocked on three things, none of them code — see §5, 27 Sep. |
+| **KPI coverage** (`KpiCoverage.jsx`, both the author's and the reader's screen) | ✅ **live** (27 Sep) — unions the KPIs the Setup declares (`lm_reporttemplaterelatedkpises`) with the KPIs its sections cite, and names four gaps: not cited, not in the Setup, no achievement, no Target. Processes the Setup names are listed too. |
+| **KPI data gaps section** | ✅ **live** (27 Sep) — an explicit button writes a real `lm_reportoccurrencesections` row citing every KPI with no Actual or no Target, and re-running drops the ones whose data has arrived, deleting the section when the last gap is filled. ⚠️ Identified by its **heading**; there is no spare column to mark it with. Never runs on open, and only on a Draft/Returned, unlocked report. |
+| **KPI achievement scope** | ✅ **live** (27 Sep) — `matchAchievement()` disqualifies a row only on a real conflict and reports which dimensions were ambiguous; `reportAchievementScope()` releases Department and Function for an **All Departments** report so it matches on Business Unit and Period alone. Both replaced rules that had been matching **nothing** for common reports. |
 | Tasks, Comments, Governance Settings (persisted values) | ❌ **seeded demo data only** |
 | **Meeting Setup "Completion Periods"** (MOM Write-up / MOM Approval / Audit Grid Completion-Submission, each an hours field) | ✅ **live** (15 Sep) — three plain columns on `lm_meetingtemplates` (`lm_momwriteuphours`, `lm_momapprovalhours`, `lm_gridsubmithours`), written/read alongside `quorum`/`torLink` in `dataverse.js` and `GovernanceApp.jsx`. **Persistence only — not yet consumed.** AG-16/AG-05 scoring still reads the global `DEFAULT_SETTINGS` values (§9), not this per-Setup one; the UI says so. |
 | **`lm_meetingoccurrencelinkedreports`** | 🔴 **registered, not wired to any screen** (15 Sep) — table + generated models exist (`lm_reportname`, lookups to `lm_meetingoccurrences`, `lm_reportoccurrences`, `lm_report_templates`); no app code reads or writes it yet. |
@@ -5715,6 +5720,44 @@ behaviour*, not metadata, because Dataverse exposes no max-length column (see §
 The page is **private** until shared from its own Share menu; the admin and the
 product owner cannot open the link before that.
 
+### 27 Sep — Context file audited, not just appended to
+
+§5 was current (every change has been recorded as it landed). The **structural**
+sections had drifted, because nothing had re-read them in weeks. Fixed:
+
+**§4 "What is actually wired to Dataverse"** — four statements were simply
+false:
+
+| Said | Actually |
+|---|---|
+| Report Occurrences "disconnected from the nav as of 02 Sep" | `NewReportModal` reconnected 26 Sep. ⚠️ `DvReportDetail` still is disconnected, which is the real remaining gap. |
+| Build a report/plan "not yet exercised against real Dataverse" | The most exercised screen in the app. |
+| BI reports "from `BI_REPORTS`" (seeded) | Live from `lm_bireportdashboards`. |
+| "all **42** tables" go through `dvTable()` | **64**, of which **56** are IT-pinned. |
+
+Five rows added for what this session built: the Excel/Word export, dashboard
+images, KPI coverage, the KPI-gaps section, and the achievement-scope work.
+
+**Counted rather than recalled:** 7 tables still read DT New —
+`and_microsoftgroupmembers`, `systemusers`, `lm_approvalcycles`,
+`lm_approvalcyclesteps`, `lm_authoritymatrixrows`, `wlog_decisions`,
+`lm_setupactivities`. ⚠️ The first grep undercounted: `dvTable('x','xid')` (a
+primary key, no org) does not match a pattern looking for `dvTable('x')`, which
+hid `wlog_decisions` and `lm_setupactivities`. Count on the absence of
+`IT_ORG`, never on the single-argument shape.
+
+**§9** — the vague "parts of this section are stale" warning replaced with a
+table naming exactly which four entries are superseded, and **every outstanding
+column ask collected in one place** instead of being scattered through §5:
+`lm_month`, `wlog_decision.lm_citedreportsection` in IT, widening
+`lm_reportobjective` (+4 more narrow columns), an image column on
+`lm_bireportdashboards`, and a marker for the generated gap section.
+
+**The published readiness register was corrected too** (v3) — it said eight
+tables read DT New and "four pieces of schema"; now seven and eight, with the
+change dated in its own footer rather than silently edited. A published figure
+that quietly changes is worse than one that was wrong.
+
 ### 27 Sep — Pushed both apps (dashboard images in the exports)
 
 Leadership first attempt; **Governance failed once** on
@@ -5729,7 +5772,6 @@ throughout.
 | Leadership Execution | `83db0ef8-4c62-4eef-84ac-dadab326b704` | first attempt |
 
 Assets: governance 102, leadership 104 — unchanged, no new library.
-
 
 ### 27 Sep — Dashboard images in the exports, attached by hand
 
@@ -5769,7 +5811,6 @@ overlapped -- which reads as a corrupt sheet rather than a layout slip.
 The no-image path is unchanged and still tested: the workbook keeps "Why there
 is no screenshot" and the document keeps its bordered placeholder.
 
-
 ### 27 Sep — Power BI "Export To File" for dashboard screenshots: three blockers, none of them code
 
 Asked whether the Power BI `exportToFile` REST API could put dashboard images
@@ -5807,7 +5848,6 @@ fed from the browser, letting a person attach a PNG per dashboard at export
 time. Not automatic, but it puts real dashboard images in the files now.
 Offered; not built without a decision, since it is a visible piece of UI.
 
-
 ### 27 Sep — Pushed both apps (KPI gaps section)
 
 Both live on the first attempt. Carries `syncKpiGapSection()`, the gap-section
@@ -5828,7 +5868,6 @@ but that was checked and is **not** the cause of "Excel cannot open the file" �
 `mergeCells()` given a string emits no merge rather than malformed XML. If the
 export still fails after this push, the cause is still unidentified and the
 failing file is the fastest way to find it.
-
 
 ### 27 Sep — The KPI gaps saved as a real section, refreshed on demand
 
@@ -5883,7 +5922,6 @@ XML stayed well-formed. The damage was cosmetic. That regression is still open.
 The earlier writer tests all passed against this because they asserted content
 presence and never the subtitle. The test now fails if any sheet contains a row
 that is a bare number, which is exactly the fingerprint this left.
-
 
 ### 27 Sep — KPI coverage: both sources of a report's KPIs, and four kinds of gap
 
@@ -7885,13 +7923,20 @@ looks absent — pipe it through `tr -d '\r'` first.
 
 ## 9. Remaining features checklist
 
-⚠️ **Parts of this section are stale.** Several entries below describe things that
-have since been built — notably "Report/Plan Composition, execution side", which
-now reads, writes, migrates its sections and citations down from a Setup, and
-renders them in both screens (breakdown MEMBERS are still Build-only). The live
-readiness register (see §5, 26 Sep:
-`https://claude.ai/artifact/6d7oGvErGmzPv2Wxv3X8gd`) was rebuilt from live row
-counts rather than from this list, and is the one to trust where the two disagree.
+⚠️ **Parts of this section are superseded. Named, so nobody re-does them:**
+
+| Entry below | Actually |
+|---|---|
+| "Report/Plan Composition, execution side — nothing reads or writes them" | Built. Reads, writes, migrates sections and citations down from a Setup, and renders in both screens. |
+| "Run one real Save draft in Build a report/plan" | Done many times against live IT data since 24 Sep. |
+| "Build a report/plan not yet exercised against real Dataverse" (§4) | Superseded — it is the most exercised screen in the app. |
+| "BI reports from `BI_REPORTS`" (§4) | Live from `lm_bireportdashboards`. |
+
+The live readiness register (§5, 26 Sep:
+`https://claude.ai/artifact/6d7oGvErGmzPv2Wxv3X8gd`) is rebuilt from live row
+counts and is the one to trust where it and this list disagree. ⚠️ Its "8
+tables still read DT New" is itself now **7** — `hr_employees` moved to IT on
+26 Sep.
 
 Organized by what actually unblocks each item — not by how big it feels.
 
@@ -7958,11 +8003,39 @@ something, except the one item below that's now live at a base level.
       `src/modules/leadership/screens/`.
 
 ### Blocked — needs a new Dataverse column
+
+⚠️ **Collected here 27 Sep.** These were scattered through §5 as they were
+found; this is the whole list. Each one has working code waiting behind it —
+none is blocked on design.
+
 - [ ] **Annual meetings** — add **`lm_month`** (1–12, 1 = January) to
       `lm_meetingtemplates`, matching the column already on
       `lm_report_templates`. The flow branch and the form change are written;
       only the column is missing. Until then the Meeting wizard shows a note
       where the Month dropdown belongs. See §6.
+- [ ] **Decisions raised on a report section** — add
+      **`lm_citedreportsection`** to `wlog_decision` **in IT**, targeting
+      `lm_reportoccurrencesectionses`. DT New's copy has it; IT's does not, and
+      the sections live in IT, so today neither environment can hold the link.
+- [ ] **Widen `lm_reportobjective`** on `lm_reportoccurrences` (100 characters
+      today). Dataverse rejects an over-long value rather than trimming it, so
+      an objective copied down from its Setup is cut mid-sentence —
+      `REPORT_OBJECTIVE_MAX` and a `.slice()` exist only to avoid the 400.
+      Widening a text column is non-destructive. Four more columns are equally
+      narrow: `lm_auditgridanswers.lm_evidence`,
+      `lm_auditgridinstances.lm_returnreason`, `lm_correctionreason`,
+      `lm_reportoccurrencehistories.lm_note`.
+- [ ] **Dashboard screenshots** — add an **image or file column** to
+      `lm_bireportdashboards` for a Power BI `exportToFile` PNG. The app side is
+      built and tested (`biImages` on both writers); a person can already attach
+      an image by hand at export time. ⚠️ The column alone is not enough — the
+      reports also sit in **My Workspace** (`groups/me`), and `exportToFile`
+      needs a capacity-backed workspace. See §5, 27 Sep.
+- [ ] **Mark the generated gap section** — a flag on
+      `lm_reportoccurrencesectionses` (or a third `lm_source` option) so the
+      "KPI data gaps" section is not identified by its **heading**. Rename it in
+      the editor today and the next sync creates a second one. `lm_source` has
+      exactly two options and the table carries no other spare field.
 
 ### Blocked — needs a new Dataverse table
 - [ ] **Tasks** — `lm_tasks` (1 table), plus its own screen (Tasks are currently
@@ -8072,7 +8145,9 @@ quorum definition, Decision↔Meeting/Report linking (§7.7, deferred on purpose
 - [ ] **Correct the same six in the Report Occurrence Generator artifact**
       (`db1d9a44-8e51…`). Anyone building from the artifact rather than the `.md`
       still hits `BadRequest` / `ODataUnrecognizedPathException`.
-- [ ] **Run one real Save draft in Build a report/plan** (17 Sep). The save diff is
+- [x] ~~**Run one real Save draft in Build a report/plan**~~ — done repeatedly
+      against live IT data since 24 Sep. Original note kept below for its
+      reasoning. The save diff is
       verified against mocks only. The first real save is also the first proof
       that `@odata.bind` lookups are accepted on creates through
       `CreateRecordWithOrganization` — which the rest of the app's child-row
