@@ -232,6 +232,42 @@ function xlTable(ws, { name, columns, rows, empty, numeric = [], links = [],
   return at;
 }
 
+/* docx v9 accepts only these, and Dataverse or a file picker may hand over
+   'jpeg' or a leading dot. Anything unrecognised is treated as PNG, which is
+   what a screenshot almost always is. */
+function imageType(ext){
+  const e = String(ext || '').toLowerCase().replace(/^\./, '');
+  if(e === 'jpeg' || e === 'jpg') return 'jpg';
+  if(e === 'gif' || e === 'bmp' || e === 'png') return e;
+  return 'png';
+}
+
+/** Places a dashboard picture under the current content and reserves rows for
+ *  it, so whatever is written next does not sit underneath the image.
+ *
+ *  ⚠️ Excel positions a picture over the GRID, not inside a cell, and it does
+ *  not grow a row to fit. Nothing below would be hidden exactly -- it would be
+ *  overlapped, which looks like a corrupt sheet. Hence the reserved rows.
+ */
+function xlImage(wb, ws, img){
+  if(!img?.base64) return;
+  let id;
+  try{
+    id = wb.addImage({ base64: img.base64, extension: imageType(img.extension) });
+  }catch(e){
+    console.warn('[reportExport] a dashboard image could not be embedded:', e);
+    return;
+  }
+  /* Kept to a readable width; the height follows the picture's own ratio so a
+     dashboard is never squashed. 16:9 only when the source said nothing. */
+  const width = Math.min(760, img.width || 720);
+  const height = Math.round(width * (img.width && img.height ? img.height / img.width : 0.5625));
+  /* tl.row is 0-BASED while ws.rowCount is 1-based, so rowCount is already the
+     index of the next free row. */
+  ws.addImage(id, { tl: { col: 0, row: ws.rowCount }, ext: { width, height } });
+  for(let i = 0, n = Math.ceil(height / 18); i < n; i++) ws.addRow([]);
+}
+
 /* Freezes everything written so far, so the title bands stay put while the
    data scrolls. Called once per sheet, after the headings exist. */
 const xlFreeze = (ws, rows) => { ws.views = [{ state: 'frozen', ySplit: rows }]; };
@@ -513,8 +549,21 @@ export async function reportToXlsx(model, biImages){
         [...new Set(bi.sections)].join(', '), bi.link || '']),
       empty: 'This report cites no BI dashboard.' });
 
+    /* The pictures live on THIS sheet rather than beside every section that
+       cites the dashboard: a workbook repeating the same image four times is
+       four times the size for no extra information. The document embeds them
+       inline instead, because a document is read straight through. */
+    for(const bi of model.biReports){
+      const img = biImages?.[bi.id];
+      if(!img?.base64) continue;
+      xlBlank(ws);
+      xlBand(ws, bi.name, 4);
+      xlImage(wb, ws, img);
+    }
+
     xlBlank(ws);
-    xlBand(ws, 'Why there is no screenshot', 4);
+    xlBand(ws, model.biReports.some(b => biImages?.[b.id]?.base64)
+      ? 'About these images' : 'Why there is no screenshot', 4);
     xlNote(ws, 'A dashboard is a frame belonging to app.powerbi.com. No browser API can '
              + 'read the pixels of a frame from another origin — the same rule that stops '
              + 'a page reading your signed-in bank dashboard — so no library can capture '
@@ -789,10 +838,16 @@ export async function reportToDocx(model, biImages){
 
         const img = biImages?.[c.bi.id];
         if(img?.base64){
+          /* ⚠️ `type` is REQUIRED by docx v9. Without it the picture is stored
+             as word/media/<hash>.undefined, which Word will not render. The
+             writers normalise it rather than trusting the caller. */
+          const wide = Math.min(600, img.width || 600);
+          const tall = Math.round(wide * (img.width && img.height ? img.height / img.width : 0.5625));
           kids.push(new Paragraph({
             children: [new ImageRun({
+              type: imageType(img.extension),
               data: img.base64,
-              transformation: { width: img.width || 600, height: img.height || 338 },
+              transformation: { width: wide, height: tall },
             })],
           }));
         }else{

@@ -5715,6 +5715,99 @@ behaviour*, not metadata, because Dataverse exposes no max-length column (see §
 The page is **private** until shared from its own Share menu; the admin and the
 product owner cannot open the link before that.
 
+### 27 Sep — Pushed both apps (dashboard images in the exports)
+
+Leadership first attempt; **Governance failed once** on
+`generateResourceStorage` (connection timed out) and succeeded on the retry.
+That is the same service-side flake §5 has recorded before — nothing to
+diagnose, retry is the fix, and `.power` / `power.config.json` were intact
+throughout.
+
+| App | Id | Result |
+|---|---|---|
+| Governance Setup | `4912152c-b5c8-4beb-bb74-c9f43550405b` | failed once, then pushed |
+| Leadership Execution | `83db0ef8-4c62-4eef-84ac-dadab326b704` | first attempt |
+
+Assets: governance 102, leadership 104 — unchanged, no new library.
+
+
+### 27 Sep — Dashboard images in the exports, attached by hand
+
+The Power BI `exportToFile` route is blocked on three things that are not code
+(previous entry). This is the half that works today: the **same `biImages`
+hook**, fed from the browser instead of from a flow. When the flow eventually
+exists, it feeds the identical hook and this UI can go.
+
+**Export panel** — a "Dashboard images" button appears whenever the report
+cites a BI dashboard, listing one file input per distinct dashboard. Images are
+held in component state and passed as `biImages`; **nothing is saved**, they
+apply to that export only. Capped at 4MB each, because Word and Excel carry the
+bytes inline and four 8MB screenshots make a file mail will refuse.
+
+**Word** embeds each picture inline beside its citation. **Excel** puts them on
+the BI reports sheet, once each, rather than beside every section that cites the
+dashboard — a workbook repeating one image four times is four times the size for
+no extra information.
+
+#### ⚠️ Two defects this surfaced, both found by testing the output
+
+1. **`ImageRun` needs `type` in docx v9.** Without it the picture is stored as
+   `word/media/<hash>.undefined` and Word will not render it. The file still
+   opened and still contained a `<w:drawing>`, so every earlier assertion
+   passed — only listing the zip entries showed it. `imageType()` now
+   normalises: `jpeg`/`jpg` -> `jpg`, `gif`/`bmp`/`png` kept, anything else PNG.
+2. **Aspect ratio was forced.** The old call passed the image's own width and
+   height straight into `transformation`, so a 1600x900 screenshot was drawn at
+   1600pt wide. Now capped at 600pt wide with the height derived from the
+   picture's own ratio; 16:9 is the fallback only when the source says nothing.
+   Tested with a 400x800 portrait image, which stays portrait.
+
+⚠️ `xlImage()` reserves blank rows after a picture. Excel floats an image over
+the grid and does not grow a row to fit, so without them the next band would be
+overlapped -- which reads as a corrupt sheet rather than a layout slip.
+
+The no-image path is unchanged and still tested: the workbook keeps "Why there
+is no screenshot" and the document keeps its bordered placeholder.
+
+
+### 27 Sep — Power BI "Export To File" for dashboard screenshots: three blockers, none of them code
+
+Asked whether the Power BI `exportToFile` REST API could put dashboard images
+into the exported workbook and document. **Not from this app, and not with the
+current Power BI setup.** Checked, not assumed:
+
+**1. There is nowhere to store an image.** `lm_bireportdashboard` carries only
+`lm_reportname`, `lm_dashboardlink`, `lm_kpi` and system columns — no file or
+image column. Confirmed by reading a live row with `<all-attributes/>`.
+
+**2. Every report lives in My Workspace.** All `lm_dashboardlink` values are
+`app.powerbi.com/groups/me/reports/…` — grouped live, one distinct workspace
+segment: `groups/me`. `exportToFile` requires the report to sit in a
+capacity-backed workspace (Premium / PPU / Fabric / Embedded). A plain Pro My
+Workspace is not one. ⚠️ Whether this tenant has PPU is not checkable from
+here — it is a question for whoever owns the Power BI licences.
+
+**3. The app cannot call the API even if 1 and 2 were solved.** A Code App
+holds a Dataverse token, not a Power BI one, and there is no token-acquisition
+path for another resource. The host CSP already refuses `powerbi.com` — that is
+why `BiFrame` draws nothing (see `CSP_BLOCKS_POWERBI`). `exportToFile` is also
+asynchronous: POST, poll, download — three calls, all of which would have to
+cross that boundary.
+
+**The supported route, if it is wanted:** a Power Automate flow using the Power
+BI connector's "Export To File for Power BI Reports" action, writing the PNG
+into a new image column on `lm_bireportdashboard`. The app side is **already
+built and tested** — both writers take `biImages` as
+`{ [biReportId]: { base64, width, height } }` and embed the picture in place of
+the placeholder; a test asserts the image appears and the placeholder does not.
+What is missing is only the column, the capacity, and the flow.
+
+**What works today with no schema, licence or flow:** the same `biImages` hook
+fed from the browser, letting a person attach a PNG per dashboard at export
+time. Not automatic, but it puts real dashboard images in the files now.
+Offered; not built without a decision, since it is a visible piece of UI.
+
+
 ### 27 Sep — Pushed both apps (KPI gaps section)
 
 Both live on the first attempt. Carries `syncKpiGapSection()`, the gap-section
