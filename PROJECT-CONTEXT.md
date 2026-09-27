@@ -5759,6 +5759,40 @@ The `.slice()` on the Template pre-fill was kept, now at 4000: it cannot lose
 text while the occurrence column is at least as wide as the Template's, and it
 still guarantees no 400 if that ever stops being true.
 
+### 27 Sep — The KPI Target lives on `pm_kpiachievment`. `pm_targetversion` was explored and reverted.
+
+**Product owner's call, and it settles the question:** the target is
+`pm_kpiachievment.pm_target`. The code that read `pm_targetversion` and filled
+the gap from it was written and then **reverted the same day** — do not rebuild
+it.
+
+Kept only so the ground already covered is not covered again:
+
+- `pm_targetversion` does exist in IT and does have a `pm_value`, but it is
+  **not** where this app reads a target from.
+- Reading it is blocked anyway — the app user has no `prvReadpm_targetversion`
+  privilege — so nothing was ever verified against real rows.
+- DT New holds 4,234 achievement rows with 527 targets, but a **different KPI
+  set**: "OPD CPV (Charge per Visit)" does not exist in its `strategy_kpis`.
+  Repointing the table would join IT citations against KPIs that are not the
+  same KPIs. That remains true and is worth remembering.
+
+⚠️ **The paging question is answered and does not need revisiting.** IT's
+`pm_kpiachievment` holds **1,055** rows by aggregate **and** by a full
+non-aggregate scan of ids — the same number both ways, so nothing is truncated
+at 5,000. The app's own reader sends `odata.maxpagesize=5000` **and** follows
+`@odata.nextLink` for up to 200 pages; `$top` is deliberately unset because
+setting it suppresses `nextLink` and stops the loop after one page.
+
+So Target reads from `pm_target`, as it always did. Where it shows a dash, that
+is a **data** question — the column being populated in IT — not a code path to
+change.
+
+behaviour*, not metadata, because Dataverse exposes no max-length column (see §8).
+
+The page is **private** until shared from its own Share menu; the admin and the
+product owner cannot open the link before that.
+
 ### 27 Sep — Context file audited, not just appended to
 
 §5 was current (every change has been recorded as it landed). The **structural**
