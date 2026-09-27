@@ -2158,8 +2158,11 @@ export async function createTask(t){
   if(t.assigneeId) row['hx_Assignee@odata.bind'] = `/systemusers(${t.assigneeId})`;
   try{
     const created = await Hx_taskesService.create(row);
-    const id = created?.data?.hx_tasksid || null;
-    if(!id) errors.push({ table:'hx_taskses', error:new Error('created but no id returned') });
+    /* idOrThrow() (top of file) surfaces created.error.message when the
+       create genuinely fails -- e.g. a 404/insufficient-privilege response
+       from the connector -- instead of the generic "created but no id
+       returned" this used to always show regardless of the real cause. */
+    const id = idOrThrow(created, 'hx_tasksid');
     return { id, errors };
   }catch(e){
     return { id:null, errors:[{ table:'hx_taskses', error:e }] };
@@ -4410,17 +4413,13 @@ export async function migrateTemplateSectionsToOccurrence(occurrenceId, template
 }
 
 export async function createReportOccurrence(payload){
-  if((payload.objective || '').length > 100){
-    console.warn('[dataverse] createReportOccurrence: lm_reportobjective is %d characters; ' +
-      'the column allows 100 and Dataverse will reject this with 0x80044331.',
-      payload.objective.length);
-  }
   const row = {
     lm_name: payload.name || 'Untitled Report',
-    /* 100 characters, and Dataverse 400s rather than truncating (0x80044331).
-       Not capped here on purpose -- silently shortening what someone typed is
-       worse than refusing it -- but a caller that skips its own validation
-       gets a named cause instead of an opaque error code. */
+    /* Was capped at 100 characters (Dataverse 400s rather than truncating,
+       0x80044331); the column was widened in Dataverse 27 Sep, so the old
+       hardcoded length check and its warning are gone. Not capped here on
+       purpose either way -- silently shortening what someone typed is worse
+       than refusing it. */
     lm_reportobjective: payload.objective || null,
     lm_period: payload.period || null,
     lm_status: REPORT_OCC_STATUS_KEY[payload.status || 'Draft'] ?? REPORT_OCC_STATUS_KEY.Draft,

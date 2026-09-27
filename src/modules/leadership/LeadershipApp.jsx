@@ -59,10 +59,6 @@ import { fetchMeetingOccurrences, fetchReportOccurrences, createMeetingOccurrenc
    rejects the whole create/update with a 400 rather than truncating, so
    this is enforced client-side before either request. */
 const FILE_URL_MAX = 300;
-/* lm_reportobjective is 100 characters on lm_reportoccurrence -- NOT the same
-   as the Template's own lm_objective, which is longer. Dataverse rejects an
-   over-length value with a 400 (0x80044331) instead of truncating it. */
-const REPORT_OBJECTIVE_MAX = 100;
 
 const REGIONS = ['KSA','Egypt'];
 const BUS = [
@@ -4728,15 +4724,12 @@ function NewReportModal({onClose}){
         if(cancelled) return;
         setTplDetail(d);
         /* The Template's own objective is a reasonable starting point for
-           this occurrence's -- still freely editable below.
-
-           ⚠️ Capped on the way in. The Template's lm_objective is a longer
-           column than the occurrence's lm_reportobjective, so copying it
-           whole produced a form that looked fine and could not be saved.
-           Truncating a machine-supplied DEFAULT is safe; the field below
-           validates what the person actually types rather than cutting it. */
+           this occurrence's -- still freely editable below. No longer
+           capped on the way in: lm_reportoccurrence.lm_reportobjective was
+           widened in Dataverse, so copying the Template's lm_objective
+           whole no longer risks a save the column can't hold. */
         if(d?.parent?.lm_objective) setF(x=>({...x,
-          objective: x.objective || d.parent.lm_objective.slice(0, REPORT_OBJECTIVE_MAX)}));
+          objective: x.objective || d.parent.lm_objective}));
         if(d?.parent?.lm_newcolumn) setF(x=>({...x, name: x.name||d.parent.lm_newcolumn}));
       })
       .catch(e=>console.warn('[dataverse] fetchReportTemplateDetail() failed:', e))
@@ -4755,7 +4748,6 @@ function NewReportModal({onClose}){
 
   const ok = !!f.setup && f.name.trim() && f.objective.trim() && scopeChosen
     && f.dvCreatorPositionId && f.period && f.fileUrl.trim().length<=FILE_URL_MAX
-    && f.objective.trim().length<=REPORT_OBJECTIVE_MAX
     && (custom || (!tplLoading && (tplUnits.length<=1 || !!f.tplUnitKey)));
 
   const save=async()=>{
@@ -4884,10 +4876,7 @@ function NewReportModal({onClose}){
       <Field label="Report name" req><input type="text" value={f.name}
         onChange={e=>set('name',e.target.value)}
         placeholder="e.g. Ophthalmology Laser Utilisation Review"/></Field>
-      <Field label="Report objective" req
-        hint={`Max ${REPORT_OBJECTIVE_MAX} characters.`}
-        err={f.objective.trim().length>REPORT_OBJECTIVE_MAX
-          ? `${f.objective.trim().length} characters — ${REPORT_OBJECTIVE_MAX} max.` : null}>
+      <Field label="Report objective" req>
         <textarea value={f.objective} onChange={e=>set('objective',e.target.value)}
           placeholder="What this Report is for."/></Field>
 

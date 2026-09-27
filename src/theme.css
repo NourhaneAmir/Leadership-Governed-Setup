@@ -12,8 +12,17 @@
   --ink:#211C1E; --ink-2:#514A44; --muted:#8A8079; --faint:#B3A99E;
   --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
   /* UI chrome (headings, buttons, tabs, labels, badges) -- Inter above is body
-     copy. Both fall back to the same system stack if the Google Fonts request
-     is ever blocked, so nothing breaks, it just reads as the fallback font. */
+     copy. ⚠️ Neither 'Inter' nor 'Outfit' nor 'JetBrains Mono' actually loads
+     today (27 Sep) -- the Power Apps player's CSP is `style-src 'self'
+     'unsafe-inline'`, which blocks an external Google Fonts <link> outright
+     (confirmed live: a real CSP violation in the console, the stylesheet
+     never arrives). Both names are named here anyway because they cost
+     nothing -- every browser silently falls through to the system stack
+     when a family isn't available, which is exactly what has always
+     rendered here. Actually rendering these fonts needs the .woff2 files
+     self-hosted as build assets (served from 'self', no external link) --
+     not attempted here; flag before trying the external-link route again,
+     it cannot work under this CSP. */
   --sans:'Outfit',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
   --mono:'JetBrains Mono','SF Mono',Menlo,Consolas,'Liberation Mono',monospace;
   --sh:0 1px 3px rgba(33,28,30,.06);

@@ -6874,6 +6874,115 @@ exactly one match. `pac auth select --index 1` alone did not clear it;
 `pac org select`/`modelbuilder` both work normally now. Worth knowing if
 `pac auth list` ever again shows more than one `*` for the same org.
 
+### 27 Sep: live console errors from the pushed app — two real bugs, one live-diagnosed as a privilege gap, not code
+
+The user pasted a real browser console dump from the live Leadership app.
+Two separate, unrelated things in it:
+
+**1. Creating a Task 404s** (`POST .../commondataserviceforapps/connections//
+c83ec8cc.../api/data/v9.1.0/hx_taskses 404`), surfaced to the user as the
+unhelpful "The task could not be created — created but no id returned."
+Diagnosed live rather than guessed at:
+- `pac org fetch` against `hx_tasks` (the correct logical name — confirmed:
+  the primary key is `hx_tasksid`, so `hx_tasks` is the entity, and
+  Dataverse's own pluralization-of-an-already-plural-name convention
+  makes `hx_taskses` the right entity SET name, matching what the code
+  already used) returned a real count: **44,455 rows**, as the exact same
+  signed-in identity the app's connection uses. **Reads work fine.**
+- This rules out a wrong entity/collection name and points at something
+  CREATE-specific — almost certainly a missing Create privilege on
+  `hx_task` for this connection's security role in IT. Same class of gap
+  §8 already flags for a different set of tables: *"the connection is not
+  the permission, and the failure looks like a bug rather than a denial."*
+  Not something app code can fix — needs a Dataverse admin to check/grant
+  Create on `hx_task`.
+- **What was fixable, and fixed**: `createTask()` in `dataverse.js` wasn't
+  using this file's own `idOrThrow()` helper — it hand-rolled `if(!id)
+  push a generic "created but no id returned"`, discarding whatever real
+  error the connector actually captured (a 404, in this case) exactly the
+  blind spot `idOrThrow()` exists to close everywhere else. Switched it
+  over. The next time this happens, the toast should show the real
+  connector/Dataverse message instead of the generic fallback — worth
+  reproducing again post-fix to confirm what it actually says.
+
+**2. A real CSP violation, self-inflicted the same day**: `Loading the
+stylesheet 'https://fonts.googleapis.com/css2?...' violates ... "style-src
+'self' 'unsafe-inline'"`. This confirms, live, what the design-system
+entry above only guessed at as a risk: the Power Apps player's CSP blocks
+external stylesheets outright, so the Google Fonts `<link>` added earlier
+today never worked in production — it just silently failed every load,
+and now also logs a real console error. Removed the `<link>`/`preconnect`
+tags from both `index.html` files. `--sans`/`--font` in `theme.css` are
+left naming `'Outfit'`/`'Inter'`/`'JetBrains Mono'` — harmless, since an
+unavailable family name just falls through to the system stack, which is
+what has always actually rendered — but the file now carries an explicit
+warning not to re-attempt an external font link here; it needs the actual
+`.woff2` files self-hosted as build assets (served from `'self'`) to ever
+really take effect, not attempted in this pass.
+
+Both apps build clean. Not yet pushed.
+
+### 27 Sep: "Write my own conclusion" as a reviewer — also blocked, held off rather than faked
+
+Asked to add three reviewer actions per section, from a screenshot of the
+Extension prototype's action row (Cite/Cite-what-it-rests-on aside):
+**Write my own conclusion**, **+Task**, **+Decision**. Same three-way split
+as the Decision investigation earlier today:
+
+- **+Task** already exists — `+ Raise a task`/`Attach a task` on
+  `OrgReports.jsx`'s section cards, live since 26 Sep. Nothing to do.
+- **+Decision** — still the same IT schema gap (§5's earlier 27 Sep entry).
+- **Write my own conclusion** — checked `lm_reportsectioncitations.lm_kind`
+  live (`pac modelbuilder build -enf lm_reportsectioncitations`) rather than
+  assume: exactly 11 values (`KPI=1 … ChildReport=11`), **no Conclusion**.
+  The closest existing kind, `Paragraph`, specifically means *citing another
+  report's section* — reusing it for a reviewer's own free-standing remark
+  (no citation target at all) would conflate two different meanings under
+  one stored value, the same trap already avoided for Decisions.
+
+**Smaller than the Decision gap**: this only needs one new option value on
+an existing choice column (e.g. `12 = Conclusion`), not a new lookup
+relationship — no cross-environment binding question, no new table.
+Offered three ways forward (wait for the schema value; build now by
+overloading `Paragraph` with a UI-only "Conclusion" label, flagged clearly
+in code; or hold off entirely) — **user chose to hold off**. Nothing built
+this pass; revisit once `lm_kind` gets its 12th value, or if asked to
+reconsider the interim `Paragraph`-based approach.
+
+### 27 Sep: `lm_reportobjective`'s 100-character guard removed — the column was widened in Dataverse
+
+User confirmed they widened `lm_reportoccurrence.lm_reportobjective` in
+Dataverse and asked for the app's matching 100-character guard removed
+(not replaced with a new number — removed). Every place that guard lived:
+
+- `REPORT_OBJECTIVE_MAX = 100` (`LeadershipApp.jsx`) — deleted, along with
+  every read of it: the `ok` (ready-to-save) check's length clause, the
+  Field's `hint`/`err` props on the objective textarea, and the
+  Template-objective-copy's `.slice(0, REPORT_OBJECTIVE_MAX)` truncation
+  (a Setup's own longer `lm_objective` now copies onto a new occurrence
+  whole, since the occurrence's column no longer risks rejecting it).
+- `createReportOccurrence()`'s (`dataverse.js`) hardcoded `if(objective.length
+  > 100)` diagnostic `console.warn` — removed; it named an exact number
+  and error code (0x80044331) that no longer apply.
+
+⚠️ **Could not verify the actual new length live** — tried the same
+`pac modelbuilder`-against-IT approach used everywhere else this session,
+but hit a real dead end: `pac code add-data-source` (the only tool found
+that surfaces column `maxLength`, unlike bare `modelbuilder`) needs a
+`shared_commondataserviceforapps` connection instance that already exists
+*in that specific environment* — `pac connection list --environment
+<IT>` shows Word/Office 365 Users/Teams/OneDrive/SharePoint, but no
+Dataverse connection at all, only Office/SharePoint ones. Nothing wrong
+was found or fixed here; the check simply couldn't be done with the
+tooling available, so the new length is taken on the user's word alone.
+**`apps/leadership/.power/schemas/dataverse/reportoccurrences.Schema.json`
+still says `"maxLength": 100` for this column and is now stale** — it was
+pulled against DT New (this repo root's dev binding), not IT, where the
+live data and the real change both are; not corrected, since the actual
+new number isn't known here to write in its place.
+
+Both apps build clean. Not yet pushed.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap
