@@ -7632,7 +7632,13 @@ screen still says Committees and Business Meetings are both scored.
 - Both apps build clean. Seen on the local dev server with no Grids (it
   cannot reach Dataverse): header, tabs, stats, empty states and catalogue
   render, no console errors. **The populated table and history bars have not
-  been seen against real data**, and this is not yet pushed to the Code App.
+  been seen against real data.
+- **Pushed 28 Sep, Leadership only**, first attempt, from `C:\tmp\cad-exec`
+  to `83db0ef8-4c62-4eef-84ac-dadab326b704` (Code App Development) — the
+  25 Sep product-owner target. `.power`/`power.config.json` present before and
+  after; only `dist` replaced. Governance was **not** pushed: no Governance
+  source changed since the previous push, and its bundle still has zero DT
+  New URLs and no `.cs-root` rules.
 
 ## 6. Schema facts that are expensive to rediscover
 
