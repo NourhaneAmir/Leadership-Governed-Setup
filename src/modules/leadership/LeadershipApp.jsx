@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { Activity, ArrowUpRight, BarChart3, CalendarDays, CheckSquare, ClipboardCheck, ClipboardList,
-         Download, FileText, Gauge, Layers, LineChart, Lock, Menu, MessagesSquare, Network, PenLine, Shield,
-         UsersRound, X }
+import { Activity, ArrowUpRight, BarChart3, CalendarDays, CheckSquare, ClipboardCheck, ClipboardList, CircleAlert,
+         Download, FileText, Gauge, Layers, LineChart, Lock, Menu, MessageSquare, MessagesSquare, Network, PenLine, Plus, RotateCcw, Shield,
+         Users, UsersRound, X }
   from 'lucide-react';
-import './committee-scores.css';
+import './leadership-design.css';
 /* Dates, the working calendar and number formatting now live in src/shared so
    a screen lifted out of this file keeps working without it. */
 import { ymd, TODAY, PERIOD, HOLIDAYS, isNonWorking, isWeekend,
@@ -5145,6 +5145,13 @@ function ScreenMeetings(){
     && o.agenda.every(a=>a.covered && a.covered!=='Not Yet Recorded')
     && o.attendees.every(a=>a.present && a.present!=='Not Yet Recorded');
 
+  /* The Setup's real Setup Type, as Committee Scores shows it; null for an
+     ad hoc occurrence, which has no Setup. */
+  const setupTypeOf = o => {
+    const tpl = dvTplDetail(o.templateId);
+    return tpl ? (MEETING_SETUP_TYPE[tpl.setupTypeCode] || 'Setup') : null;
+  };
+
   const byDateAsc  = (a,b)=>(a.date||'').localeCompare(b.date||'');
   const byDateDesc = (a,b)=>(b.date||'').localeCompare(a.date||'');
   const upcoming  = list.filter(o=>o.status==='Scheduled').sort(byDateAsc);
@@ -5172,7 +5179,7 @@ function ScreenMeetings(){
      name, the Setup it came from, scope, department, chair, facilitator,
      status and the date in both raw and displayed form. */
   const rows = typedRows.filter(o=>matchesQuery(q,[
-    o.name, dvTpl(o.templateId), o.adhocType,
+    o.name, dvTpl(o.templateId), o.adhocType, setupTypeOf(o),
     dvBu(o.businessUnitId), dvRegion(o.regionId), dvDept(o.departmentId),
     dvPos(o.chairPositionId), dvPos(o.facilitatorPositionId),
     o.stage, o.mode, o.status, o.date, o.date?fmtDS(o.date):'',
@@ -5210,122 +5217,164 @@ function ScreenMeetings(){
       open:()=>openMeeting(o.id,'agenda')})),
   ].slice(0,5);
 
-  return <>
-    <div className="ph ph-row">
-      <div style={{flex:1}}><h1>Meetings</h1>
-        <div className="sub">Every Meeting Occurrence in Dataverse — scheduled, held and cancelled.</div></div>
-      <div style={{display:'flex',gap:8}}>
-        <Btn onClick={()=>setMk('adhoc')}>🗓 Ad Hoc from Setup</Btn>
-        <Btn k="pri" onClick={()=>setMk('custom')}>+ New Meeting</Btn>
+  const tabDef = TABS.find(t=>t.id===tab)||TABS[0];
+  const exportCsv = () => {
+    const out = [['Meeting','Setup','Setup type','Department','Scope','Stage','Date','Start','End','Mode',
+      'Agenda items','Agenda covered','Attendees','Present','Chair','Facilitator','Status']];
+    rows.forEach(o=>out.push([o.name, dvTpl(o.templateId)||(o.adhocType?'Ad Hoc — '+o.adhocType:'Ad Hoc'),
+      setupTypeOf(o)||'', dvDept(o.departmentId)||'', dvBu(o.businessUnitId)||dvRegion(o.regionId)||'Group-wide',
+      o.stage||'', o.date||'', o.start||'', o.end||'', o.mode||'',
+      o.agenda.length, o.agenda.filter(a=>a.covered==='Yes').length,
+      o.attendees.length, o.attendees.filter(a=>a.present==='Present').length,
+      dvPos(o.chairPositionId)||'', dvPos(o.facilitatorPositionId)||'', o.status||'']));
+    csDownloadCsv(`meetings-${tabDef.id}-${ymd(new Date())}.csv`, out);
+  };
+  const statusBadge = o => o.status==='Held' ? 'approved' : o.status==='Cancelled' ? 'returned' : 'scheduled';
+
+  /* Restyled 28 Sep to the approved design (`leadership-practice (2).html`,
+     #v-meetings), styled by leadership-design.css under .cs-root. Same data,
+     filters and search as before, plus Export (CSV of the rows shown). The
+     design's Inputs Ready, Calendar, Minutes and Gov. Score columns and its
+     "Quorum missed" card are not added: quorum is not reported (see the
+     header comment), and the rest would be new features, not styling. */
+  return <div className="cs-root">
+    <div className="cs-head">
+      <div className="cs-head-top">
+        <div><h1 className="cs-title">Meetings</h1>
+          <p className="cs-sub">Every Meeting Occurrence in Dataverse — scheduled, held and cancelled.</p></div>
+        <div className="cs-actions">
+          <button type="button" className="cs-btn ghost lg" onClick={()=>setMk('adhoc')}>
+            <CalendarDays size={13}/>Ad Hoc from Setup</button>
+          <button type="button" className="cs-btn primary lg" onClick={()=>setMk('custom')}>
+            <Plus size={13}/>New Meeting</button>
+        </div>
+      </div>
+      <div className="cs-tabs" role="tablist" aria-label="Filter Meetings by stage">
+        {TABS.map(t=>
+          <button key={t.id} type="button" role="tab" aria-selected={tab===t.id}
+            className={'cs-tab'+(tab===t.id?' on':'')} onClick={()=>setTab(t.id)}>
+            {t.label}{t.id!=='all' && <span className="cs-tab-badge">{t.rows.length}</span>}
+          </button>)}
       </div>
     </div>
 
-    <div className="tabs">
-      {TABS.map(t=>
-        <button key={t.id} className={tab===t.id?'on':''} onClick={()=>setTab(t.id)}>
-          {t.label}{t.id!=='all' && <span className="c">{t.rows.length}</span>}</button>)}
+    <div className="cs-stats">
+      <div className="cs-stat acc-green"><div className="cs-stat-lbl">Not yet held</div>
+        <div className="cs-stat-val">{upcoming.length}</div><div className="cs-stat-meta">scheduled</div></div>
+      <div className="cs-stat acc-amber"><div className="cs-stat-lbl">Held, record open</div>
+        <div className="cs-stat-val">{openAfter.length}</div>
+        <div className="cs-stat-meta">agenda or attendance unrecorded</div></div>
+      <div className="cs-stat acc-gold"><div className="cs-stat-lbl">Held and closed</div>
+        <div className="cs-stat-val">{settled.length}</div><div className="cs-stat-meta">fully recorded</div></div>
+      <div className="cs-stat acc-alert"><div className="cs-stat-lbl">Cancelled</div>
+        <div className="cs-stat-val">{cancelled.length}</div>
+        <div className="cs-stat-meta">create no governance record</div></div>
     </div>
 
-    <div className="stats">
-      <Stat label="Not Yet Held" v={upcoming.length} d="scheduled" c={upcoming.length?'green':'muted'}/>
-      <Stat label="Held, Record Open" v={openAfter.length} d="agenda or attendance unrecorded"
-        c={openAfter.length?'amber':'muted'}/>
-      <Stat label="Held and Closed" v={settled.length} d="fully recorded" c="teal"/>
-      <Stat label="Cancelled" v={cancelled.length} d="create no governance record"
-        c={cancelled.length?'red':'muted'}/>
+    <div className="cs-chips" role="group" aria-label="Filter by type">
+      {[['all','All Types',Layers],['setup','From a Setup',ClipboardCheck],['adhoc','Ad Hoc',PenLine],
+        ['week','This Week',CalendarDays]].map(([k,l,Ic])=>
+        <button key={k} type="button" aria-pressed={typeFilter===k}
+          className={'cs-chip'+(typeFilter===k?' on':'')} onClick={()=>setTypeFilter(k)}>
+          <Ic size={11} aria-hidden="true"/>{l}</button>)}
+      <button type="button" className="cs-btn cs-chips-end"
+        onClick={()=>{setTab('due');setTypeFilter('all');setQ('');}}>
+        <RotateCcw size={11}/>Reset filters</button>
     </div>
 
-    <div className="chip-row" style={{alignItems:'center'}}>
-      {[['all','All Types'],['setup','From a Setup'],['adhoc','Ad Hoc'],['week','This Week']].map(([k,l])=>
-        <button key={k} className={'pill'+(typeFilter===k?' on':'')} onClick={()=>setTypeFilter(k)}>{l}</button>)}
-      <div style={{flex:1}}/>
-      <Btn k="sm" onClick={()=>{setTab('due');setTypeFilter('all');setQ('');}}>Reset filters</Btn>
-    </div>
-
-    <div className="wa-grid">
-      <div className="card flush">
-        <div className="card-hd" style={{display:'flex',alignItems:'center',gap:12}}>
-          <div className="wa-icon gold">👥</div>
-          <h2 style={{flex:1}}>{tab==='due'?'Upcoming Meetings':TABS.find(t=>t.id===tab).label}</h2>
-          <TableSearch value={q} onChange={setQ} placeholder="Search meetings…"
-            shown={rows.length} total={typedRows.length}/>
-          <Tag c="teal">{rows.length} in the table</Tag>
+    <div className="cs-two-col">
+      <section className="cs-card flush" aria-labelledby="mtg-list">
+        <div className="cs-card-top" style={{flexWrap:'wrap'}}>
+          <div className="cs-card-title-grp">
+            <span className="cs-icon green" aria-hidden="true"><Users size={16}/></span>
+            <h2 className="cs-card-title" id="mtg-list">{tab==='due'?'Upcoming Meetings':tabDef.label}</h2>
+          </div>
+          <div className="cs-search">
+            <input type="search" value={q} placeholder="Search meetings…" aria-label="Search meetings"
+              onChange={e=>setQ(e.target.value)}/>
+            <span className="cs-search-n">{q.trim() ? `${rows.length} of ${typedRows.length}` : `${rows.length} shown`}</span>
+            <button type="button" className="cs-btn" onClick={exportCsv} disabled={!rows.length}>
+              <Download size={12}/>Export</button>
+          </div>
         </div>
         {dvError
-          ? <div style={{padding:'8px 17px 17px'}}><Note k="warn" ic="⚠">{dvError}</Note></div>
+          ? <div style={{padding:'12px 16px'}}><Note k="warn" ic="⚠">{dvError}</Note></div>
           : dvLoading
-            ? <div style={{padding:'8px 17px 17px'}}><Empty>Reading from Dataverse…</Empty></div>
+            ? <div className="cs-empty">Reading from Dataverse…</div>
             : rows.length===0
-              ? <div style={{padding:'8px 17px 17px'}}><Empty>
+              ? <div className="cs-empty">
                   {list.length===0
                     ? 'No Meeting Occurrence exists yet. Use New Meeting to create one.'
                     : q.trim()
                       ? `No Meeting Occurrence matches “${q.trim()}” in this tab.`
-                      : 'No Meeting Occurrence matches this tab and filter.'}</Empty></div>
-              : <div className="t-wrap"><table className="data">
-                  <thead><tr><th>Meeting</th><th>Stage / Scope</th><th>Date &amp; Time</th><th>Mode</th>
-                    <th>Agenda</th><th>Attendees</th><th>Chair</th><th>Status</th><th></th></tr></thead>
+                      : 'No Meeting Occurrence matches this tab and filter.'}</div>
+              : <div className="cs-tbl-wrap"><table className="cs-tbl" style={{minWidth:1000}}>
+                  <thead><tr><th>Meeting</th><th>Setup / Type</th><th>Scope</th><th>Date &amp; Time</th><th>Mode</th>
+                    <th>Agenda</th><th>Attendees</th><th>Status</th><th><span className="sr-only">Action</span></th></tr></thead>
                   <tbody>{rows.map(o=>{
                     const scope=dvBu(o.businessUnitId)||dvRegion(o.regionId)||'Group-wide';
                     const covered=o.agenda.filter(a=>a.covered==='Yes').length;
                     const present=o.attendees.filter(a=>a.present==='Present').length;
                     const recd=o.attendees.filter(a=>a.present&&a.present!=='Not Yet Recorded').length;
-                    return <tr key={o.id} className="click"
-                      onClick={()=>openMeeting(o.id,'detail')}>
-                      <td><div className="t-main">{o.restricted&&'🔒 '}{o.name}</div>
-                        <div className="t-sub">{[dvTpl(o.templateId)||(o.adhocType?'Ad Hoc — '+o.adhocType:'Ad Hoc'),
-                          dvDept(o.departmentId)].filter(Boolean).join(' · ')}</div></td>
-                      <td><div className="t-main" style={{fontSize:12.5}}>{scope}</div>
-                        {o.stage?<div className="t-sub">{o.stage.replace(/^Stage (\d) /,'$1 · ')}</div>:null}</td>
-                      <td className="dim" style={{whiteSpace:'nowrap'}}>{o.date?fmtDS(o.date):'—'}
-                        {o.start||o.end?<div className="t-sub">{[o.start,o.end].filter(Boolean).join(' – ')}</div>:null}
-                        {o.rescheduledFromId && <Tag c="amber">Rescheduled</Tag>}</td>
-                      <td className="dim">{o.mode||'—'}</td>
-                      <td>{o.agenda.length
-                        ? <Tag c={o.status==='Held'&&covered<o.agenda.length?'amber':'green'}>
-                            {o.status==='Held'?`${covered}/${o.agenda.length} covered`
-                              :`${o.agenda.length} item${o.agenda.length>1?'s':''}`}</Tag>
-                        : <Tag c="red">None</Tag>}</td>
-                      <td>{o.attendees.length
-                        ? <Tag c={o.status==='Held'&&recd<o.attendees.length?'amber':'grey'}>
-                            {o.status==='Held'?`${present}/${o.attendees.length} present`
-                              :`${o.attendees.length}`}</Tag>
-                        : <Tag c="red">None</Tag>}</td>
-                      <td className="dim" style={{fontSize:12}}>{dvPos(o.chairPositionId)||'—'}
+                    const type=setupTypeOf(o);
+                    const open=()=>openMeeting(o.id,'detail');
+                    return <tr key={o.id} className="cs-row" tabIndex={0} onClick={open}
+                        onKeyDown={e=>{ if(e.key==='Enter'){ e.preventDefault(); open(); } }}>
+                      <td><div className="cs-name">{o.restricted&&<Lock size={11} className="cs-lock" aria-label="Restricted"/>}{o.name}</div>
+                        <div className="cs-name-sub">Chair: {dvPos(o.chairPositionId)||'—'}</div>
                         {o.facilitatorPositionId
-                          ? <div className="t-sub">Facilitator: {dvPos(o.facilitatorPositionId)}</div>
-                          : null}</td>
-                      <td><Tag c={o.status==='Held'?'green':o.status==='Cancelled'?'red':'teal'}>
-                        {o.status||'—'}</Tag></td>
-                      <td style={{textAlign:'right'}}>
-                        <Btn k="sm" style={{borderRadius:20}}>View</Btn></td>
+                          ? <div className="cs-name-sub">Facilitator: {dvPos(o.facilitatorPositionId)}</div> : null}</td>
+                      <td><span className={'cs-type'+(type?'':' adhoc')}>{type||'Ad Hoc'}</span>
+                        <div className="cs-name-sub">{[dvTpl(o.templateId)||o.adhocType, dvDept(o.departmentId)]
+                          .filter(Boolean).join(' · ')||'—'}</div></td>
+                      <td><div className="cs-name" style={{fontWeight:500}}>{scope}</div>
+                        {o.stage?<div className="cs-name-sub">{o.stage.replace(/^Stage (\d) /,'$1 · ')}</div>:null}</td>
+                      <td><span className="cs-mono">{o.date?fmtDS(o.date):'—'}</span>
+                        {o.start||o.end?<div className="cs-cov-sub cs-mono muted">{[o.start,o.end].filter(Boolean).join(' – ')}</div>:null}
+                        {o.rescheduledFromId && <span className="cs-badge today" style={{marginTop:3}}>Rescheduled</span>}</td>
+                      <td><span className="cs-mono muted">{o.mode||'—'}</span></td>
+                      <td>{o.agenda.length
+                        ? <span className={'cs-count '+(o.status==='Held'&&covered<o.agenda.length?'warn':'ok')}><i/>
+                            {o.status==='Held'?`${covered}/${o.agenda.length} covered`
+                              :`${o.agenda.length} item${o.agenda.length>1?'s':''}`}</span>
+                        : <span className="cs-count bad"><i/>None</span>}</td>
+                      <td>{o.attendees.length
+                        ? <span className={'cs-count'+(o.status==='Held'&&recd<o.attendees.length?' warn':'')}>
+                            {o.status==='Held'?`${present}/${o.attendees.length} present`
+                              :`${o.attendees.length}`}</span>
+                        : <span className="cs-count bad"><i/>None</span>}</td>
+                      <td><span className={'cs-badge '+statusBadge(o)}><i/>{o.status||'—'}</span></td>
+                      <td><button type="button" className="cs-btn"
+                          onClick={e=>{ e.stopPropagation(); open(); }}>View</button></td>
                     </tr>;})}
                   </tbody></table></div>}
-      </div>
+      </section>
 
-      <div className="wa-side">
-        <div className="card">
-          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:2}}>
-            <div className="wa-icon green">🗓</div><h2 style={{flex:1}}>This Week</h2>
-          </div>
-          {thisWeek.length===0 ? <Empty ic="🗓">Nothing scheduled this week.</Empty>
-          : thisWeek.map(o=>
-            <div key={o.id} className="wa-up-r" onClick={()=>openMeeting(o.id,'detail')}>
-              <div className="wa-date"><span className="dd">{o.date.slice(8)}</span>
-                <span className="mo">{MONTHS[+o.date.slice(5,7)-1]}</span></div>
-              <div className="wa-up-t"><div className="n">{o.name}
-                  {o.date===TODAY && <Tag c="amber">Today</Tag>}</div>
-                <div className="m">{[o.start, o.location||o.mode,
-                  dvBu(o.businessUnitId)||dvRegion(o.regionId)].filter(Boolean).join(' · ')}</div></div>
-            </div>)}
-        </div>
+      <div className="cs-side">
+        <section className="cs-card" aria-labelledby="mtg-week">
+          <div className="cs-card-top"><div className="cs-card-title-grp">
+            <span className="cs-icon green" aria-hidden="true"><CalendarDays size={16}/></span>
+            <h2 className="cs-card-title" id="mtg-week">This Week</h2></div></div>
+          {thisWeek.length===0 ? <div className="cs-card-note">Nothing scheduled this week.</div>
+          : <div className="cs-week">{thisWeek.map((o,i)=>
+            <button key={o.id} type="button" className={'cs-week-item'+(i===0?' next':'')}
+                onClick={()=>openMeeting(o.id,'detail')}>
+              <span><div className="cs-week-t">{o.name}</div>
+                <div className="cs-week-s">{[fmtDS(o.date), o.start, o.location||o.mode,
+                  dvBu(o.businessUnitId)||dvRegion(o.regionId)].filter(Boolean).join(' · ')}</div></span>
+              <span className="cs-week-tag">{o.date===TODAY
+                ? <span className="cs-badge today">Today</span>
+                : i===0 ? <span className="cs-badge approved" style={{fontSize:8,padding:'1px 6px'}}><i/>Next</span>
+                : null}</span>
+            </button>)}</div>}
+        </section>
 
-        <div className="card">
-          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:2}}>
-            <div className="wa-icon amber">📈</div><h2 style={{flex:1}}>Meeting Health</h2>
-          </div>
-          <div className="csub" style={{marginBottom:8}}>What the occurrence rows themselves show.</div>
-          {[['Scheduled this period', scheduledThisPeriod, null],
+        <section className="cs-card" aria-labelledby="mtg-health">
+          <div className="cs-card-top"><div className="cs-card-title-grp">
+            <span className="cs-icon gold" aria-hidden="true"><Activity size={16}/></span>
+            <h2 className="cs-card-title" id="mtg-health">Meeting Health</h2></div></div>
+          <p className="cs-card-note">What the occurrence rows themselves show.</p>
+          <div>{[['Scheduled this period', scheduledThisPeriod, null],
             ['Held this period',      heldThisPeriod,      null],
             ['Rescheduled',           rescheduledCt,       rescheduledCt?'amber':null],
             ['Cancelled',             cancelled.length,    cancelled.length?'red':null],
@@ -5333,28 +5382,27 @@ function ScreenMeetings(){
             ['Upcoming with no Attendees', noAttendeeCt, noAttendeeCt?'red':null],
             ['Agenda not yet distributed', notSentCt,    notSentCt?'amber':null],
           ].map(([label,val,colour])=>
-            <div key={label} style={{display:'flex',alignItems:'center',gap:8,padding:'5px 0',
-                                     borderBottom:'1px solid var(--border)'}}>
-              <div style={{flex:1,fontSize:12.5,color:'var(--ink-2)'}}>{label}</div>
-              <b style={colour?{color:`var(--${colour})`}:null}>{val}</b>
-            </div>)}
-        </div>
+            <div key={label} className="cs-qs"><span>{label}</span>
+              <span className={'cs-qs-v'+(colour?' c-'+colour:'')}>{val}</span></div>)}
+          </div>
+        </section>
 
-        {attention.length>0 && <div className="card">
-          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:2}}>
-            <div className="wa-icon amber">⚠</div><h2 style={{flex:1}}>Attention</h2>
+        {attention.length>0 && <section className="cs-card" aria-labelledby="mtg-attn">
+          <div className="cs-card-top"><div className="cs-card-title-grp">
+            <span className="cs-icon amber" aria-hidden="true"><CircleAlert size={16}/></span>
+            <h2 className="cs-card-title" id="mtg-attn">Attention</h2></div></div>
+          <div className="cs-alerts">{attention.map(a=>
+            <button key={a.k+a.id} type="button" className={'cs-alert '+(a.k==='red'?'danger':'warn')} onClick={a.open}>
+              {a.k==='red' ? <CircleAlert size={13} aria-hidden="true"/> : <ClipboardList size={13} aria-hidden="true"/>}
+              <span className="cs-alert-t" style={{fontWeight:400}}>{a.t}</span>
+            </button>)}
           </div>
-          <div style={{display:'flex',flexDirection:'column',gap:6,marginTop:6}}>
-            {attention.map(a=>
-              <div key={a.k+a.id} onClick={a.open} style={{cursor:'pointer',fontSize:12,
-                  padding:'7px 9px',borderRadius:8,background:`var(--${a.k}-bg)`}}>{a.t}</div>)}
-          </div>
-        </div>}
+        </section>}
       </div>
     </div>
 
     {mk && <NewMeetingModal kind={mk} onClose={()=>setMk(null)}/>}
-  </>;
+  </div>;
 }
 
 /* Carried from the previous occurrence — read-only.
@@ -5500,77 +5548,112 @@ function ScreenMinutes(){
     ...pending.map(m=>({m, label:'Awaiting Chair signature'})),
   ];
 
-  return <>
-    <div className="ph ph-row">
-      <div style={{flex:1}}><h1>Meeting Minutes</h1>
-        <div className="sub">Every Minutes row in Dataverse.</div></div>
-      <Btn k="pri" onClick={()=>go('mtg')}>Go to Meetings →</Btn>
+  /* Restyled 28 Sep to the approved design (`leadership-practice (2).html`,
+     #v-mom), styled by leadership-design.css under .cs-root. Same data as
+     before. The design's Outputs column and Output Tracker card are left out
+     for the reason in the header comment: there are no live Tasks or
+     Decisions to count, and a zero would read as "none were raised". */
+  const badgeOf = m => overdue.includes(m) ? ['returned','Overdue Draft']
+    : m.status==='Draft' ? (m.submittedAt ? ['chair','Pending Signature'] : ['draft','Draft'])
+    : m.status==='Approved' ? ['approved','Approved']
+    : m.status==='Closed' ? ['approved','Closed']
+    : ['void', m.status||'—'];
+
+  return <div className="cs-root">
+    <div className="cs-head">
+      <div className="cs-head-top">
+        <div><h1 className="cs-title">Meeting Minutes</h1>
+          <p className="cs-sub">Record and approve meeting outcomes. Every Minutes row in Dataverse — open one to
+            work on it in its Meeting.</p></div>
+        <button type="button" className="cs-btn primary lg" onClick={()=>go('mtg')}>
+          <PenLine size={13}/>Go to Meetings</button>
+      </div>
+      <div className="cs-tabs" role="tablist" aria-label="Filter Minutes by status">
+        {TABS.map(t=>
+          <button key={t.id} type="button" role="tab" aria-selected={tab===t.id}
+            className={'cs-tab'+(tab===t.id?' on':'')} onClick={()=>setTab(t.id)}>
+            {t.label}{t.id!=='all' && <span className="cs-tab-badge">{t.rows.length}</span>}
+          </button>)}
+      </div>
     </div>
 
-    <div className="tabs">
-      {TABS.map(t=>
-        <button key={t.id} className={tab===t.id?'on':''} onClick={()=>setTab(t.id)}>
-          {t.label}{t.id!=='all' && <span className="c">{t.rows.length}</span>}</button>)}
+    <div className="cs-stats">
+      <div className="cs-stat acc-gold"><div className="cs-stat-lbl">Total MOMs</div>
+        <div className="cs-stat-val">{list.length}</div><div className="cs-stat-meta">all time</div></div>
+      <div className="cs-stat acc-green"><div className="cs-stat-lbl">Approved</div>
+        <div className="cs-stat-val">{approved.length+closed.length}</div>
+        <div className="cs-stat-meta">{approvalRate==null?'—':approvalRate+'% approval rate'}</div></div>
+      <div className="cs-stat acc-amber"><div className="cs-stat-lbl">Pending Signature</div>
+        <div className="cs-stat-val">{pending.length}</div>
+        <div className="cs-stat-meta">{avgWaitDays==null?'awaiting approval'
+          :<>Avg wait <span className="c-amber">{avgWaitDays.toFixed(1)}d</span></>}</div></div>
+      <div className="cs-stat acc-alert"><div className="cs-stat-lbl">Overdue</div>
+        <div className="cs-stat-val">{overdue.length}</div>
+        <div className="cs-stat-meta">{overdue.length
+          ? <span className="c-red">{overdue[0].occ_.name||'(untitled meeting)'}</span> : 'none'}</div></div>
     </div>
 
-    <div className="stats">
-      <Stat label="Total MOMs" v={list.length} d="all time"/>
-      <Stat label="Approved" v={approved.length+closed.length}
-        d={approvalRate==null?'—':approvalRate+'% approval rate'} c="green"/>
-      <Stat label="Pending Signature" v={pending.length}
-        d={avgWaitDays==null?'awaiting approval':'Avg wait '+avgWaitDays.toFixed(1)+'d'}
-        c={pending.length?'amber':'muted'}/>
-      <Stat label="Overdue" v={overdue.length} d={overdue.length?fmtDS(overdue[0].occ_.date):'none'}
-        c={overdue.length?'red':'muted'}/>
-    </div>
-
-    <div className="wa-grid">
-      <div className="card flush">
-        <div className="card-hd" style={{display:'flex',alignItems:'center',gap:12}}>
-          <div className="wa-icon gold">💬</div><h2 style={{flex:1}}>Meeting Minutes</h2>
+    <div className="cs-two-col">
+      <section className="cs-card flush" aria-labelledby="mom-list">
+        <div className="cs-card-top">
+          <div className="cs-card-title-grp">
+            <span className="cs-icon gold" aria-hidden="true"><MessageSquare size={16}/></span>
+            <h2 className="cs-card-title" id="mom-list">Meeting Minutes</h2>
+          </div>
         </div>
-        {rows.length===0 ? <div style={{padding:'8px 17px 17px'}}><Empty ic="💬">Nothing here.</Empty></div>
-        : <div className="t-wrap"><table className="data">
-            <thead><tr><th>MOM</th><th>Meeting</th><th>Status</th><th>Date</th></tr></thead>
+        {rows.length===0
+          ? <div className="cs-empty">{list.length===0 ? 'No Minutes yet.' : 'Nothing here.'}</div>
+          : <div className="cs-tbl-wrap"><table className="cs-tbl" style={{minWidth:640}}>
+            <thead><tr><th>MOM</th><th>Meeting</th><th>Status</th><th>Date</th>
+              <th><span className="sr-only">Action</span></th></tr></thead>
             <tbody>{rows.map(m=>{
-              const isOverdue = overdue.includes(m);
-              return <tr key={m.id} className="click" onClick={()=>openMeeting(m.occurrenceId,'minutes')}>
-                <td><div className="t-main">{m.occ_.name||'(untitled meeting)'} — {fmtDS(m.occ_.date)}</div>
-                  <div className="t-sub">{momCode(m)} · Facilitator: {dvPos(m.occ_.facilitatorPositionId)||'—'}</div></td>
-                <td className="dim">{dvTpl(m.occ_.templateId)||(m.occ_.adhocType?'Ad Hoc — '+m.occ_.adhocType:'Ad Hoc')}</td>
-                <td><Tag c={isOverdue?'red':momTagC(m.status)}>
-                  {isOverdue?'Overdue Draft':m.status==='Draft'&&m.submittedAt?'Pending Approval':m.status}</Tag></td>
-                <td className="dim">{fmtDS(m.occ_.date)}</td>
+              const [bc,bl]=badgeOf(m);
+              const isDraft = m.status==='Draft' && !m.submittedAt;
+              const open = ()=>openMeeting(m.occurrenceId,'minutes');
+              return <tr key={m.id} className="cs-row" tabIndex={0} onClick={open}
+                  onKeyDown={e=>{ if(e.key==='Enter'){ e.preventDefault(); open(); } }}>
+                <td><div className="cs-name">{m.occ_.name||'(untitled meeting)'} — {fmtDS(m.occ_.date)}</div>
+                  <div className="cs-name-sub">{momCode(m)} · Facilitator: {dvPos(m.occ_.facilitatorPositionId)||'—'}</div></td>
+                <td>{dvTpl(m.occ_.templateId)||(m.occ_.adhocType?'Ad Hoc — '+m.occ_.adhocType:'Ad Hoc')}</td>
+                <td><span className={'cs-badge '+bc}><i/>{bl}</span></td>
+                <td><span className={'cs-mono'+(overdue.includes(m)?' c-red':'')}>{fmtDS(m.occ_.date)}</span></td>
+                <td><button type="button" className={'cs-btn'+(isDraft?' primary':'')}
+                    onClick={e=>{ e.stopPropagation(); open(); }}>{isDraft?'Edit':'View'}</button></td>
               </tr>;})}
             </tbody></table></div>}
-      </div>
+      </section>
 
-      <div className="wa-side">
-        <div className="card">
-          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:2}}>
-            <div className="wa-icon green">📈</div><h2 style={{flex:1}}>MOM Health</h2>
+      <div className="cs-side">
+        <section className="cs-card" aria-labelledby="mom-health">
+          <div className="cs-card-top"><div className="cs-card-title-grp">
+            <span className="cs-icon green" aria-hidden="true"><Activity size={16}/></span>
+            <h2 className="cs-card-title" id="mom-health">MOM Health</h2></div></div>
+          <div>
+            <div className="cs-qs"><span>Approved This Month</span>
+              <span className="cs-qs-v c-green">{approvedThisMonth}</span></div>
+            <div className="cs-qs"><span>Avg Approval Time</span>
+              <span className="cs-qs-v">{avgWaitDays==null?'—':avgWaitDays.toFixed(1)+'d'}</span></div>
+            <div className="cs-qs"><span>Closed</span><span className="cs-qs-v">{closed.length}</span></div>
           </div>
-          <div className="wa-mo-r"><label>Approved This Month</label><span className="v">{approvedThisMonth}</span></div>
-          <div className="wa-mo-r"><label>Avg Approval Time</label>
-            <span className="v">{avgWaitDays==null?'—':avgWaitDays.toFixed(1)+'d'}</span></div>
-        </div>
+        </section>
 
-        {needsAction.length>0 && <div className="card">
-          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:2}}>
-            <div className="wa-icon amber">⚠</div><h2 style={{flex:1}}>Needs Action</h2>
+        {needsAction.length>0 && <section className="cs-card" aria-labelledby="mom-action">
+          <div className="cs-card-top"><div className="cs-card-title-grp">
+            <span className="cs-icon amber" aria-hidden="true"><CircleAlert size={16}/></span>
+            <h2 className="cs-card-title" id="mom-action">Needs Action</h2></div></div>
+          <div className="cs-alerts">{needsAction.map(({m,label},i)=>{
+            const late = overdue.includes(m);
+            return <button key={m.id+i} type="button" className={'cs-alert '+(late?'danger':'warn')}
+                onClick={()=>openMeeting(m.occurrenceId,'minutes')}>
+              {late ? <CircleAlert size={13} aria-hidden="true"/> : <PenLine size={13} aria-hidden="true"/>}
+              <span><div className="cs-alert-t">{m.occ_.name||'(untitled meeting)'} — {fmtDS(m.occ_.date)}</div>
+                <div className="cs-alert-s">{label}</div></span>
+            </button>;})}
           </div>
-          {needsAction.map(({m,label},i)=>
-            <div key={m.id+i} className="att-alert" style={{cursor:'pointer'}}
-              onClick={()=>openMeeting(m.occurrenceId,'minutes')}>
-              <span style={{color: overdue.includes(m)?'var(--red)':'var(--amber)'}}>
-                {overdue.includes(m)?'⏱':'✎'}</span>
-              <span><b>{m.occ_.name||'(untitled meeting)'} — {fmtDS(m.occ_.date)}</b><br/>
-                <span className="dim" style={{fontSize:11}}>{label}</span></span>
-            </div>)}
-        </div>}
+        </section>}
       </div>
     </div>
-  </>;
+  </div>;
 }
 
 /* Edits date/time/mode/location/link on a live Meeting Occurrence -- the
@@ -9192,7 +9275,7 @@ const GRID_STATES=['Auto-Scored','Pending Facilitator Review','Submitted for App
 /* Committee Scores, restyled 28 Sep to the approved design
    (`leadership-practice (2).html`, #v-audit). Same data and behaviour as
    before -- every class here is cs-* and styled only by
-   committee-scores.css, scoped under .cs-root, so no other screen moves.
+   leadership-design.css, scoped under .cs-root, so no other screen moves.
 
    Added with the design: the four filter tabs, the per-row action button and
    Export (CSV of the rows the current tab shows). The "Awaiting Chair" stat

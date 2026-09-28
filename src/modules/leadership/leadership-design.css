@@ -1,8 +1,10 @@
 /* =========================================================================
-   Committee Scores — restyled to the approved design
-   Source of truth: `leadership-practice (2).html`, #v-audit.
+   Leadership screens restyled to the approved design
+   Source of truth: `leadership-practice (2).html` -- #v-audit (Committee
+   Scores), #v-mom (Meeting Minutes) and #v-meetings (Meetings). Was committee-scores.css; renamed
+   when Meeting Minutes started sharing it.
 
-   Scoped entirely under .cs-root so nothing else in Leadership moves.
+   Scoped entirely under .cs-root so a screen only changes when it opts in.
    theme.css already owns .tabs/.stat/.card/.tag/table.data for every other
    screen, so this file uses its own class names (cs-*) rather than
    overriding the shared ones. Its tokens are prefixed --cs- for the same
@@ -188,6 +190,84 @@
 }
 .cs-root .cs-retired svg{ flex-shrink:0; margin-top:1px; color:var(--cs-dim) }
 
+/* ---------- Meeting Minutes (#v-mom) ---------- */
+.cs-root .cs-head-top{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px }
+.cs-root .cs-btn.primary{ background:var(--cs-grad-gold); color:#fff; border-color:transparent; font-weight:700 }
+.cs-root .cs-btn.primary:hover{ filter:brightness(1.05); color:#fff; border-color:transparent }
+.cs-root .cs-btn.lg{ font-size:11px; padding:7px 14px; border-radius:10px; box-shadow:0 2px 8px rgba(165,132,91,.30) }
+.cs-root .cs-badge.draft{ background:rgba(156,163,175,.14); color:#6B7280 }
+.cs-root .cs-two-col{ display:grid; grid-template-columns:minmax(0,1fr) 250px; gap:14px; align-items:start }
+.cs-root .cs-side{ display:flex; flex-direction:column; gap:14px }
+.cs-root .cs-qs{ display:flex; align-items:center; justify-content:space-between; padding:7px 0;
+  border-bottom:1px solid var(--cs-border); font:400 11px var(--cs-body-font); color:var(--cs-body) }
+.cs-root .cs-qs:last-child{ border-bottom:none }
+.cs-root .cs-qs-v{ font:700 12px var(--cs-mono); color:var(--cs-text); font-variant-numeric:tabular-nums }
+.cs-root .cs-alerts{ display:flex; flex-direction:column; gap:6px }
+.cs-root .cs-alert{
+  display:flex; align-items:center; gap:7px; width:100%; padding:7px 9px; text-align:left;
+  border:none; border-radius:8px; cursor:pointer; transition:filter .15s;
+}
+.cs-root .cs-alert:hover{ filter:brightness(.97) }
+.cs-root .cs-alert:focus-visible{ outline:2px solid var(--cs-gold); outline-offset:2px }
+.cs-root .cs-alert.danger{ background:var(--cs-danger-soft); color:var(--cs-danger) }
+.cs-root .cs-alert.warn  { background:var(--cs-warn-soft);   color:var(--cs-warning) }
+.cs-root .cs-alert svg{ flex-shrink:0 }
+.cs-root .cs-alert-t{ font:600 10.5px var(--cs-sans); color:var(--cs-text) }
+.cs-root .cs-alert-s{ font:400 9.5px var(--cs-body-font) }
+
+/* ---------- Meetings (#v-meetings) ---------- */
+.cs-root .cs-actions{ display:flex; gap:8px; flex-wrap:wrap }
+.cs-root .cs-btn.ghost{ background:#fff; color:var(--cs-text); border-color:var(--cs-border-hover) }
+.cs-root .cs-chips{ display:flex; align-items:center; gap:7px; flex-wrap:wrap }
+.cs-root .cs-chip{
+  display:inline-flex; align-items:center; gap:5px; padding:5px 12px; border-radius:999px; cursor:pointer;
+  font:500 11px var(--cs-sans); color:var(--cs-muted); background:#fff; border:1px solid var(--cs-border);
+  transition:all .2s var(--cs-ease);
+}
+.cs-root .cs-chip:hover{ border-color:var(--cs-border-hover); color:var(--cs-text) }
+.cs-root .cs-chip.on{ background:var(--cs-gold-soft); border-color:var(--cs-gold); color:var(--cs-gold); font-weight:600 }
+.cs-root .cs-chip:focus-visible{ outline:2px solid var(--cs-gold); outline-offset:2px }
+.cs-root .cs-chips-end{ margin-left:auto }
+.cs-root .cs-search{ display:flex; align-items:center; gap:8px }
+.cs-root .cs-search input{
+  width:210px; padding:6px 10px; border:1px solid var(--cs-border); border-radius:8px; background:#fff;
+  font:400 11px var(--cs-body-font); color:var(--cs-text); outline:none;
+  transition:border-color .2s var(--cs-ease);
+}
+.cs-root .cs-search input:focus{ border-color:var(--cs-gold) }
+.cs-root .cs-search-n{ font:500 10px var(--cs-mono); color:var(--cs-muted); white-space:nowrap }
+.cs-root .cs-type{
+  display:inline-block; padding:1px 7px; border-radius:4px; background:var(--cs-gold-soft); color:var(--cs-gold);
+  font:700 8.5px var(--cs-sans); letter-spacing:.6px; text-transform:uppercase; white-space:nowrap;
+}
+.cs-root .cs-type.adhoc{ background:var(--cs-hover); color:var(--cs-muted); border:1px solid var(--cs-border) }
+.cs-root .cs-count{
+  display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:999px;
+  font:600 9.5px var(--cs-mono); white-space:nowrap; background:var(--cs-hover); color:var(--cs-body);
+  border:1px solid var(--cs-border);
+}
+.cs-root .cs-count i{ width:5px; height:5px; border-radius:50%; background:currentColor }
+.cs-root .cs-count.ok  { background:var(--cs-green-soft);  color:var(--cs-green);   border-color:transparent }
+.cs-root .cs-count.warn{ background:var(--cs-warn-soft);   color:var(--cs-warning); border-color:transparent }
+.cs-root .cs-count.bad { background:var(--cs-danger-soft); color:var(--cs-danger);  border-color:transparent }
+.cs-root .cs-badge.scheduled{ background:var(--cs-hover); color:var(--cs-body); border:1px solid var(--cs-border) }
+.cs-root .cs-badge.today{ background:var(--cs-warn-soft); color:var(--cs-warning); font-size:8px; padding:1px 6px }
+.cs-root .cs-lock{ vertical-align:-1px; margin-right:4px; color:var(--cs-muted) }
+.cs-root .cs-week{ display:flex; flex-direction:column; gap:6px }
+.cs-root .cs-week-item{
+  display:flex; align-items:center; gap:8px; width:100%; padding:8px 10px; text-align:left; cursor:pointer;
+  background:var(--cs-hover); border:none; border-left:3px solid var(--cs-border); border-radius:8px;
+  transition:filter .15s;
+}
+.cs-root .cs-week-item:hover{ filter:brightness(.98) }
+.cs-root .cs-week-item:focus-visible{ outline:2px solid var(--cs-gold); outline-offset:2px }
+.cs-root .cs-week-item.next{ background:var(--cs-green-soft); border-left-color:var(--cs-green) }
+.cs-root .cs-week-t{ font:600 11px var(--cs-sans); color:var(--cs-text) }
+.cs-root .cs-week-s{ font:400 9.5px var(--cs-body-font); color:var(--cs-muted) }
+.cs-root .cs-week-tag{ margin-left:auto; flex-shrink:0 }
+
+@media (max-width:1100px){ .cs-root .cs-two-col{ grid-template-columns:1fr } }
+@media (max-width:640px){ .cs-root .cs-chips-end{ margin-left:0 } .cs-root .cs-search input{ width:100% } }
 @media (max-width:1024px){ .cs-root .cs-stats{ grid-template-columns:repeat(2,minmax(0,1fr)) } }
 @media (max-width:560px){
   .cs-root .cs-head{ padding:14px 14px 0 }

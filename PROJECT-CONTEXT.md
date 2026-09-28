@@ -5,7 +5,8 @@
 > updated 04 Sep 2026, updated 05 Sep 2026, updated 06 Sep 2026,
 > updated 07 Sep 2026 (twice), updated 08 Sep 2026, updated 12 Sep 2026
 > (covering 09-12 Sep), updated 13 Sep 2026, updated 14 Sep 2026,
-> updated 16 Sep 2026, updated 17 Sep 2026 (three times), against branch `leadership-practice`.
+> updated 16 Sep 2026, updated 17 Sep 2026 (three times), against branch `leadership-practice`;
+> since then updated per session through 28 Sep 2026, now on branch `CrossEnv-Leadership`.
 >
 > This file records **decisions, hard-won schema facts and open questions** —
 > the things that are expensive to rediscover. It is not a substitute for the
@@ -7639,6 +7640,89 @@ screen still says Committees and Business Meetings are both scored.
   after; only `dist` replaced. Governance was **not** pushed: no Governance
   source changed since the previous push, and its bundle still has zero DT
   New URLs and no `.cs-root` rules.
+
+### 28 Sep: Meeting Minutes restyled to the same design
+
+Per an explicit ask, with a screenshot. Source of truth is the same file,
+`#v-mom`.
+
+- **`committee-scores.css` renamed to `leadership-design.css`** now that two
+  screens share it. Still scoped under `.cs-root`; a screen changes only when
+  it wraps itself in that class. Minutes-only additions (`cs-head-top`,
+  `cs-two-col`, `cs-qs`, `cs-alert`, `.cs-btn.primary`, `.cs-badge.draft`)
+  are in their own block.
+- **`ScreenMinutes` render rewritten, data logic untouched**: tabs with counts,
+  four accent stat cards, the Minutes table with a status badge and an
+  Edit (Draft) / View button per row, and a side column with MOM Health and
+  Needs Action. "Go to Meetings" stays as the header button in place of the
+  design's "New MOM" — Minutes are created from a Meeting, not here.
+- **Left out on purpose:** the design's **Outputs** column, **Output Tracker**
+  card, and MOM Health's "Open Outputs" row. Tasks and Decisions are not live,
+  so they would show zeros that read as "nothing was raised". MOM Health
+  shows **Closed** instead, which is real.
+- Both apps build. Seen on the local dev server with no Minutes (no Dataverse
+  locally); no console errors after reload. **Not yet seen with real rows.
+  Committed; not pushed** — see the status entry below.
+
+### 28 Sep: Meetings restyled to the same design
+
+Per an explicit ask, with a screenshot. Source of truth `#v-meetings`.
+
+- **`ScreenMeetings` render rewritten; data, tabs, type filters, search and
+  the New Meeting / Ad Hoc from Setup modals unchanged.** New markup: header
+  with ghost + gold buttons, tabs with counts, four accent stat cards, pill
+  filter chips, the table with a type pill, monospace dates, coloured
+  Agenda/Attendee count chips and dot status badges, and the side column
+  (This Week with the next meeting highlighted, Meeting Health, Attention).
+- **Columns reorganised, none dropped:** Chair and Facilitator moved under
+  the meeting name; a **Setup / Type** column shows the Setup's real Setup
+  Type (`setupTypeOf`, the same lookup Committee Scores uses) with the Setup
+  and department under it; Scope keeps its own column. Setup Type is also
+  added to the search, since it is now visible.
+- **Added: Export**, a CSV of the rows shown, reusing `csDownloadCsv`.
+- **Not added** from the design: Inputs Ready, Calendar, Minutes and Gov.
+  Score columns, attendee avatars, and the "Quorum missed" card. Quorum is not
+  reported (see the `ScreenMeetings` header comment); the rest are features,
+  not styling. The fourth stat card stays **Cancelled**.
+- `leadership-design.css` gained a Meetings block (`cs-chip`, `cs-search`,
+  `cs-type`, `cs-count`, `cs-week-item`, `.cs-badge.scheduled/.today`,
+  `.cs-btn.ghost`).
+- Both apps build. Locally the screen shows only "Reading from Dataverse…",
+  so the row styling was checked on a throwaway page (the real stylesheet,
+  sample rows in the same markup) served by the dev server and then deleted.
+  **Not seen with live data. Committed; not pushed** — see the status entry
+  below.
+
+### 28 Sep: status at the end of the design-restyle session
+
+Three Leadership screens now follow `leadership-practice (2).html`, all
+styled by the one scoped stylesheet `src/modules/leadership/leadership-design.css`
+(everything under `.cs-root`; no other screen changes):
+
+| Screen | Design view | Committed | Pushed to Code App |
+|---|---|---|---|
+| Committee Scores | `#v-audit` | `06cddff` | **Yes** — Leadership, 28 Sep (entry above) |
+| Meeting Minutes | `#v-mom` | this commit | **No** |
+| Meetings | `#v-meetings` | this commit | **No** |
+
+- **Live app is behind the branch.** `83db0ef8…` still shows the old Meeting
+  Minutes and Meetings screens; the next Leadership push (staging folder
+  `C:\tmp\cad-exec`, procedure in the 25 Sep entry) carries both. Governance
+  is unaffected by all three — none of its source changed.
+- **None of the three restyled screens has been seen against live data.** The
+  dev server cannot reach Dataverse, so only headers, stats, empty states and
+  (for Meetings) a throwaway sample-row page were checked. After the next push,
+  open each screen in the live app and try Committee Scores' and Meetings'
+  Export once.
+- **Deliberately not built from the design:** Minutes' Outputs column /
+  Output Tracker (no live Tasks or Decisions to count); Meetings' "Quorum
+  missed" card (quorum is not reported); Meetings' Inputs Ready, Calendar,
+  Minutes, Gov. Score columns and attendee avatars (new features, not
+  styling — can be added on request). Committee Scores' coverage still reads "—" until a
+  Grid is approved (step 1F of the Committee Scores plan).
+- **Next candidates in the same design file:** `#v-decisions`, `#v-workarea`,
+  `#v-calendar`. Each should opt into `.cs-root` the same way; add
+  screen-specific rules in their own block of `leadership-design.css`.
 
 ## 6. Schema facts that are expensive to rediscover
 
