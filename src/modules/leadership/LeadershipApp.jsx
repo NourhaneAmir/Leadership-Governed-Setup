@@ -1402,7 +1402,7 @@ const SCREENS = [
   {id:'grid', group:'Meetings',      label:'Committee Scores',       Icon:BarChart3,  wide:true,
    Screen:ScreenGrid,
    hint:'Committee governance scores across occurrences.'},
-  {id:'dec',  group:'Governance',    label:'Decisions',              Icon:CheckSquare,
+  {id:'dec',  group:'Governance',    label:'Decisions',              Icon:CheckSquare,  wide:true,
    Screen:ScreenDecisions,
    hint:'The Decision register: every Decision and Decision Request whatever raised it.'},
   {id:'build', group:'Artifact',     label:'Build a report/plan',    Icon:PenLine,        wide:true,
