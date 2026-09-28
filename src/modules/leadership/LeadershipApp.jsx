@@ -16,6 +16,7 @@ import { Ctx, use } from './store.jsx';
    note in domain.jsx for why the domain had to move first. */
 import { ScreenBI } from './screens/BusinessIntelligence.jsx';
 import { ScreenOrgReports } from './screens/OrgReports.jsx';
+import { DecisionPanel } from './screens/DecisionLink.jsx';
 import { ScreenHierarchy } from './screens/Hierarchy.jsx';
 import { ScreenComms } from './screens/Communication.jsx';
 import { ScreenBuildReport } from './screens/BuildReport.jsx';
@@ -39,7 +40,8 @@ import { fetchMeetingOccurrences, fetchReportOccurrences, createMeetingOccurrenc
          TEMPLATE_STATUS_LABEL,
          fetchMeetingMinutes, fetchMeetingMinutesByOccurrence, fetchAuditGridInstancesByOccurrence,
          fetchAuditGridInstances,
-         fetchWorkLogDecisions, createWorkLogDecision,
+         fetchWorkLogDecisions, createWorkLogDecision, linkWorkLogDecision, fetchReportSectionsByIds,
+         fetchReportOccurrenceForEdit,
          fetchAuthorityMatrix, createMeetingMinutes, saveMomNote, updateAgendaCovered,
          submitMeetingMinutes, updateMeetingMinutesStatus, returnMeetingMinutes,
          signMeetingMinutes, createAuditGridInstance, MOM_NOTE_MAX,
@@ -6317,6 +6319,10 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload}){
                     </>
                   : <div style={{fontSize:12.5,color:val?'var(--ink-2)':'var(--muted)',whiteSpace:'pre-wrap'}}>
                       {val||'No note recorded'}</div>}
+                {/* Decisions taken on this agenda item -- wlog_decision's
+                    lm_MeetingOccurrenceAgenda (DecisionLink.jsx). New ones only
+                    while the Minutes can still be edited. */}
+                <DecisionPanel target={{kind:'agenda', id:a.id, label:a.title}} canAdd={editable}/>
               </div>;})}
           </div>}
     </div>
@@ -9996,403 +10002,314 @@ function Question({r,grid,editable}){
 const decTagC = s => s==='Closed'?'grey':s==='Approved'?'green':s==='In Approval'?'teal':
                      s==='Returned'||s==='Rejected'?'red':'amber';
 
-/* A Decision is "taken" once it exists as an approved Decision by either pathway. */
-const isTaken = d => !d.draft && !d.blocked && (d.status==='Approved'||d.status==='Closed');
-function srcLabel(db,d){
-  if(!d.src) return 'Logged directly';
-  if(d.src.k==='rpt'){ const r=db.reports.find(x=>x.id===d.src.id);
-    return r ? (r.setup?RS(r.setup).name:r.custom.name) : 'A Report'; }
-  const m=db.moms.find(x=>x.id===d.src.id), o=m&&db.occs.find(x=>x.id===m.occ);
-  return o ? occName(o) : 'A Meeting';
-}
+/* The Decision register (28 Sep): the live wlog_decisions rows (IT), each with
+   where it was taken -- a report section (lm_CitedReportSection) or a meeting
+   agenda item (lm_MeetingOccurrenceAgenda). Decisions are raised or attached
+   there too (DecisionLink.jsx), so this is the one list of all of them.
 
+   The seeded Authority-Matrix register (db.decisions, DecisionIntakeModal,
+   DecisionDetail) is no longer shown here: its tables do not exist in IT. Its
+   detail page still opens when another screen links to a seeded decision
+   (go('dec', id)), so those links keep working. */
 function ScreenDecisions(){
-  const {db,me,sel,setSel,go,A,dvDecisions}=use();
-  const [intake,setIntake]=useState(false);
-  const [liveNew,setLiveNew]=useState(false);
-  const [fSt,setFSt]=useState('All'), [fPa,setFPa]=useState('All');
-  const [fSr,setFSr]=useState('All'), [fNa,setFNa]=useState('All'), [q,setQ]=useState('');
-  /* The live Work Log Decisions card below keeps its own search/filter state --
-     the register above it is a different list with different columns. */
-  const [dq,setDq]=useState(''), [dSt,setDSt]=useState('All'), [dRv,setDRv]=useState('All');
-  const [dOpen,setDOpen]=useState(null);
-  /* Status options come from the DATA, not a hard-coded list: wlog_decisionstatus
-     is a choice someone else owns, and a fixed list would quietly drop a value
-     the moment they add one. */
-  const dStatuses=[...new Set(dvDecisions.map(d=>d.status).filter(Boolean))].sort();
-  const dReviews=[...new Set(dvDecisions.map(d=>d.reviewStatus).filter(Boolean))].sort();
-  const dvRows=dvDecisions.filter(d=>{
-    if(dSt!=='All' && d.status!==dSt) return false;
-    if(dRv!=='All' && d.reviewStatus!==dRv) return false;
-    const n=dq.trim().toLowerCase();
-    if(!n) return true;
-    return [d.name,d.decisionTaken,d.expectedOutput,d.managerNote,d.workLog,
-            d.reviewer,d.reviewerUser,d.escalatedToUser,d.escalationReason]
-      .some(v=>v && String(v).toLowerCase().includes(n));
-  });
+  const {db,me,sel,setSel,dvDecisions,dvReportOccs,dvMeetingOccs,openDvRec,openMeeting,dvLoading}=use();
+  const [logging,setLogging]=useState(false);
+  const [linking,setLinking]=useState(null);       // a decision to link, or null
+  const [fSt,setFSt]=useState('All'), [fSrc,setFSrc]=useState('All'), [fRv,setFRv]=useState('All');
+  const [q,setQ]=useState('');
+  const [open,setOpen]=useState(null);
+  const [sections,setSections]=useState(new Map()); // sectionId -> {heading, reportId}
 
-  const id=sel.dec;
-  const list=db.decisions.filter(d=>canSeeDec(d,me));
-  const rec=list.find(d=>d.id===id);
-  if(rec) return <DecisionDetail rec={rec} back={()=>setSel(v=>({...v,dec:null}))}/>;
+  /* Name each linked report section and find its report: the decision row
+     carries only the section id. Read once per set of ids. */
+  const sectionKey = [...new Set(dvDecisions.map(d=>d.sectionId).filter(Boolean))].sort().join(',');
+  useEffect(()=>{
+    if(!sectionKey) return;
+    let live=true;
+    fetchReportSectionsByIds(sectionKey.split(','))
+      .then(m=>{ if(live) setSections(m); })
+      .catch(e=>console.warn('[dataverse] fetchReportSectionsByIds() failed:', e));
+    return ()=>{ live=false; };
+  },[sectionKey]);
 
-  const blocked=list.filter(d=>d.blocked);
-  const taken=list.filter(isTaken);
-  const pending=list.filter(d=>!isTaken(d) && !d.blocked &&
-                              d.status!=='Rejected' && d.status!=='Closed');
-  const rows=list.filter(d=>{
-    if(fSt==='Taken'         && !isTaken(d)) return false;
-    if(fSt==='Not yet taken' && !pending.includes(d)) return false;
-    if(fSt==='Blocked'       && !d.blocked) return false;
-    if(fSt==='Rejected'      && d.status!=='Rejected') return false;
-    if(fSt==='Closed'        && d.status!=='Closed') return false;
-    if(fPa==='Direct Decision'  && d.path!=='Direct') return false;
-    if(fPa==='Decision Request' && d.path!=='Request') return false;
-    if(fSr==='Logged directly' && d.src) return false;
-    if(fSr==='A Meeting' && !(d.src&&d.src.k==='mom')) return false;
-    if(fSr==='A Report'  && !(d.src&&d.src.k==='rpt')) return false;
-    if(fNa!=='All' && d.topicNature!==fNa) return false;
-    if(q && !(d.title+d.type+srcLabel(db,d)).toLowerCase().includes(q.toLowerCase())) return false;
-    return true;
+  const seeded = db.decisions.filter(d=>canSeeDec(d,me)).find(d=>d.id===sel.dec);
+  if(seeded) return <DecisionDetail rec={seeded} back={()=>setSel(v=>({...v,dec:null}))}/>;
+
+  /* agenda item -> its meeting occurrence, from the meetings already loaded */
+  const occByAgenda = new Map();
+  (dvMeetingOccs||[]).forEach(o=>(o.agenda||[]).forEach(a=>occByAgenda.set(a.id,{occ:o, item:a})));
+
+  const sourceOf = d => {
+    if(d.sectionId){
+      const sec = sections.get(d.sectionId);
+      const rpt = sec && (dvReportOccs||[]).find(r=>r.id===sec.reportId);
+      return { kind:'report', label: rpt?.name || sec?.reportName || 'A report',
+               sub: sec?.heading || d.sectionName || 'a section',
+               open: rpt ? ()=>openDvRec('Report', rpt) : null };
+    }
+    if(d.agendaItemId){
+      const hit = occByAgenda.get(d.agendaItemId);
+      return { kind:'meeting', label: hit?.occ.name || 'A meeting',
+               sub: [hit?.occ.date ? fmtDS(hit.occ.date) : null, hit?.item.title || d.agendaItemName || 'an agenda item']
+                      .filter(Boolean).join(' · '),
+               open: hit ? ()=>openMeeting(hit.occ.id,'minutes') : null };
+    }
+    return { kind:'none', label: d.workLog ? 'Work Log' : 'Not linked', sub: d.workLog || null, open: null };
+  };
+
+  const statuses = [...new Set(dvDecisions.map(d=>d.status).filter(Boolean))].sort();
+  const reviews  = [...new Set(dvDecisions.map(d=>d.reviewStatus).filter(Boolean))].sort();
+  const fromReport  = dvDecisions.filter(d=>d.sectionId);
+  const fromMeeting = dvDecisions.filter(d=>d.agendaItemId);
+  const unlinked    = dvDecisions.filter(d=>!d.sectionId && !d.agendaItemId);
+
+  const rows = dvDecisions.filter(d=>{
+    if(fSt!=='All' && d.status!==fSt) return false;
+    if(fRv!=='All' && d.reviewStatus!==fRv) return false;
+    if(fSrc==='report'  && !d.sectionId) return false;
+    if(fSrc==='meeting' && !d.agendaItemId) return false;
+    if(fSrc==='none'    && (d.sectionId || d.agendaItemId)) return false;
+    const src = sourceOf(d);
+    return matchesQuery(q,[d.name,d.decisionTaken,d.expectedOutput,d.managerNote,d.workLog,
+      d.reviewer,d.reviewerUser,src.label,src.sub]);
   });
-  /* Restyled 28 Sep to the approved design (`leadership-practice (2).html`,
-     #v-decisions), styled by leadership-design.css under .cs-root. Same data
-     and filters: the Status select became the tabs, Pathway the chips; Raised
-     from, Nature and search stay as controls. Not taken from the design: its
-     "Avg time to decision / execution" figures (no reliable timestamps behind
-     them) and the separate Rejected stat card, whose count is on its tab. */
-  const rejected = list.filter(d=>d.status==='Rejected');
-  const closed   = list.filter(d=>d.status==='Closed');
-  const direct   = list.filter(d=>!d.blocked && d.path==='Direct');
-  const request  = list.filter(d=>!d.blocked && d.path==='Request');
-  const share = n => (direct.length+request.length) ? Math.round(n/(direct.length+request.length)*100) : 0;
-  const ST_TABS = [
-    ['Taken',taken.length],['Not yet taken',pending.length],['Blocked',blocked.length],
-    ['Rejected',rejected.length],['Closed',closed.length],['All',null],
-  ];
-  const statusBadge = d => d.blocked ? ['returned','No AM mapping']
-    : d.status==='Approved' ? ['approved','Approved']
-    : d.status==='In Approval' ? ['chair','In Approval']
-    : d.status==='Returned'||d.status==='Rejected' ? ['returned',d.status]
-    : d.status==='Closed' ? ['void','Closed']
-    : d.status==='Draft'||d.draft ? ['draft','Draft']
-    : ['scheduled', d.status||'—'];
-  /* Observers across the decisions this person can see, grouped by kind. */
-  const observerKinds = [...list.reduce((m,d)=>{
-    (d.observers||[]).forEach(o=>m.set(o.kind,(m.get(o.kind)||0)+1)); return m;
-  }, new Map())].sort((a,b)=>a[0].localeCompare(b[0]));
-  const filtered = fSt!=='All'||fPa!=='All'||fSr!=='All'||fNa!=='All'||q;
+  const filtered = fSt!=='All'||fSrc!=='All'||fRv!=='All'||q;
 
   return <div className="cs-root">
     <div className="cs-head">
       <div className="cs-head-top">
         <div><h1 className="cs-title">Decisions</h1>
-          <p className="cs-sub">The register of every Decision and Decision Request, whatever raised it —
-            a Report review, a Meeting Agenda Item, or logged directly here. You log the matter once; the
-            Authority Matrix decides the pathway and you never choose it.</p></div>
-        <button type="button" className="cs-btn primary lg" onClick={()=>setIntake(true)}>
+          <p className="cs-sub">Every Decision, and where it was taken — a report section or a meeting’s agenda
+            item. Raise or attach one there, or log it here.</p></div>
+        <button type="button" className="cs-btn primary lg" onClick={()=>setLogging(true)}>
           <Plus size={13}/>Log a Decision</button>
       </div>
       <div className="cs-tabs" role="tablist" aria-label="Filter Decisions by status">
-        {ST_TABS.map(([k,n])=>
+        {['All',...statuses].map(k=>
           <button key={k} type="button" role="tab" aria-selected={fSt===k}
             className={'cs-tab'+(fSt===k?' on':'')} onClick={()=>setFSt(k)}>
-            {k==='All'?'All Decisions':k}{n!=null && <span className="cs-tab-badge">{n}</span>}
+            {k==='All'?'All Decisions':k}
+            {k!=='All' && <span className="cs-tab-badge">{dvDecisions.filter(d=>d.status===k).length}</span>}
           </button>)}
       </div>
     </div>
 
     <div className="cs-stats">
-      <div className="cs-stat acc-green"><div className="cs-stat-lbl">Taken</div>
-        <div className="cs-stat-val">{taken.length}</div><div className="cs-stat-meta">direct or approved</div></div>
-      <div className="cs-stat acc-amber"><div className="cs-stat-lbl">Not yet taken</div>
-        <div className="cs-stat-val">{pending.length}</div><div className="cs-stat-meta">draft or in approval</div></div>
-      <div className="cs-stat acc-alert"><div className="cs-stat-lbl">Blocked</div>
-        <div className="cs-stat-val">{blocked.length}</div><div className="cs-stat-meta">no Authority Matrix mapping</div></div>
-      <div className="cs-stat acc-gold"><div className="cs-stat-lbl">Closed</div>
-        <div className="cs-stat-val">{closed.length}</div><div className="cs-stat-meta">outcome recorded</div></div>
+      <div className="cs-stat acc-gold"><div className="cs-stat-lbl">Decisions</div>
+        <div className="cs-stat-val">{dvDecisions.length}</div><div className="cs-stat-meta">logged</div></div>
+      <div className="cs-stat acc-green"><div className="cs-stat-lbl">From a report</div>
+        <div className="cs-stat-val">{fromReport.length}</div><div className="cs-stat-meta">taken on a section</div></div>
+      <div className="cs-stat acc-amber"><div className="cs-stat-lbl">From a meeting</div>
+        <div className="cs-stat-val">{fromMeeting.length}</div><div className="cs-stat-meta">taken on an agenda item</div></div>
+      <div className="cs-stat acc-alert"><div className="cs-stat-lbl">Not linked</div>
+        <div className="cs-stat-val">{unlinked.length}</div><div className="cs-stat-meta">no report or meeting yet</div></div>
     </div>
 
-    {blocked.length>0 && <div className="cs-banner" role="alert">
-      <CircleAlert size={15} aria-hidden="true"/>
-      <div><div className="cs-banner-t">{blocked.length} Decision{blocked.length>1?'s are':' is'} blocked — no
-          Authority Matrix mapping</div>
-        <div className="cs-banner-s">Held in Draft. No temporary or substitute route is created and no override
-          is offered. The Authority Matrix Owner must create the mapping, after which the system rechecks
-          automatically.</div>
-        <button type="button" className="cs-btn" onClick={A.patchMatrix}>
-          Simulate: the Authority Matrix Owner creates the mapping</button></div>
-    </div>}
-
-    <div className="cs-chips" role="group" aria-label="Filter Decisions">
-      {[['All','All',Layers],['Direct Decision','Direct Decision',CheckSquare],
-        ['Decision Request','Decision Request',ArrowUpRight]].map(([k,l,Ic])=>
-        <button key={k} type="button" aria-pressed={fPa===k}
-          className={'cs-chip'+(fPa===k?' on':'')} onClick={()=>setFPa(k)}>
+    <div className="cs-chips" role="group" aria-label="Filter Decisions by where they were taken">
+      {[['All','All',Layers],['report','From a report',FileText],['meeting','From a meeting',Users],
+        ['none','Not linked',CircleAlert]].map(([k,l,Ic])=>
+        <button key={k} type="button" aria-pressed={fSrc===k}
+          className={'cs-chip'+(fSrc===k?' on':'')} onClick={()=>setFSrc(k)}>
           <Ic size={11} aria-hidden="true"/>{l}</button>)}
       <div className="cs-search cs-chips-end" style={{flexWrap:'wrap'}}>
-        <select className="cs-select" value={fSr} onChange={e=>setFSr(e.target.value)} aria-label="Raised from">
-          <option value="All">Raised from: any</option><option>Logged directly</option>
-          <option>A Meeting</option><option>A Report</option></select>
-        <select className="cs-select" value={fNa} onChange={e=>setFNa(e.target.value)} aria-label="Nature">
-          <option value="All">Nature: any</option>{TOPIC_NATURES.map(t=><option key={t}>{t}</option>)}</select>
-        <input type="search" placeholder="Search…" value={q} onChange={e=>setQ(e.target.value)}
-          aria-label="Search decisions" style={{width:170}}/>
+        <select className="cs-select" value={fRv} onChange={e=>setFRv(e.target.value)} aria-label="Review status">
+          {['All',...reviews].map(x=><option key={x} value={x}>{x==='All'?'Review: any':x}</option>)}</select>
+        <input type="search" placeholder="Search decisions…" value={q} onChange={e=>setQ(e.target.value)}
+          aria-label="Search decisions" style={{width:190}}/>
         {filtered && <button type="button" className="cs-btn"
-          onClick={()=>{setFSt('All');setFPa('All');setFSr('All');setFNa('All');setQ('');}}>
+          onClick={()=>{setFSt('All');setFSrc('All');setFRv('All');setQ('');}}>
           <RotateCcw size={11}/>Clear</button>}
       </div>
     </div>
 
-    <div className="cs-two-col">
-      <section className="cs-card flush" aria-labelledby="dec-reg">
-        <div className="cs-card-top">
-          <div className="cs-card-title-grp">
-            <span className="cs-icon amber" aria-hidden="true"><ClipboardList size={16}/></span>
-            <div><h2 className="cs-card-title" id="dec-reg">Decision Register</h2>
-              <div className="cs-card-note">{rows.length} of {list.length} record{list.length===1?'':'s'}. Both
-                pathways merge at the approved Decision.</div></div>
-          </div>
+    <section className="cs-card flush" aria-labelledby="dec-reg">
+      <div className="cs-card-top">
+        <div className="cs-card-title-grp">
+          <span className="cs-icon amber" aria-hidden="true"><ClipboardList size={16}/></span>
+          <div><h2 className="cs-card-title" id="dec-reg">Decision Register</h2>
+            <div className="cs-card-note">{rows.length} of {dvDecisions.length}. Read from the Work Log
+              Decisions table in IT.</div></div>
         </div>
-        {rows.length===0 ? <div className="cs-empty">No Decision matches these filters.</div> :
-        <div className="cs-tbl-wrap"><table className="cs-tbl dense" style={{minWidth:800}}>
-          <thead><tr><th>Decision</th><th>Type</th><th>Topic</th><th>Pathway</th><th>Raised from</th>
-            <th>Status</th><th>Taken?</th><th><span className="sr-only">Action</span></th></tr></thead>
+      </div>
+      {dvLoading && !dvDecisions.length ? <div className="cs-empty">Reading from Dataverse…</div>
+      : rows.length===0 ? <div className="cs-empty">{dvDecisions.length?'No Decision matches these filters.':'No Decisions logged yet.'}</div>
+      : <div className="cs-tbl-wrap"><table className="cs-tbl dense" style={{minWidth:860}}>
+          <thead><tr><th>Decision</th><th>Taken in</th><th>Status</th><th>Review</th><th>Logged</th>
+            <th><span className="sr-only">Actions</span></th></tr></thead>
           <tbody>{rows.map(d=>{
-            const step=d.steps&&d.steps.find(s=>s.state==='Pending');
-            const [bc,bl]=statusBadge(d);
-            const open=()=>go('dec',d.id);
-            const stands = d.draft?'Draft Output of Minutes — activates on approval'
-              :step?step.pos+' — '+P(step.who).name
-              :d.status==='Approved'?'Execution Owner '+(d.execOwner?P(d.execOwner).name:'not assigned')
-              :null;
-            return <tr key={d.id} className="cs-row" tabIndex={0} onClick={open}
-                onKeyDown={e=>{ if(e.key==='Enter'){ e.preventDefault(); open(); } }}>
-              <td><div className="cs-name">{d.title}</div>
-                <div className="cs-name-sub">{P(d.creator).name} · {fmtD(d.created)}</div></td>
-              <td><div className="cs-name" style={{fontWeight:500}}>{d.type}</div>
-                {d.value?<div className="cs-name-sub cs-mono">{money(d.value)}</div>:null}</td>
-              <td>{d.topicNature && <span className="cs-type">{d.topicNature}</span>}
-                <div className="cs-name-sub">{(d.topicCats||[]).map(c=>c.v).join(', ')}</div></td>
-              <td>{d.blocked ? <span className="cs-type bad">Blocked</span>
-                : d.path==='Direct' ? <span className="cs-type adhoc">Direct Decision</span>
-                : <span className="cs-type">Decision Request</span>}</td>
-              <td><span className="cs-name-sub" style={{fontSize:10.5,color:'var(--cs-body)'}}>{srcLabel(db,d)}</span></td>
-              <td><span className={'cs-badge '+bc}><i/>{bl}</span>
-                {stands && <div className="cs-cov-sub">{stands}</div>}</td>
-              <td>{isTaken(d) ? <span className="cs-taken c-green">✓ Taken</span>
-                : d.status==='Rejected' ? <span className="cs-taken c-red">Decided against</span>
-                : d.blocked ? <span className="cs-taken c-red">Blocked</span>
-                : <span className="cs-taken c-amber">Not yet</span>}</td>
-              <td><button type="button" className="cs-btn"
-                  onClick={e=>{ e.stopPropagation(); open(); }}>View</button></td>
-            </tr>;})}
+            const src = sourceOf(d);
+            const isOpen = open===d.id;
+            const toggle = ()=>setOpen(isOpen?null:d.id);
+            return <React.Fragment key={d.id}>
+              <tr className="cs-row" tabIndex={0} aria-expanded={isOpen} onClick={toggle}
+                  onKeyDown={e=>{ if(e.key==='Enter'){ e.preventDefault(); toggle(); } }}>
+                <td><div className="cs-name">{d.name}</div>
+                  {d.decisionTaken
+                    ? <div className="cs-name-sub">{d.decisionTaken.slice(0,90)}{d.decisionTaken.length>90?'…':''}</div>
+                    : null}</td>
+                <td><span className={'cs-type'+(src.kind==='report'?'':src.kind==='meeting'?' green':' adhoc')}>
+                    {src.kind==='report'?'Report':src.kind==='meeting'?'Meeting':src.label}</span>
+                  {src.kind!=='none'
+                    ? <><div className="cs-name" style={{fontWeight:500,marginTop:3}}>{src.label}</div>
+                        <div className="cs-name-sub">{src.sub}</div></>
+                    : src.sub ? <div className="cs-name-sub">{src.sub}</div> : null}</td>
+                <td>{d.status
+                  ? <span className={'cs-badge '+(d.status==='Completed'?'approved':d.status==='Escalated'?'pending':'scheduled')}>
+                      <i/>{d.status}</span> : '—'}</td>
+                <td>{d.reviewStatus||'—'}{d.reviewer ? <div className="cs-name-sub">{d.reviewer}</div> : null}</td>
+                <td><span className="cs-mono muted">{fmtISODT(d.created)}</span></td>
+                <td style={{whiteSpace:'nowrap'}}>
+                  {src.open
+                    ? <button type="button" className="cs-btn" onClick={e=>{ e.stopPropagation(); src.open(); }}>
+                        Open {src.kind==='report'?'report':'minutes'}</button>
+                    : null}
+                  {' '}<button type="button" className="cs-btn" onClick={e=>{ e.stopPropagation(); setLinking(d); }}>
+                    {src.kind==='none'?'Link…':'Move…'}</button></td>
+              </tr>
+              {isOpen ? <tr className="cs-expand"><td colSpan={6}>
+                <div className="cs-kv">
+                  {[['Decision taken',d.decisionTaken],['Expected output',d.expectedOutput],
+                    ['Manager note',d.managerNote],['Work Log',d.workLog],
+                    ['Reviewer',[d.reviewer,d.reviewerUser].filter(Boolean).join(' · ')],
+                    ['Reviewed on',fmtISODT(d.reviewedOn)]].filter(([,v])=>v).map(([k,v])=>
+                    <div key={k}><span className="cs-lbl">{k}</span><div className="cs-kv-v">{v}</div></div>)}
+                  {d.evidenceUrl
+                    ? <div><span className="cs-lbl">Evidence</span><div className="cs-kv-v">
+                        <a href={d.evidenceUrl} target="_blank" rel="noopener noreferrer">{d.evidenceUrl}</a></div></div>
+                    : null}
+                  {(d.escalatedOn||d.escalationReason||d.escalationResult||d.escalatedToUser)
+                    ? <div style={{borderTop:'1px solid var(--cs-border)',paddingTop:7}}>
+                        <span className="cs-lbl">Escalation</span>
+                        <div className="cs-kv-v">{[d.escalatedToUser&&('to '+d.escalatedToUser),
+                          d.escalatedOn&&('on '+fmtISODT(d.escalatedOn)),d.escalationResult].filter(Boolean).join(' · ')||'—'}</div>
+                        {d.escalationReason ? <div className="cs-name-sub" style={{fontSize:11}}>{d.escalationReason}</div> : null}
+                        {d.escalationReply ? <div className="cs-kv-v">↳ {d.escalationReply}</div> : null}
+                      </div>
+                    : null}
+                </div></td></tr> : null}
+            </React.Fragment>;})}
           </tbody></table></div>}
-      </section>
-
-      <div className="cs-side">
-        <section className="cs-card" aria-labelledby="dec-flow">
-          <div className="cs-card-top"><div className="cs-card-title-grp">
-            <span className="cs-icon amber" aria-hidden="true"><Network size={16}/></span>
-            <h2 className="cs-card-title" id="dec-flow">Decision Flow</h2></div></div>
-          <div className="cs-flow">
-            <div className="cs-flow-step"><span className="cs-flow-n">1</span>Common Intake
-              <span className="cs-flow-m">one form</span></div>
-            <div className="cs-flow-step"><span className="cs-flow-n">2</span>Authority Check
-              <span className="cs-flow-m">Authority Matrix</span></div>
-            <div className="cs-flow-step green"><span className="cs-flow-n">A</span>Direct Decision
-              <span className="cs-flow-m">{direct.length} · has authority</span></div>
-            <div className="cs-flow-step gold"><span className="cs-flow-n">B</span>Decision Request
-              <span className="cs-flow-m">{request.length} · approval steps</span></div>
-            <div className="cs-flow-step"><span className="cs-flow-n">3</span>Execution → Close
-              <span className="cs-flow-m">{closed.length} closed</span></div>
-          </div>
-        </section>
-
-        <section className="cs-card" aria-labelledby="dec-health">
-          <div className="cs-card-top"><div className="cs-card-title-grp">
-            <span className="cs-icon green" aria-hidden="true"><Activity size={16}/></span>
-            <h2 className="cs-card-title" id="dec-health">Decision Health</h2></div></div>
-          <div>
-            <div className="cs-qs"><span>Direct vs Request</span>
-              <span className="cs-qs-v">{share(direct.length)} / {share(request.length)}%</span></div>
-            <div className="cs-qs"><span>Not yet taken</span>
-              <span className={'cs-qs-v'+(pending.length?' c-amber':'')}>{pending.length}</span></div>
-            <div className="cs-qs"><span>Blocked</span>
-              <span className={'cs-qs-v'+(blocked.length?' c-red':'')}>{blocked.length}</span></div>
-            <div className="cs-qs"><span>Rejected</span><span className="cs-qs-v">{rejected.length}</span></div>
-            <div className="cs-qs"><span>Closed</span><span className="cs-qs-v">{closed.length}</span></div>
-          </div>
-        </section>
-
-        {observerKinds.length>0 && <section className="cs-card" aria-labelledby="dec-obs">
-          <h2 className="cs-card-title" id="dec-obs" style={{fontSize:12.5}}>Observers</h2>
-          <p className="cs-card-note">Read-only watchers on the decisions you can see.</p>
-          <div>{observerKinds.map(([kind,n])=>
-            <div key={kind} className="cs-obs"><Eye size={12} aria-hidden="true"/>
-              <div><div className="cs-alert-t">{kind}</div>
-                <div className="cs-name-sub">on {n} decision{n===1?'':'s'}</div></div></div>)}
-          </div>
-        </section>}
-      </div>
-    </div>
-
-    <section className="cs-card flush" aria-labelledby="dec-live">
-      <div className="cs-card-top" style={{alignItems:'flex-start'}}>
-        <div className="cs-card-title-grp" style={{alignItems:'flex-start'}}>
-          <span className="cs-icon green" aria-hidden="true"><CheckSquare size={16}/></span>
-          <div><h2 className="cs-card-title" id="dec-live">Live Decisions</h2>
-            <div className="cs-card-note" style={{maxWidth:'90ch'}}>Read from the Work Log Decisions table — a
-              pre-existing table, separate from the Decision register above. Every one belongs to a Work Log,
-              shown below. ⚠️ Not yet linked to the Meeting Agenda Item or Report Section that raised it: that
-              needs a lookup column on <span className="cs-mono">wlog_decision</span> in IT, which does not
-              exist (see §9).</div></div>
-        </div>
-        <button type="button" className="cs-btn" onClick={()=>setLiveNew(true)}>
-          <Plus size={11}/>Log a Decision</button>
-      </div>
-
-      {dvDecisions.length===0 ? <div className="cs-empty">No live Decisions logged yet.</div>
-      : <>
-        <div className="cs-search" style={{flexWrap:'wrap',padding:'10px 16px',borderBottom:'1px solid var(--cs-border)'}}>
-          <input type="search" value={dq} onChange={e=>setDq(e.target.value)}
-            placeholder="Search decisions, work logs, reviewers…"
-            aria-label="Search live decisions" style={{flex:'1 1 240px',minWidth:0,width:'auto'}}/>
-          <select className="cs-select" value={dSt} onChange={e=>setDSt(e.target.value)} aria-label="Filter by status">
-            {['All',...dStatuses].map(x=><option key={x} value={x}>{x==='All'?'Any status':x}</option>)}
-          </select>
-          <select className="cs-select" value={dRv} onChange={e=>setDRv(e.target.value)} aria-label="Filter by review status">
-            {['All',...dReviews].map(x=><option key={x} value={x}>{x==='All'?'Any review':x}</option>)}
-          </select>
-          <span className="cs-search-n">{dvRows.length} of {dvDecisions.length}</span>
-        </div>
-
-        {dvRows.length===0
-          ? <div className="cs-empty">No decision matches.</div>
-          : <div className="cs-tbl-wrap"><table className="cs-tbl" style={{minWidth:760}}>
-              <thead><tr><th>Decision</th><th>Work Log</th><th>Status</th>
-                <th>Review</th><th>Logged</th></tr></thead>
-              <tbody>{dvRows.map(d=>{
-                const open = dOpen===d.id;
-                const toggle = ()=>setDOpen(open?null:d.id);
-                return <React.Fragment key={d.id}>
-                  <tr className="cs-row" tabIndex={0} aria-expanded={open} onClick={toggle}
-                      onKeyDown={e=>{ if(e.key==='Enter'){ e.preventDefault(); toggle(); } }}>
-                    <td><div className="cs-name">{d.name}</div>
-                      {/* The full text is in the expanded row; this keeps the
-                          table scannable rather than three columns of prose. */}
-                      {d.decisionTaken
-                        ? <div className="cs-name-sub">{d.decisionTaken.slice(0,90)}
-                            {d.decisionTaken.length>90?'…':''}</div>
-                        : null}</td>
-                    <td>{d.workLog||'—'}</td>
-                    <td>{d.status
-                      ? <span className={'cs-badge '+(d.status==='Completed'?'approved'
-                          :d.status==='Escalated'?'pending':'scheduled')}><i/>{d.status}</span> : '—'}</td>
-                    <td>{d.reviewStatus||'—'}
-                      {d.reviewer ? <div className="cs-name-sub">{d.reviewer}</div> : null}</td>
-                    <td><span className="cs-mono muted">{fmtISODT(d.created)}</span></td>
-                  </tr>
-                  {open ? <tr className="cs-expand"><td colSpan={5}>
-                    <div className="cs-kv">
-                      {[['Decision taken',d.decisionTaken],
-                        ['Expected output',d.expectedOutput],
-                        ['Manager note',d.managerNote],
-                        ['Reviewer',[d.reviewer,d.reviewerUser].filter(Boolean).join(' · ')],
-                        ['Reviewed on',fmtISODT(d.reviewedOn)],
-                       ].filter(([,v])=>v).map(([k,v])=>
-                        <div key={k}><span className="cs-lbl">{k}</span>
-                          <div className="cs-kv-v">{v}</div></div>)}
-
-                      {d.evidenceUrl
-                        ? <div><span className="cs-lbl">Evidence</span>
-                            <div className="cs-kv-v"><a href={d.evidenceUrl} target="_blank"
-                              rel="noopener noreferrer">{d.evidenceUrl}</a></div></div>
-                        : null}
-
-                      {/* Only drawn when this decision was actually escalated --
-                          an empty escalation block reads as missing data. */}
-                      {(d.escalatedOn||d.escalationReason||d.escalationResult||d.escalatedToUser)
-                        ? <div style={{borderTop:'1px solid var(--cs-border)',paddingTop:7}}>
-                            <span className="cs-lbl">Escalation</span>
-                            <div className="cs-kv-v">
-                              {[d.escalatedToUser&&('to '+d.escalatedToUser),
-                                d.escalatedOn&&('on '+fmtISODT(d.escalatedOn)),
-                                d.escalationResult].filter(Boolean).join(' · ')||'—'}</div>
-                            {d.escalationReason
-                              ? <div className="cs-name-sub" style={{fontSize:11}}>{d.escalationReason}</div>
-                              : null}
-                            {d.escalationReply
-                              ? <div className="cs-kv-v">↳ {d.escalationReply}</div>
-                              : null}
-                            {d.escalationResolvedOn
-                              ? <div className="cs-name-sub" style={{fontSize:11}}>
-                                  Resolved {fmtISODT(d.escalationResolvedOn)}</div>
-                              : null}
-                          </div>
-                        : null}
-                    </div></td></tr> : null}
-                </React.Fragment>;})}
-              </tbody></table></div>}
-      </>}
     </section>
 
-    {intake && <DecisionIntakeModal onClose={()=>setIntake(false)}/>}
-    {liveNew && <WorkLogDecisionModal onClose={()=>setLiveNew(false)}/>}
+    {logging && <WorkLogDecisionModal onClose={()=>setLogging(false)}/>}
+    {linking && <WorkLogDecisionModal decision={linking} onClose={()=>setLinking(null)}/>}
   </div>;
 }
 
-/* Logs a new row to wlog_decisions. Base plumbing only, per the call made
-   when this table was wired -- see the note above fetchWorkLogDecisions()
-   in dataverse.js. No status is set on create (the option set's own
-   Dataverse default applies) and there is no Meeting/Report link field yet. */
-function WorkLogDecisionModal({onClose}){
-  const {toast,refreshOccurrences}=use();
-  const [f,setF]=useState({name:'',decisionTaken:'',expectedOutput:'',managerNote:'',evidenceUrl:''});
+/* Logs a new wlog_decisions row, or -- given `decision` -- links an existing one.
+   "Where was it taken" picks a report and one of its sections, or a meeting and
+   one of its agenda items; the same two lookups DecisionLink.jsx writes. */
+function WorkLogDecisionModal({onClose, decision}){
+  const {toast,refreshOccurrences,dvReportOccs,dvMeetingOccs}=use();
+  const linkOnly = !!decision;
+  const [f,setF]=useState({name:'',decisionTaken:'',expectedOutput:'',managerNote:'',evidenceUrl:'',
+    where: decision?.agendaItemId ? 'meeting' : decision?.sectionId ? 'report' : (linkOnly?'report':'none'),
+    reportId:'', sectionId:'', meetingId:'', agendaItemId:''});
   const [saving,setSaving]=useState(false);
+  const [secs,setSecs]=useState(null);               // sections of the chosen report, null while reading
   const set=(k,v)=>setF(x=>({...x,[k]:v}));
-  const ok = f.name.trim() && f.decisionTaken.trim();
+
+  useEffect(()=>{
+    if(!f.reportId){ setSecs(null); return; }
+    let live=true; setSecs(null);
+    fetchReportOccurrenceForEdit(f.reportId)
+      .then(rows=>{ if(live) setSecs(rows||[]); })
+      .catch(e=>{ console.warn('[dataverse] fetchReportOccurrenceForEdit() failed:', e); if(live) setSecs([]); });
+    return ()=>{ live=false; };
+  },[f.reportId]);
+
+  const reports  = (dvReportOccs||[]).slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  const meetings = (dvMeetingOccs||[]).filter(o=>(o.agenda||[]).length)
+    .slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const meeting  = meetings.find(o=>o.id===f.meetingId);
+  const target = f.where==='report' ? (f.sectionId ? {sectionId:f.sectionId} : null)
+    : f.where==='meeting' ? (f.agendaItemId ? {agendaItemId:f.agendaItemId} : null) : {};
+  const ok = (linkOnly || (f.name.trim() && f.decisionTaken.trim())) && !!target
+    && (!linkOnly || Object.keys(target).length);
 
   const save=async()=>{
     setSaving(true);
     try{
-      const {id,errors}=await createWorkLogDecision({
-        name:f.name.trim(), decisionTaken:f.decisionTaken.trim(),
-        expectedOutput:f.expectedOutput.trim()||undefined,
-        managerNote:f.managerNote.trim()||undefined,
-        evidenceUrl:f.evidenceUrl.trim()||undefined,
-      });
+      const {id,errors} = linkOnly
+        ? await linkWorkLogDecision(decision.id, target)
+        : await createWorkLogDecision({
+            name:f.name.trim(), decisionTaken:f.decisionTaken.trim(),
+            expectedOutput:f.expectedOutput.trim()||undefined,
+            managerNote:f.managerNote.trim()||undefined,
+            evidenceUrl:f.evidenceUrl.trim()||undefined,
+            ...target,
+          });
       if(!id){
-        console.warn('[dataverse] createWorkLogDecision() failed:', errors);
-        toast('Not saved','Logging this Decision failed. Check the console for details.','err');
+        console.warn('[dataverse] '+(linkOnly?'linkWorkLogDecision':'createWorkLogDecision')+'() failed:', errors);
+        toast('Not saved',(linkOnly?'Linking':'Logging')+' this Decision failed. Check the console for details.','err');
         return;
       }
-      toast('Decision logged',
-        'Not yet linked to a Meeting or Report — that comes once there\'s somewhere to store the link.','ok');
+      toast(linkOnly?'Decision linked':'Decision logged',
+        f.where==='none' ? 'Not linked to a report or meeting — link it later from the register.'
+          : `Linked to the ${f.where==='report'?'report section':'agenda item'} chosen.`,'ok');
       await refreshOccurrences();
       onClose();
     }catch(e){
-      console.warn('[dataverse] createWorkLogDecision() threw unexpectedly:', e);
-      toast('Not saved','Logging this Decision failed. Check the console for details.','err');
+      console.warn('[dataverse] decision save threw unexpectedly:', e);
+      toast('Not saved','Saving this Decision failed. Check the console for details.','err');
     }finally{ setSaving(false); }
   };
 
-  return <Modal title="Log a Decision" onClose={onClose}
-    sub="Base fields only for now — no link to a Meeting or Report yet."
+  return <Modal title={linkOnly?`Link “${decision.name}”`:'Log a Decision'} onClose={onClose}
+    sub={linkOnly ? 'Where was it taken? A decision holds one report section and one agenda item — choosing another moves it.'
+                  : 'Record the decision, and where it was taken.'}
     footer={<><Btn onClick={onClose} disabled={saving}>Cancel</Btn>
-      <Btn k="pri" disabled={!ok||saving} onClick={save}>{saving?'Saving…':'Log Decision'}</Btn></>}>
-    <Field label="Title" req err={!f.name.trim()?'Required.':null}>
-      <input type="text" value={f.name} onChange={e=>set('name',e.target.value)} maxLength={100}
-        placeholder="A short, identifying title"/></Field>
-    <Field label="Decision Taken" req err={!f.decisionTaken.trim()?'Required.':null}>
-      <textarea rows={3} value={f.decisionTaken} onChange={e=>set('decisionTaken',e.target.value)} maxLength={4000}/></Field>
-    <Field label="Expected Output">
-      <textarea rows={2} value={f.expectedOutput} onChange={e=>set('expectedOutput',e.target.value)} maxLength={1000}/></Field>
-    <Field label="Manager Note">
-      <textarea rows={2} value={f.managerNote} onChange={e=>set('managerNote',e.target.value)} maxLength={2000}/></Field>
-    <Field label="Based On / Evidence">
-      <input type="text" value={f.evidenceUrl} onChange={e=>set('evidenceUrl',e.target.value)} maxLength={500}
-        placeholder="A link or reference"/></Field>
+      <Btn k="pri" disabled={!ok||saving} onClick={save}>{saving?'Saving…':linkOnly?'Link Decision':'Log Decision'}</Btn></>}>
+    {!linkOnly && <>
+      <Field label="Title" req err={!f.name.trim()?'Required.':null}>
+        <input type="text" value={f.name} onChange={e=>set('name',e.target.value)} maxLength={100}
+          placeholder="A short, identifying title"/></Field>
+      <Field label="Decision Taken" req err={!f.decisionTaken.trim()?'Required.':null}>
+        <textarea rows={3} value={f.decisionTaken} onChange={e=>set('decisionTaken',e.target.value)} maxLength={4000}/></Field>
+      <Field label="Expected Output">
+        <textarea rows={2} value={f.expectedOutput} onChange={e=>set('expectedOutput',e.target.value)} maxLength={1000}/></Field>
+    </>}
+
+    <Field label="Where was it taken?">
+      <Pills opts={linkOnly ? ['A report section','A meeting agenda item']
+                            : ['Not linked','A report section','A meeting agenda item']}
+        val={f.where==='report'?'A report section':f.where==='meeting'?'A meeting agenda item':'Not linked'}
+        onChange={v=>setF(x=>({...x, where: v==='A report section'?'report':v==='A meeting agenda item'?'meeting':'none',
+          reportId:'', sectionId:'', meetingId:'', agendaItemId:''}))}/></Field>
+
+    {f.where==='report' && <div className="f-row">
+      <Field label="Report" req>
+        <select value={f.reportId} onChange={e=>setF(x=>({...x, reportId:e.target.value, sectionId:''}))}>
+          <option value="">{reports.length?'Select…':'No reports loaded'}</option>
+          {reports.map(r=><option key={r.id} value={r.id}>{r.name}{r.period?` — ${fmtP(r.period)}`:''}</option>)}
+        </select></Field>
+      <Field label="Section" req>
+        <select value={f.sectionId} disabled={!f.reportId || secs===null} onChange={e=>set('sectionId',e.target.value)}>
+          <option value="">{!f.reportId?'Choose a report first':secs===null?'Reading sections…':secs.length?'Select…':'This report has no sections'}</option>
+          {(secs||[]).map(s=><option key={s.id} value={s.id}>{s.heading||'(untitled section)'}</option>)}
+        </select></Field>
+    </div>}
+
+    {f.where==='meeting' && <div className="f-row">
+      <Field label="Meeting" req>
+        <select value={f.meetingId} onChange={e=>setF(x=>({...x, meetingId:e.target.value, agendaItemId:''}))}>
+          <option value="">{meetings.length?'Select…':'No meetings with an agenda loaded'}</option>
+          {meetings.map(o=><option key={o.id} value={o.id}>{o.name}{o.date?` — ${fmtDS(o.date)}`:''}</option>)}
+        </select></Field>
+      <Field label="Agenda item" req>
+        <select value={f.agendaItemId} disabled={!meeting} onChange={e=>set('agendaItemId',e.target.value)}>
+          <option value="">{meeting?'Select…':'Choose a meeting first'}</option>
+          {(meeting?.agenda||[]).map(a=><option key={a.id} value={a.id}>{(a.seq??'')+(a.seq!=null?'. ':'')}{a.title||'(untitled item)'}</option>)}
+        </select></Field>
+    </div>}
+
+    {!linkOnly && <>
+      <Field label="Manager Note">
+        <textarea rows={2} value={f.managerNote} onChange={e=>set('managerNote',e.target.value)} maxLength={2000}/></Field>
+      <Field label="Based On / Evidence">
+        <input type="text" value={f.evidenceUrl} onChange={e=>set('evidenceUrl',e.target.value)} maxLength={500}
+          placeholder="A link or reference"/></Field>
+    </>}
   </Modal>;
 }
 

@@ -23,6 +23,7 @@ import { use } from '../store.jsx';
 import { Btn, Tag, Note, Empty, Combo, KVBlock } from '../../../shared/ui.jsx';
 import { fmtP, TODAY } from '../../../shared/format.js';
 import { DiagChip, rptTagC, matchesQuery, processMetaRows, projectMetaRows } from '../domain.jsx';
+import { DecisionPanel } from './DecisionLink.jsx';
 import { BiFrame } from './BusinessIntelligence.jsx';
 import { ExportReportButtons } from './ExportReport.jsx';
 import { KpiCoverage } from './KpiCoverage.jsx';
@@ -894,6 +895,14 @@ function SectionEditor({ s, i, total, busy, patch, move, remove, uncite, cite, p
             buName={nm(L.bu, rec?.businessUnitId) || null}
             catalog={catalog} inScope={inScope} reports={reports} taken={s.citations}/>
         : null}
+
+      {/* Decisions taken on this section (DecisionLink.jsx). They link to the
+          SAVED section row, so a section that has never been saved has nothing
+          to link to yet. */}
+      {s.id
+        ? <DecisionPanel target={{ kind: 'section', id: s.id, label: s.heading }}/>
+        : <div className="holder" style={{ fontSize: 11.5, marginTop: 8 }}>
+            Save the draft to raise or attach Decisions on this section.</div>}
     </div>
   </div>;
 }

@@ -5808,6 +5808,9 @@ export async function fetchWorkLogDecisions(){
              'wlog_escalationresolvedon','wlog_escalationresult',
              '_wlog_worklog_value','_wlog_reviewer_value','_wlog_revieweruser_value',
              '_wlog_escalatedto_value','_wlog_escalatedtouser_value',
+             /* Where the decision was taken (added in IT by 28 Sep, see the
+                schema refresh): a report section, or a meeting agenda item. */
+             '_lm_citedreportsection_value','_lm_meetingoccurrenceagenda_value',
              'createdon','modifiedon'],
   });
   return (res?.data ?? []).map(d => ({
@@ -5834,14 +5837,30 @@ export async function fetchWorkLogDecisions(){
     reviewerUser: d['_wlog_revieweruser_value' + FV] || null,
     escalatedTo: d['_wlog_escalatedto_value' + FV] || null,
     escalatedToUser: d['_wlog_escalatedtouser_value' + FV] || null,
+    sectionId: d._lm_citedreportsection_value || null,
+    sectionName: d['_lm_citedreportsection_value' + FV] || null,
+    agendaItemId: d._lm_meetingoccurrenceagenda_value || null,
+    agendaItemName: d['_lm_meetingoccurrenceagenda_value' + FV] || null,
     created: d.createdon || null,
     updated: d.modifiedon || d.createdon || null,
   })).sort((a,b)=> (b.created||'').localeCompare(a.created||''));
 }
 
-/** Logs a new Work Log Decision. See the section note above for why there's
- *  no Meeting/Report link and no status on create yet. */
-export async function createWorkLogDecision({ name, decisionTaken, expectedOutput, managerNote, evidenceUrl } = {}){
+/* Where a decision was taken. Each is ONE lookup on the decision, so a
+   decision belongs to at most one report section and one agenda item; linking
+   it again moves it. Targets confirmed in IT's metadata, 28 Sep. */
+const decisionLinkBinds = ({ sectionId, agendaItemId } = {}) => {
+  const b = {};
+  if(sectionId)    b['lm_CitedReportSection@odata.bind']     = `/lm_reportoccurrencesectionses(${sectionId})`;
+  if(agendaItemId) b['lm_MeetingOccurrenceAgenda@odata.bind'] = `/lm_meetingoccurrenceagendas(${agendaItemId})`;
+  return b;
+};
+
+/** Logs a new Work Log Decision, optionally where it was taken -- a report
+ *  section and/or a meeting agenda item. No status is set on create (the
+ *  option set's own default applies). */
+export async function createWorkLogDecision({ name, decisionTaken, expectedOutput, managerNote, evidenceUrl,
+                                              sectionId, agendaItemId } = {}){
   try{
     const created = await Wlog_decisionsService.create({
       wlog_name: (name||'').trim().slice(0,100) || undefined,
@@ -5849,12 +5868,52 @@ export async function createWorkLogDecision({ name, decisionTaken, expectedOutpu
       wlog_expectedoutput: expectedOutput ? expectedOutput.slice(0,1000) : undefined,
       wlog_managernote: managerNote ? managerNote.slice(0,2000) : undefined,
       wlog_evidenceurl: evidenceUrl ? evidenceUrl.slice(0,500) : undefined,
+      ...decisionLinkBinds({ sectionId, agendaItemId }),
     });
     const id = idOrThrow(created, 'wlog_decisionid');
     return { id, errors: [] };
   }catch(e){
     return { id: null, errors: [{ table:'wlog_decisions', error:e }] };
   }
+}
+
+/** Links an EXISTING decision to a report section and/or a meeting agenda item.
+ *  Only the link(s) given are written; one already set to something else is
+ *  replaced (the lookup holds one). */
+export async function linkWorkLogDecision(id, { sectionId, agendaItemId } = {}){
+  const patch = decisionLinkBinds({ sectionId, agendaItemId });
+  if(!id || !Object.keys(patch).length)
+    return { id: null, errors: [{ table:'wlog_decisions', error: new Error('a decision and a target are required') }] };
+  try{
+    const result = await Wlog_decisionsService.update(id, patch);
+    assertSuccess(result);
+    return { id, errors: [] };
+  }catch(e){
+    return { id: null, errors: [{ table:'wlog_decisions', error:e }] };
+  }
+}
+
+/** Heading and report of each given Report Section, for naming where a decision
+ *  was taken. Chunked by 15 ids so the OR filter stays a URL the service takes.
+ *  -> Map(sectionId -> { id, heading, reportId, reportName }) */
+export async function fetchReportSectionsByIds(ids = []){
+  const out = new Map();
+  const want = [...new Set(ids.filter(Boolean))];
+  for(let i = 0; i < want.length; i += 15){
+    const res = await Lm_reportoccurrencesectionsesService.getAll({
+      filter: want.slice(i, i + 15).map(id => `lm_reportoccurrencesectionsid eq ${id}`).join(' or '),
+      select: ['lm_reportoccurrencesectionsid','lm_heading','_lm_reportoccurrence_value'],
+    });
+    assertSuccess(res);
+    for(const r of res.data ?? [])
+      out.set(r.lm_reportoccurrencesectionsid, {
+        id: r.lm_reportoccurrencesectionsid,
+        heading: r.lm_heading || '(untitled section)',
+        reportId: r._lm_reportoccurrence_value || null,
+        reportName: r['_lm_reportoccurrence_value' + FV] || null,
+      });
+  }
+  return out;
 }
 
 /* =========================================================================

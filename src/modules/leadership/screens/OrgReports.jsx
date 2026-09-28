@@ -34,6 +34,7 @@ import { BiFrame } from './BusinessIntelligence.jsx';
 import { NewTaskForm, CiteMeta } from './BuildReport.jsx';
 import { ExportReportButtons } from './ExportReport.jsx';
 import { KpiCoverage } from './KpiCoverage.jsx';
+import { DecisionPanel } from './DecisionLink.jsx';
 import { AchievementFigures } from './AchievementFigures.jsx';
 
 /* The dashboards behind a cited KPI. Collapsed by default -- a report citing
@@ -649,12 +650,10 @@ export function ScreenOrgReports(){
                                       Rests on nothing citable — a conclusion with no source under it.</div>}
 
                                 {/* The reader's own actions on someone else's
-                                    section. A Task is the only one of the
-                                    prototype's row that is storable today:
-                                    lm_reportsectioncitations.lm_Task is the
-                                    single link between a report and a task.
-                                    Decision needs lm_citedreportsection on
-                                    wlog_decision in IT, which does not exist. */}
+                                    section: Tasks (lm_reportsectioncitations.lm_Task)
+                                    and, since 28 Sep, Decisions -- wlog_decision's
+                                    own lm_CitedReportSection lookup, see
+                                    DecisionLink.jsx. */}
                                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
                                   <Btn k="sm" disabled={citing}
                                     title="Raise a new task against this section"
@@ -675,6 +674,7 @@ export function ScreenOrgReports(){
                                       onPick={t => attachTask(s.id, t)}
                                       onNew={t => attachTask(s.id, t)}/>
                                   : null}
+                                <DecisionPanel target={{ kind: 'section', id: s.id, label: s.heading }}/>
                               </div>
                             : null}
                         </div>;

@@ -894,6 +894,18 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 .cref.str{border-color:#D5C7E6;background:#F5F0FA;color:#5A4B86}
 .cref.pm{border-color:#C6D0E4;background:#EEF2F9;color:#33507F}
 .cref.iss{border-color:#E3CBB6;background:#FBF2EA;color:#83421F}
+/* Decisions taken on a report section / agenda item (DecisionPanel, 28 Sep) */
+.cref.dec{border-color:#CFE0CC;background:#EFF6EE;color:#3F5E43}
+.dec-link{margin-top:10px}
+.dec-list{display:flex;flex-direction:column;gap:6px}
+.dec-item{border:1px solid var(--border);border-left:3px solid #6E8F6F;border-radius:8px;
+  padding:7px 10px;background:var(--panel)}
+.dec-form{display:flex;flex-direction:column;gap:6px;margin-top:8px;padding:10px;
+  border:1px dashed var(--border-d);border-radius:8px;background:var(--panel)}
+.dec-form input,.dec-form textarea{width:100%;font-family:inherit;font-size:12.5px}
+.dec-pick{max-height:260px;overflow:auto;border:1px solid var(--border);border-radius:6px;background:var(--bg,#fff)}
+.dec-pick-row{display:flex;align-items:center;gap:8px;padding:7px 9px;border-bottom:1px solid var(--border)}
+.dec-pick-row:last-child{border-bottom:none}
 .ach{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:680;
   border-radius:20px;padding:1px 9px}
 .ach.hit{background:var(--green-bg);color:var(--green)}

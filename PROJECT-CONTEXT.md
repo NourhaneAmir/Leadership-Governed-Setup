@@ -8107,6 +8107,56 @@ breaks.
   undeployable uploader change — so pushing this fix needs the same split as
   `8cbd398`: build from a tree without the uploader change.
 
+### 28 Sep: Decisions linked to report sections and Minutes agenda items
+
+Per an explicit ask ("start making the decision part and link it to the
+reports and meetings minutes"). **Unblocked by IT itself:** the schema refresh
+found `wlog_decision` now has **`lm_CitedReportSection`** →
+`lm_reportoccurrencesections` and **`lm_MeetingOccurrenceAgenda`** →
+`lm_meetingoccurrenceagenda` (the 27 Sep "still blocked" entry is superseded).
+39 decisions in IT, all on a Work Log, none linked yet. Decided by the user:
+the record is the **live `wlog_decisions`**; raise/link from **report sections,
+Minutes agenda items and the Decisions screen**; **new + attach existing**; the
+**live decisions become the Decisions register**.
+
+- **Data (`dataverse.js`):** `fetchWorkLogDecisions()` reads both links
+  (`sectionId`/`sectionName`, `agendaItemId`/`agendaItemName`);
+  `createWorkLogDecision()` takes `sectionId` / `agendaItemId`; new
+  **`linkWorkLogDecision()`** links an existing one (each lookup holds ONE
+  target, so re-linking moves it); new **`fetchReportSectionsByIds()`** names a
+  section and its report.
+- **`DecisionPanel`** (new `screens/DecisionLink.jsx`): the decisions linked to
+  a section / agenda item, **+ Raise a decision** (title, decision taken,
+  expected output) and **Attach a decision** (search; warns and confirms when
+  it would move one from elsewhere). Refreshes `dvDecisions` through
+  `refreshOccurrences()` after each write. Used by:
+  - **Reports / Plans** — every section of the open report, below the Task
+    actions;
+  - **Build a report/plan** — every SAVED section (a new one says "save the
+    draft first": it has no row id to link to);
+  - **Minutes tab** — every agenda item, below its note; new ones only while
+    the Minutes are editable, read-only after.
+  Styles: `.cref.dec` / `.dec-*` in `theme.css`.
+- **Decisions screen** rebuilt as the live register (restyled `.cs-root`):
+  status tabs from the data, stats (total / from a report / from a meeting /
+  not linked), source chips, review filter, search; each row shows **where it
+  was taken** — Report › section, or Meeting · date · agenda item — with
+  **Open report** (the report panel) / **Open minutes**, and **Link… / Move…**.
+  **Log a Decision** can link on creation (report → section, or meeting →
+  agenda item). The seeded Authority-Matrix register is off the screen (its
+  tables are not in IT); `DecisionDetail` still opens for `go('dec', seededId)`
+  links from other screens. `isTaken` / `srcLabel` removed (only it used them).
+- Schema re-check: the new reads and both binds match IT.
+- **Unknowns to settle on the first live use:** whether IT requires a
+  **Work Log** on a new decision (all 39 have one; the create never set it),
+  and whether users hold **Append** on `wlog_decision` and **Append To** on
+  report sections / agenda items (the POC/Strategy lesson). The error text
+  will say which.
+- Checked locally: register, chips, stats and the Log modal's report→section /
+  meeting→agenda pickers render and gate correctly (all live data, so empty
+  here). Both apps build; lint clean. **Not committed, not pushed** — same
+  split needed as above (HEAD `4ca0036` is undeployable).
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap
