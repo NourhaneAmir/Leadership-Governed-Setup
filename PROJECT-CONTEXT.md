@@ -8154,8 +8154,31 @@ Minutes agenda items and the Decisions screen**; **new + attach existing**; the
   will say which.
 - Checked locally: register, chips, stats and the Log modal's report→section /
   meeting→agenda pickers render and gate correctly (all live data, so empty
-  here). Both apps build; lint clean. **Not committed, not pushed** — same
-  split needed as above (HEAD `4ca0036` is undeployable).
+  here). Both apps build; lint clean.
+
+### 28 Sep: Pushed both apps — refresh fixes + Decisions, WITHOUT the uploader
+
+Committed as `e3c5f24` (schema-refresh fixes: history `lm_name`, Carried-From)
+and `5b39355` (Decisions), on top of the undeployable `4ca0036` (uploader —
+its three `lm_reportoccurrence` columns re-checked just before: still absent).
+
+**How the deploy excluded `4ca0036`:** after committing, `git show 4ca0036 --
+src | git apply -R` reversed only its code in the working tree (checked to
+apply cleanly; zero uploader code left, Decisions intact), both apps were
+built and pushed from that tree, then `git checkout -- src` restored HEAD. So
+**what is live = HEAD minus `4ca0036`**. Use the same move for any push until
+those three columns exist; once they do, build HEAD as is and push both apps.
+
+| App | Id | Result |
+|---|---|---|
+| Governance | `4912152c…` | first attempt; only `theme.css` (the new `.dec-*` styles) changed its bundle — JS identical in size |
+| Leadership | `83db0ef8…` | first attempt; Decisions, the history fix and the review bar confirmed in the bundle, no uploader code |
+
+`.power` / `power.config.json` intact in both staging folders.
+
+**First live checks:** raise a decision on a report section and on a Minutes
+agenda item (settles the Work Log and Append / Append To questions above), and
+Approve or Return a report — its Review History should now show the entry.
 
 ## 6. Schema facts that are expensive to rediscover
 
