@@ -528,6 +528,19 @@ function agendaOwnerOptions(s){
 const linesOf=s=>(s.lines||[]).filter(l=>l&&l.department);
 const depsOf=s=>Array.from(new Set(linesOf(s).map(l=>l.department)));
 const lineLabel=l=>l.function ? `${l.department} › ${l.function}` : `${l.department} (whole department)`;
+/* A line's Department and Function ids for saving. The Function is looked up
+   INSIDE the line's Department: several Departments can have a Function of the
+   same name, and matching on the name alone could save another Department's
+   Function -- more likely now a Department can list several (28 Sep). The
+   Department id follows the Function's own, when a Function is chosen. */
+const lineIds=l=>{
+  const depIds=DEPARTMENTS.filter(d=>d.name===l.department).map(d=>d.id);
+  const fn=l.function
+    ? (FUNCTIONS.find(x=>x.name===l.function && depIds.includes(x.dept)) || FUNCTIONS.find(x=>x.name===l.function))
+    : null;
+  return { departmentId: fn && depIds.includes(fn.dept) ? fn.dept : depIds[0],
+           functionId: fn ? fn.id : undefined };
+};
 
 /* =========================================================================
    THE NAME IS THE RESULT OF THE SETUP
@@ -619,7 +632,8 @@ function scopeString(s){
   const ls=linesOf(s);
   const dep = ls.length===0 ? null
             : ls.length<=2 ? ls.map(lineLabel).join(' + ')
-            : `${ls.length} departments`;
+            : depsOf(s).length===1 ? `${ls[0].department} › ${ls.length} functions`
+            : `${depsOf(s).length} departments, ${ls.length} lines`;
   return [mid, dep].filter(Boolean).join(' › ');
 }
 /* every place spelled out — used where there is room for it */
@@ -960,11 +974,24 @@ function scopeRules(s, stepNo){
       msg:'Add at least one Department. Leave its Function empty and the whole Department is covered.'});
   if(raw.length!==ls.length)
     r.push({field:'f-lines', step:stepNo, msg:'Every line needs a Department.'});
-  const seen=[];
-  ls.forEach(l=>{ if(seen.includes(l.department))
+  /* A Department may appear on several lines, each with a DIFFERENT Function
+     (28 Sep, per the product owner). What cannot repeat is the same pair, and a
+     Department cannot be both "the whole department" and one of its Functions
+     -- the whole-department line already covers every Function. */
+  const seenPair=new Set();
+  ls.forEach(l=>{
+    const key=l.department+'|'+(l.function||'');
+    if(seenPair.has(key))
+      r.push({field:'f-lines', step:stepNo, msg:`${lineLabel(l)} is listed twice.`});
+    seenPair.add(key);
+  });
+  depsOf(s).forEach(d=>{
+    const mine=ls.filter(l=>l.department===d);
+    if(mine.some(l=>!l.function) && mine.some(l=>l.function))
       r.push({field:'f-lines', step:stepNo,
-        msg:`${l.department} is listed twice — one line per Department.`});
-    seen.push(l.department); });
+        msg:`${d} is listed both as the whole department and with a Function. The whole department `+
+            `already covers every Function — keep that line, or name each Function instead.`});
+  });
   /* a Team of Teams is the forum OF one Department, so it can never carry several */
   if(s.category===TOT && ls.length>1)
     r.push({field:'f-lines', step:stepNo,
@@ -2388,7 +2415,8 @@ function ScopeFields({s,set,stepNo}){
             ? 'A Team of Teams belongs to one Department. Leave the Function empty and it covers the '+
               'whole Department.'
             : 'Choose a Department, then a Function inside it. Leave the Function empty and the whole '+
-              'Department is on this committee. Add a line for every Department it covers.'}>
+              'Department is on this committee. Add a line for every Department it covers — the same '+
+              'Department can be added again with a different Function.'}>
           <RowEditor id="f-lines" rows={s.lines||[]} onChange={v=>set({lines:v})}
             addLabel={tot?'Set the Department':'Add a Department'}
             empty="No Department yet."
@@ -2396,12 +2424,16 @@ function ScopeFields({s,set,stepNo}){
               ? undefined
               : ()=>set({lines:(s.lines||[]).concat([{id:uid('ln'),department:null,function:null}])})}
             render={(r,i)=>{
-              const taken=(s.lines||[]).filter((_,j)=>j!==i).map(x=>x.department).filter(Boolean);
-              const fns=r.department?functionsIn(r.department):[];
+              /* Every Department stays on offer -- one can repeat with another
+                 Function. Only the Functions already on another line for THIS
+                 Department are hidden. */
+              const takenFns=(s.lines||[]).filter((x,j)=>j!==i && x.department===r.department)
+                .map(x=>x.function).filter(Boolean);
+              const fns=r.department?functionsIn(r.department).filter(f=>!takenFns.includes(f)||f===r.function):[];
               return <div className="f-row">
                 <Field id={'f-line-dep-'+i} label="Department" req>
                   <Sel id={'f-line-dep-'+i} val={r.department}
-                    opts={departmentNames().filter(d=>!taken.includes(d)).map(d=>({v:d,label:d}))}
+                    opts={departmentNames().map(d=>({v:d,label:d}))}
                     onChange={v=>set({lines:s.lines.map((x,j)=>j===i?{...x,department:v,function:null}:x)})}/>
                 </Field>
                 <Field id={'f-line-fn-'+i} label="Function"
@@ -3353,10 +3385,7 @@ function buildReportTemplatePayload(f){
         return null;
       }).filter(it=>it && (it.kpiId || it.processId || it.childTemplateId || it.type==='File')),
     })),
-    lines: linesOf(f).map(l=>({
-      departmentId: DEPARTMENTS.find(d=>d.name===l.department)?.id,
-      functionId: l.function ? FUNCTIONS.find(fn=>fn.name===l.function)?.id : undefined,
-    })).filter(l=>l.departmentId),
+    lines: linesOf(f).map(lineIds).filter(l=>l.departmentId),
     kpiIds: (f.kpis||[]).map(name=>KPI_ID_BY_NAME[name]).filter(Boolean),
     processIds: (f.processes||[]).map(name=>PROCESS_ID_BY_NAME[name]).filter(Boolean),
   };
@@ -3463,10 +3492,7 @@ function buildMeetingTemplatePayload(f){
       ownerId: a.owner || undefined,
       source: a.source==='Added' ? 'Added' : 'Migrated - Initial',
     })),
-    lines: linesOf(f).map(l=>({
-      departmentId: DEPARTMENTS.find(d=>d.name===l.department)?.id,
-      functionId: l.function ? FUNCTIONS.find(fn=>fn.name===l.function)?.id : undefined,
-    })).filter(l=>l.departmentId),
+    lines: linesOf(f).map(lineIds).filter(l=>l.departmentId),
     // Supportive Function Representation now picks directly from FUNCTIONS
     // (the real hr_functions table), so this resolves to a real functionId
     // by construction -- not a coincidental name match.

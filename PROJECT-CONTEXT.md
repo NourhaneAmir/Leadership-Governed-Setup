@@ -8216,6 +8216,32 @@ within it**; the Setup's own **`lm_Category` = the first one ticked**.
   Categories in the live Governance app and reopen it — both ticked, the main
   one first, two rows in `lm_topmanagementmeetingcategories`.
 
+### 28 Sep: a Department can repeat on a Setup with different Functions
+
+Per an explicit ask, for both Report and Meeting Setups (they share
+`ScopeFields` / `scopeRules`, so one change covers both).
+
+- **Editor:** every Department stays in the dropdown (it used to hide ones
+  already on another line); a line's Function list hides only the Functions
+  already used for THAT Department on another line.
+- **Rules (`scopeRules`):** the same Department + Function pair twice is
+  flagged ("… is listed twice"), and so is a Department that is both the
+  whole department and one of its Functions (the whole-department line already
+  covers every Function). Two lines of the same Department with different
+  Functions are fine.
+- **Scope summary:** counts Departments, not lines — "Nursing › 3 functions",
+  or "2 departments, 4 lines".
+- **Save fix found on the way:** both payloads resolved the Function id by
+  NAME alone, so a Function name shared by two Departments could save the
+  other Department's Function. New **`lineIds()`** looks the Function up inside
+  the line's own Department, and takes the Department id from that Function.
+  The save paths already write one row per line (no de-duplication), so
+  repeated Departments save as-is.
+- Checked in the Governance dev server (seeded lists), in both wizards:
+  Clinical Operations × Clinical Audit + Clinical Delivery → no issue, scope
+  lists both; whole + a Function → flagged; two whole lines → "listed twice"
+  only. Both apps build; lint clean. **Not committed, not pushed.**
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap
