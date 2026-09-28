@@ -224,7 +224,8 @@ export function canSeeReport(rpt, me){
 
 export const rptCfg  = r => r.setup ? RS(r.setup) : r.custom;
 
-export const rptTagC = s => s==='Approved'?'green':s==='In Review'?'teal':'grey';
+export const rptTagC = s => s==='Approved'?'green':s==='In Review'?'teal'
+  :s==='Returned'?'amber':s==='Rejected'?'red':'grey';
 
 export const matchesQuery = (q, fields) => {
   const needle = q.trim().toLowerCase();

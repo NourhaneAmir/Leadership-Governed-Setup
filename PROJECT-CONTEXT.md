@@ -8002,6 +8002,34 @@ concept** from the screen.
   use `fetchReportTemplatesList()` — so it was not pushed. **Next:** create one
   report from a template and one Custom in the live app.
 
+### 28 Sep: Approve / Return on In Review reports in Reports / Plans
+
+Per an explicit ask; two points decided by the user: **anyone who opens the
+report can act** (no reviewer-Position gate — the same as the existing
+report panel, `DvReportDetail`), and **Return sets status Returned**, not
+Draft.
+
+- **`ReviewBar`** (`OrgReports.jsx`), above the open report's Template card.
+  In Review: "Step N of M — waiting on <reviewer>", **Approve step** /
+  **Approve report** (last step) via the existing `approveReportStep()` —
+  advances, or approves and locks — and **Return** with a required reason
+  (≤ `REPORT_NOTE_MAX` = 100, the history note's width). Returned: shows the
+  latest return reason from history. The chain is read from the report's
+  Template for its unit, the same rule `DvReportDetail` uses; a report with
+  no chain (Custom) gets a single approval.
+- **`returnReportOccurrence()`** (new, `dataverse.js`): `lm_status` = 5
+  Returned (confirmed in IT's stringmap — the app had never written it),
+  step reset to 0, history row "Returned to the author" with the reason.
+  Build a report/plan and Reports / Plans already treat Returned as editable,
+  and Submit moves it back to In Review, so a returned report is not stranded;
+  My Workspace already lists it as urgent. The history records the signed-in
+  user's Position (falling back to the step's reviewer).
+- `rptTagC` now shows Returned amber and Rejected red (Returned was grey,
+  like Draft).
+- Both apps build; lint clean. **Not seen live** — Reports / Plans is live
+  data, empty locally. Committed and pushed on its own, ahead of the
+  uploader/Team-Channel change (which waits on its columns) — see the entry
+  below for that change.
 
 ## 6. Schema facts that are expensive to rediscover
 

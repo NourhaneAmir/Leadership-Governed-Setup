@@ -5694,6 +5694,29 @@ export async function requestMoreInfoOnReport(id, { actorPositionId, reason } = 
   }
 }
 
+/**
+ * Returns a submission to its author with status RETURNED (28 Sep, per the
+ * product owner, for the Reports / Plans review buttons) -- unlike
+ * requestMoreInfoOnReport() above, which sends it back to Draft. The step
+ * resets to 0 so a resubmission restarts the route, and the reason is kept in
+ * history. Build a report/plan already treats Returned as editable, and its
+ * Submit moves it back to In Review.
+ */
+export async function returnReportOccurrence(id, { actorPositionId, reason } = {}){
+  try{
+    const result = await Lm_reportoccurrencesService.update(id, {
+      lm_status: REPORT_OCC_STATUS_KEY.Returned,
+      lm_reviewstep: 0,
+    });
+    assertSuccess(result);
+    const h = await addReportHistory(id, 'Returned to the author',
+      { actorPositionId, note: reason });
+    return { id, errors: h.errors };
+  }catch(e){
+    return { id: null, errors: [{ table:'lm_reportoccurrences', error:e }] };
+  }
+}
+
 /* ---------------------------------------------------------------------
    WIRED (base only): Decisions (wlog_decisions)
    ---------------------------------------------------------------------

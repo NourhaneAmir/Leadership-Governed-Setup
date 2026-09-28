@@ -25,7 +25,9 @@ import { fmtD, fmtP, MONTHS } from '../../../shared/format.js';
 import { DiagChip, rptTagC, matchesQuery, processMetaRows, projectMetaRows, taskMetaRows } from '../domain.jsx';
 import { fetchReportOccurrenceContent, fetchKpiAchievements, reportAchievementScope,
          fetchBiReportsByKpi, fetchTasks, citeTaskOnSection,
-         fetchProcesses, fetchProjects, fetchTasksByIds } from '../../../services/dataverse.js';
+         fetchProcesses, fetchProjects, fetchTasksByIds,
+         fetchReportTemplateDetail, fetchReportOccurrenceHistory,
+         approveReportStep, returnReportOccurrence, REPORT_NOTE_MAX } from '../../../services/dataverse.js';
 import { BiFrame } from './BusinessIntelligence.jsx';
 /* Reused rather than copied: the same form Build a report/plan raises a task
    with, so a task raised from either side carries identical fields. */
@@ -105,8 +107,129 @@ function SectionTaskPanel({ mode, list, q, setQ, busy, onPick, onNew, onCancel, 
   </div>;
 }
 
+/* Review actions on the open report (28 Sep, per the product owner).
+
+   In Review: Approve the current step, or Return it to the author. Anyone who
+   opens the report can act -- the product owner's call; the history records
+   the Position of whoever did (the signed-in user's own, when it resolves).
+   Approve advances the step, or on the last one approves and locks the report
+   (approveReportStep). Return sets status Returned with a required reason
+   (returnReportOccurrence); the author edits it in Build a report/plan and
+   resubmits, which restarts the route.
+
+   Returned: shows the latest reason, so the author sees why.
+
+   The chain is read from the report's Template for the unit it runs in, the
+   same rule the report panel uses. A report with no chain (a Custom report)
+   has one approval: Approve publishes it. */
+function ReviewBar({ rec, myPositionId, pos, toast, onChanged }){
+  const [chain, setChain] = useState(null);         // null while reading
+  const [busy, setBusy] = useState(null);           // 'approve' | 'return' | null
+  const [returning, setReturning] = useState(false);
+  const [reason, setReason] = useState('');
+  const [lastReturn, setLastReturn] = useState(null);
+
+  useEffect(() => {
+    let live = true;
+    setChain(null); setReturning(false); setReason('');
+    if (!rec.templateId) { setChain([]); return; }
+    fetchReportTemplateDetail(rec.templateId)
+      .then(d => {
+        if (!live) return;
+        const unit = (d?.businessUnits || []).find(b => b._lm_businessunit_value === rec.businessUnitId)
+          || (d?.regions || []).find(r => r._lm_region_value === rec.regionId);
+        setChain(unit ? (unit.reviewChain || []).slice().sort((a, b) => (a.lm_step || 0) - (b.lm_step || 0)) : []);
+      })
+      .catch(e => { console.warn('[dataverse] fetchReportTemplateDetail() failed:', e); if (live) setChain([]); });
+    return () => { live = false; };
+  }, [rec.id, rec.templateId, rec.businessUnitId, rec.regionId]);
+
+  useEffect(() => {
+    let live = true;
+    setLastReturn(null);
+    if (rec.status !== 'Returned') return;
+    fetchReportOccurrenceHistory(rec.id)
+      .then(h => { if (live) setLastReturn([...h].reverse().find(x => /^Returned|Request More Information/.test(x.action)) || null); })
+      .catch(e => console.warn('[dataverse] fetchReportOccurrenceHistory() failed:', e));
+    return () => { live = false; };
+  }, [rec.id, rec.status]);
+
+  if (rec.status === 'Returned')
+    return <Note k="warn"><b>Returned to the author.</b>
+      {lastReturn?.note ? <> Reason: “{lastReturn.note}”</> : null}
+      {lastReturn?.actorPositionId ? <> — {pos(lastReturn.actorPositionId)}</> : null}
+      {' '}Edit it and submit again; the review route starts from the first step.</Note>;
+  if (rec.status !== 'In Review' || rec.locked) return null;
+
+  const total = Math.max((chain || []).length, 1);
+  const step = Math.min(rec.reviewStep ?? 0, total - 1);
+  const reviewer = chain && chain[step]?._lm_reviewerposition_value;
+  const final = step + 1 >= total;
+  const actor = myPositionId || reviewer || undefined;
+
+  const run = async (key, fn, okTitle, okMsg) => {
+    setBusy(key);
+    try {
+      const { id, errors } = await fn();
+      if (!id) {
+        console.warn('[dataverse] ' + key + ' failed:', errors);
+        toast('Not saved', 'That review action could not be saved. Check the console for details.', 'err');
+        return;
+      }
+      if (errors && errors.length) console.warn('[dataverse] ' + key + ' saved, but history was not written:', errors);
+      toast(okTitle, okMsg, 'ok');
+      setReturning(false); setReason('');
+      await onChanged();
+    } catch (e) {
+      console.warn('[dataverse] ' + key + ' threw:', e);
+      toast('Not saved', 'That review action could not be saved. Check the console for details.', 'err');
+    } finally { setBusy(null); }
+  };
+
+  const approve = () => run('approve',
+    () => approveReportStep(rec.id, { currentStep: step, totalSteps: total, actorPositionId: actor }),
+    final ? 'Report approved' : 'Step approved',
+    final ? 'The report is approved and locked.' : `Routed to review step ${step + 2} of ${total}.`);
+  const sendBack = () => run('return',
+    () => returnReportOccurrence(rec.id, { actorPositionId: actor, reason: reason.trim() }),
+    'Returned to the author', 'The reason is saved in the review history. The author can edit and resubmit.');
+
+  const tooLong = reason.trim().length > REPORT_NOTE_MAX;
+  return <div className="card" style={{ padding: '11px 13px', marginBottom: 12,
+                                        borderColor: 'var(--teal)', background: 'var(--teal-ll)' }}>
+    <div style={{ display: 'flex', gap: 9, alignItems: 'center', flexWrap: 'wrap' }}>
+      <span className="tset-lbl">In review</span>
+      <span style={{ flex: 1, minWidth: 200, fontSize: 12.5 }}>
+        {chain === null ? 'Reading the review route…'
+          : <>Step <b>{step + 1}</b> of {total}
+              {reviewer ? <> — waiting on <b>{pos(reviewer) || 'the reviewer'}</b></> : null}
+              {final ? '. Approving this step approves the report.' : '.'}</>}
+      </span>
+      <Btn k="sm pri" disabled={!!busy || chain === null} onClick={approve}>
+        {busy === 'approve' ? 'Approving…' : final ? '✓ Approve report' : '✓ Approve step'}</Btn>
+      <Btn k="sm" disabled={!!busy} onClick={() => setReturning(r => !r)}>
+        {returning ? 'Cancel' : '↩ Return'}</Btn>
+    </div>
+    {returning
+      ? <div style={{ marginTop: 9 }}>
+          <textarea value={reason} rows={2} maxLength={REPORT_NOTE_MAX + 50}
+            placeholder="Why it is being returned — the author sees this."
+            aria-label="Reason for returning" style={{ width: '100%' }}
+            onChange={e => setReason(e.target.value)}/>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginTop: 5 }}>
+            <span className="holder" style={{ flex: 1, color: tooLong ? 'var(--red)' : undefined }}>
+              {reason.trim().length} / {REPORT_NOTE_MAX} characters
+              {tooLong ? ' — too long for the history note' : ''}</span>
+            <Btn k="sm wrn" disabled={!!busy || !reason.trim() || tooLong} onClick={sendBack}>
+              {busy === 'return' ? 'Returning…' : 'Return to the author'}</Btn>
+          </div>
+        </div>
+      : null}
+  </div>;
+}
+
 export function ScreenOrgReports(){
-  const { dvReportOccs, dvLoading, dvError, dvLookup, go, openNewReport, toast } = use();
+  const { dvReportOccs, dvLoading, dvError, dvLookup, go, openNewReport, toast, refreshOccurrences } = use();
   /* Which section's Task panel is open, and in which mode:
      { id, mode: 'pick' | 'new' }. */
   const [taskFor, setTaskFor] = useState(null);
@@ -413,6 +536,11 @@ export function ScreenOrgReports(){
                   processesOf(rec).length ? 'covers ' + processesOf(rec).join(', ') : null
                  ].filter(Boolean).join(' · ')}
               </div>
+
+              <ReviewBar rec={rec} toast={toast}
+                myPositionId={(L.myPositionIds || [])[0]}
+                pos={id => nm(L.pos, id)}
+                onChanged={refreshOccurrences}/>
 
               <div className="card" style={{ padding: '11px 13px', marginBottom: 12 }}>
                 <div style={{ display: 'flex', gap: 9, alignItems: 'center', flexWrap: 'wrap' }}>
