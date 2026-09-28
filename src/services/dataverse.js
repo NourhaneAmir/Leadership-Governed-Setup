@@ -2505,8 +2505,18 @@ async function reconcileMeetingUnits(templateId, payload, existing, errors){
   const level = payload.stageLevel;
   const units = payload.units || [];
 
-  const buWanted     = level === 'bu'     ? units.filter(u => u?.businessUnitId) : [];
-  const regionWanted = level === 'region' ? units.filter(u => u?.regionId)       : [];
+  /* A group-wide Setup has no sections, but a Stage 4 MEETING may name the
+     units it covers (payload.scopeBusinessUnits / scopeRegions, 28 Sep). Those
+     reconcile through the same tables as scope-only rows: no roles, no
+     Attendees -- so roleFields()/roleDiff() below write nothing but the name,
+     and the Attendees pass further down finds no attendees on them. With
+     neither list set, a group-wide Setup still wants no unit rows at all. */
+  const buWanted     = level === 'bu'     ? units.filter(u => u?.businessUnitId)
+                     : level === 'group'  ? (payload.scopeBusinessUnits || []).filter(u => u?.businessUnitId)
+                     : [];
+  const regionWanted = level === 'region' ? units.filter(u => u?.regionId)
+                     : level === 'group'  ? (payload.scopeRegions || []).filter(u => u?.regionId)
+                     : [];
 
   const posBind = id => id ? `/cr603_organizationstructures(${id})` : undefined;
   const roleFields = u => {
@@ -2600,6 +2610,32 @@ async function reconcileMeetingUnits(templateId, payload, existing, errors){
  *  in place. */
 async function createMeetingTemplateChildren(templateId, payload, errors, opts = {}){
   const bind = `/lm_meetingtemplates(${templateId})`;
+
+  /* A Stage 4 meeting's covered units (see reconcileMeetingUnits): scope-only
+     rows, created once here on first save; the update path reconciles them
+     instead, so they are skipped with the other unit rows there. */
+  if(payload.stageLevel === 'group' && !opts.skipUnits){
+    for(const u of (payload.scopeBusinessUnits || [])){
+      if(!u?.businessUnitId) continue;
+      try{
+        await Lm_meetingtemplatebusinessunitsesService.create({
+          'lm_MeetingTemplate@odata.bind': bind,
+          'lm_BusinessUnit@odata.bind': `/businessunits(${u.businessUnitId})`,
+          lm_name: u.name || undefined,
+        });
+      }catch(e){ errors.push({ table:'lm_meetingtemplatebusinessunitses', error:e }); }
+    }
+    for(const u of (payload.scopeRegions || [])){
+      if(!u?.regionId) continue;
+      try{
+        await Lm_meetingtemplateregionsService.create({
+          'lm_MeetingTemplate@odata.bind': bind,
+          'lm_Region@odata.bind': `/crd04_regionses(${u.regionId})`,
+          lm_name: u.name || undefined,
+        });
+      }catch(e){ errors.push({ table:'lm_meetingtemplateregions', error:e }); }
+    }
+  }
 
   // One lm_meetingtemplatebusinessunitses / lm_meetingtemplateregions row
   // per configured unit, each with its own Chairman/Co-Chairman/
@@ -2812,7 +2848,9 @@ async function fetchMeetingTemplateChildIds(dvId){
  * @param {number} [payload.momApprovalHours] elapsed hours, MOM submitted -> Chair approves
  * @param {number} [payload.gridSubmitHours] elapsed hours, Audit Grid created -> submitted to Chair
  * @param {string} [payload.torLink]
- * @param {string} [payload.stageLevel] 'bu'|'region'|'group' -- only 'bu' and 'region' currently create per-unit child rows
+ * @param {string} [payload.stageLevel] 'bu'|'region'|'group' -- only 'bu' and 'region' create per-unit SECTION rows
+ * @param {{businessUnitId:string,name?:string}[]} [payload.scopeBusinessUnits] Stage 4 meeting only: Business Units it covers, written as scope-only lm_meetingtemplatebusinessunitses rows (no roles, no Attendees)
+ * @param {{regionId:string,name?:string}[]} [payload.scopeRegions] Stage 4 meeting only: Regions it covers, as scope-only lm_meetingtemplateregions rows
  * @param {{key:string,name:string,businessUnitId?:string,regionId?:string,chairmanId?:string,coChairmanId?:string,facilitatorId?:string,attendees?:{positionId?:string,groupRowId?:string,groupName?:string,type?:number}[]}[]} [payload.units] one entry per configured unit, each with its own Attendees list --
  *        an attendee is either a Position (`positionId`) or a Microsoft Group (`groupRowId` + `groupName`), `type` 1 Core / 2 Supportive
  * @param {string} [payload.meetingCategoryId] lm_meetingcategory row id, from fetchMeetingCategories()

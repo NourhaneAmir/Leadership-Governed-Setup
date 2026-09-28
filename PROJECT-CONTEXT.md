@@ -7908,6 +7908,48 @@ Per an explicit ask, with a screenshot. Source of truth `#v-workarea`.
   (`.power` / `power.config.json` intact). Governance not pushed: its bundle
   rebuilt identical.
 
+### 28 Sep: Stage 4 Meeting Setups can name the Business Units / Regions and Departments they cover
+
+Per an explicit ask; four points decided by the user before any edit:
+**one kind only** (Business Units OR Regions, never both); **always child-table
+rows**, even for a single one (no new column on `lm_meetingtemplates`, which
+has no Region / BU / Department lookup); **Departments in the existing
+`lm_meetingtemplatedepartmentfunctions`**; and still **one** Chairman,
+Co-Chairman, Facilitator and Attendee list, on the Setup itself.
+
+- **Governance, scope step (Stage 4 meetings only — `isExecMeeting`).** A
+  "Covers" choice — Whole group / Business Units / Regions — with a
+  multi-picker for the chosen kind, plus the Departments field (hidden at
+  Stage 4 until now). Held in `s.scopeKind` + the existing `s.businessUnits` /
+  `s.regions`. Stage 4 still resolves to ONE group-wide section, so the
+  people are captured once. Stage 4 **Reports** are unchanged (no scope, no
+  Departments). Moving to Stage 4 no longer wipes the Departments.
+- **Optional, my call — say if wrong:** Covers defaults to Whole group, and
+  Departments are optional at Stage 4 (lines that are added get the usual
+  checks). Choosing Business Units / Regions and ticking none is flagged.
+- **Save:** `buildMeetingTemplatePayload` sends `scopeBusinessUnits` /
+  `scopeRegions`; `createMeetingTemplateChildren` writes them as **scope-only**
+  rows (lookup + name, no roles, no Attendees) and `reconcileMeetingUnits`
+  reconciles them on update through the same tables.
+- **Load — a trap fixed in two places:** a group Setup with Region rows was
+  read as Region-level, i.e. a Stage 4 Setup would have reopened (and listed in
+  the Setup Register) as **Stage 2**. `dataverseMeetingToSetup` and the
+  register's `dvFace` now keep `lm_stages = 4` as Stage 4 and read those rows
+  as the covered units, not sections.
+- **Leadership:** New Meeting from a Setup listed a Setup's BU / Region rows as
+  units to pick (each would have come with no Chairman). A Stage 4 Setup's rows
+  are now skipped there — the meeting stays group-wide with the Setup's own
+  Chairman / Facilitator.
+- ⚠️ **The Meeting Occurrence Generator flow (planned, §10) must do the same:**
+  a Stage 4 Setup's BU / Region rows are scope, so it must take the group-wide
+  branch (step 12) and not loop "one occurrence per unit" over them.
+- Checked in the Governance dev server: Stage 4 shows Covers + Departments,
+  each kind shows only its own picker, the section count stays 1, the empty-
+  kind rule appears in Before publishing, Stage 1 is unchanged. **Not saved to
+  Dataverse** (no local connection). The "setState while rendering" warning seen
+  there is pre-existing — `Wizard`'s `set` calls `A.promoteDraft` inside a
+  state updater. Both apps build. **Not committed, not pushed.**
+
 
 ## 6. Schema facts that are expensive to rediscover
 

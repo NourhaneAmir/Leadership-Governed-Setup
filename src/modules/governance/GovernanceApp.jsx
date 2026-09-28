@@ -431,9 +431,17 @@ const stageLevel = s => s.stage===STAGES[0] ? 'bu'
                       : s.stage===STAGES[1] ? 'region'
                       : s.stage ? 'group' : null;
 const LEVEL_WORD={bu:'Business Unit', region:'Region', group:'Group'};
-/* Stage 4 is Top Management and the Executive Committee. It sits above the department
-   structure, so it carries no Department at all. */
+/* Stage 4 is Top Management and the Executive Committee. A Stage 4 REPORT sits above
+   the department structure and carries no Department at all. */
 const isExec = s => s.stage===STAGES[3];
+/* A Stage 4 MEETING (28 Sep, per the product owner) is still ONE group-wide section --
+   one Chairman, Co-Chairman, Facilitator and Attendee list, on the Setup itself -- but
+   it may name the units it covers: several Business Units OR several Regions (one kind,
+   never both), plus Departments. The units are scope only, not sections; they are held
+   in s.businessUnits / s.regions like Stage 1 / 2, and s.scopeKind says which applies.
+   Saved as rows in lm_meetingtemplatebusinessunitses / lm_meetingtemplateregions (even
+   when there is one) with no roles on them, and Departments as department lines. */
+const isExecMeeting = s => isExec(s) && s.kind!=='Report Template';
 
 /* the keys this Setup multiplies over, in the order they were selected */
 function scopeKeys(s){
@@ -601,6 +609,12 @@ function scopeString(s){
   else if(lv==='region') mid = keys.length===0 ? 'no Region yet'
                              : keys.length===1 ? nameOf(REGIONS,keys[0])
                              : `${keys.length} regions`;
+  else if(isExecMeeting(s) && s.scopeKind==='bu' && (s.businessUnits||[]).length)
+                         mid = (s.businessUnits.length===1 ? nameOf(BUSINESS_UNITS,s.businessUnits[0])
+                             : `${s.businessUnits.length} business units`)+' (one meeting)';
+  else if(isExecMeeting(s) && s.scopeKind==='region' && (s.regions||[]).length)
+                         mid = (s.regions.length===1 ? nameOf(REGIONS,s.regions[0])
+                             : `${s.regions.length} regions`)+' (one meeting)';
   else                   mid = 'Group-wide';
   const ls=linesOf(s);
   const dep = ls.length===0 ? null
@@ -930,10 +944,18 @@ function scopeRules(s, stepNo){
   if(lv==='region' && !(s.regions||[]).length)
     r.push({field:'f-regions', step:stepNo,
       msg:'Select at least one Region — a Stage 2 Setup runs once in each one selected.'});
-  /* Top Management and the Executive Committee sit above the departments */
-  if(isExec(s)) return r;
+  /* A Stage 4 meeting that says it covers Business Units / Regions must name one. */
+  if(isExecMeeting(s) && s.scopeKind==='bu' && !(s.businessUnits||[]).length)
+    r.push({field:'f-businessUnits', step:stepNo,
+      msg:'Tick at least one Business Unit, or set Covers back to Whole group.'});
+  if(isExecMeeting(s) && s.scopeKind==='region' && !(s.regions||[]).length)
+    r.push({field:'f-regions', step:stepNo,
+      msg:'Tick at least one Region, or set Covers back to Whole group.'});
+  /* A Stage 4 REPORT sits above the departments. A Stage 4 MEETING may list them, but
+     does not have to -- so only the per-line checks below apply to it. */
+  if(isExec(s) && !isExecMeeting(s)) return r;
   const raw=s.lines||[], ls=linesOf(s);
-  if(!ls.length)
+  if(!ls.length && !isExecMeeting(s))
     r.push({field:'f-lines', step:stepNo,
       msg:'Add at least one Department. Leave its Function empty and the whole Department is covered.'});
   if(raw.length!==ls.length)
@@ -2270,7 +2292,9 @@ function ScopeFields({s,set,stepNo}){
   const regions=REGIONS;
   const keys=scopeKeys(s);
   const tot=s.category===TOT;
-  const exec=isExec(s);
+  /* Only a Stage 4 REPORT hides Departments now -- a Stage 4 meeting lists them. */
+  const exec=isExec(s) && !isExecMeeting(s);
+  const execMtg=isExecMeeting(s);
   /* every scope change re-syncs the per-unit rows so nothing is orphaned */
   const apply=patch=>{const ns={...s,...patch}; set({...patch, units:syncUnits(ns)});};
 
@@ -2301,12 +2325,39 @@ function ScopeFields({s,set,stepNo}){
         </Field>
       : null}
 
+    {execMtg
+      ? <>
+          <Field id="f-scopeKind" label="Covers"
+            hint="A Stage 4 meeting is one meeting — one Chairman, one Facilitator and one Attendee list —
+                  whatever it covers. Name the Business Units or the Regions it is for, or leave it
+                  covering the whole group.">
+            <Seg id="f-scopeKind" val={s.scopeKind||'group'}
+              opts={[{v:'group',label:'Whole group'},{v:'bu',label:'Business Units'},{v:'region',label:'Regions'}]}
+              onChange={v=>set({scopeKind:v==='group'?null:v, businessUnits:[], regions:[]})}/>
+          </Field>
+          {s.scopeKind==='bu'
+            ? <Field id="f-businessUnits" label="Business Units"
+                hint="Tick every Business Unit this meeting covers. They do not become separate sections.">
+                <MultiPick id="f-businessUnits" groups={buGroups} val={s.businessUnits}
+                  onChange={v=>set({businessUnits:v, regions:[]})}/>
+              </Field>
+            : null}
+          {s.scopeKind==='region'
+            ? <Field id="f-regions" label="Regions"
+                hint="Tick every Region this meeting covers. They do not become separate sections.">
+                <MultiPick id="f-regions" groups={rgGroups} val={s.regions}
+                  onChange={v=>set({regions:v, businessUnits:[]})}/>
+              </Field>
+            : null}
+        </>
+      : null}
+
     {!s.stage ? <Note k="warn" ic="⚠">Choose the Stage first. Stage decides what this Setup multiplies
         by — Business Unit at Stage 1, Region at Stage 2, nothing at Stage 3 and 4.</Note> : null}
 
     {exec
       ? null
-      : <Field id="f-lines" label={tot?'Department':'Departments and Functions'} req
+      : <Field id="f-lines" label={tot?'Department':'Departments and Functions'} req={!execMtg}
           hint={tot
             ? 'A Team of Teams belongs to one Department. Leave the Function empty and it covers the '+
               'whole Department.'
@@ -2737,8 +2788,9 @@ function MeetingWizard({rec,onClose}){
           </Field>
           <Field id="f-stage" label="Stage" req
             hint="It decides what this Setup multiplies by — Business Unit at Stage 1, Region at
-                  Stage 2, nothing at Stage 3 and 4 — and which Categories are offered below.
-                  Changing it starts the units on the next step again.">
+                  Stage 2, nothing at Stage 3 and 4 (a Stage 4 meeting can still name the units it
+                  covers) — and which Categories are offered below. Changing it starts the units on
+                  the next step again.">
             <Seg id="f-stage" opts={STAGES.map(x=>({v:x,label:x.replace(/^Stage (\d) /,'$1 · ')}))}
               val={s.stage}
               onChange={v=>{const ns={...s,stage:v,regions:[],businessUnits:[],units:[]};
@@ -2748,10 +2800,13 @@ function MeetingWizard({rec,onClose}){
                    not allow it -- changing Stage between two that both allow
                    Clinical Meeting should not make you pick it again. */
                 const keepsClass = classificationOpts({...s,stage:v}).includes(s.category);
-                set({stage:v, regions:[], businessUnits:[],
+                /* Departments are kept across a move to Stage 4 now -- a Stage 4
+                   meeting lists them too (see isExecMeeting). The Stage 4 scope
+                   kind starts again, like the unit lists. */
+                set({stage:v, regions:[], businessUnits:[], scopeKind:null,
                      ...(keepsClass?{}:{category:null}),
                      meetingCategory:null, meetingCategoryName:null,
-                     ...(v===STAGES[3]?{lines:[]}:{}), units:syncUnits(ns)});}}/></Field>
+                     units:syncUnits(ns)});}}/></Field>
           <MeetingClassField s={s} set={set} accred={accred} tot={tot} locked={locked}/>
           <MeetingCategoryField s={s} set={set} accred={accred}/>
           <DerivedName s={s} set={set}/>
@@ -3330,6 +3385,15 @@ function buildMeetingTemplatePayload(f){
     // since Lm_meetingattendeeslists got real lookups back to a specific
     // Business-Unit or Region row, not just the parent template.
     stageLevel: lv,
+    /* A Stage 4 meeting's covered units -- scope only, no roles and no
+       Attendees (those stay on the single group unit below). Always rows in
+       the BU / Region child tables, even for one, per the product owner. */
+    scopeBusinessUnits: isExecMeeting(f) && f.scopeKind==='bu'
+      ? (f.businessUnits||[]).map(id=>({businessUnitId:id, name:nameOf(BUSINESS_UNITS,id)||undefined}))
+      : [],
+    scopeRegions: isExecMeeting(f) && f.scopeKind==='region'
+      ? (f.regions||[]).map(id=>({regionId:id, name:nameOf(REGIONS,id)||undefined}))
+      : [],
     meetingCategoryId: f.meetingCategory || undefined,
     /* Stamped from the list at save time, falling back to whatever the Setup
        was last saved with if the row has since been retired. */
@@ -3784,7 +3848,11 @@ function dataverseMeetingToSetup(detail){
     facilitator:rg._lm_meetingorganizerfacilitator_value||null,
     coreMembers:(rg.attendees||[]).map(attendeeToRow),
   }));
-  const isRegionLevel=regionUnits.length>0 && buUnits.length===0;
+  /* A Stage 4 Setup's BU / Region rows are the units it COVERS, not sections
+     (see isExecMeeting) -- so they must not make it look Region-level, which
+     would silently reopen it as Stage 2. */
+  const execScope = p.lm_stages===4;
+  const isRegionLevel=!execScope && regionUnits.length>0 && buUnits.length===0;
   // A Stage 3/4 Setup has no per-unit child table, so its one section comes
   // from the parent row's own Chairman/Co-Chairman/Facilitator/Team-Channel
   // instead -- see meetingTemplateParentPayload()'s comment in dataverse.js.
@@ -3847,10 +3915,18 @@ function dataverseMeetingToSetup(detail){
       template:lr._lm_reporttemplate_value||null, templateName:lr.lm_name||null,
       role:lr.lm_reporttype===1?'Output':'Input',
     })),
-    regions:isRegionLevel ? regionUnits.map(u=>u.key)
-      : Array.from(new Set(buUnits.map(u=>{const b=byId(BUSINESS_UNITS,u.key);return b?b.region:null;}).filter(Boolean))),
-    businessUnits:isRegionLevel ? [] : buUnits.map(u=>u.key),
-    units:[...buUnits,...regionUnits,...groupUnits],
+    ...(execScope ? {
+      /* One kind only; Regions win if a row set somehow holds both. */
+      scopeKind: regionUnits.length ? 'region' : buUnits.length ? 'bu' : null,
+      regions: regionUnits.map(u=>u.key),
+      businessUnits: regionUnits.length ? [] : buUnits.map(u=>u.key),
+      units: groupUnits,
+    } : {
+      regions:isRegionLevel ? regionUnits.map(u=>u.key)
+        : Array.from(new Set(buUnits.map(u=>{const b=byId(BUSINESS_UNITS,u.key);return b?b.region:null;}).filter(Boolean))),
+      businessUnits:isRegionLevel ? [] : buUnits.map(u=>u.key),
+      units:[...buUnits,...regionUnits,...groupUnits],
+    }),
     // Same fallback as dataverseReportToSetup above, for rows written before
     // lm_meetingstatus/lm_version existed.
     status:TEMPLATE_STATUS_LABEL[p.lm_meetingstatus]||'Active / Approved',
@@ -3941,7 +4017,10 @@ function ScreenRegister(){
     const buNames=(r.businessUnitIds||[]).map(id=>nameOf(BUSINESS_UNITS,id)).filter(Boolean);
     const rgNames=(r.regionIds||[]).map(id=>nameOf(REGIONS,id)).filter(Boolean);
     const unitCount=(r.businessUnitIds||[]).length || (r.regionIds||[]).length;
-    const isRegionLevel=(r.regionIds||[]).length>0 && (r.businessUnitIds||[]).length===0;
+    /* A Stage 4 meeting's Region rows are the units it covers, not its level
+       (see isExecMeeting) -- it must still list as Stage 4. */
+    const isRegionLevel=!(!isReport && r.stageCode===4)
+      && (r.regionIds||[]).length>0 && (r.businessUnitIds||[]).length===0;
     return {
       _dv:true, dvKind:kind, dvId:r.id, kind, name:r.name,
       type: isReport ? byCode1(DV_REPORT_TYPE,r.reportTypeCode)

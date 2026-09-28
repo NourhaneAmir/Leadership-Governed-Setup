@@ -8399,8 +8399,13 @@ function NewMeetingModal({kind,onClose}){
      and core Attendees -- read straight from lm_meetingtemplatebusinessunitses
      / lm_meetingtemplateregionses via fetchMeetingTemplateDetail(). A Group or
      ExCom Setup owns no such child rows at all, so this comes back empty for
-     one of those and the occurrence just runs Group-wide. */
-  const tplUnits = tplDetail ? [
+     one of those and the occurrence just runs Group-wide.
+
+     ⚠️ Since 28 Sep a Stage 4 (ExCom) Setup CAN own such rows -- the Business
+     Units or Regions it covers -- but they are scope only, with no Chairman or
+     Attendees, and the meeting is still one group-wide meeting whose people
+     live on the Setup itself. So they are not offered as units here. */
+  const tplUnits = tplDetail && tplDetail.parent?.lm_stages !== 4 ? [
     ...(tplDetail.businessUnits||[]).map(b=>({
       key:b._lm_businessunit_value, kind:'bu',
       label: dvBu(b._lm_businessunit_value) || '(Business Unit not in the loaded list)',
