@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Activity, ArrowUpRight, BarChart3, CalendarDays, CheckSquare, ClipboardCheck, ClipboardList, CircleAlert,
-         Download, FileText, Gauge, Layers, LineChart, Lock, Menu, MessageSquare, MessagesSquare, Network, PenLine, Plus, RotateCcw, Shield,
+         Download, FileText, Gauge, Layers, LineChart, Lock, Menu, MessageSquare, MessagesSquare, Network, PenLine, Plus, RotateCcw, Shield, Eye,
          Users, UsersRound, X }
   from 'lucide-react';
 import './leadership-design.css';
@@ -9768,173 +9768,278 @@ function ScreenDecisions(){
     if(q && !(d.title+d.type+srcLabel(db,d)).toLowerCase().includes(q.toLowerCase())) return false;
     return true;
   });
-  return <>
-    <div className="ph ph-row">
-      <div style={{flex:1}}><h1>Decisions</h1>
-        <div className="sub">The register of every Decision and Decision Request, whatever raised it —
-          a Report review, a Meeting Agenda Item, or logged directly here. You log the matter once; the
-          Authority Matrix decides the pathway and you never choose it.</div></div>
-      <Btn k="pri" onClick={()=>setIntake(true)}>+ Log a Decision</Btn>
+  /* Restyled 28 Sep to the approved design (`leadership-practice (2).html`,
+     #v-decisions), styled by leadership-design.css under .cs-root. Same data
+     and filters: the Status select became the tabs, Pathway the chips; Raised
+     from, Nature and search stay as controls. Not taken from the design: its
+     "Avg time to decision / execution" figures (no reliable timestamps behind
+     them) and the separate Rejected stat card, whose count is on its tab. */
+  const rejected = list.filter(d=>d.status==='Rejected');
+  const closed   = list.filter(d=>d.status==='Closed');
+  const direct   = list.filter(d=>!d.blocked && d.path==='Direct');
+  const request  = list.filter(d=>!d.blocked && d.path==='Request');
+  const share = n => (direct.length+request.length) ? Math.round(n/(direct.length+request.length)*100) : 0;
+  const ST_TABS = [
+    ['Taken',taken.length],['Not yet taken',pending.length],['Blocked',blocked.length],
+    ['Rejected',rejected.length],['Closed',closed.length],['All',null],
+  ];
+  const statusBadge = d => d.blocked ? ['returned','No AM mapping']
+    : d.status==='Approved' ? ['approved','Approved']
+    : d.status==='In Approval' ? ['chair','In Approval']
+    : d.status==='Returned'||d.status==='Rejected' ? ['returned',d.status]
+    : d.status==='Closed' ? ['void','Closed']
+    : d.status==='Draft'||d.draft ? ['draft','Draft']
+    : ['scheduled', d.status||'—'];
+  /* Observers across the decisions this person can see, grouped by kind. */
+  const observerKinds = [...list.reduce((m,d)=>{
+    (d.observers||[]).forEach(o=>m.set(o.kind,(m.get(o.kind)||0)+1)); return m;
+  }, new Map())].sort((a,b)=>a[0].localeCompare(b[0]));
+  const filtered = fSt!=='All'||fPa!=='All'||fSr!=='All'||fNa!=='All'||q;
+
+  return <div className="cs-root">
+    <div className="cs-head">
+      <div className="cs-head-top">
+        <div><h1 className="cs-title">Decisions</h1>
+          <p className="cs-sub">The register of every Decision and Decision Request, whatever raised it —
+            a Report review, a Meeting Agenda Item, or logged directly here. You log the matter once; the
+            Authority Matrix decides the pathway and you never choose it.</p></div>
+        <button type="button" className="cs-btn primary lg" onClick={()=>setIntake(true)}>
+          <Plus size={13}/>Log a Decision</button>
+      </div>
+      <div className="cs-tabs" role="tablist" aria-label="Filter Decisions by status">
+        {ST_TABS.map(([k,n])=>
+          <button key={k} type="button" role="tab" aria-selected={fSt===k}
+            className={'cs-tab'+(fSt===k?' on':'')} onClick={()=>setFSt(k)}>
+            {k==='All'?'All Decisions':k}{n!=null && <span className="cs-tab-badge">{n}</span>}
+          </button>)}
+      </div>
     </div>
 
-    <div className="stats">
-      <Stat label="Taken" v={taken.length} d="Direct or approved" c={taken.length?'green':'muted'}/>
-      <Stat label="Not yet taken" v={pending.length} d="in Draft or approval"
-            c={pending.length?'amber':'muted'}/>
-      <Stat label="Blocked" v={blocked.length} d="no Authority Matrix mapping"
-            c={blocked.length?'red':'muted'}/>
-      <Stat label="Rejected" v={list.filter(d=>d.status==='Rejected').length} d="decided against"/>
-      <Stat label="Closed" v={list.filter(d=>d.status==='Closed').length} d="outcome recorded"/>
+    <div className="cs-stats">
+      <div className="cs-stat acc-green"><div className="cs-stat-lbl">Taken</div>
+        <div className="cs-stat-val">{taken.length}</div><div className="cs-stat-meta">direct or approved</div></div>
+      <div className="cs-stat acc-amber"><div className="cs-stat-lbl">Not yet taken</div>
+        <div className="cs-stat-val">{pending.length}</div><div className="cs-stat-meta">draft or in approval</div></div>
+      <div className="cs-stat acc-alert"><div className="cs-stat-lbl">Blocked</div>
+        <div className="cs-stat-val">{blocked.length}</div><div className="cs-stat-meta">no Authority Matrix mapping</div></div>
+      <div className="cs-stat acc-gold"><div className="cs-stat-lbl">Closed</div>
+        <div className="cs-stat-val">{closed.length}</div><div className="cs-stat-meta">outcome recorded</div></div>
     </div>
 
-    {blocked.length>0 && <Note k="err"><b>{blocked.length} Decision
-      {blocked.length>1?'s are':' is'} held in Draft because the Authority Matrix holds no matching
-      mapping.</b> No temporary or substitute route is created and no override is offered. The Authority
-      Matrix Owner must create the mapping, after which the system rechecks automatically.
-      <div className="btn-row" style={{marginTop:9}}>
-        <Btn k="sm" onClick={A.patchMatrix}>Simulate: the Authority Matrix Owner creates the mapping</Btn>
-      </div></Note>}
+    {blocked.length>0 && <div className="cs-banner" role="alert">
+      <CircleAlert size={15} aria-hidden="true"/>
+      <div><div className="cs-banner-t">{blocked.length} Decision{blocked.length>1?'s are':' is'} blocked — no
+          Authority Matrix mapping</div>
+        <div className="cs-banner-s">Held in Draft. No temporary or substitute route is created and no override
+          is offered. The Authority Matrix Owner must create the mapping, after which the system rechecks
+          automatically.</div>
+        <button type="button" className="cs-btn" onClick={A.patchMatrix}>
+          Simulate: the Authority Matrix Owner creates the mapping</button></div>
+    </div>}
 
-    <div className="fltr">
-      <label>Status</label>
-      <select value={fSt} onChange={e=>setFSt(e.target.value)}>
-        <option>All</option><option>Taken</option><option>Not yet taken</option>
-        <option>Blocked</option><option>Rejected</option><option>Closed</option></select>
-      <label>Pathway</label>
-      <select value={fPa} onChange={e=>setFPa(e.target.value)}>
-        <option>All</option><option>Direct Decision</option><option>Decision Request</option></select>
-      <label>Raised from</label>
-      <select value={fSr} onChange={e=>setFSr(e.target.value)}>
-        <option>All</option><option>Logged directly</option><option>A Meeting</option><option>A Report</option></select>
-      <label>Nature</label>
-      <select value={fNa} onChange={e=>setFNa(e.target.value)}>
-        <option>All</option>{TOPIC_NATURES.map(t=><option key={t}>{t}</option>)}</select>
-      <input placeholder="Search…" value={q} onChange={e=>setQ(e.target.value)} style={{minWidth:170}}/>
-      {(fSt!=='All'||fPa!=='All'||fSr!=='All'||fNa!=='All'||q) &&
-        <Btn k="sm" onClick={()=>{setFSt('All');setFPa('All');setFSr('All');setFNa('All');setQ('');}}>
-          Clear</Btn>}
+    <div className="cs-chips" role="group" aria-label="Filter Decisions">
+      {[['All','All',Layers],['Direct Decision','Direct Decision',CheckSquare],
+        ['Decision Request','Decision Request',ArrowUpRight]].map(([k,l,Ic])=>
+        <button key={k} type="button" aria-pressed={fPa===k}
+          className={'cs-chip'+(fPa===k?' on':'')} onClick={()=>setFPa(k)}>
+          <Ic size={11} aria-hidden="true"/>{l}</button>)}
+      <div className="cs-search cs-chips-end" style={{flexWrap:'wrap'}}>
+        <select className="cs-select" value={fSr} onChange={e=>setFSr(e.target.value)} aria-label="Raised from">
+          <option value="All">Raised from: any</option><option>Logged directly</option>
+          <option>A Meeting</option><option>A Report</option></select>
+        <select className="cs-select" value={fNa} onChange={e=>setFNa(e.target.value)} aria-label="Nature">
+          <option value="All">Nature: any</option>{TOPIC_NATURES.map(t=><option key={t}>{t}</option>)}</select>
+        <input type="search" placeholder="Search…" value={q} onChange={e=>setQ(e.target.value)}
+          aria-label="Search decisions" style={{width:170}}/>
+        {filtered && <button type="button" className="cs-btn"
+          onClick={()=>{setFSt('All');setFPa('All');setFSr('All');setFNa('All');setQ('');}}>
+          <RotateCcw size={11}/>Clear</button>}
+      </div>
     </div>
 
-    <div className="card flush">
-      <div className="card-hd"><h2>Decision register</h2>
-        <div className="csub">{rows.length} of {list.length} record{list.length===1?'':'s'}. Both pathways
-          merge at the approved Decision.</div></div>
-      {rows.length===0 ? <Empty>No Decision matches these filters.</Empty> :
-      <div className="t-wrap"><table className="data">
-        <thead><tr><th>Decision</th><th>Type</th><th>Topic</th><th>Raised from</th><th>Pathway</th>
-          <th>Where it stands</th><th>Taken?</th></tr></thead>
-        <tbody>{rows.map(d=>{
-          const step=d.steps&&d.steps.find(s=>s.state==='Pending');
-          return <tr key={d.id} className="click" onClick={()=>go('dec',d.id)}>
-            <td><div className="t-main">{d.title}</div>
-              <div className="t-sub">{P(d.creator).name} · {fmtD(d.created)}</div></td>
-            <td className="dim">{d.type}{d.value?<div className="t-sub">{money(d.value)}</div>:null}</td>
-            <td>{d.topicNature && <Tag c="amber">{d.topicNature}</Tag>}
-              <div className="t-sub">{(d.topicCats||[]).map(c=>c.v).join(', ')}</div></td>
-            <td className="dim">{srcLabel(db,d)}</td>
-            <td>{d.blocked?<Tag c="red">Blocked</Tag>
-                :d.path==='Direct'?<Tag c="green">Direct Decision</Tag>
-                :<Tag c="teal">Decision Request</Tag>}</td>
-            <td className="dim">{d.draft?'Draft Output of Minutes — activates on approval'
+    <div className="cs-two-col">
+      <section className="cs-card flush" aria-labelledby="dec-reg">
+        <div className="cs-card-top">
+          <div className="cs-card-title-grp">
+            <span className="cs-icon amber" aria-hidden="true"><ClipboardList size={16}/></span>
+            <div><h2 className="cs-card-title" id="dec-reg">Decision Register</h2>
+              <div className="cs-card-note">{rows.length} of {list.length} record{list.length===1?'':'s'}. Both
+                pathways merge at the approved Decision.</div></div>
+          </div>
+        </div>
+        {rows.length===0 ? <div className="cs-empty">No Decision matches these filters.</div> :
+        <div className="cs-tbl-wrap"><table className="cs-tbl dense" style={{minWidth:800}}>
+          <thead><tr><th>Decision</th><th>Type</th><th>Topic</th><th>Pathway</th><th>Raised from</th>
+            <th>Status</th><th>Taken?</th><th><span className="sr-only">Action</span></th></tr></thead>
+          <tbody>{rows.map(d=>{
+            const step=d.steps&&d.steps.find(s=>s.state==='Pending');
+            const [bc,bl]=statusBadge(d);
+            const open=()=>go('dec',d.id);
+            const stands = d.draft?'Draft Output of Minutes — activates on approval'
               :step?step.pos+' — '+P(step.who).name
               :d.status==='Approved'?'Execution Owner '+(d.execOwner?P(d.execOwner).name:'not assigned')
-              :d.status==='Closed'?'Closed':'—'}</td>
-            <td>{isTaken(d)
-                  ? <Tag c="green">✓ Taken</Tag>
-                  : d.status==='Rejected' ? <Tag c="red">Decided against</Tag>
-                  : d.blocked ? <Tag c="red">Blocked</Tag>
-                  : <Tag c="amber">Not yet</Tag>}
-              <div className="t-sub">{d.status}</div></td>
-          </tr>;})}
-        </tbody></table></div>}
+              :null;
+            return <tr key={d.id} className="cs-row" tabIndex={0} onClick={open}
+                onKeyDown={e=>{ if(e.key==='Enter'){ e.preventDefault(); open(); } }}>
+              <td><div className="cs-name">{d.title}</div>
+                <div className="cs-name-sub">{P(d.creator).name} · {fmtD(d.created)}</div></td>
+              <td><div className="cs-name" style={{fontWeight:500}}>{d.type}</div>
+                {d.value?<div className="cs-name-sub cs-mono">{money(d.value)}</div>:null}</td>
+              <td>{d.topicNature && <span className="cs-type">{d.topicNature}</span>}
+                <div className="cs-name-sub">{(d.topicCats||[]).map(c=>c.v).join(', ')}</div></td>
+              <td>{d.blocked ? <span className="cs-type bad">Blocked</span>
+                : d.path==='Direct' ? <span className="cs-type adhoc">Direct Decision</span>
+                : <span className="cs-type">Decision Request</span>}</td>
+              <td><span className="cs-name-sub" style={{fontSize:10.5,color:'var(--cs-body)'}}>{srcLabel(db,d)}</span></td>
+              <td><span className={'cs-badge '+bc}><i/>{bl}</span>
+                {stands && <div className="cs-cov-sub">{stands}</div>}</td>
+              <td>{isTaken(d) ? <span className="cs-taken c-green">✓ Taken</span>
+                : d.status==='Rejected' ? <span className="cs-taken c-red">Decided against</span>
+                : d.blocked ? <span className="cs-taken c-red">Blocked</span>
+                : <span className="cs-taken c-amber">Not yet</span>}</td>
+              <td><button type="button" className="cs-btn"
+                  onClick={e=>{ e.stopPropagation(); open(); }}>View</button></td>
+            </tr>;})}
+          </tbody></table></div>}
+      </section>
+
+      <div className="cs-side">
+        <section className="cs-card" aria-labelledby="dec-flow">
+          <div className="cs-card-top"><div className="cs-card-title-grp">
+            <span className="cs-icon amber" aria-hidden="true"><Network size={16}/></span>
+            <h2 className="cs-card-title" id="dec-flow">Decision Flow</h2></div></div>
+          <div className="cs-flow">
+            <div className="cs-flow-step"><span className="cs-flow-n">1</span>Common Intake
+              <span className="cs-flow-m">one form</span></div>
+            <div className="cs-flow-step"><span className="cs-flow-n">2</span>Authority Check
+              <span className="cs-flow-m">Authority Matrix</span></div>
+            <div className="cs-flow-step green"><span className="cs-flow-n">A</span>Direct Decision
+              <span className="cs-flow-m">{direct.length} · has authority</span></div>
+            <div className="cs-flow-step gold"><span className="cs-flow-n">B</span>Decision Request
+              <span className="cs-flow-m">{request.length} · approval steps</span></div>
+            <div className="cs-flow-step"><span className="cs-flow-n">3</span>Execution → Close
+              <span className="cs-flow-m">{closed.length} closed</span></div>
+          </div>
+        </section>
+
+        <section className="cs-card" aria-labelledby="dec-health">
+          <div className="cs-card-top"><div className="cs-card-title-grp">
+            <span className="cs-icon green" aria-hidden="true"><Activity size={16}/></span>
+            <h2 className="cs-card-title" id="dec-health">Decision Health</h2></div></div>
+          <div>
+            <div className="cs-qs"><span>Direct vs Request</span>
+              <span className="cs-qs-v">{share(direct.length)} / {share(request.length)}%</span></div>
+            <div className="cs-qs"><span>Not yet taken</span>
+              <span className={'cs-qs-v'+(pending.length?' c-amber':'')}>{pending.length}</span></div>
+            <div className="cs-qs"><span>Blocked</span>
+              <span className={'cs-qs-v'+(blocked.length?' c-red':'')}>{blocked.length}</span></div>
+            <div className="cs-qs"><span>Rejected</span><span className="cs-qs-v">{rejected.length}</span></div>
+            <div className="cs-qs"><span>Closed</span><span className="cs-qs-v">{closed.length}</span></div>
+          </div>
+        </section>
+
+        {observerKinds.length>0 && <section className="cs-card" aria-labelledby="dec-obs">
+          <h2 className="cs-card-title" id="dec-obs" style={{fontSize:12.5}}>Observers</h2>
+          <p className="cs-card-note">Read-only watchers on the decisions you can see.</p>
+          <div>{observerKinds.map(([kind,n])=>
+            <div key={kind} className="cs-obs"><Eye size={12} aria-hidden="true"/>
+              <div><div className="cs-alert-t">{kind}</div>
+                <div className="cs-name-sub">on {n} decision{n===1?'':'s'}</div></div></div>)}
+          </div>
+        </section>}
+      </div>
     </div>
 
-    <div className="card flush" style={{marginTop:16}}>
-      <div className="card-hd" style={{display:'flex',alignItems:'flex-start',gap:12}}>
-        <div style={{flex:1}}><h2>Live Decisions</h2>
-          <div className="csub">Read from the Work Log Decisions table — a pre-existing table, separate
-            from the Decision register above. Every one belongs to a Work Log, shown below.
-            ⚠️ Not yet linked to the Meeting Agenda Item or Report Section that raised it: that needs
-            a lookup column on <span className="mono">wlog_decision</span> in IT, which does not exist
-            (see §9).</div></div>
-        <Btn k="sm" onClick={()=>setLiveNew(true)}>+ Log a Decision</Btn>
+    <section className="cs-card flush" aria-labelledby="dec-live">
+      <div className="cs-card-top" style={{alignItems:'flex-start'}}>
+        <div className="cs-card-title-grp" style={{alignItems:'flex-start'}}>
+          <span className="cs-icon green" aria-hidden="true"><CheckSquare size={16}/></span>
+          <div><h2 className="cs-card-title" id="dec-live">Live Decisions</h2>
+            <div className="cs-card-note" style={{maxWidth:'90ch'}}>Read from the Work Log Decisions table — a
+              pre-existing table, separate from the Decision register above. Every one belongs to a Work Log,
+              shown below. ⚠️ Not yet linked to the Meeting Agenda Item or Report Section that raised it: that
+              needs a lookup column on <span className="cs-mono">wlog_decision</span> in IT, which does not
+              exist (see §9).</div></div>
+        </div>
+        <button type="button" className="cs-btn" onClick={()=>setLiveNew(true)}>
+          <Plus size={11}/>Log a Decision</button>
       </div>
 
-      {dvDecisions.length===0 ? <div style={{padding:'8px 17px 17px'}}>
-          <Empty>No live Decisions logged yet.</Empty></div>
+      {dvDecisions.length===0 ? <div className="cs-empty">No live Decisions logged yet.</div>
       : <>
-        <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',
-                     padding:'0 17px 11px'}}>
+        <div className="cs-search" style={{flexWrap:'wrap',padding:'10px 16px',borderBottom:'1px solid var(--cs-border)'}}>
           <input type="search" value={dq} onChange={e=>setDq(e.target.value)}
             placeholder="Search decisions, work logs, reviewers…"
-            aria-label="Search live decisions" style={{flex:'1 1 240px',minWidth:0}}/>
-          <select value={dSt} onChange={e=>setDSt(e.target.value)} aria-label="Filter by status">
+            aria-label="Search live decisions" style={{flex:'1 1 240px',minWidth:0,width:'auto'}}/>
+          <select className="cs-select" value={dSt} onChange={e=>setDSt(e.target.value)} aria-label="Filter by status">
             {['All',...dStatuses].map(x=><option key={x} value={x}>{x==='All'?'Any status':x}</option>)}
           </select>
-          <select value={dRv} onChange={e=>setDRv(e.target.value)} aria-label="Filter by review status">
+          <select className="cs-select" value={dRv} onChange={e=>setDRv(e.target.value)} aria-label="Filter by review status">
             {['All',...dReviews].map(x=><option key={x} value={x}>{x==='All'?'Any review':x}</option>)}
           </select>
-          <span className="holder" style={{fontSize:11.5}}>
-            {dvRows.length} of {dvDecisions.length}</span>
+          <span className="cs-search-n">{dvRows.length} of {dvDecisions.length}</span>
         </div>
 
         {dvRows.length===0
-          ? <div style={{padding:'0 17px 17px'}}><Empty>No decision matches.</Empty></div>
-          : <div className="t-wrap"><table className="data">
+          ? <div className="cs-empty">No decision matches.</div>
+          : <div className="cs-tbl-wrap"><table className="cs-tbl" style={{minWidth:760}}>
               <thead><tr><th>Decision</th><th>Work Log</th><th>Status</th>
                 <th>Review</th><th>Logged</th></tr></thead>
               <tbody>{dvRows.map(d=>{
                 const open = dOpen===d.id;
+                const toggle = ()=>setDOpen(open?null:d.id);
                 return <React.Fragment key={d.id}>
-                  <tr onClick={()=>setDOpen(open?null:d.id)} style={{cursor:'pointer'}}>
-                    <td><div className="t-main">{d.name}</div>
+                  <tr className="cs-row" tabIndex={0} aria-expanded={open} onClick={toggle}
+                      onKeyDown={e=>{ if(e.key==='Enter'){ e.preventDefault(); toggle(); } }}>
+                    <td><div className="cs-name">{d.name}</div>
                       {/* The full text is in the expanded row; this keeps the
                           table scannable rather than three columns of prose. */}
                       {d.decisionTaken
-                        ? <div className="t-sub">{d.decisionTaken.slice(0,90)}
+                        ? <div className="cs-name-sub">{d.decisionTaken.slice(0,90)}
                             {d.decisionTaken.length>90?'…':''}</div>
                         : null}</td>
-                    <td className="dim">{d.workLog||'—'}</td>
-                    <td>{d.status ? <Tag c={d.status==='Completed'?'green'
-                                          :d.status==='Escalated'?'amber':'grey'}>{d.status}</Tag> : '—'}</td>
-                    <td className="dim">{d.reviewStatus||'—'}
-                      {d.reviewer ? <div className="t-sub">{d.reviewer}</div> : null}</td>
-                    <td className="dim">{fmtISODT(d.created)}</td>
+                    <td>{d.workLog||'—'}</td>
+                    <td>{d.status
+                      ? <span className={'cs-badge '+(d.status==='Completed'?'approved'
+                          :d.status==='Escalated'?'pending':'scheduled')}><i/>{d.status}</span> : '—'}</td>
+                    <td>{d.reviewStatus||'—'}
+                      {d.reviewer ? <div className="cs-name-sub">{d.reviewer}</div> : null}</td>
+                    <td><span className="cs-mono muted">{fmtISODT(d.created)}</span></td>
                   </tr>
-                  {open ? <tr><td colSpan={5} style={{background:'var(--teal-ll)'}}>
-                    <div style={{display:'grid',gap:7,padding:'4px 2px'}}>
+                  {open ? <tr className="cs-expand"><td colSpan={5}>
+                    <div className="cs-kv">
                       {[['Decision taken',d.decisionTaken],
                         ['Expected output',d.expectedOutput],
                         ['Manager note',d.managerNote],
                         ['Reviewer',[d.reviewer,d.reviewerUser].filter(Boolean).join(' · ')],
                         ['Reviewed on',fmtISODT(d.reviewedOn)],
                        ].filter(([,v])=>v).map(([k,v])=>
-                        <div key={k}><span className="tset-lbl">{k}</span>
-                          <div style={{fontSize:12.5}}>{v}</div></div>)}
+                        <div key={k}><span className="cs-lbl">{k}</span>
+                          <div className="cs-kv-v">{v}</div></div>)}
 
                       {d.evidenceUrl
-                        ? <div><span className="tset-lbl">Evidence</span>
-                            <div><a href={d.evidenceUrl} target="_blank" rel="noopener noreferrer"
-                              style={{fontSize:12.5,color:'var(--teal-d)'}}>{d.evidenceUrl}</a></div></div>
+                        ? <div><span className="cs-lbl">Evidence</span>
+                            <div className="cs-kv-v"><a href={d.evidenceUrl} target="_blank"
+                              rel="noopener noreferrer">{d.evidenceUrl}</a></div></div>
                         : null}
 
                       {/* Only drawn when this decision was actually escalated --
                           an empty escalation block reads as missing data. */}
                       {(d.escalatedOn||d.escalationReason||d.escalationResult||d.escalatedToUser)
-                        ? <div style={{borderTop:'1px solid var(--border)',paddingTop:7}}>
-                            <span className="tset-lbl">Escalation</span>
-                            <div style={{fontSize:12.5}}>
+                        ? <div style={{borderTop:'1px solid var(--cs-border)',paddingTop:7}}>
+                            <span className="cs-lbl">Escalation</span>
+                            <div className="cs-kv-v">
                               {[d.escalatedToUser&&('to '+d.escalatedToUser),
                                 d.escalatedOn&&('on '+fmtISODT(d.escalatedOn)),
                                 d.escalationResult].filter(Boolean).join(' · ')||'—'}</div>
                             {d.escalationReason
-                              ? <div className="holder" style={{fontSize:12}}>{d.escalationReason}</div>
+                              ? <div className="cs-name-sub" style={{fontSize:11}}>{d.escalationReason}</div>
                               : null}
                             {d.escalationReply
-                              ? <div style={{fontSize:12.5,marginTop:3}}>↳ {d.escalationReply}</div>
+                              ? <div className="cs-kv-v">↳ {d.escalationReply}</div>
                               : null}
                             {d.escalationResolvedOn
-                              ? <div className="holder" style={{fontSize:12}}>
+                              ? <div className="cs-name-sub" style={{fontSize:11}}>
                                   Resolved {fmtISODT(d.escalationResolvedOn)}</div>
                               : null}
                           </div>
@@ -9943,11 +10048,11 @@ function ScreenDecisions(){
                 </React.Fragment>;})}
               </tbody></table></div>}
       </>}
-    </div>
+    </section>
 
     {intake && <DecisionIntakeModal onClose={()=>setIntake(false)}/>}
     {liveNew && <WorkLogDecisionModal onClose={()=>setLiveNew(false)}/>}
-  </>;
+  </div>;
 }
 
 /* Logs a new row to wlog_decisions. Base plumbing only, per the call made

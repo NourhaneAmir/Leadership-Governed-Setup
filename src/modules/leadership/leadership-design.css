@@ -1,7 +1,8 @@
 /* =========================================================================
    Leadership screens restyled to the approved design
    Source of truth: `leadership-practice (2).html` -- #v-audit (Committee
-   Scores), #v-mom (Meeting Minutes) and #v-meetings (Meetings). Was committee-scores.css; renamed
+   Scores), #v-mom (Meeting Minutes), #v-meetings (Meetings) and
+   #v-decisions (Decisions). Was committee-scores.css; renamed
    when Meeting Minutes started sharing it.
 
    Scoped entirely under .cs-root so a screen only changes when it opts in.
@@ -265,6 +266,46 @@
 .cs-root .cs-week-t{ font:600 11px var(--cs-sans); color:var(--cs-text) }
 .cs-root .cs-week-s{ font:400 9.5px var(--cs-body-font); color:var(--cs-muted) }
 .cs-root .cs-week-tag{ margin-left:auto; flex-shrink:0 }
+
+/* ---------- Decisions (#v-decisions) ---------- */
+.cs-root .cs-banner{
+  display:flex; align-items:flex-start; gap:10px; padding:11px 14px; border-radius:12px;
+  background:var(--cs-danger-soft); border:1px solid rgba(178,58,58,.22); color:var(--cs-danger);
+}
+.cs-root .cs-banner svg{ flex-shrink:0; margin-top:1px }
+.cs-root .cs-banner-t{ font:600 12px var(--cs-sans) }
+.cs-root .cs-banner-s{ font:400 10.5px var(--cs-body-font); color:var(--cs-body); margin-top:2px }
+.cs-root .cs-banner .cs-btn{ margin-top:8px; background:#fff }
+.cs-root .cs-select{
+  padding:5px 26px 5px 10px; border:1px solid var(--cs-border); border-radius:8px; cursor:pointer;
+  font:500 11px var(--cs-sans); color:var(--cs-text); outline:none; appearance:none;
+  background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238A8079' stroke-width='1.4'/%3E%3C/svg%3E") no-repeat right 9px center;
+}
+.cs-root .cs-select:focus{ border-color:var(--cs-gold) }
+.cs-root .cs-lbl{ font:700 9px var(--cs-sans); letter-spacing:.8px; text-transform:uppercase; color:var(--cs-dim) }
+.cs-root .cs-tbl.dense th,.cs-root .cs-tbl.dense td{ padding-left:10px; padding-right:10px }
+.cs-root .cs-type.bad{ background:var(--cs-danger-soft); color:var(--cs-danger) }
+.cs-root .cs-taken{ font:600 11px var(--cs-sans); white-space:nowrap }
+.cs-root .cs-flow{ display:flex; flex-direction:column; gap:5px }
+.cs-root .cs-flow-step{
+  display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:8px;
+  font:500 10.5px var(--cs-sans); color:var(--cs-text); background:var(--cs-hover);
+}
+.cs-root .cs-flow-step.green{ background:var(--cs-green-soft); border-left:3px solid var(--cs-green) }
+.cs-root .cs-flow-step.gold { background:var(--cs-gold-soft);  border-left:3px solid var(--cs-gold) }
+.cs-root .cs-flow-n{
+  width:18px; height:18px; border-radius:50%; flex-shrink:0; display:inline-flex; align-items:center;
+  justify-content:center; font:700 8.5px var(--cs-mono); background:#fff; color:var(--cs-gold);
+  border:1px solid var(--cs-border);
+}
+.cs-root .cs-flow-m{ margin-left:auto; font:400 9px var(--cs-body-font); color:var(--cs-muted); white-space:nowrap }
+.cs-root .cs-obs{ display:flex; align-items:flex-start; gap:8px; padding:7px 0; border-bottom:1px solid var(--cs-border) }
+.cs-root .cs-obs:last-child{ border-bottom:none }
+.cs-root .cs-obs svg{ color:var(--cs-gold); flex-shrink:0; margin-top:2px }
+.cs-root .cs-expand > td{ background:var(--cs-hover) }
+.cs-root .cs-kv{ display:grid; gap:8px; padding:4px 2px }
+.cs-root .cs-kv-v{ font:400 11.5px var(--cs-body-font); color:var(--cs-text); margin-top:2px }
+.cs-root .cs-kv a{ color:var(--cs-gold); word-break:break-all }
 
 @media (max-width:1100px){ .cs-root .cs-two-col{ grid-template-columns:1fr } }
 @media (max-width:640px){ .cs-root .cs-chips-end{ margin-left:0 } .cs-root .cs-search input{ width:100% } }
