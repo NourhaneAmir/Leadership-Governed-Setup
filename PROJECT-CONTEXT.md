@@ -7598,6 +7598,42 @@ the fix already covers it since both callers share `fetchAssignableUsers()`.
 
 Both apps build clean. Not yet pushed.
 
+### 28 Sep: Committee Scores restyled to the approved design
+
+Per an explicit ask, applied from `committee-scores-restyle.patch`. Source of
+truth is **`leadership-practice (2).html`**, `#v-audit`, the same file the
+20 Sep Setup Register restyle used. The patch was cut before "Score every
+meeting" (43a567e), so its `ScreenGrid` hunk was ported by hand; its
+subtitle ("A Business Meeting is never scored") was **not** taken — the
+screen still says Committees and Business Meetings are both scored.
+
+- **New stylesheet, `src/modules/leadership/committee-scores.css`**, imported
+  by `LeadershipApp.jsx` and scoped entirely under `.cs-root`. It uses its own
+  `cs-*` class names and `--cs-*` tokens rather than overriding `theme.css`'s
+  shared `.tabs`/`.stat`/`.card`/`table.data`/`.tag`, which every other
+  Leadership screen uses. Verified in the built CSS: Leadership has the rules,
+  Governance has none.
+- **`ScreenGrid` rewritten for the new markup, with the same data and
+  behaviour.** Added with the design:
+  - four filter tabs with counts (Awaiting Scoring / Awaiting Chair /
+    Approved / All Grids), opening on Awaiting Scoring when it has rows;
+  - a per-row Score / Review / View button;
+  - **Export**, a CSV of the rows the current tab shows. The object URL is
+    revoked on a delay, per the 20 Sep blob-URL lesson.
+- **The "Awaiting Chair" stat card was dropped** to match the design's four.
+  Its count is still on its tab, so nothing is lost.
+- The Committee column now shows the **Setup's name, with its real Setup
+  Type** underneath (was the occurrence name + template name). This removes the
+  hard-coded "Accreditation Committee" tag on Score history.
+- The screen is now `wide:true` in `SCREENS`, full width as in the design.
+- **Not changed:** coverage still reads "—" until a Grid is approved. Live
+  coverage for open Grids is step 1F of the Committee Scores plan, not a
+  styling change.
+- Both apps build clean. Seen on the local dev server with no Grids (it
+  cannot reach Dataverse): header, tabs, stats, empty states and catalogue
+  render, no console errors. **The populated table and history bars have not
+  been seen against real data**, and this is not yet pushed to the Code App.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap

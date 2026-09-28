@@ -1,7 +1,9 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { ArrowUpRight, BarChart3, CalendarDays, CheckSquare, ClipboardCheck, ClipboardList,
-         Gauge, Layers, LineChart, Menu, MessagesSquare, Network, PenLine, UsersRound, X }
+import { Activity, ArrowUpRight, BarChart3, CalendarDays, CheckSquare, ClipboardCheck, ClipboardList,
+         Download, FileText, Gauge, Layers, LineChart, Lock, Menu, MessagesSquare, Network, PenLine, Shield,
+         UsersRound, X }
   from 'lucide-react';
+import './committee-scores.css';
 /* Dates, the working calendar and number formatting now live in src/shared so
    a screen lifted out of this file keeps working without it. */
 import { ymd, TODAY, PERIOD, HOLIDAYS, isNonWorking, isWeekend,
@@ -1397,7 +1399,7 @@ const SCREENS = [
   {id:'mom',  group:'Meetings',      label:'Meeting Minutes',        Icon:ClipboardList,  wide:true,
    Screen:ScreenMinutes,
    hint:'Every set of Meeting Minutes: Draft, Pending Approval, Approved, Closed.'},
-  {id:'grid', group:'Meetings',      label:'Committee Scores',       Icon:BarChart3,
+  {id:'grid', group:'Meetings',      label:'Committee Scores',       Icon:BarChart3,  wide:true,
    Screen:ScreenGrid,
    hint:'Committee governance scores across occurrences.'},
   {id:'dec',  group:'Governance',    label:'Decisions',              Icon:CheckSquare,
@@ -9187,6 +9189,39 @@ function ExportModal({mom,occ,outs,onClose}){
    ========================================================================= */
 const GRID_STATES=['Auto-Scored','Pending Facilitator Review','Submitted for Approval','Approved'];
 
+/* Committee Scores, restyled 28 Sep to the approved design
+   (`leadership-practice (2).html`, #v-audit). Same data and behaviour as
+   before -- every class here is cs-* and styled only by
+   committee-scores.css, scoped under .cs-root, so no other screen moves.
+
+   Added with the design: the four filter tabs, the per-row action button and
+   Export (CSV of the rows the current tab shows). The "Awaiting Chair" stat
+   card was dropped to match the design's four; its count is on its tab. */
+const CS_TABS = [
+  {id:'scoring',  label:'Awaiting Scoring', test:g=>g.state==='Pending Facilitator Review'||g.state==='Returned for Revision'},
+  {id:'chair',    label:'Awaiting Chair',   test:g=>g.state==='Submitted for Approval'},
+  {id:'approved', label:'Approved',         test:g=>g.state==='Approved'},
+  {id:'all',      label:'All Grids',        test:()=>true, noCount:true},
+];
+const CS_BADGE = {
+  'Pending Facilitator Review':['pending','Pending Facilitator'],
+  'Returned for Revision':['returned','Returned'],
+  'Submitted for Approval':['chair','Awaiting Chair'],
+  'Approved':['approved','Approved'],
+  'Void':['void','Void'],
+};
+/* Downloads a CSV. The object URL is revoked on a delay, not at once: revoking
+   it synchronously after click() can cancel the download before the browser
+   has read it (the 20 Sep "Excel cannot open the file" lesson). */
+function csDownloadCsv(filename, rows){
+  const esc = v => { const t = v==null ? '' : String(v); return /[",\n]/.test(t) ? '"'+t.replace(/"/g,'""')+'"' : t; };
+  const csv = '﻿' + rows.map(r=>r.map(esc).join(',')).join('\r\n');
+  const url = URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8'}));
+  const a = document.createElement('a'); a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 30000);
+}
+
 function ScreenGrid(){
   const {dvMeetingOccs,dvGridInstances,openMeeting}=use();
   const occById = useMemo(()=>{
@@ -9199,61 +9234,122 @@ function ScreenGrid(){
   const list = dvGridInstances.filter(g=>occById.has(g.occurrenceId));
   const approved=list.filter(g=>g.state==='Approved');
   const avg=approved.length?Math.round(approved.reduce((s,g)=>s+g.score,0)/approved.length*10)/10:null;
+  const awaitingFac = list.filter(CS_TABS[0].test).length;
 
-  return <>
-    <div className="ph"><h1>Committee Scores</h1>
-      <div className="sub">Governance scores across every meeting occurrence in Dataverse. Each occurrence
-        keeps its own score, so the same meeting may score differently in different periods. Committees and
-        Business Meetings are both scored. To work on a Grid, open its Meeting and use the Audit Grid tab.</div></div>
+  /* null = not chosen yet: open on Awaiting Scoring when there is something
+     to score, as the design does, otherwise on All Grids. Deciding lazily
+     keeps an empty first render (data still loading) from pinning 'all'. */
+  const [tabSel,setTabSel]=useState(null);
+  const tab = tabSel || (awaitingFac ? 'scoring' : 'all');
+  const tabDef = CS_TABS.find(t=>t.id===tab) || CS_TABS[3];
 
-    <div className="stats">
-      <Stat label="Approved scores" v={approved.length} d="published" c="green"/>
-      <Stat label="Average score" v={avg!=null?avg+'%':'—'} d="approved Grids only"
-            c={avg!=null?pctColour(avg):'muted'}/>
-      <Stat label="Awaiting Facilitator" v={list.filter(g=>g.state==='Pending Facilitator Review'||
-            g.state==='Returned for Revision').length} d="questions to score" c="amber"/>
-      <Stat label="Awaiting Chair" v={list.filter(g=>g.state==='Submitted for Approval').length}
-            d="score unpublished" c="amber"/>
-      <Stat label="Questions" v={AG_ACTIVE.length} d={AG_ACTIVE.filter(q=>q.src==='Auto').length+
-            ' automatic · '+AG_ACTIVE.filter(q=>q.src==='Manual').length+' manual'}/>
+  const committeeOf = o => {
+    const tpl = dvTplDetail(o.templateId);
+    return {
+      name: dvTpl(o.templateId) || o.name,
+      cls: tpl ? (MEETING_SETUP_TYPE[tpl.setupTypeCode] || 'Committee') : 'Ad hoc occurrence',
+    };
+  };
+  const coverageOf = g => (g.state==='Approved' && g.total) ? Math.round(g.coverage/g.total*1000)/10 : null;
+
+  const rows = list.filter(tabDef.test).slice().sort((a,b)=>
+    (occById.get(b.occurrenceId)?.date||'').localeCompare(occById.get(a.occurrenceId)?.date||''));
+
+  const exportCsv = () => {
+    const out = [['Committee','Occurrence','Occurrence date','Template','Version','State','Coverage %','Questions covered','Questions total','Overall score %']];
+    rows.forEach(g=>{
+      const o = occById.get(g.occurrenceId), c = committeeOf(o), cov = coverageOf(g);
+      out.push([c.name, o.name, o.date||'', g.templateVersion||'', g.version||1, g.state,
+        cov ?? '', g.state==='Approved' ? g.coverage : '', g.total ?? '',
+        g.state==='Approved' ? g.score : '']);
+    });
+    csDownloadCsv(`committee-scores-${tabDef.id}-${ymd(new Date())}.csv`, out);
+  };
+
+  const autoCount = AG_ACTIVE.filter(q=>q.src==='Auto').length;
+  const manualCount = AG_ACTIVE.filter(q=>q.src==='Manual').length;
+
+  return <div className="cs-root">
+    <div className="cs-head">
+      <h1 className="cs-title">Committee Scores</h1>
+      <p className="cs-sub">Governance scores across every meeting occurrence — each instance keeps its own
+        score. Committees and Business Meetings are both scored. To work on a Grid, open its Meeting.</p>
+      <div className="cs-tabs" role="tablist" aria-label="Filter Grids by state">
+        {CS_TABS.map(t=>
+          <button key={t.id} type="button" role="tab" aria-selected={tab===t.id}
+            className={'cs-tab'+(tab===t.id?' on':'')} onClick={()=>setTabSel(t.id)}>
+            {t.label}{!t.noCount && <span className="cs-tab-badge">{list.filter(t.test).length}</span>}
+          </button>)}
+      </div>
     </div>
 
-    <div className="card flush">
-      <div className="card-hd"><h2>Audit Grid Instances</h2>
-        <div className="csub">One Instance per Committee occurrence, created on closure of its Minutes.</div></div>
-      {list.length===0?<Empty>No Instances yet.</Empty>:
-      <div className="t-wrap"><table className="data">
-        <thead><tr><th>Committee</th><th>Occurrence</th><th>Template</th><th>State</th>
-          <th>Coverage</th><th>Overall Score</th></tr></thead>
-        <tbody>{list.slice().sort((a,b)=>{
-            const oa=occById.get(a.occurrenceId), ob=occById.get(b.occurrenceId);
-            return (ob?.date||'').localeCompare(oa?.date||'');}).map(g=>{
-          const o=occById.get(g.occurrenceId);
-          const cov = (g.state==='Approved' && g.total) ? Math.round(g.coverage/g.total*1000)/10 : null;
-          return <tr key={g.id} className="click" onClick={()=>openMeeting(o.id,'grid')}>
-            <td><div className="t-main">{o.name}</div>
-              <div className="t-sub">{dvTpl(o.templateId)||'Ad Hoc'}</div></td>
-            <td className="dim">{fmtD(o.date)}</td>
-            <td className="dim">{g.templateVersion||'—'}
-              {g.version>1&&<div className="t-sub">version {g.version}</div>}</td>
-            <td><Tag c={g.state==='Approved'?'green':g.state==='Void'?'grey':'amber'}>{g.state}</Tag></td>
-            <td>{cov!=null
-              ? <><div style={{display:'flex',alignItems:'center',gap:8}}>
-                    <span style={{fontVariantNumeric:'tabular-nums',minWidth:38}}>{cov}%</span>
-                    <Bar v={cov} c={pctColour(cov)}/></div>
-                  <div className="t-sub">{g.coverage} of {g.total} questions</div></>
-              : <span className="dim">{g.total?`— of ${g.total} questions`:'—'}</span>}</td>
-            <td>{g.state==='Approved'
-                  ? <b style={{fontSize:15,color:`var(--${pctColour(g.score)})`}}>{g.score}%</b>
-                  : <span className="dim">Pending Review</span>}</td>
-          </tr>;})}
-        </tbody></table></div>}
+    <div className="cs-stats">
+      <div className="cs-stat acc-green"><div className="cs-stat-lbl">Approved scores</div>
+        <div className="cs-stat-val">{approved.length}</div><div className="cs-stat-meta">published</div></div>
+      <div className="cs-stat acc-gold"><div className="cs-stat-lbl">Average score</div>
+        <div className="cs-stat-val">{avg!=null?avg+'%':'—'}</div><div className="cs-stat-meta">approved Grids only</div></div>
+      <div className="cs-stat acc-amber"><div className="cs-stat-lbl">Awaiting Facilitator</div>
+        <div className="cs-stat-val">{awaitingFac}</div><div className="cs-stat-meta">questions to score</div></div>
+      <div className="cs-stat acc-alert"><div className="cs-stat-lbl">Questions</div>
+        <div className="cs-stat-val">{AG_ACTIVE.length}</div>
+        <div className="cs-stat-meta">{autoCount} automatic · {manualCount} manual</div></div>
     </div>
 
-    <div className="card">
-      <h2>Score history by Committee</h2>
-      <div className="csub">Approved Grids only. An approved Grid is never recomputed, so a later change to
-        a setting or to the Template cannot rewrite history.</div>
+    <section className="cs-card flush" aria-labelledby="cs-inst">
+      <div className="cs-card-top">
+        <div className="cs-card-title-grp">
+          <span className="cs-icon green" aria-hidden="true"><CheckSquare size={16}/></span>
+          <h2 className="cs-card-title" id="cs-inst">Audit Grid Instances</h2>
+        </div>
+        <button type="button" className="cs-btn" onClick={exportCsv} disabled={!rows.length}>
+          <Download size={12}/>Export</button>
+      </div>
+      {rows.length===0
+        ? <div className="cs-empty">{list.length===0
+            ? 'No Grids yet. A Grid is created when a meeting’s Minutes are closed.'
+            : `No Grids are ${tabDef.label.toLowerCase()}.`}</div>
+        : <div className="cs-tbl-wrap"><table className="cs-tbl">
+          <thead><tr><th>Committee</th><th>Occurrence</th><th>Template</th><th>State</th>
+            <th>Coverage</th><th>Overall score</th><th><span className="sr-only">Action</span></th></tr></thead>
+          <tbody>{rows.map(g=>{
+            const o=occById.get(g.occurrenceId), c=committeeOf(o), cov=coverageOf(g);
+            const [bc,bl]=CS_BADGE[g.state]||['void',g.state||'—'];
+            const toScore = CS_TABS[0].test(g), toReview = CS_TABS[1].test(g);
+            const band = pctColour(cov);
+            const open = ()=>openMeeting(o.id,'grid');
+            return <tr key={g.id} className="cs-row" tabIndex={0} onClick={open}
+                onKeyDown={e=>{ if(e.key==='Enter'){ e.preventDefault(); open(); } }}>
+              <td><div className="cs-committee">
+                <span className="cs-committee-ic" aria-hidden="true"><Shield size={13}/></span>
+                <div><div className="cs-name">{c.name}</div><div className="cs-name-sub">{c.cls}</div></div>
+              </div></td>
+              <td><span className="cs-mono">{fmtD(o.date)}</span></td>
+              <td><span className="cs-mono muted">{g.templateVersion||'—'}</span>
+                {g.version>1&&<div className="cs-cov-sub">version {g.version}</div>}</td>
+              <td><span className={'cs-badge '+bc}><i/>{bl}</span></td>
+              <td>{cov!=null
+                ? <><div className="cs-cov">
+                      <span className="cs-track"><span className={'cs-fill f-'+band} style={{width:cov+'%',display:'block'}}/></span>
+                      <span className={'cs-pct c-'+band}>{cov}%</span></div>
+                    <div className="cs-cov-sub">{g.coverage} of {g.total} questions</div></>
+                : <><span className="cs-pct c-grey">—</span>
+                    <div className="cs-cov-sub">{g.total?`of ${g.total} questions`:'not yet scored'}</div></>}</td>
+              <td>{g.state==='Approved'
+                ? <span className={'cs-score c-'+pctColour(g.score)}>{g.score}%</span>
+                : <span className="cs-pending">Pending Review</span>}</td>
+              <td><button type="button" className={'cs-btn'+(toScore?' outline':'')}
+                  onClick={e=>{ e.stopPropagation(); open(); }}>
+                {toScore?'Score':toReview?'Review':'View'}</button></td>
+            </tr>;})}
+          </tbody></table></div>}
+    </section>
+
+    <section className="cs-card" aria-labelledby="cs-hist">
+      <div className="cs-card-top"><div className="cs-card-title-grp">
+        <span className="cs-icon gold" aria-hidden="true"><Activity size={16}/></span>
+        <h2 className="cs-card-title" id="cs-hist">Score History by Committee</h2></div></div>
+      <p className="cs-card-note">Approved Grids only. An approved Grid is never recomputed — later changes to
+        settings or the Template cannot rewrite history.</p>
       {(()=>{
         const byTpl = new Map();
         list.forEach(g=>{
@@ -9263,51 +9359,57 @@ function ScreenGrid(){
           byTpl.get(key).push(g);
         });
         const groups=[...byTpl.entries()].sort((a,b)=>(dvTpl(a[0])||'').localeCompare(dvTpl(b[0])||''));
-        if(!groups.length) return <Empty>No Grids yet.</Empty>;
+        if(!groups.length) return <div className="cs-empty">No Grids yet.</div>;
         return groups.map(([tplId,gs])=>{
           const sorted=gs.slice().sort((a,b)=>
             (occById.get(a.occurrenceId)?.date||'').localeCompare(occById.get(b.occurrenceId)?.date||''));
-          return <div key={tplId} style={{marginBottom:20}}>
-            <div style={{display:'flex',alignItems:'baseline',gap:9,marginBottom:2}}>
-              <b style={{fontSize:13}}>{dvTpl(tplId)||'Ad Hoc Committee occurrences'}</b>
-              <Tag c="amber">Accreditation Committee</Tag></div>
-            <div className="spark">{sorted.map(g=>{
+          const first=occById.get(sorted[0].occurrenceId), c=committeeOf(first);
+          return <div className="cs-hist-grp" key={tplId}>
+            <div className="cs-hist-hd">
+              <span className="cs-hist-name">{dvTpl(tplId)||'Ad hoc occurrences'}</span>
+              <span className="cs-hist-cls">{c.cls}</span></div>
+            <div className="cs-hist-bars">{sorted.map(g=>{
               const o=occById.get(g.occurrenceId);
               const pub=g.state==='Approved';
-              return <div className="spark-b" key={g.id} title={o.name+' · '+fmtD(o.date)}>
-                <span className="vl" style={{color:pub?`var(--${pctColour(g.score)})`:'var(--faint)'}}>
-                  {pub?g.score+'%':'—'}</span>
-                <div className={'bx '+(pub?pctColour(g.score):'pend')}
-                     style={{height:Math.max(6,(pub?g.score:12)*0.62)+'px'}}/>
-                <span className="lb">{fmtDS(o.date)}</span></div>;})}
+              const band = pub ? pctColour(g.score) : 'grey';
+              return <div className="cs-hist-bar" key={g.id} title={o.name+' · '+fmtD(o.date)}>
+                <div className="cs-hist-col"><i className={'f-'+band}
+                  style={{height:Math.max(8,(pub?g.score:16)*0.6)+'px'}}/></div>
+                <div className={'cs-hist-val c-'+band}>{pub?g.score+'%':'—'}</div>
+                <div className="cs-hist-date">{fmtDS(o.date)}</div></div>;})}
             </div>
           </div>;});
       })()}
-    </div>
+    </section>
 
-    <div className="card">
-      <h2>The question catalogue</h2>
-      <div className="csub">Owned by Taxonomy — {AG_TEMPLATE_VERSION}. Leadership Practice retrieves the
-        Template and its questions and never creates or modifies them. Every question is scored zero to
-        five, and all weights are one, so question count is the effective weighting.</div>
-      <div className="t-wrap"><table className="data">
-        <thead><tr><th>Category</th><th>Questions</th><th>Share</th><th>Automatic</th><th>Manual</th></tr></thead>
+    <section className="cs-card" aria-labelledby="cs-cat">
+      <div className="cs-card-top"><div className="cs-card-title-grp">
+        <span className="cs-icon amber" aria-hidden="true"><FileText size={16}/></span>
+        <h2 className="cs-card-title" id="cs-cat">Question Catalogue</h2></div></div>
+      <p className="cs-card-note">Owned by Taxonomy — {AG_TEMPLATE_VERSION}. Leadership Practice retrieves the
+        Template and its questions and never creates or modifies them. Every question is scored 0–5, and all
+        weights are 1, so question count is the effective weighting.</p>
+      <div className="cs-tbl-wrap"><table className="cs-tbl cs-cat">
+        <thead><tr><th>Category</th><th>Questions</th><th>Share</th><th>Auto</th><th>Manual</th></tr></thead>
         <tbody>{AG_CATEGORIES.map(c=>{
           const qs=AG_ACTIVE.filter(q=>q.cat===c);
-          return <tr key={c}><td className="t-main">{c}</td>
-            <td className="dim">{qs.map(q=>q.id).join(', ')}</td>
-            <td className="num">{Math.round(qs.length/AG_ACTIVE.length*100)}%</td>
-            <td className="num">{qs.filter(q=>q.src==='Auto').length}</td>
-            <td className="num">{qs.filter(q=>q.src==='Manual').length}</td></tr>;})}
-          <tr style={{fontWeight:700}}><td>Total</td><td className="dim">{AG_ACTIVE.length} active questions</td>
-            <td className="num">100%</td>
-            <td className="num">{AG_ACTIVE.filter(q=>q.src==='Auto').length}</td>
-            <td className="num">{AG_ACTIVE.filter(q=>q.src==='Manual').length}</td></tr>
+          const a=qs.filter(q=>q.src==='Auto').length, m=qs.filter(q=>q.src==='Manual').length;
+          return <tr key={c}><td className="cs-name">{c}</td>
+            <td><span className="cs-mono muted">{qs.map(q=>q.id).join(', ')}</span></td>
+            <td><span className="cs-mono">{Math.round(qs.length/AG_ACTIVE.length*100)}%</span></td>
+            <td><span className={'cs-mono '+(a?'c-green':'c-grey')}>{a}</span></td>
+            <td><span className={'cs-mono '+(m?'c-amber':'c-grey')}>{m}</span></td></tr>;})}
+          <tr className="cs-total"><td className="cs-name">Total</td>
+            <td><span className="cs-mono">{AG_ACTIVE.length} active questions</span></td>
+            <td><span className="cs-mono">100%</span></td>
+            <td><span className="cs-mono c-green">{autoCount}</span></td>
+            <td><span className="cs-mono c-amber">{manualCount}</span></td></tr>
         </tbody></table></div>
-      <Note k="lock"><b>AG-07 is retired.</b> {AGQ('AG-07').rule} The identifier is kept and not reused, so
-        history stays traceable.</Note>
-    </div>
-  </>;
+      <div className="cs-retired"><Lock size={12} aria-hidden="true"/>
+        <span><b>AG-07 is retired.</b> {AGQ('AG-07').rule} The identifier is kept and not reused, so history
+          stays traceable.</span></div>
+    </section>
+  </div>;
 }
 
 /* Rendered as a tab inside the Meeting Occurrence. */

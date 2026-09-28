@@ -1,0 +1,202 @@
+/* =========================================================================
+   Committee Scores — restyled to the approved design
+   Source of truth: `leadership-practice (2).html`, #v-audit.
+
+   Scoped entirely under .cs-root so nothing else in Leadership moves.
+   theme.css already owns .tabs/.stat/.card/.tag/table.data for every other
+   screen, so this file uses its own class names (cs-*) rather than
+   overriding the shared ones. Its tokens are prefixed --cs- for the same
+   reason: redefining --surface or --muted inside .cs-root would also
+   restyle every shared component rendered inside it (Tag, Btn, Note).
+   ========================================================================= */
+
+.cs-root{
+  --cs-gold:#A5845B; --cs-gold-light:#F0C893; --cs-gold-100:#F9F3ED;
+  --cs-gold-soft:rgba(165,132,91,.12);
+  --cs-green:#49604C; --cs-green-soft:rgba(73,96,76,.12);
+  --cs-warning:#C98A1E; --cs-warn-soft:rgba(201,138,30,.12);
+  --cs-danger:#B23A3A; --cs-danger-soft:rgba(178,58,58,.10);
+  --cs-text:#211C1E; --cs-body:#514A44; --cs-muted:#8A8079; --cs-dim:#B3A99E;
+  --cs-border:#E8E0D3; --cs-border-hover:#D8CBB4; --cs-hover:#FBF8F2; --cs-track:#EDEDED;
+  --cs-grad-gold:linear-gradient(135deg,#A5845B 0%,#F0C893 100%);
+  --cs-grad-green:linear-gradient(135deg,#49604C 0%,#A3B189 100%);
+  --cs-grad-card:linear-gradient(180deg,#FFFFFF 0%,#F9F3ED 100%);
+  --cs-sans:'Outfit',-apple-system,'Segoe UI',sans-serif;
+  --cs-body-font:'Inter',-apple-system,'Segoe UI',sans-serif;
+  --cs-mono:'JetBrains Mono','SF Mono',Consolas,monospace;
+  --cs-ease:cubic-bezier(.22,1,.36,1);
+  --cs-shadow-sm:0 1px 3px rgba(33,28,30,.06);
+  --cs-shadow-md:0 4px 12px rgba(33,28,30,.07);
+  display:flex; flex-direction:column; gap:14px;
+  font-family:var(--cs-body-font); color:var(--cs-body);
+}
+
+/* ---------- page header + tabs ---------- */
+.cs-root .cs-head{
+  background:linear-gradient(180deg,#fff 0%,var(--cs-gold-100) 100%);
+  border:1px solid var(--cs-border); border-radius:16px;
+  padding:16px 22px 0;
+}
+.cs-root .cs-title{ font:700 22px var(--cs-sans); color:var(--cs-text); letter-spacing:-.4px; margin:0 }
+.cs-root .cs-sub{ font:400 13px var(--cs-body-font); color:var(--cs-muted); margin:3px 0 12px; max-width:90ch }
+.cs-root .cs-tabs{ display:flex; gap:0; flex-wrap:wrap; margin:0 -6px }
+.cs-root .cs-tab{
+  font:500 12px var(--cs-sans); color:var(--cs-muted); background:none; border:none;
+  padding:10px 16px; cursor:pointer; border-bottom:2px solid transparent;
+  display:inline-flex; align-items:center; gap:5px;
+  transition:color .24s var(--cs-ease),border-color .24s var(--cs-ease);
+}
+.cs-root .cs-tab:hover{ color:var(--cs-text) }
+.cs-root .cs-tab.on{ color:var(--cs-gold); border-bottom-color:var(--cs-gold); font-weight:700 }
+.cs-root .cs-tab-badge{
+  background:var(--cs-gold-soft); color:var(--cs-gold);
+  font:700 9px var(--cs-mono); padding:1px 6px; border-radius:999px;
+}
+
+/* ---------- stat cards ---------- */
+.cs-root .cs-stats{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:11px }
+.cs-root .cs-stat{
+  background:var(--cs-grad-card); border:1px solid var(--cs-border); border-radius:16px;
+  padding:13px 15px; position:relative; overflow:hidden;
+  transition:border-color .24s var(--cs-ease),box-shadow .24s var(--cs-ease),transform .24s var(--cs-ease);
+}
+.cs-root .cs-stat:hover{ border-color:var(--cs-gold-light); box-shadow:var(--cs-shadow-md); transform:translateY(-2px) }
+/* A pseudo-element, not border-top: a border would square off the rounded corners. */
+.cs-root .cs-stat::before{ content:''; position:absolute; top:0; left:0; right:0; height:3px }
+.cs-root .cs-stat.acc-green::before{ background:var(--cs-grad-green) }
+.cs-root .cs-stat.acc-gold::before { background:var(--cs-grad-gold) }
+.cs-root .cs-stat.acc-amber::before{ background:linear-gradient(90deg,var(--cs-warning),#EF4444) }
+.cs-root .cs-stat.acc-alert::before{ background:var(--cs-danger) }
+.cs-root .cs-stat-lbl{ font:700 9px var(--cs-sans); text-transform:uppercase; letter-spacing:1px; color:var(--cs-dim); margin-bottom:5px }
+.cs-root .cs-stat-val{ font:800 24px var(--cs-mono); color:var(--cs-text); letter-spacing:-1px; line-height:1; margin-bottom:3px; font-variant-numeric:tabular-nums }
+.cs-root .cs-stat-meta{ font:400 10px var(--cs-body-font); color:var(--cs-dim) }
+
+/* ---------- cards ---------- */
+.cs-root .cs-card{
+  background:var(--cs-grad-card); border:1px solid var(--cs-border); border-radius:16px;
+  padding:15px; display:flex; flex-direction:column; gap:10px;
+  box-shadow:var(--cs-shadow-sm);
+  transition:border-color .24s var(--cs-ease),box-shadow .24s var(--cs-ease);
+}
+.cs-root .cs-card:hover{ border-color:var(--cs-gold-light); box-shadow:var(--cs-shadow-md) }
+.cs-root .cs-card.flush{ padding:0; gap:0; overflow:hidden }
+.cs-root .cs-card-top{ display:flex; align-items:center; justify-content:space-between; gap:10px }
+.cs-root .cs-card.flush .cs-card-top{ padding:14px 16px; border-bottom:1px solid var(--cs-border) }
+.cs-root .cs-card-title-grp{ display:flex; align-items:center; gap:9px }
+.cs-root .cs-card-title{ font:600 14px var(--cs-sans); color:var(--cs-text); margin:0 }
+.cs-root .cs-card-note{ font:400 11px var(--cs-body-font); color:var(--cs-muted); margin:0 }
+.cs-root .cs-icon{
+  width:32px; height:32px; border-radius:12px; flex-shrink:0;
+  display:inline-flex; align-items:center; justify-content:center; color:#fff;
+}
+.cs-root .cs-icon.green{ background:var(--cs-grad-green); box-shadow:0 2px 8px rgba(73,96,76,.28) }
+.cs-root .cs-icon.gold { background:var(--cs-grad-gold);  box-shadow:0 2px 8px rgba(165,132,91,.30) }
+.cs-root .cs-icon.amber{ background:linear-gradient(135deg,var(--cs-warning) 0%,#E8A830 100%); box-shadow:0 2px 8px rgba(201,138,30,.28) }
+
+/* ---------- buttons ---------- */
+.cs-root .cs-btn{
+  font:600 10px var(--cs-sans); border-radius:8px; cursor:pointer; white-space:nowrap;
+  display:inline-flex; align-items:center; gap:5px; padding:4px 10px;
+  background:transparent; color:var(--cs-muted); border:1px solid var(--cs-border);
+  transition:all .24s var(--cs-ease);
+}
+.cs-root .cs-btn:hover{ background:var(--cs-hover); color:var(--cs-text); border-color:var(--cs-border-hover) }
+.cs-root .cs-btn.outline{ color:var(--cs-text); border-color:var(--cs-border-hover); font-weight:700 }
+.cs-root .cs-btn:active{ transform:scale(.97) }
+.cs-root .cs-btn:focus-visible,.cs-root .cs-tab:focus-visible,.cs-root .cs-row:focus-visible{
+  outline:2px solid var(--cs-gold); outline-offset:2px;
+}
+
+/* ---------- instance table ---------- */
+.cs-root .cs-tbl-wrap{ overflow-x:auto }
+.cs-root .cs-tbl{ width:100%; min-width:900px; border-collapse:collapse }
+.cs-root .cs-tbl th{
+  font:700 9px var(--cs-sans); text-transform:uppercase; letter-spacing:.8px; color:var(--cs-dim);
+  text-align:left; padding:10px 14px; border-bottom:1px solid var(--cs-border); white-space:nowrap;
+}
+.cs-root .cs-tbl td{
+  padding:12px 14px; border-bottom:1px solid var(--cs-border);
+  font:400 12px var(--cs-body-font); color:var(--cs-body); vertical-align:middle;
+}
+.cs-root .cs-tbl tbody tr:last-child td{ border-bottom:none }
+.cs-root .cs-row{ cursor:pointer; transition:background .15s }
+.cs-root .cs-row:hover{ background:var(--cs-hover) }
+.cs-root .cs-committee{ display:flex; align-items:center; gap:8px }
+.cs-root .cs-committee-ic{
+  width:26px; height:26px; border-radius:6px; background:var(--cs-grad-green); color:#fff;
+  display:flex; align-items:center; justify-content:center; flex-shrink:0;
+}
+.cs-root .cs-name{ font:600 11.5px var(--cs-sans); color:var(--cs-text) }
+.cs-root .cs-name-sub{ font:400 9.5px var(--cs-body-font); color:var(--cs-dim) }
+.cs-root .cs-mono{ font:500 11px var(--cs-mono); color:var(--cs-text); white-space:nowrap }
+.cs-root .cs-mono.muted{ font-size:10px; color:var(--cs-muted) }
+.cs-root .cs-empty{ padding:28px 16px; text-align:center; font:400 12px var(--cs-body-font); color:var(--cs-muted) }
+
+/* state badge */
+.cs-root .cs-badge{
+  display:inline-flex; align-items:center; gap:4px; padding:3px 10px; border-radius:999px;
+  font:700 9px var(--cs-sans); letter-spacing:.5px; text-transform:uppercase; white-space:nowrap;
+}
+.cs-root .cs-badge i{ width:5px; height:5px; border-radius:50%; background:currentColor; flex-shrink:0 }
+.cs-root .cs-badge.approved{ background:var(--cs-green-soft); color:var(--cs-green) }
+.cs-root .cs-badge.pending { background:var(--cs-warn-soft);  color:var(--cs-warning) }
+.cs-root .cs-badge.chair   { background:var(--cs-gold-soft);  color:var(--cs-gold) }
+.cs-root .cs-badge.returned{ background:var(--cs-danger-soft);color:var(--cs-danger) }
+.cs-root .cs-badge.void    { background:var(--cs-hover); color:var(--cs-muted); border:1px solid var(--cs-border) }
+
+/* coverage */
+.cs-root .cs-cov{ display:flex; align-items:center; gap:6px }
+.cs-root .cs-track{ width:50px; height:5px; background:var(--cs-track); border-radius:10px; overflow:hidden; flex-shrink:0 }
+.cs-root .cs-fill{ height:100%; border-radius:10px }
+.cs-root .cs-pct{ font:600 10px var(--cs-mono); font-variant-numeric:tabular-nums }
+.cs-root .cs-cov-sub{ font:400 9px var(--cs-body-font); color:var(--cs-dim); margin-top:2px }
+.cs-root .cs-score{ font:700 13px var(--cs-mono); font-variant-numeric:tabular-nums }
+.cs-root .cs-pending{ font:500 10px var(--cs-sans); color:var(--cs-warning) }
+
+/* colours by score band (pctColour: green / teal / amber / red / grey) */
+.cs-root .c-green{ color:var(--cs-green) }   .cs-root .f-green{ background:var(--cs-green) }
+.cs-root .c-teal { color:var(--cs-gold) }    .cs-root .f-teal { background:var(--cs-gold) }
+.cs-root .c-amber{ color:var(--cs-warning) } .cs-root .f-amber{ background:var(--cs-warning) }
+.cs-root .c-red  { color:var(--cs-danger) }  .cs-root .f-red  { background:var(--cs-danger) }
+.cs-root .c-grey { color:var(--cs-dim) }     .cs-root .f-grey { background:#D9D9D9 }
+
+/* ---------- score history ---------- */
+.cs-root .cs-hist-grp{ display:flex; flex-direction:column; gap:6px }
+.cs-root .cs-hist-hd{ display:flex; align-items:baseline; gap:6px; flex-wrap:wrap }
+.cs-root .cs-hist-name{ font:600 11.5px var(--cs-sans); color:var(--cs-text) }
+.cs-root .cs-hist-cls{ font:400 9.5px var(--cs-body-font); color:var(--cs-dim) }
+.cs-root .cs-hist-bars{
+  display:flex; align-items:flex-end; gap:12px; padding:8px 12px; overflow-x:auto;
+  background:var(--cs-hover); border-radius:8px;
+}
+.cs-root .cs-hist-bar{ text-align:center; flex-shrink:0 }
+.cs-root .cs-hist-col{ height:60px; display:flex; align-items:flex-end; justify-content:center }
+.cs-root .cs-hist-col i{ display:block; width:32px; border-radius:4px 4px 0 0 }
+.cs-root .cs-hist-val{ font:700 11px var(--cs-mono); margin-top:4px; font-variant-numeric:tabular-nums }
+.cs-root .cs-hist-date{ font:400 8.5px var(--cs-body-font); color:var(--cs-dim) }
+
+/* ---------- question catalogue ---------- */
+.cs-root .cs-cat{ min-width:560px }
+.cs-root .cs-cat td{ font-size:10.5px; padding:9px 14px }
+.cs-root .cs-cat tbody tr{ cursor:default }
+.cs-root .cs-cat tbody tr:hover{ background:none }
+.cs-root .cs-cat .cs-total td{ border-top:2px solid var(--cs-border); font-weight:700 }
+.cs-root .cs-retired{
+  display:flex; align-items:flex-start; gap:7px; padding:8px 10px;
+  background:var(--cs-hover); border-radius:8px;
+  font:400 10.5px var(--cs-body-font); color:var(--cs-muted);
+}
+.cs-root .cs-retired svg{ flex-shrink:0; margin-top:1px; color:var(--cs-dim) }
+
+@media (max-width:1024px){ .cs-root .cs-stats{ grid-template-columns:repeat(2,minmax(0,1fr)) } }
+@media (max-width:560px){
+  .cs-root .cs-head{ padding:14px 14px 0 }
+  .cs-root .cs-stats{ grid-template-columns:1fr }
+}
+@media (prefers-reduced-motion:reduce){
+  .cs-root .cs-stat,.cs-root .cs-card,.cs-root .cs-btn,.cs-root .cs-tab{ transition:none }
+  .cs-root .cs-stat:hover{ transform:none }
+}
+
+/* Visually hidden, still announced -- the action column's header. */
+.cs-root .sr-only{ position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0 }
