@@ -4932,7 +4932,7 @@ Both apps built clean; bundles verified (Governance IT-only, Leadership both).
 ### 26 Sep: pushed — the Meeting family IT move is live
 
 Both apps built and pushed to the decided pair
-(`4912152c…` from `C:	mp\cad-gov`, `83db0ef8…` from `C:	mp\cad-exec`),
+(`4912152c…` from `C:\tmp\cad-gov`, `83db0ef8…` from `C:\tmp\cad-exec`),
 `App pushed successfully` read from the output in both cases, bindings
 confirmed intact before and after.
 
@@ -7746,9 +7746,9 @@ added to the UI.
   Planning&Monitoring 3,197, Teams 2,906, TMS 2,848, Objectives 1,831,
   Excel 1,204, Strategy 125, Steering 49; 8 blank.
 - Both apps build; the value is in the Leadership bundle only. **Not yet
-  exercised live** (the dev server cannot write to Dataverse), **not
-  committed, not pushed.** After the next push, raise one Task and check its
-  Task Source in IT.
+  exercised live** (the dev server cannot write to Dataverse). Committed in
+  `4b7ae5a` and pushed (see "Pushed both apps" below): raise one Task in the
+  live app and check its Task Source in IT.
 
 ### 28 Sep: Teams channel lookup checked against live IT — lookup fine, document path was wrong
 
@@ -7786,8 +7786,8 @@ next time its Setup is saved in Governance (the destination is re-derived on
 every save), or all 50 can be patched in one pass — **not done; a write to IT,
 waiting on a decision.**
 
-Only Governance calls `fetchTeamsChannels()`. Both apps build. **Not
-committed, not pushed.**
+Only Governance calls `fetchTeamsChannels()`. Both apps build. Committed in
+`4b7ae5a` and pushed (see "Pushed both apps" below).
 
 ### 28 Sep: Decisions restyled to the same design
 
@@ -7818,8 +7818,28 @@ Per an explicit ask, with a screenshot. Source of truth `#v-decisions`.
   render here, unlike the other restyled screens): tab and card counts agree,
   chips and Clear filter correctly, a row opens its detail and back returns,
   the table fits at 1400px and stacks at phone width, no console errors. The
-  Live Decisions card showed only its empty state locally. **Not committed,
-  not pushed.**
+  Live Decisions card showed only its empty state locally. Committed in
+  `5a1dd96` and pushed (see below).
+
+### 28 Sep: Pushed both apps (Decisions restyle, Task Source, channel path)
+
+Both pushed on the first attempt, from the 25 Sep staging folders:
+
+| App | Id | From | Carries |
+|---|---|---|---|
+| Governance Setup | `4912152c-b5c8-4beb-bb74-c9f43550405b` | `C:\tmp\cad-gov` | `4b7ae5a` (channel path fix) |
+| Leadership Execution | `83db0ef8-4c62-4eef-84ac-dadab326b704` | `C:\tmp\cad-exec` | `5a1dd96` (Decisions), `4b7ae5a` (Task Source) |
+
+Governance was pushed this time because the channel fix is in its bundle.
+`.power`/`power.config.json` present before and after in both folders; only
+`dist` replaced. Bundle signature as expected: Governance zero DT New URLs,
+the new `and_rootpath` reader and no `and_documentlibrary`; Leadership the
+Task Source value and the `.cs-root` rules.
+
+**Still open:** the 50 wrongly saved Report Template destinations (see the
+channel entry above) — not repaired; each fixes itself when its Setup is next
+saved in Governance.
+
 
 ## 6. Schema facts that are expensive to rediscover
 
