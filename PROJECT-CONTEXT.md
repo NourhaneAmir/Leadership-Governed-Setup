@@ -7876,7 +7876,10 @@ live name (the target line skipped `taskName`). Now:
   (POC, Strategy, BI, Task, Project were all missing from it).
 - The same columns were run against IT for the 3 Tasks live reports cite —
   no error. Not seen rendered (no Dataverse locally). Build a report/plan and
-  the export are unchanged. **Not committed, not pushed.**
+  the export are unchanged. Committed in `56c9561`; **pushed 28 Sep, Leadership
+  only**, first attempt, from `C:\tmp\cad-exec` to `83db0ef8…` (`.power` /
+  `power.config.json` intact). Governance not pushed: its bundle rebuilt
+  byte-identical (same hashed filenames), so there was nothing new to deploy.
 
 
 ## 6. Schema facts that are expensive to rediscover
