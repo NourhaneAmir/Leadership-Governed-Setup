@@ -8209,9 +8209,12 @@ within it**; the Setup's own **`lm_Category` = the first one ticked**.
 - Schema re-check with the table added: reads and both binds match IT.
 - Checked in the Governance dev server: Stage 1 keeps the single Category
   select; Stage 4 + a Classification shows the Categories multi-pick (empty
-  locally — categories are live data). Both apps build; lint clean. **Not
-  committed, not pushed** — and HEAD still carries the undeployable uploader
-  commit `4ca0036`, so a push needs the same reverse-apply as before.
+  locally — categories are live data). Both apps build; lint clean.
+  Committed in `7fa38f2`; **pushed 28 Sep, both apps**, first attempt each,
+  built from HEAD minus `4ca0036` (uploader columns re-checked: still absent),
+  then the tree restored to HEAD. **Next:** save a Stage 4 Setup with two
+  Categories in the live Governance app and reopen it — both ticked, the main
+  one first, two rows in `lm_topmanagementmeetingcategories`.
 
 ## 6. Schema facts that are expensive to rediscover
 
