@@ -1007,10 +1007,12 @@ export function NewTaskForm({ subject, onCancel, onDone, toast }){
     {row('Assignee', true,
       users === null
         ? <input disabled value="Reading users…"/>
-        : <select value={f.assigneeId} onChange={e => set({ assigneeId: e.target.value })}>
-            <option value="">Search for a user…</option>
-            {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-          </select>)}
+        /* Searchable (28 Sep): IT's user list is long, so a plain select meant
+           scrolling for a name. Combo matches the name or the email. */
+        : <Combo value={f.assigneeId} onChange={id => set({ assigneeId: id })}
+            opts={users.map(u => ({ id: u.id, name: u.name, sub: u.email || undefined }))}
+            all={users.length ? 'Choose a user…' : 'No users loaded'}
+            placeholder="Search by name or email…"/>)}
     {row('Priority', false,
       <select value={f.priority} onChange={e => set({ priority: e.target.value })}>
         <option value="">Select priority…</option>

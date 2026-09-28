@@ -8242,6 +8242,17 @@ Per an explicit ask, for both Report and Meeting Setups (they share
   lists both; whole + a Function → flagged; two whole lines → "listed twice"
   only. Both apps build; lint clean. **Not committed, not pushed.**
 
+### 28 Sep: "Raise a task" — the Assignee is searchable
+
+Per an explicit ask. `NewTaskForm` (`BuildReport.jsx`, also used by Reports /
+Plans) showed IT's whole enabled-user list as a plain `<select>`. It now uses
+the shared **`Combo`** (`shared/ui.jsx`) — type to filter by **name or email**
+(`fetchAssignableUsers()` already returns both), keyboard-driven, Escape to
+close. Nothing else in the form changed. The form itself only opens from a
+live report, so the control was checked on the Business Intelligence screen's
+Combo (opens focused on search, filters, "Nothing matches", Escape closes).
+Both apps build; lint clean. **Not committed, not pushed.**
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap
