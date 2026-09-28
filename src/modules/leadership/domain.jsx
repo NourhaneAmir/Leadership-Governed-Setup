@@ -259,6 +259,22 @@ export const projectMetaRows = p => !p ? [] : [
   ['Business Unit', p.buName], ['Department', p.deptName],
 ].filter(([, v]) => v);
 
+/* A cited Task, from fetchTasksByIds(). "No" is the delay column's own value
+   for on time, so it is left out rather than shown as a non-answer. */
+export const taskMetaRows = t => !t ? [] : [
+  ['Code', t.code], ['Status', t.inactive ? `${t.status || '—'} (inactive)` : t.status],
+  ['Priority', t.priority],
+  ['Progress', t.progress != null ? `${t.progress}%` : null],
+  ['Start', t.start], ['Due', t.due],
+  ['Delay', t.delayed && t.delayed !== 'No' ? t.delayed : null],
+  ['Service level', t.serviceLevel],
+  ['Assignee', t.assigneeName], ['Accountable', t.accountableName],
+  ['Business Unit', t.bu], ['Department', t.department],
+  ['Type', t.type], ['Recurrence', t.recurrence], ['Level', t.level],
+  ['Source', t.source], ['Leadership Practice', t.leadershipPractice],
+  ['Description', t.description], ['Action to be taken', t.action],
+].filter(([, v]) => v);
+
 export function CiteCard({cite,scope,onRemove}){
   const {db,go} = use();
   const kind = citeKind(cite), id = citeId(cite);

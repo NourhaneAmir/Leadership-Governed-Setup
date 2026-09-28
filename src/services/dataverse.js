@@ -2239,6 +2239,73 @@ export async function fetchTasks(){
   }));
 }
 
+/** The full record of each cited Task, for the Reports / Plans view.
+ *
+ *  A citation stores only a Task's id and name, and fetchTasks() above is the
+ *  picker's list -- all 44k rows, so it stays lean. This reads just the Tasks a
+ *  report actually cites, with everything a reader needs to judge one. Columns
+ *  chosen 28 Sep by how often each is filled on IT's live rows (e.g. code,
+ *  status, delay, type and recurrence on all 44,581; assignee/BU on 44,566;
+ *  accountable and the related Leadership Practice on ~20,400), and each
+ *  column's TYPE read from metadata, since selecting a lookup by its plain name
+ *  fails the whole read:
+ *    lookups -> hx_assignee, hx_accountable, cr18c_relatedleadershippractice
+ *    choices -> hx_status, hx_priority, hx_recurrencetype, cr18c_tasksource
+ *    text    -> hx_taskcode, hx_tasktype, tms_* (bu, department, isdelayed,
+ *               leadershiptasklevel), hx_servicelevel
+ *  Choice and lookup values come back as their formatted labels.
+ *  cr18c_progressrollup is a 0-100 percentage.
+ *
+ *  Chunked by 15 ids, like fetchReportOccurrenceForEdit(), so the OR filter
+ *  stays a URL the service accepts. Includes inactive Tasks: a report cites a
+ *  Task whatever its state later becomes.
+ *
+ *  -> Map(taskId -> task) */
+export async function fetchTasksByIds(ids = []){
+  const out = new Map();
+  const want = [...new Set(ids.filter(Boolean))];
+  for(let i = 0; i < want.length; i += 15){
+    const chunk = want.slice(i, i + 15);
+    const res = await Hx_taskesService.getAll({
+      filter: chunk.map(id => `hx_tasksid eq ${id}`).join(' or '),
+      select: ['hx_tasksid','hx_tasktitle','hx_taskcode','hx_taskdescription','hx_justifications',
+               'hx_status','hx_priority','hx_startdate','hx_duedate',
+               '_hx_assignee_value','_hx_accountable_value','_cr18c_relatedleadershippractice_value',
+               'tms_bu','tms_department','tms_isdelayed','hx_servicelevel','cr18c_progressrollup',
+               'hx_tasktype','hx_recurrencetype','tms_leadershiptasklevel','cr18c_tasksource',
+               'statecode'],
+    });
+    assertSuccess(res);
+    for(const r of res.data ?? []){
+      out.set(r.hx_tasksid, {
+        id: r.hx_tasksid,
+        name: r.hx_tasktitle || '(untitled task)',
+        code: r.hx_taskcode || null,
+        description: r.hx_taskdescription || null,
+        action: r.hx_justifications || null,
+        status: r['hx_status' + FV] || TASK_STATUS[r.hx_status] || null,
+        priority: r['hx_priority' + FV] || TASK_PRIORITY[r.hx_priority] || null,
+        start: isoDay(r.hx_startdate),
+        due: isoDay(r.hx_duedate),
+        assigneeName: r['_hx_assignee_value' + FV] || null,
+        accountableName: r['_hx_accountable_value' + FV] || null,
+        leadershipPractice: r['_cr18c_relatedleadershippractice_value' + FV] || null,
+        bu: r.tms_bu || null,
+        department: r.tms_department || null,
+        delayed: r.tms_isdelayed || null,
+        serviceLevel: r.hx_servicelevel || null,
+        progress: typeof r.cr18c_progressrollup === 'number' ? r.cr18c_progressrollup : null,
+        type: r.hx_tasktype || null,
+        recurrence: r['hx_recurrencetype' + FV] || null,
+        level: r.tms_leadershiptasklevel || null,
+        source: r['cr18c_tasksource' + FV] || null,
+        inactive: r.statecode === 1,
+      });
+    }
+  }
+  return out;
+}
+
 /** Raises a Task on hx_tasks.
  *
  *  Status is left to Dataverse's own default rather than set here: the option

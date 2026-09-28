@@ -22,10 +22,10 @@ import { Layers } from 'lucide-react';
 import { use } from '../store.jsx';
 import { Btn, Tag, Note, Empty } from '../../../shared/ui.jsx';
 import { fmtD, fmtP, MONTHS } from '../../../shared/format.js';
-import { DiagChip, rptTagC, matchesQuery, processMetaRows, projectMetaRows } from '../domain.jsx';
+import { DiagChip, rptTagC, matchesQuery, processMetaRows, projectMetaRows, taskMetaRows } from '../domain.jsx';
 import { fetchReportOccurrenceContent, fetchKpiAchievements, reportAchievementScope,
          fetchBiReportsByKpi, fetchTasks, citeTaskOnSection,
-         fetchProcesses, fetchProjects } from '../../../services/dataverse.js';
+         fetchProcesses, fetchProjects, fetchTasksByIds } from '../../../services/dataverse.js';
 import { BiFrame } from './BusinessIntelligence.jsx';
 /* Reused rather than copied: the same form Build a report/plan raises a task
    with, so a task raised from either side carries identical fields. */
@@ -129,6 +129,10 @@ export function ScreenOrgReports(){
      and a name, same reasoning as catalog.processes/exec.projects in
      Build a report/plan (processMetaRows()/projectMetaRows(), domain.jsx). */
   const [procProj, setProcProj] = useState({ processes: null, projects: null });
+  /* Full records of the Tasks the open report cites (fetchTasksByIds), kept
+     across reports so reopening one does not re-read. */
+  const [taskById, setTaskById] = useState(new Map());
+  const [taskErr, setTaskErr]   = useState(false);
 
   /* Which dashboards sit behind each cited KPI -- lm_bireportdashboard.lm_kpi. */
   useEffect(() => {
@@ -183,6 +187,22 @@ export function ScreenOrgReports(){
   const inTab = (r, k) => (k === 'all' ? true : k === 'out' ? isMine(r) : !isMine(r));
 
   const sectionsOf = r => sectionsByReport[r.id] || [];
+
+  /* The open report's cited Tasks, read when it opens -- only those not
+     already held, so a Task raised or cited from here (which bumps `tick` and
+     re-reads content) is picked up without re-reading the rest. */
+  const openTaskIds = (sectionsByReport[openId] || [])
+    .flatMap(s => (citesBySection[s.id] || []).map(c => c.taskId)).filter(Boolean);
+  const missingTaskKey = openTaskIds.filter(id => !taskById.has(id)).sort().join(',');
+  useEffect(() => {
+    if (!missingTaskKey) return;
+    let live = true;
+    fetchTasksByIds(missingTaskKey.split(','))
+      .then(m => { if (live) setTaskById(prev => new Map([...prev, ...m])); })
+      .catch(e => { console.warn('[dataverse] fetchTasksByIds() failed -- cited tasks show their name only:', e);
+                    if (live) setTaskErr(true); });
+    return () => { live = false; };
+  }, [missingTaskKey]);
   const processesOf = r => [...new Set(
     sectionsOf(r).flatMap(s => (citesBySection[s.id] || [])
       .filter(c => c.kind === 'Process' && c.processName).map(c => c.processName)))];
@@ -450,7 +470,13 @@ export function ScreenOrgReports(){
                                 {cites.length
                                   ? <div style={{ marginTop: 8 }}>
                                       {cites.map(c => {
+                                        /* The linked record's own name first, so a record
+                                           renamed at source reads correctly -- every lookup,
+                                           not only KPI/Process/Report (Task was missing). */
+                                        const task = c.taskId ? taskById.get(c.taskId) : null;
                                         const target = c.kpiName || c.processName || c.citedReportName
+                                                    || c.pocName || c.strategyName || c.biName
+                                                    || task?.name || c.taskName || c.projectName
                                                     || c.label || '(no target recorded)';
                                         return <div key={c.id} className="cite">
                                           <div className="cite-hd">
@@ -473,6 +499,11 @@ export function ScreenOrgReports(){
                                           {c.kind === 'Process'
                                             ? <CiteMeta rows={processMetaRows(
                                                 (procProj.processes || []).find(p => p.id === c.processId))}/>
+                                            : null}
+                                          {c.kind === 'Task'
+                                            ? (task ? <CiteMeta rows={taskMetaRows(task)}/>
+                                               : c.taskId && !taskErr ? <div className="holder" style={{ marginTop: 4 }}>
+                                                   Reading the task…</div> : null)
                                             : null}
                                           {c.kind === 'Project'
                                             ? <CiteMeta rows={projectMetaRows(

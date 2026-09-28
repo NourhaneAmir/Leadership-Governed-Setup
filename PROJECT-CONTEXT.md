@@ -7840,6 +7840,44 @@ Task Source value and the `.cs-root` rules.
 channel entry above) — not repaired; each fixes itself when its Setup is next
 saved in Governance.
 
+### 28 Sep: POC / Strategy citations blocked by a missing IT privilege, not code
+
+A live Save draft with one POC and one Strategy citation failed with
+`0x80040220`: the user lacks **`prvAppendTostrategy_Strategy`** and
+**`prvAppendTostf_StrategyPOC`**. Binding a lookup needs Append on the
+citation (held — Task/Project/Process save) **and Append To on the target**.
+Fix is an IT security-role change: Append To at Organization level on
+Strategy (`strategy_strategy`) and Strategy POC (`stf_strategypoc`). The
+bind names and targets were confirmed against metadata the same day
+(`lm_POC` → `stf_strategypoc`, `lm_Strategy` → `strategy_strategy`), so
+nothing in the app changes. A label-only fallback was offered, not built.
+
+### 28 Sep: a cited Task now shows its full record in Reports / Plans
+
+Per an explicit ask. A Task citation showed only its label — not even its
+live name (the target line skipped `taskName`). Now:
+
+- **`fetchTasksByIds(ids)`** (`dataverse.js`) reads just the cited Tasks,
+  chunked by 15, with the essential columns: code, title, status, priority,
+  progress (`cr18c_progressrollup`, 0–100), start, due, delay
+  (`tms_isdelayed`), service level, assignee, accountable, Business Unit,
+  department, type, recurrence, level (`tms_leadershiptasklevel`), source,
+  related Leadership Practice, description, action (`hx_justifications`).
+  Chosen by fill rate on IT's 44,581 rows; each column's type read from
+  metadata — `hx_assignee`, `hx_accountable` and
+  `cr18c_relatedleadershippractice` are **lookups** (select `_…_value`),
+  `hx_status`/`hx_priority`/`hx_recurrencetype`/`cr18c_tasksource` choices,
+  `hx_tasktype`/`hx_taskcode`/`hx_servicelevel`/`tms_*` **text**. The
+  picker's `fetchTasks()` is untouched (all 44k rows, kept lean).
+- **`taskMetaRows()`** (`domain.jsx`), rendered with `CiteMeta` like Process /
+  Project. Delay "No" is omitted; an inactive Task says so.
+- **OrgReports** reads the open report's cited Tasks when it opens (only ids
+  not already held), and the citation title now uses every lookup's live name
+  (POC, Strategy, BI, Task, Project were all missing from it).
+- The same columns were run against IT for the 3 Tasks live reports cite —
+  no error. Not seen rendered (no Dataverse locally). Build a report/plan and
+  the export are unchanged. **Not committed, not pushed.**
+
 
 ## 6. Schema facts that are expensive to rediscover
 
