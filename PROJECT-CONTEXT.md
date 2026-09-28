@@ -8251,7 +8251,13 @@ the shared **`Combo`** (`shared/ui.jsx`) — type to filter by **name or email**
 close. Nothing else in the form changed. The form itself only opens from a
 live report, so the control was checked on the Business Intelligence screen's
 Combo (opens focused on search, filters, "Nothing matches", Escape closes).
-Both apps build; lint clean. **Not committed, not pushed.**
+Both apps build; lint clean.
+
+**Pushed 28 Sep, both apps**, first attempt each, with the repeated-Departments
+change: commits `dad7f54` (Departments) and `1c25356` (Assignee search), built
+from HEAD minus `4ca0036` (uploader columns re-checked: still absent), then the
+tree restored. Governance carries the Department rules; Leadership the
+searchable Assignee.
 
 ## 6. Schema facts that are expensive to rediscover
 
