@@ -7662,7 +7662,7 @@ Per an explicit ask, with a screenshot. Source of truth is the same file,
   shows **Closed** instead, which is real.
 - Both apps build. Seen on the local dev server with no Minutes (no Dataverse
   locally); no console errors after reload. **Not yet seen with real rows.
-  Committed; not pushed** — see the status entry below.
+  Committed and pushed** — see the status entry below.
 
 ### 28 Sep: Meetings restyled to the same design
 
@@ -7690,7 +7690,7 @@ Per an explicit ask, with a screenshot. Source of truth `#v-meetings`.
 - Both apps build. Locally the screen shows only "Reading from Dataverse…",
   so the row styling was checked on a throwaway page (the real stylesheet,
   sample rows in the same markup) served by the dev server and then deleted.
-  **Not seen with live data. Committed; not pushed** — see the status entry
+  **Not seen with live data. Committed and pushed** — see the status entry
   below.
 
 ### 28 Sep: status at the end of the design-restyle session
@@ -7702,13 +7702,15 @@ styled by the one scoped stylesheet `src/modules/leadership/leadership-design.cs
 | Screen | Design view | Committed | Pushed to Code App |
 |---|---|---|---|
 | Committee Scores | `#v-audit` | `06cddff` | **Yes** — Leadership, 28 Sep (entry above) |
-| Meeting Minutes | `#v-mom` | this commit | **No** |
-| Meetings | `#v-meetings` | this commit | **No** |
+| Meeting Minutes | `#v-mom` | `9cfa3bf` | **Yes** — Leadership, 28 Sep |
+| Meetings | `#v-meetings` | `9cfa3bf` | **Yes** — Leadership, 28 Sep |
 
-- **Live app is behind the branch.** `83db0ef8…` still shows the old Meeting
-  Minutes and Meetings screens; the next Leadership push (staging folder
-  `C:\tmp\cad-exec`, procedure in the 25 Sep entry) carries both. Governance
-  is unaffected by all three — none of its source changed.
+- **Pushed 28 Sep, Leadership only**, first attempt, from `C:\tmp\cad-exec`
+  to `83db0ef8-4c62-4eef-84ac-dadab326b704`, carrying `9cfa3bf`.
+  `.power`/`power.config.json` present before and after; only `dist`
+  replaced. Governance not pushed: none of its source changed, and its bundle
+  still has zero DT New URLs and no `.cs-root` rules. The live app now
+  matches the branch.
 - **None of the three restyled screens has been seen against live data.** The
   dev server cannot reach Dataverse, so only headers, stats, empty states and
   (for Meetings) a throwaway sample-row page were checked. After the next push,
