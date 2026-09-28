@@ -8180,6 +8180,39 @@ those three columns exist; once they do, build HEAD as is and push both apps.
 agenda item (settles the Work Log and Append / Append To questions above), and
 Approve or Return a report — its Review History should now show the entry.
 
+### 28 Sep: Stage 4 meetings take several Categories → `lm_topmanagementmeetingcategories`
+
+Per an explicit ask. The table was added to IT for this; read with
+`pac modelbuilder` first: **`lm_topmanagementmeetingcategory`**
+(`lm_topmanagementmeetingcategories`) — `lm_MeetingTemplate` → `lm_meetingtemplate`,
+**`lm_Meetingcategory`** → `lm_meetingcategory` (lowercase **c** — the bind
+name must match), `lm_name`. Empty in IT so far. IT holds **16 Stage 4
+categories** under 4 Classifications (Planning 8, Monitoring 3, Technology 4,
+Clinical 1). Decided by the user: **one Classification, several Categories
+within it**; the Setup's own **`lm_Category` = the first one ticked**.
+
+- **Governance:** at Stage 4 (meetings, not Accreditation Committees), once a
+  Classification is chosen, the Category field becomes **Categories** — a
+  `MultiPick` of that Classification's Stage 4 categories, held in
+  `s.meetingCategories`; ticking sets `meetingCategory` / `meetingCategoryName`
+  to the first, so validation, the derived name and the register work
+  unchanged. Changing Stage or Classification clears the list. Categories no
+  longer offered are flagged.
+- **Save:** `buildMeetingTemplatePayload` sends `topCategories`
+  ({categoryId, name}) for Stage 4 meetings, `[]` otherwise.
+  `createMeetingTemplateChildren` writes one row per category on first save;
+  `updateMeetingTemplateToDataverse` **reconciles** them with `reconcileRows()`
+  (kept / added / removed — every row goes when a Setup leaves Stage 4).
+- **Load:** `fetchMeetingTemplateDetail()` and `fetchMeetingTemplateChildIds()`
+  read the rows (`topCategories`); `dataverseMeetingToSetup` rebuilds
+  `meetingCategories` with the Setup's own `lm_Category` first.
+- Schema re-check with the table added: reads and both binds match IT.
+- Checked in the Governance dev server: Stage 1 keeps the single Category
+  select; Stage 4 + a Classification shows the Categories multi-pick (empty
+  locally — categories are live data). Both apps build; lint clean. **Not
+  committed, not pushed** — and HEAD still carries the undeployable uploader
+  commit `4ca0036`, so a push needs the same reverse-apply as before.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap

@@ -1959,6 +1959,16 @@ const Lm_meetingtemplateagendaitemsService = dvTable('lm_meetingtemplateagendait
 const Lm_meetingtemplatesupportivefunctionsesService = dvTable('lm_meetingtemplatesupportivefunctionses', 'lm_meetingtemplatesupportivefunctionsid', IT_ORG);
 const Lm_meetingtemplatedepartmentfunctionsService = dvTable('lm_meetingtemplatedepartmentfunctions', 'lm_meetingtemplatedepartmentfunctionid', IT_ORG);
 const Lm_meetingtemplatelinkedreportsesService = dvTable('lm_meetingtemplatelinkedreportses', 'lm_meetingtemplatelinkedreportsid', IT_ORG);
+/* Stage 4 (Top Management) meetings' Categories, one row per (Setup, Category)
+   -- added to IT by 28 Sep. Lookups: lm_MeetingTemplate and lm_Meetingcategory
+   (lowercase c: the bind name must match the schema name exactly). */
+const Lm_topmanagementmeetingcategoriesService = dvTable('lm_topmanagementmeetingcategories', 'lm_topmanagementmeetingcategoryid', IT_ORG);
+const TOP_CATEGORY_SELECT = ['lm_topmanagementmeetingcategoryid','lm_name','_lm_meetingcategory_value'];
+const topCategoryRow = (templateId, c) => ({
+  'lm_MeetingTemplate@odata.bind': `/lm_meetingtemplates(${templateId})`,
+  'lm_Meetingcategory@odata.bind': `/lm_meetingcategories(${c.categoryId})`,
+  lm_name: c.name || undefined,
+});
 const Lm_meetingattendeeslistsService = dvTable('lm_meetingattendeeslists', 'lm_meetingattendeeslistid', IT_ORG);
 const Lm_meetingcategoriesService = dvTable('lm_meetingcategories', 'lm_meetingcategoryid', IT_ORG);
 
@@ -2625,6 +2635,16 @@ async function reconcileMeetingUnits(templateId, payload, existing, errors){
 async function createMeetingTemplateChildren(templateId, payload, errors, opts = {}){
   const bind = `/lm_meetingtemplates(${templateId})`;
 
+  /* A Stage 4 meeting's Categories -- one lm_topmanagementmeetingcategories row
+     each, on first save. The update path reconciles them instead. */
+  if(!opts.skipUnits){
+    for(const c of (payload.topCategories || [])){
+      if(!c?.categoryId) continue;
+      try{ await Lm_topmanagementmeetingcategoriesService.create(topCategoryRow(templateId, c)); }
+      catch(e){ errors.push({ table:'lm_topmanagementmeetingcategories', error:e }); }
+    }
+  }
+
   /* A Stage 4 meeting's covered units (see reconcileMeetingUnits): scope-only
      rows, created once here on first save; the update path reconciles them
      instead, so they are skipped with the other unit rows there. */
@@ -2781,7 +2801,7 @@ async function createMeetingTemplateChildren(templateId, payload, errors, opts =
  *  before recreating from the edited payload. */
 async function fetchMeetingTemplateChildIds(dvId){
   const filter = `_lm_meetingtemplate_value eq ${dvId}`;
-  const [agendaRes, linesRes, supportiveRes, linkedRes, busRes, regionsRes] = await Promise.all([
+  const [agendaRes, linesRes, supportiveRes, linkedRes, busRes, regionsRes, topCatRes] = await Promise.all([
     Lm_meetingtemplateagendaitemsService.getAll({ filter, select:['lm_meetingtemplateagendaitemid'] }),
     Lm_meetingtemplatedepartmentfunctionsService.getAll({ filter, select:['lm_meetingtemplatedepartmentfunctionid'] }),
     Lm_meetingtemplatesupportivefunctionsesService.getAll({ filter, select:['lm_meetingtemplatesupportivefunctionsid'] }),
@@ -2795,6 +2815,7 @@ async function fetchMeetingTemplateChildIds(dvId){
     Lm_meetingtemplateregionsService.getAll({ filter, select:['lm_meetingtemplateregionid',
       'lm_name','_lm_region_value','_lm_meetingchairman_value','_lm_meetingcochairman_value',
       '_lm_meetingorganizerfacilitator_value','_lm_teamchannel_value'] }),
+    Lm_topmanagementmeetingcategoriesService.getAll({ filter, select: TOP_CATEGORY_SELECT }),
   ]);
   const businessUnits = busRes?.data ?? [];
   const regions = regionsRes?.data ?? [];
@@ -2824,6 +2845,7 @@ async function fetchMeetingTemplateChildIds(dvId){
     supportive: supportiveRes?.data ?? [],
     linkedReports: linkedRes?.data ?? [],
     businessUnits, regions,
+    topCategories: topCatRes?.data ?? [],
     attendees: [...buAttendees.flat(), ...regionAttendees.flat()],
     groupAttendees: groupAttendeesRes,
     /* keyed by unit row id, for the reconcile path */
@@ -2944,6 +2966,18 @@ export async function updateMeetingTemplateToDataverse(dvId, payload){
        delete-and-recreate treatment as the other flat lists here, not the
        reconcileMeetingUnits() treatment above. */
     await reconcileMeetingUnits(dvId, payload, existing, errors);
+    /* Stage 4 Categories: keep the rows still ticked, add new ones, remove the
+       rest -- including every row when the Setup is no longer Stage 4. */
+    await reconcileRows({
+      service: Lm_topmanagementmeetingcategoriesService,
+      existing: existing.topCategories, wanted: (payload.topCategories || []).filter(c => c?.categoryId),
+      idField: 'lm_topmanagementmeetingcategoryid', table: 'lm_topmanagementmeetingcategories',
+      keyOfExisting: r => r._lm_meetingcategory_value,
+      keyOfWanted:   c => c.categoryId,
+      build: c => topCategoryRow(dvId, c),
+      diff: (c, row) => (row.lm_name || null) === (c.name || null) ? {} : { lm_name: c.name || null },
+      errors,
+    });
 
     await deleteRows(Lm_meetingtemplateagendaitemsService, existing.agenda, 'lm_meetingtemplateagendaitemid', 'lm_meetingtemplateagendaitems', errors);
     await deleteRows(Lm_meetingtemplatedepartmentfunctionsService, existing.lines, 'lm_meetingtemplatedepartmentfunctionid', 'lm_meetingtemplatedepartmentfunctions', errors);
@@ -3238,13 +3272,15 @@ export async function fetchMeetingTemplateDetail(id){
   if(!parent) throw new Error(`Meeting Template ${id} not found`);
 
   const filter = `_lm_meetingtemplate_value eq ${id}`;
-  const [agendaRes, linesRes, supportiveRes, linkedRes, busRes, regionsRes] = await Promise.all([
+  const [agendaRes, linesRes, supportiveRes, linkedRes, busRes, regionsRes, topCatRes] = await Promise.all([
     Lm_meetingtemplateagendaitemsService.getAll({ filter, select:['lm_agendaitemname','lm_step','lm_agendaitemtype','_lm_agendaitemowner_value'] }),
     Lm_meetingtemplatedepartmentfunctionsService.getAll({ filter, select:['_lm_department_value','_lm_function_value'] }),
     Lm_meetingtemplatesupportivefunctionsesService.getAll({ filter, select:['lm_newcolumn','_lm_function_value'] }),
     Lm_meetingtemplatelinkedreportsesService.getAll({ filter, select:['lm_name','lm_reporttype','_lm_reporttemplate_value'] }),
     Lm_meetingtemplatebusinessunitsesService.getAll({ filter, select:['lm_meetingtemplatebusinessunitsid','lm_name','_lm_businessunit_value','_lm_meetingchairman_value','_lm_meetingcochairman_value','_lm_meetingorganizerfacilitator_value','_lm_teamchannel_value'] }),
     Lm_meetingtemplateregionsService.getAll({ filter, select:['lm_meetingtemplateregionid','lm_name','_lm_region_value','_lm_meetingchairman_value','_lm_meetingcochairman_value','_lm_meetingorganizerfacilitator_value','_lm_teamchannel_value'] }),
+    /* Never fails the Setup read: a missing table just means no Stage 4 list. */
+    Lm_topmanagementmeetingcategoriesService.getAll({ filter, select: TOP_CATEGORY_SELECT }).catch(()=>null),
   ]);
 
   const businessUnits = busRes?.data ?? [];
@@ -3281,6 +3317,7 @@ export async function fetchMeetingTemplateDetail(id){
     businessUnits: businessUnits.map((bu,i) => ({ ...bu, attendees: buAttendees[i] })),
     regions: regions.map((rg,i) => ({ ...rg, attendees: regionAttendees[i] })),
     groupAttendees: groupAttendeesRes,
+    topCategories: topCatRes?.data ?? [],
   };
 }
 /* =========================================================================

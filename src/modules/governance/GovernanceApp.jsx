@@ -2178,7 +2178,7 @@ function MeetingClassField({s,set,accred,tot,locked}){
       placeholder={!s.stage ? 'Choose a Stage first…'
         : opts.length ? 'Choose a Type / Classification…'
         : 'No Classification defined for this Stage'}
-      onChange={v=>set({category:v, meetingCategory:null, meetingCategoryName:null,
+      onChange={v=>set({category:v, meetingCategory:null, meetingCategoryName:null, meetingCategories:[],
         /* a Team of Teams carries one Department — keep the first line if several were added */
         ...(v===TOT?{lines:(s.lines||[]).slice(0,1)}:{})})}/>
     {orphaned
@@ -2203,6 +2203,32 @@ function MeetingCategoryField({s,set,accred}){
       <Sel id="f-meetingCategory" val={null} opts={[]} disabled
         placeholder={accred ? 'Stage first…' : 'Stage and Type / Classification first…'} onChange={()=>{}}/>
     </Field>;
+  /* Stage 4 (Top Management) meetings take SEVERAL Categories within the one
+     Classification (28 Sep, per the product owner). The full list is saved to
+     lm_topmanagementmeetingcategories, one row per Category; the Setup's own
+     single lm_Category holds the FIRST one ticked, so everything that reads one
+     Category (the name, the register) keeps working. */
+  if(isExecMeeting(s) && !accred){
+    const picked=(s.meetingCategories||[]).length ? s.meetingCategories
+      : (s.meetingCategory ? [s.meetingCategory] : []);
+    const stale=picked.filter(id=>!opts.some(c=>c.id===id));
+    return <Field id="f-meetingCategory" label="Categories" req={opts.length>0}
+      hint={opts.length
+        ? `Tick every Category this Top Management meeting covers, within ${s.category}. The first one ticked is the Setup's main Category.`
+        : 'No Category is defined for Stage 4 and this Classification in the Taxonomy application.'}>
+      <MultiPick id="f-meetingCategory"
+        groups={[{title:null, items:opts.map(c=>({id:c.id, name:c.name, sub:c.regionChip||undefined}))}]}
+        val={picked}
+        onChange={v=>{
+          const first=MEETING_CATEGORIES.find(c=>c.id===v[0]);
+          set({meetingCategories:v, meetingCategory:v[0]||null, meetingCategoryName:first?.name||null});
+        }}/>
+      {stale.length
+        ? <Note k="warn" ic="⚠">{stale.length} Categor{stale.length>1?'ies are':'y is'} no longer offered for
+            Stage 4 and {s.category} — untick {stale.length>1?'them':'it'} before publishing.</Note>
+        : null}
+    </Field>;
+  }
   return <Field id="f-meetingCategory" label="Category" req={opts.length>0}
     hint={chosen?.regionChip
       ? `${chosen.name} is recorded against ${chosen.regionChip}.`
@@ -2805,7 +2831,7 @@ function MeetingWizard({rec,onClose}){
                    kind starts again, like the unit lists. */
                 set({stage:v, regions:[], businessUnits:[], scopeKind:null,
                      ...(keepsClass?{}:{category:null}),
-                     meetingCategory:null, meetingCategoryName:null,
+                     meetingCategory:null, meetingCategoryName:null, meetingCategories:[],
                      units:syncUnits(ns)});}}/></Field>
           <MeetingClassField s={s} set={set} accred={accred} tot={tot} locked={locked}/>
           <MeetingCategoryField s={s} set={set} accred={accred}/>
@@ -3395,6 +3421,13 @@ function buildMeetingTemplatePayload(f){
       ? (f.regions||[]).map(id=>({regionId:id, name:nameOf(REGIONS,id)||undefined}))
       : [],
     meetingCategoryId: f.meetingCategory || undefined,
+    /* Stage 4 meetings only: every Category ticked, one lm_topmanagementmeetingcategories
+       row each. Empty for any other Setup, which removes rows left from a
+       previous Stage 4 save. */
+    topCategories: isExecMeeting(f) && f.setupType!=='Accreditation Committee'
+      ? ((f.meetingCategories||[]).length ? f.meetingCategories : (f.meetingCategory?[f.meetingCategory]:[]))
+          .map(id=>({categoryId:id, name:MEETING_CATEGORIES.find(c=>c.id===id)?.name||undefined}))
+      : [],
     /* Stamped from the list at save time, falling back to whatever the Setup
        was last saved with if the row has since been retired. */
     meetingCategoryName:
@@ -3878,6 +3911,13 @@ function dataverseMeetingToSetup(detail){
     setupType:DV_MEETING_SETUP_TYPE[p.lm_setuptype]||'Business Meeting',
     category:DV_MEETING_CATEGORY[p.lm_typeclassification]||null,
     meetingCategory:p._lm_category_value||null,
+    /* Stage 4: every Category from lm_topmanagementmeetingcategories, the Setup's
+       own lm_Category first so "first ticked = main" survives a reload. */
+    meetingCategories:(()=>{
+      const ids=(detail.topCategories||[]).map(r=>r._lm_meetingcategory_value).filter(Boolean);
+      const main=p._lm_category_value;
+      return main && ids.includes(main) ? [main, ...ids.filter(x=>x!==main)] : ids;
+    })(),
     /* The stamped name, not the lookup's -- what this Setup was published as. */
     meetingCategoryName:p.lm_category_name||null,
     stage:isRegionLevel?STAGES[1]:(DV_MEETING_STAGE[p.lm_stages]||STAGES[0]),
