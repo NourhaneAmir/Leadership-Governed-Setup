@@ -7964,6 +7964,40 @@ spans 1648px like Calendar. Committed in `0b990f6`; pushed 28 Sep, Leadership
 only, first attempt, from `C:\tmp\cad-exec` to `83db0ef8…`. Governance
 rebuilt identical, not pushed.
 
+### 28 Sep: Create Report is a full page in four steps (was the New Report modal)
+
+Per an explicit ask, with a screenshot; three points decided by the user
+first: **full page**, **four steps as designed**, **drop the Excel proof of
+concept** from the screen.
+
+- **`NewReportModal` → `ScreenNewReport`**, a hidden wide screen `newrpt`
+  (like `rpt`). Every "+ New Report" goes there through `openNewReport()`,
+  which remembers the screen it came from (`newReportReturn`) so Cancel and
+  the breadcrumb return there. My Workspace's "New Report" now opens it too
+  (it only went to the Reports list, which its label did not match).
+- **All logic reused unchanged** — template detail, placement, the Department
+  / Function rules, the Creator default, `createReportOccurrence` and the
+  section migration. `ok` is split per step: 1 Template (card chosen, detail
+  loaded) → 2 Details (name, objective, scope, creator, period, unit) →
+  3 Attachments (the file link) → 4 Review → Save Draft. Later steps are
+  locked until earlier ones are valid; Save Draft is enabled whenever `ok` is.
+- **Bug avoided in the move:** the modal ran `go('build', id)` then
+  `onClose()`; on a page that close would have navigated straight off Build.
+- **Template cards** from `DV_RPT_TPL_LIST` (approved only, with the hidden
+  count), with a search box: icon by Report Category, name, objective (clamped
+  to two lines), and Category / Type / Frequency / "Setup v…" tags; Custom
+  Report is always the last card. `fetchReportTemplatesList()` now also reads
+  **`lm_objective`** for the description (confirmed on all 56 templates).
+- `readExcelComponents()` is kept in the code, just no longer offered.
+- `leadership-design.css` gained a Create Report block (`cs-crumb`,
+  `cs-stepper` / `cs-step`, `cs-info`, `cs-tpl-grid` / `cs-tpl`,
+  `.cs-icon.dark`).
+- Checked locally: opens from Reports / Plans and My Workspace and Cancel
+  returns to each; step gating as above; no console errors. Only the Custom
+  card exists locally (templates are live data), so the card grid was checked
+  on a throwaway sample page, served and deleted. **Not saved to Dataverse
+  locally, not committed, not pushed.**
+
 
 ## 6. Schema facts that are expensive to rediscover
 

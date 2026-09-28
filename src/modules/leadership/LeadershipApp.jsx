@@ -1431,6 +1431,11 @@ const SCREENS = [
   {id:'rpt',  group:'Execution',     label:'Reports & Plans',        Icon:null,           wide:true,
    Screen:ScreenReports,           hidden:true,
    hint:'Every Report and Plan: due to submit, in review, approved.'},
+  /* Create Report. Hidden from the sidebar: reached from every "+ New Report"
+     through openNewReport(), never as a place of its own. */
+  {id:'newrpt', group:'Artifact',    label:'New Report',             Icon:null,           wide:true,
+   Screen:ScreenNewReport,         hidden:true,
+   hint:'Create a Report from an approved template, or a Custom one.'},
 ];
 
 /* everything below is derived — nothing else in the file lists screens */
@@ -2226,9 +2231,9 @@ function App({onSwitch}){
      clicked -- Workspace, Calendar or Meetings -- it opens the read-only panel
      rather than an execution screen that could not render it. */
   const [dvOpen,setDvOpen]=useState(null);
-  /* The New Report modal is opened from more than one screen, so it lives at
-     app level next to dvOpen rather than inside any one of them. */
-  const [newRpt,setNewRpt]=useState(false);
+  /* Create Report is a page (28 Sep); this is the screen it was opened from,
+     so its Cancel can go back there. */
+  const [newReportReturn,setNewReportReturn]=useState('orpt');
   /* A live Meeting Occurrence has a full detail page of its own, so it navigates
      there -- straight to the Minutes tab for a MOM Due calendar item, since
      that is the one thing there is to do about it. A live Report Occurrence
@@ -2866,11 +2871,11 @@ function App({onSwitch}){
                toast,toasts,reset,S,A,work,cal,counts,onSwitch,
                dvMeetingOccs,dvReportOccs,dvMinutes,dvGridInstances,dvDecisions,dvLoading,dvError,refreshOccurrences,
                dvOpen,setDvOpen,openDvRec,dvLookup,
-               /* Opens the New Report modal. On the context on purpose:
+               /* Opens the Create Report page. On the context on purpose:
                   OrgReports.jsx's header rule forbids it importing anything
-                  from this file, so the modal itself cannot travel -- only
-                  this opener does. */
-               openNewReport:()=>setNewRpt(true)};
+                  from this file, so only this opener travels. */
+               newReportReturn,
+               openNewReport:()=>{ setNewReportReturn(screen==='newrpt'?newReportReturn:screen); go('newrpt'); }};
   const Screen = SCREEN_BY_ID[screen] || SCREEN_BY_ID.work;
 
   return <Ctx.Provider value={ctx}>
@@ -2886,7 +2891,6 @@ function App({onSwitch}){
     {/* Built 02 Sep, rendered nowhere since it was cut from the nav. It reads
         the approved Report Templates live and creates a real Report
         Occurrence, so it is connected rather than rebuilt. */}
-    {newRpt ? <NewReportModal onClose={()=>setNewRpt(false)}/> : null}
   </Ctx.Provider>;
 }
 /* =========================================================================
@@ -2932,7 +2936,7 @@ function Bucket({dot,title,sub,rows,dateLabel,empty}){
 }
 
 function ScreenWorkspace(){
-  const {work,cal,go,openMeeting,openDvRec,dvMeetingOccs,dvReportOccs} = use();
+  const {work,cal,go,openMeeting,openDvRec,dvMeetingOccs,dvReportOccs,openNewReport} = use();
   const [tab,setTab]     = useState('All');
   const [quick,setQuick] = useState('all');
   const overdue = work.all.filter(w=>w.date && w.date<TODAY);
@@ -3011,13 +3015,8 @@ function ScreenWorkspace(){
         <div><h1 className="cs-title">My Workspace</h1>
           <p className="cs-sub">Your pending tasks, upcoming meetings, and action items across all modules.</p></div>
         <div className="cs-actions">
-          {/* 'orpt' is the Reports / Plans TAB in the sidebar. This used to go to
-              'rpt', the hidden seeded composer -- a different screen with the
-              confusingly similar label "Reports & Plans". Safe to redirect
-              because this call site passes no id; the ones that DO pass an id
-              still need 'rpt' until ScreenOrgReports can receive a selection
-              (see the note on the hidden registry entry). */}
-          <button type="button" className="cs-btn ghost lg" onClick={()=>go('orpt')}>
+          {/* Opens the Create Report page, the same as Reports / Plans' own button. */}
+          <button type="button" className="cs-btn ghost lg" onClick={openNewReport}>
             <Plus size={13}/>New Report</button>
           <button type="button" className="cs-btn primary lg" onClick={()=>go('mtg')}>
             <Plus size={13}/>New Meeting</button>
@@ -4600,8 +4599,14 @@ function ApprovedSetupPicker({id,list,val,onChange,labelOf,emptyText,extraOption
   </>;
 }
 
-function NewReportModal({onClose}){
-  const {toast,refreshOccurrences,dvLookup,go}=use();
+/* Create Report -- a full page since 28 Sep (was NewReportModal). Reached from
+   every "+ New Report" through openNewReport(), which remembers the screen it
+   was opened from so Cancel returns there. */
+function ScreenNewReport(){
+  const {toast,refreshOccurrences,dvLookup,go,newReportReturn}=use();
+  const onClose = ()=>go(newReportReturn||'orpt');
+  const [step,setStep]=useState(1);
+  const [tplQ,setTplQ]=useState('');
   /* What the Create button is doing right now: {label, done, total}. `total`
      0 means "no count available", which renders as an indeterminate bar. */
   const [progress,setProgress]=useState(null);
@@ -4862,55 +4867,84 @@ function NewReportModal({onClose}){
          first would land on a list the new row is not in yet and fall back to
          whatever was top of it. */
       go('build', id);
-      onClose();
     }catch(e){
       console.warn('[dataverse] Report Occurrence create threw unexpectedly:', e);
       toast('Not saved','Creating the Report Occurrence in Dataverse failed. Check the console for details.','err');
     }finally{ setSaving(false); setProgress(null); }
   };
 
-  return <Modal title="Create a Report" wide onClose={onClose}
-    sub="Pick an approved Report Template, or use Custom where none exists. Either way this creates a Draft."
-    footer={<><Btn onClick={onClose} disabled={saving}>Cancel</Btn>
-      <Btn k="pri" disabled={!ok||saving} onClick={save}>
-        {saving?'Saving…':(custom?'Create the Report':'Create from the Setup')}</Btn></>}>
+  /* ---- the page (28 Sep, from the approved design's Create Report view) ----
+     Was a modal; now a full page in four steps. What each step needs before
+     Next is allowed is exactly what `ok` above already demanded, split up:
+     the logic, the Dataverse writes and the rules are unchanged. The Excel
+     "read components" proof of concept is no longer offered here (it only
+     logged to the console); readExcelComponents() itself is kept. */
+  const approvedTpls = (DV_RPT_TPL_LIST||[]).filter(setupIsApproved);
+  const hiddenTpls = (DV_RPT_TPL_LIST||[]).length - approvedTpls.length;
+  const needle = tplQ.trim().toLowerCase();
+  const shownTpls = needle
+    ? approvedTpls.filter(t => [t.name, t.objective, REPORT_CATEGORY[t.reportCategoryCode],
+        REPORT_FREQUENCY[t.frequencyCode], REPORT_TYPE[t.reportTypeCode]]
+        .some(v => v && String(v).toLowerCase().includes(needle)))
+    : approvedTpls;
+  const chosenTpl = custom ? null : approvedTpls.find(t => t.id === f.setup) || null;
 
-    <Field label="Report Setup" req
-      hint="Approved Setups only, read live from Dataverse.">
-      <ApprovedSetupPicker list={DV_RPT_TPL_LIST} val={f.setup}
-        onChange={v=>set('setup',v)}
-        emptyText="No Report Templates loaded from Dataverse"
-        extraOption={<option value="custom">Custom Report — no approved Setup</option>}
-        labelOf={t=>`${t.name}${t.reportCategoryCode?' — '+(REPORT_CATEGORY[t.reportCategoryCode]||''):''}`}/>
-    </Field>
+  const step1ok = !!f.setup && (custom || !tplLoading);
+  const step2ok = step1ok && !!f.name.trim() && !!f.objective.trim() && scopeChosen
+    && !!f.dvCreatorPositionId && !!f.period
+    && (custom || tplUnits.length<=1 || !!f.tplUnitKey);
+  const step3ok = step2ok && f.fileUrl.trim().length<=FILE_URL_MAX;
+  const canReach = n => n===1 || (n===2 && step1ok) || (n===3 && step2ok) || (n===4 && step3ok);
+  const stepOk = [null, step1ok, step2ok, step3ok, !!ok];
+  const STEPS = [
+    {n:1, t:'Template',    s:'Select template'},
+    {n:2, t:'Details',     s:'Fill fields'},
+    {n:3, t:'Attachments', s:'Link the file'},
+    {n:4, t:'Review',      s:'Create the Draft'},
+  ];
+  /* Icon and colour by Report Category, so a type reads at a glance. */
+  const tplLook = t => t.reportCategoryCode===1 ? {Ic:Activity,  c:'green'}
+    : t.reportCategoryCode===3 ? {Ic:CircleAlert, c:'amber'}
+    : {Ic:FileText, c:'gold'};
 
-    {f.setup && !custom && tplLoading &&
-      <Note k="info" ic="i">
-        Reading this Setup's organizational placement and review chain from Dataverse…
-        {/* Indeterminate: there is nothing to count here, and a bar that
-            invents a percentage is worse than one that admits it. */}
-        <div className="bar indet" style={{marginTop:8}}><i/></div>
-      </Note>}
-    {f.setup && !custom && !tplLoading && tplUnits.length>1 &&
-      <Field label="Business Unit / Region" req
-        hint="This Setup is approved for more than one place — choose which one this Report belongs to.">
-        <select value={f.tplUnitKey} onChange={e=>applyUnit(tplUnits.find(u=>u.key===e.target.value)||null)}>
-          <option value="">Select…</option>
-          {tplUnits.map(u=><option key={u.key} value={u.key}>{u.label}</option>)}
-        </select></Field>}
-    {f.setup && !custom && !tplLoading && tplUnits.length===1 &&
-      <Note k="info" ic="i">Business Unit / Region: <b>{tplUnits[0].label}</b> — the only place this
-        Setup is approved to run.</Note>}
-    {f.setup && !custom && !tplLoading && tplUnits.length===0 &&
-      <Note k="info" ic="i">This Setup runs once, group-wide — no Business Unit or Region scope applies.</Note>}
-    {custom && <Note k="info" ic="i">Business Unit, Department and the Creator are read from Dataverse —
-      the seeded demo people used elsewhere in this module are not real rows and the lookups would
-      reject them. A Custom Report has no Template, so it carries no configured review chain.</Note>}
+  const pickTpl = id => { if(id!==f.setup) set('setup', id); };
 
-    {/* The create itself. Determinate while sections are being copied,
-        because the migration reports how many it has written of how many the
-        Setup defines; indeterminate for the row create and the refresh, which
-        have nothing to count. */}
+  return <div className="cs-root">
+    <div className="cs-head" style={{paddingBottom:16}}>
+      <div className="cs-crumb"><button type="button" onClick={onClose}>Reports</button> › <b>New Report</b></div>
+      <div className="cs-head-top">
+        <div><h1 className="cs-title">Create Report</h1>
+          <p className="cs-sub">Select a template, fill in the details, and create a Draft. It opens in
+            Build a report/plan, where it is written and later submitted for review.</p></div>
+        <div className="cs-actions">
+          <button type="button" className="cs-btn ghost lg" onClick={onClose} disabled={saving}>Cancel</button>
+          {step<4
+            ? <>
+                <button type="button" className="cs-btn ghost lg" onClick={save} disabled={!ok||saving}
+                  title={ok?'Create the Draft now':'Fill the required details first'}>
+                  {saving?'Saving…':'Save Draft'}</button>
+                <button type="button" className="cs-btn primary lg" disabled={!stepOk[step]||saving}
+                  onClick={()=>setStep(step+1)}>Next Step</button>
+              </>
+            : <button type="button" className="cs-btn primary lg" onClick={save} disabled={!ok||saving}>
+                {saving?'Saving…':'Save Draft'}</button>}
+        </div>
+      </div>
+    </div>
+
+    <nav className="cs-stepper" aria-label="Create Report steps">
+      {STEPS.map((x,i)=><React.Fragment key={x.n}>
+        {i>0 && <span className={'cs-step-line'+(step>x.n-1 && stepOk[x.n-1]?' done':'')} aria-hidden="true"/>}
+        <button type="button" disabled={!canReach(x.n) || saving}
+          className={'cs-step'+(step===x.n?' on':step>x.n?' done':'')+(canReach(x.n)?' reach':'')}
+          aria-current={step===x.n?'step':undefined} onClick={()=>setStep(x.n)}>
+          <span className="cs-step-n">{step>x.n ? '✓' : x.n}</span>
+          <span><span className="cs-step-t">{x.t}</span><span className="cs-step-s">{x.s}</span></span>
+        </button>
+      </React.Fragment>)}
+    </nav>
+
+    {/* The create itself -- see the progress note in save(). */}
     {saving && progress &&
       <Note k="info" ic="i">
         {progress.label}
@@ -4921,7 +4955,85 @@ function NewReportModal({onClose}){
         </div>
       </Note>}
 
-    {(custom || (f.setup && !tplLoading)) && <>
+    {step===1 && <>
+      <div>
+        <h2 className="cs-h2">Choose a Report Template</h2>
+        <p className="cs-sub" style={{margin:0}}>Templates are published through <b>Governance Setup</b>. Only
+          active, approved templates appear here.</p>
+      </div>
+      <div className="cs-info">
+        <FileText size={13} aria-hidden="true"/>
+        <span>Showing <b>{approvedTpls.length}</b> approved template{approvedTpls.length===1?'':'s'} from the
+          Setup Register{hiddenTpls>0?<> ({hiddenTpls} not approved and hidden)</>:null}. A template brings its
+          review chain, sections and placement with it.</span>
+        <span className="cs-search cs-chips-end">
+          <input type="search" value={tplQ} placeholder="Search templates…" aria-label="Search templates"
+            onChange={e=>setTplQ(e.target.value)}/>
+          {needle ? <span className="cs-search-n">{shownTpls.length} of {approvedTpls.length}</span> : null}
+        </span>
+      </div>
+
+      {(DV_RPT_TPL_LIST||[]).length>0 && approvedTpls.length===0
+        ? <Note k="warn">None of the {(DV_RPT_TPL_LIST||[]).length} Setups read from Dataverse is Active /
+            Approved, so there is nothing to create from. Approve one in Governance Setup first — or use a
+            Custom Report.</Note>
+        : null}
+
+      <div className="cs-tpl-grid" role="radiogroup" aria-label="Report templates">
+        {shownTpls.map(t=>{
+          const {Ic,c}=tplLook(t);
+          return <button key={t.id} type="button" role="radio" aria-checked={f.setup===t.id}
+              className={'cs-tpl'+(f.setup===t.id?' on':'')} onClick={()=>pickTpl(t.id)}>
+            <span className={'cs-icon '+c} aria-hidden="true"><Ic size={16}/></span>
+            <span className="cs-tpl-t">{t.name}</span>
+            <span className="cs-tpl-d">{t.objective || 'No objective recorded on this template.'}</span>
+            <span className="cs-tpl-tags">
+              {REPORT_CATEGORY[t.reportCategoryCode] && <span className="cs-type">{REPORT_CATEGORY[t.reportCategoryCode]}</span>}
+              {REPORT_TYPE[t.reportTypeCode] && <span className="cs-type green">{REPORT_TYPE[t.reportTypeCode]}</span>}
+              {REPORT_FREQUENCY[t.frequencyCode] && <span className="cs-type adhoc">{REPORT_FREQUENCY[t.frequencyCode]}</span>}
+              <span className="cs-type adhoc">Setup v{t.version||1}</span>
+            </span>
+          </button>;})}
+        <button type="button" role="radio" aria-checked={custom}
+            className={'cs-tpl'+(custom?' on':'')} onClick={()=>pickTpl('custom')}>
+          <span className="cs-icon dark" aria-hidden="true"><PenLine size={16}/></span>
+          <span className="cs-tpl-t">Custom Report</span>
+          <span className="cs-tpl-d">No approved Setup behind it — you set the stage, scope and department
+            yourself. It carries no configured review chain.</span>
+          <span className="cs-tpl-tags"><span className="cs-type amber">Custom</span></span>
+        </button>
+      </div>
+      {needle && shownTpls.length===0
+        ? <div className="cs-card-note">No approved template matches “{tplQ.trim()}”. Custom Report is always
+            available.</div> : null}
+
+      {f.setup && !custom && tplLoading &&
+        <Note k="info" ic="i">
+          Reading this Setup's organizational placement and review chain from Dataverse…
+          <div className="bar indet" style={{marginTop:8}}><i/></div>
+        </Note>}
+    </>}
+
+    {step===2 && <section className="cs-card cs-form" aria-labelledby="nr-details">
+      <h2 className="cs-card-title" id="nr-details">
+        Details — {custom ? 'Custom Report' : (chosenTpl?.name || 'the chosen template')}</h2>
+
+      {!custom && tplUnits.length>1 &&
+        <Field label="Business Unit / Region" req
+          hint="This Setup is approved for more than one place — choose which one this Report belongs to.">
+          <select value={f.tplUnitKey} onChange={e=>applyUnit(tplUnits.find(u=>u.key===e.target.value)||null)}>
+            <option value="">Select…</option>
+            {tplUnits.map(u=><option key={u.key} value={u.key}>{u.label}</option>)}
+          </select></Field>}
+      {!custom && tplUnits.length===1 &&
+        <Note k="info" ic="i">Business Unit / Region: <b>{tplUnits[0].label}</b> — the only place this
+          Setup is approved to run.</Note>}
+      {!custom && tplUnits.length===0 &&
+        <Note k="info" ic="i">This Setup runs once, group-wide — no Business Unit or Region scope applies.</Note>}
+      {custom && <Note k="info" ic="i">Business Unit, Department and the Creator are read from Dataverse —
+        the seeded demo people used elsewhere in this module are not real rows and the lookups would
+        reject them. A Custom Report has no Template, so it carries no configured review chain.</Note>}
+
       <Field label="Report name" req><input type="text" value={f.name}
         onChange={e=>set('name',e.target.value)}
         placeholder="e.g. Ophthalmology Laser Utilisation Review"/></Field>
@@ -5037,23 +5149,61 @@ function NewReportModal({onClose}){
               </div>;
             })}
           </div></Field>}
+    </section>}
 
+    {step===3 && <section className="cs-card cs-form" aria-labelledby="nr-files">
+      <h2 className="cs-card-title" id="nr-files">Attachments</h2>
+      <p className="cs-card-note">Where the working copy of this Report lives. Optional — it can be added later
+        from the report itself.</p>
       <Field label="File"
-        hint={`The location the working copy lives in — max ${FILE_URL_MAX} characters.`}
+        hint={`A link or a file name — max ${FILE_URL_MAX} characters.`}
         err={f.fileUrl.trim().length>FILE_URL_MAX
           ? `${f.fileUrl.trim().length} characters — ${FILE_URL_MAX} max.` : null}>
         <input type="text" value={f.fileUrl} onChange={e=>set('fileUrl',e.target.value)}
           placeholder="https://… or Laser_Utilisation_Review_Q3.xlsx"/></Field>
+    </section>}
 
-      <Field label="Read components from an Excel file (proof of concept)"
-        hint="Reads the workbook in your browser only -- nothing is uploaded. Sheets and named ranges are logged to the console; nothing is saved yet.">
-        <input type="file" accept=".xlsx,.xls" onChange={e=>{
-          const file=e.target.files?.[0];
-          if(file) readExcelComponents(file).catch(err=>console.warn('[Excel] read failed:', err));
-          e.target.value='';
-        }}/></Field>
-    </>}
-  </Modal>;
+    {step===4 && <section className="cs-card" aria-labelledby="nr-review">
+      <h2 className="cs-card-title" id="nr-review">Review</h2>
+      <p className="cs-card-note">Saving creates this Report as a <b>Draft</b>
+        {custom ? ', flagged as having no Setup' : ' linked to its approved Report Template, with the Setup’s sections copied in'}.
+        It then opens in Build a report/plan.</p>
+      <div>{[
+          ['Template', custom ? 'Custom Report — no approved Setup' : (chosenTpl?.name || '—')],
+          ['Report name', f.name.trim() || '—'],
+          ['Objective', f.objective.trim() || '—'],
+          ['Stage', f.stage],
+          ['Business Unit / Region', dvBu(f.dvBusinessUnitId) || dvRegion(f.dvRegionId) || 'Group-wide'],
+          ['Department', dvDept(f.dvDepartmentId) || '—'],
+          ['Function', DV_FUNC_LIST.find(x=>x.id===f.dvFunctionId)?.name || '—'],
+          ['Created by', dvPos(f.dvCreatorPositionId) || '—'],
+          ['Period', f.period || '—'],
+          ['File', f.fileUrl.trim() || '—'],
+          ...(!custom && reviewChain.length
+            ? [['Review chain', reviewChain.map(r=>DV_POS_HOLDER[r._lm_reviewerposition_value]
+                || dvPos(r._lm_reviewerposition_value) || '—').join(' → ')]]
+            : []),
+        ].map(([k,v])=>
+          <div key={k} className="cs-qs" style={{alignItems:'flex-start',gap:16}}>
+            <span style={{flexShrink:0}}>{k}</span>
+            <span className="cs-name" style={{fontWeight:500,textAlign:'right',whiteSpace:'pre-wrap'}}>{v}</span>
+          </div>)}
+      </div>
+      {!ok && <Note k="warn">Something required is still missing — go back to Details.</Note>}
+    </section>}
+
+    {/* Back / next at the foot too, so a long Details step does not mean
+        scrolling back up to move on. */}
+    <div className="cs-actions" style={{justifyContent:'space-between'}}>
+      <button type="button" className="cs-btn lg" disabled={step===1||saving}
+        onClick={()=>setStep(step-1)}>← Back</button>
+      {step<4
+        ? <button type="button" className="cs-btn primary lg" disabled={!stepOk[step]||saving}
+            onClick={()=>setStep(step+1)}>Next Step →</button>
+        : <button type="button" className="cs-btn primary lg" onClick={save} disabled={!ok||saving}>
+            {saving?'Saving…':'Save Draft'}</button>}
+    </div>
+  </div>;
 }
 
 function CustomReportModal({onClose}){

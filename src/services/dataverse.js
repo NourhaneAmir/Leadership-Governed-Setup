@@ -2986,7 +2986,9 @@ export async function updateMeetingTemplateStatus(dvId, status){
 
 export async function fetchReportTemplatesList(){
   const res = await Lm_report_templatesService.getAll({
-    select: ['lm_report_templateid','lm_newcolumn','lm_reporttype','lm_reportcategory','lm_frequency','lm_reportstatus','lm_version','modifiedon','createdon'],
+    /* lm_objective added 28 Sep: the Create Report page shows it on each
+       template card. Same column fetchReportTemplateDetail() already reads. */
+    select: ['lm_report_templateid','lm_newcolumn','lm_objective','lm_reporttype','lm_reportcategory','lm_frequency','lm_reportstatus','lm_version','modifiedon','createdon'],
   });
   const rows = res?.data ?? [];
   // One extra pair of requests per row (Business Unit + Region scope) so
@@ -3003,6 +3005,7 @@ export async function fetchReportTemplatesList(){
     return {
       id,
       name: r.lm_newcolumn || '(untitled)',
+      objective: r.lm_objective || null,
       reportTypeCode: r.lm_reporttype ?? null,
       reportCategoryCode: r.lm_reportcategory ?? null,
       frequencyCode: r.lm_frequency ?? null,
