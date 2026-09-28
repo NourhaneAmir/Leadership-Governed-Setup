@@ -7956,6 +7956,14 @@ Co-Chairman, Facilitator and Attendee list, on the Setup itself.
   it should come back as Stage 4 with both ticked, and two scope-only rows in
   `lm_meetingtemplatebusinessunitses`.
 
+### 28 Sep: Decisions uses the full width
+
+Per an explicit ask. It was the one restyled screen without `wide:true` in
+`SCREENS`, so it stayed at the 1380px reading cap; at a 1900px window it now
+spans 1648px like Calendar. Committed in `0b990f6`; pushed 28 Sep, Leadership
+only, first attempt, from `C:\tmp\cad-exec` to `83db0ef8…`. Governance
+rebuilt identical, not pushed.
+
 
 ## 6. Schema facts that are expensive to rediscover
 
