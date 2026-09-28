@@ -1018,6 +1018,20 @@ export async function fetchTeamsChannels(){
   });
 }
 
+/** A channel's document path, from one fetchTeamsChannels() row: site,
+ *  library and folder joined without the leading slash, e.g.
+ *  "sites/StrategicHR/Shared Documents/General" -- the same string
+ *  channelPath() in GovernanceApp.jsx builds for a Report Template's
+ *  lm_destinationsharepointlink, so a report and its template agree. */
+export function channelDestinationPath(c){
+  if(!c) return '';
+  return [c.sitePath, c.library, c.folder]
+    .map(x => (x == null ? '' : String(x).trim()))
+    .filter(Boolean)
+    .map(x => x.replace(/^\/+|\/+$/g, ''))
+    .join('/');
+}
+
 /** Microsoft Group membership -- and_microsoftgroupmembers, one row per
  *  (group, member) pair. Both and_groupname and and_member are plain text,
  *  not lookups -- there is no separate "groups" table, so the same group
@@ -4692,6 +4706,12 @@ export async function createReportOccurrence(payload){
      because nothing set it on create. */
   if(payload.functionId)        row['lm_Function@odata.bind']         = `/hr_functions(${payload.functionId})`;
   if(payload.creatorPositionId) row['lm_CreatorPosition@odata.bind']  = `/cr603_organizationstructures(${payload.creatorPositionId})`;
+  /* Where the report will be saved in SharePoint (28 Sep): the Teams channel
+     and the destination path built from it. Written ONLY when given -- the
+     columns were added for the Create Report page, and a caller that sends
+     neither must not depend on them existing. */
+  if(payload.channelId)         row['lm_TeamChannel@odata.bind']      = `/and_teamschannellinks(${payload.channelId})`;
+  if(payload.destinationLink)   row.lm_destinationsharepointlink      = capped(payload.destinationLink, 850, 'Destination');
 
   try{
     const created = await Lm_reportoccurrencesService.create(row);
@@ -4699,6 +4719,21 @@ export async function createReportOccurrence(payload){
     return { id, errors: [] };
   }catch(e){
     return { id: null, errors: [{ table:'lm_reportoccurrences', error:e }] };
+  }
+}
+
+/** Uploads the report's working file into lm_reportoccurrences.lm_attachmentfile
+ *  (a File column, added 28 Sep for the Create Report page's uploader).
+ *  IT_ORG is named explicitly: this runs in the Leadership app, whose
+ *  DATA_ORG is DT New, and the table is IT-hosted.
+ *  @param base64Content the file body as base64 (no data: prefix) */
+export async function uploadReportOccurrenceFile(occurrenceId, fileName, base64Content){
+  try{
+    await uploadFileColumn('lm_reportoccurrences', occurrenceId, 'lm_attachmentfile',
+      fileName, base64Content, IT_ORG);
+    return { errors: [] };
+  }catch(e){
+    return { errors: [{ table:'lm_reportoccurrences.lm_attachmentfile', error:e }] };
   }
 }
 

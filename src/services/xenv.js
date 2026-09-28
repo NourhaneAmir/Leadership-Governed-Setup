@@ -301,10 +301,14 @@ export function dvTable(entitySet, pkField, org = DATA_ORG) {
    correctly via the separate `fileName` parameter below (Dataverse and
    anything downloading the file later go by that, not by this header), so
    forcing it loses nothing. Do not resurrect a per-file content-type here. */
-export async function uploadFileColumn(entitySet, recordId, fieldName, fileName, base64Content) {
+/* `org` added 28 Sep, same as downloadFileColumn() below: DATA_ORG is DT New
+   in the Leadership app, but the tables it uploads to (lm_reportoccurrences)
+   are IT-hosted -- so the caller names the org. Defaults to DATA_ORG, so every
+   existing call is unchanged. */
+export async function uploadFileColumn(entitySet, recordId, fieldName, fileName, base64Content, org = DATA_ORG) {
   const res = await DV.UpdateEntityFileImageFieldContentWithOrganization(
     'application/octet-stream',
-    DATA_ORG,
+    org,
     entitySet,
     recordId,
     fieldName,

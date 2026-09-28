@@ -8027,9 +8027,55 @@ Draft.
 - `rptTagC` now shows Returned amber and Rejected red (Returned was grey,
   like Draft).
 - Both apps build; lint clean. **Not seen live** — Reports / Plans is live
-  data, empty locally. Committed and pushed on its own, ahead of the
-  uploader/Team-Channel change (which waits on its columns) — see the entry
-  below for that change.
+  data, empty locally. Committed in `8cbd398` and **pushed 28 Sep, both
+  apps**, first attempt each, built from a tree WITHOUT the uploader change
+  (set aside while building) — Governance to `4912152c…` (its bundle had also
+  been one change behind: the `lm_objective` column in the template list, from
+  `0fe1715`), Leadership to `83db0ef8…`. `.power` / `power.config.json`
+  intact in both.
+
+### 28 Sep: Create Report — file uploader, and Team + Channel → SharePoint destination
+
+Per an explicit ask; decided by the user first: **three new columns on
+`lm_reportoccurrence` (IT), exactly these names**, the uploader **replaces**
+the link field, and a template report **also** gets a destination.
+
+⚠️ **NOT YET PUSHABLE — the columns do not exist.** Checked in IT 28 Sep:
+`lm_attachmentfile`, `lm_teamchannel` and `lm_destinationsharepointlink` are
+all missing on `lm_reportoccurrence`. Pushing before they exist makes EVERY
+Create Report fail (the create writes the channel and destination). To add:
+
+| Column | Type |
+|---|---|
+| `lm_attachmentfile` | File (default 32 MB max is what the page enforces) |
+| `lm_TeamChannel` | Lookup → `and_teamschannellink` |
+| `lm_destinationsharepointlink` | Text, 850 |
+
+- **Uploader (Attachments step):** pick a file (≤ 32 MB, refused before
+  creating); after the Draft is created it is read to base64 and written by
+  **`uploadReportOccurrenceFile()`** into `lm_attachmentfile`. A failed upload
+  leaves the report created and says so in the toast. The link field is gone
+  from new reports; `lm_fileurl` stays on existing ones.
+- **`uploadFileColumn()` (xenv.js) gained an `org` argument** (default
+  `DATA_ORG`, so Governance's calls are unchanged) — Leadership's `DATA_ORG` is
+  DT New but `lm_reportoccurrences` is IT, so the upload names `IT_ORG`.
+- **Team + Channel:** a Custom report must choose a Team, then a Channel, from
+  `and_teamschannellinks` (read with `fetchTeamsChannels()`); a template
+  report takes the channel of the unit it runs in, else the template's own.
+  The destination is **built from the channel** by the new
+  `channelDestinationPath()` (same rule as Governance's `channelPath()`), NOT
+  copied from the template's stored text — 50 of 53 of those carry the
+  doubled-folder bug. The stored text is the fallback only when the template
+  names no channel. Shown in Details and on Review.
+- `createReportOccurrence()` writes `lm_TeamChannel` / `lm_destinationsharepointlink`
+  **only when given**, so its other callers do not depend on the new columns.
+- Both apps build (Governance's bundle changes too — `xenv.js`). Checked
+  locally: Custom shows Team → Channel and cannot continue without them; the
+  uploader was checked on a throwaway sample page. **Committed, NOT deployed —
+  waiting on the three columns.** It was committed after the Approve/Return
+  change (above), which was built and pushed on its own from a tree without
+  this change. Before pushing this one: confirm all three columns in IT, then
+  build and push BOTH apps (`xenv.js` changes Governance's bundle too).
 
 ## 6. Schema facts that are expensive to rediscover
 

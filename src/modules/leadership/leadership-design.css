@@ -385,6 +385,22 @@
 .cs-root .cs-tpl-tags{ display:flex; gap:5px; flex-wrap:wrap; margin-top:auto }
 .cs-root .cs-icon.dark{ background:linear-gradient(135deg,#3A2F2A 0%,#6B5A4E 100%); box-shadow:0 2px 8px rgba(33,28,30,.25) }
 .cs-root .cs-form{ display:flex; flex-direction:column; gap:2px }
+/* The Attachments uploader: a dashed drop-style target around a hidden input. */
+.cs-root .cs-drop{
+  display:flex; align-items:center; gap:10px; padding:18px 16px; cursor:pointer;
+  border:1.5px dashed var(--cs-border-hover); border-radius:12px; background:var(--cs-hover);
+  font:400 12px var(--cs-body-font); color:var(--cs-text); transition:border-color .2s, background .2s;
+}
+.cs-root .cs-drop:hover{ border-color:var(--cs-gold); background:var(--cs-gold-100) }
+.cs-root .cs-drop:focus-within{ outline:2px solid var(--cs-gold); outline-offset:2px }
+.cs-root .cs-drop svg{ color:var(--cs-gold); flex-shrink:0 }
+.cs-root .cs-drop b{ display:block; font:600 12px var(--cs-sans) }
+.cs-root .cs-drop input{ position:absolute; width:1px; height:1px; opacity:0; pointer-events:none }
+.cs-root .cs-file{
+  display:flex; align-items:center; gap:8px; margin-top:8px; padding:8px 10px;
+  border:1px solid var(--cs-border); border-radius:10px; background:#fff;
+}
+.cs-root .cs-file svg{ color:var(--cs-gold); flex-shrink:0 }
 
 @media (max-width:1100px){ .cs-root .cs-two-col{ grid-template-columns:1fr } }
 @media (max-width:640px){ .cs-root .cs-chips-end{ margin-left:0 } .cs-root .cs-search input{ width:100% } }

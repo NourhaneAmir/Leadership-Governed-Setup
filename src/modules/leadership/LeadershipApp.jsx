@@ -24,7 +24,8 @@ import { PEOPLE, P, RPT_SETUPS, RS, DIAG, DiagChip, PROC_REG, PR, BI_REPORTS, BI
 import { Tag, Btn, Note, OD, Bar, Field, Empty, Stat, KVBlock, Rail,
          Modal, Pills, ScoreHero } from '../../shared/ui.jsx';
 import { fetchMeetingOccurrences, fetchReportOccurrences, createMeetingOccurrence,
-         createReportOccurrence, updateReportOccurrenceFile,
+         createReportOccurrence, updateReportOccurrenceFile, uploadReportOccurrenceFile,
+         fetchTeamsChannels, channelDestinationPath,
          updateMeetingOccurrenceStatus, updateMeetingOccurrenceAttendance, updateMeetingOccurrence,
          cancelMeetingOccurrence, recordAgendaDistribution, createMeetingOccurrenceAgendaItem,
          archiveMeetingOccurrenceAgendaItem, updateMeetingOccurrenceAgendaSequence,
@@ -4599,6 +4600,22 @@ function ApprovedSetupPicker({id,list,val,onChange,labelOf,emptyText,extraOption
   </>;
 }
 
+/* The report's working file is uploaded into a Dataverse File column, whose
+   default ceiling is 32 MB -- refused here rather than by a failed upload after
+   the report already exists. */
+const REPORT_FILE_MAX = 32 * 1024 * 1024;
+/* FileReader -> base64 without the data: prefix, the body the File-column
+   upload takes (same convention as Governance's template upload). */
+const fileToBase64 = file => new Promise((resolve, reject) => {
+  const r = new FileReader();
+  r.onload = () => { const t = String(r.result || ''); const i = t.indexOf(',');
+                     resolve(i >= 0 ? t.slice(i + 1) : t); };
+  r.onerror = () => reject(r.error || new Error('Could not read the file.'));
+  r.readAsDataURL(file);
+});
+const fmtBytes = n => n < 1024 ? n + ' B' : n < 1048576 ? (n/1024).toFixed(0) + ' KB'
+  : (n/1048576).toFixed(1) + ' MB';
+
 /* Create Report -- a full page since 28 Sep (was NewReportModal). Reached from
    every "+ New Report" through openNewReport(), which remembers the screen it
    was opened from so Cancel returns there. */
@@ -4623,7 +4640,22 @@ function ScreenNewReport(){
     period: TODAY.slice(0,7),          // month the Report covers
     stage:'Business Unit',
     dvBusinessUnitId:'', dvRegionId:'', dvDepartmentId:'', dvFunctionId:'', dvCreatorPositionId:'',
+    teamName:'', channelId:'',
   });
+  /* The file to upload once the report exists (Attachments step). */
+  const [file,setFile]=useState(null);
+  /* Teams and channels (and_teamschannellinks, IT), read once. A Custom report
+     must pick one; a template's own channel is resolved from the same rows. */
+  const [channels,setChannels]=useState(null);
+  const [channelsErr,setChannelsErr]=useState(false);
+  useEffect(()=>{
+    let live=true;
+    fetchTeamsChannels()
+      .then(rows=>{ if(live) setChannels(rows); })
+      .catch(e=>{ console.warn('[dataverse] fetchTeamsChannels() failed:', e);
+                  if(live){ setChannels([]); setChannelsErr(true); } });
+    return ()=>{ live=false; };
+  },[]);
   const [saving,setSaving]=useState(false);
   const [tplDetail,setTplDetail]=useState(null);
   const [tplLoading,setTplLoading]=useState(false);
@@ -4736,11 +4768,13 @@ function ScreenNewReport(){
     ...(tplDetail.businessUnits||[]).map(b=>({
       key:b._lm_businessunit_value, kind:'bu',
       label: dvBu(b._lm_businessunit_value) || '(Business Unit not in the loaded list)',
+      channelId: b._lm_teamchannel_value || null,
       reviewChain: (b.reviewChain||[]).slice().sort((a,b2)=>(a.lm_step||0)-(b2.lm_step||0)),
     })),
     ...(tplDetail.regions||[]).map(r=>({
       key:r._lm_region_value, kind:'region',
       label: dvRegion(r._lm_region_value) || '(Region not in the loaded list)',
+      channelId: r._lm_teamchannel_value || null,
       reviewChain: (r.reviewChain||[]).slice().sort((a,b2)=>(a.lm_step||0)-(b2.lm_step||0)),
     })),
   ].filter(u=>u.key) : [];
@@ -4800,8 +4834,26 @@ function ScreenNewReport(){
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[tplDetail]);
 
+  /* Where this report will be saved in SharePoint. A Custom report names its
+     Team and Channel here; a template report takes its channel from the unit
+     it runs in, else the template's own (group-wide). The path is BUILT from
+     the channel rather than copied from the template's stored text: 50 of the
+     53 stored template destinations carry the doubled-folder bug fixed 28 Sep.
+     The stored text is used only when the template names no channel. */
+  const CH = channels || [];
+  const teamNames = [...new Set(CH.map(c=>c.team).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  const teamChannels = CH.filter(c=>c.team===f.teamName).sort((a,b)=>a.name.localeCompare(b.name));
+  const tplChannelId = custom ? null
+    : (tplUnits.find(u=>u.key===f.tplUnitKey)?.channelId || tplDetail?.parent?._lm_teamchannel_value || null);
+  const channelId = custom ? f.channelId : tplChannelId;
+  const channelRow = CH.find(c=>c.id===channelId) || null;
+  const destination = channelRow ? channelDestinationPath(channelRow)
+    : (!custom ? (tplDetail?.parent?.lm_destinationsharepointlink || '') : '');
+  const fileTooBig = !!file && file.size > REPORT_FILE_MAX;
+
   const ok = !!f.setup && f.name.trim() && f.objective.trim() && scopeChosen
-    && f.dvCreatorPositionId && f.period && f.fileUrl.trim().length<=FILE_URL_MAX
+    && f.dvCreatorPositionId && f.period && !fileTooBig
+    && (!custom || !!f.channelId)
     && (custom || (!tplLoading && (tplUnits.length<=1 || !!f.tplUnitKey)));
 
   const save=async()=>{
@@ -4820,7 +4872,8 @@ function ScreenNewReport(){
         // A month is stored as its first day -- the column is a date, and the
         // Report covers the period, not a particular day in it.
         period:f.period ? f.period+'-01' : undefined,
-        fileUrl:f.fileUrl.trim()||undefined,
+        channelId: channelId || undefined,
+        destinationLink: destination || undefined,
         status:'Draft',
         version:1,
         reviewStep:0,
@@ -4831,6 +4884,17 @@ function ScreenNewReport(){
         toast('Not saved','Creating the Report Occurrence in Dataverse failed. Check the console for details.','err');
         return;
       }
+      /* The working file, into lm_attachmentfile. The report already exists,
+         so a failed upload is reported as its own thing, not as "not created". */
+      let fileErr = null;
+      if(file){
+        setProgress({ label: `Uploading ${file.name}…`, done: 0, total: 0 });
+        try{
+          const { errors: fe } = await uploadReportOccurrenceFile(id, file.name, await fileToBase64(file));
+          if(fe.length){ fileErr = fe; console.warn('[dataverse] Report file upload failed:', fe); }
+        }catch(e){ fileErr = [e]; console.warn('[dataverse] Report file upload threw:', e); }
+      }
+
       /* Copy the Setup's Content Checklist down as this occurrence's Sections.
          A Custom report has no Setup to copy from. The occurrence already
          exists, so a failure here is reported as its own thing rather than
@@ -4858,8 +4922,9 @@ function ScreenNewReport(){
       toast(custom?'Ad Hoc Report created':'Report created from the approved Setup',
         (custom
           ? 'Saved as a Draft, flagged as having no Setup. Opened for editing.'
-          : 'Saved as a Draft, linked to its approved Report Template. Opened for editing.') + sectionNote,
-        migrated && migrated.errors.length ? 'warn' : 'ok');
+          : 'Saved as a Draft, linked to its approved Report Template. Opened for editing.') + sectionNote
+          + (fileErr ? ` The file “${file.name}” did not upload — attach it from the report.` : ''),
+        (migrated && migrated.errors.length) || fileErr ? 'warn' : 'ok');
       setProgress({ label: 'Refreshing your reports…', done: 0, total: 0 });
       await refreshOccurrences();
       /* Open the new report in Build a report/plan. AFTER the refresh, not
@@ -4892,14 +4957,15 @@ function ScreenNewReport(){
   const step1ok = !!f.setup && (custom || !tplLoading);
   const step2ok = step1ok && !!f.name.trim() && !!f.objective.trim() && scopeChosen
     && !!f.dvCreatorPositionId && !!f.period
+    && (!custom || !!f.channelId)
     && (custom || tplUnits.length<=1 || !!f.tplUnitKey);
-  const step3ok = step2ok && f.fileUrl.trim().length<=FILE_URL_MAX;
+  const step3ok = step2ok && !fileTooBig;
   const canReach = n => n===1 || (n===2 && step1ok) || (n===3 && step2ok) || (n===4 && step3ok);
   const stepOk = [null, step1ok, step2ok, step3ok, !!ok];
   const STEPS = [
     {n:1, t:'Template',    s:'Select template'},
     {n:2, t:'Details',     s:'Fill fields'},
-    {n:3, t:'Attachments', s:'Link the file'},
+    {n:3, t:'Attachments', s:'Upload the file'},
     {n:4, t:'Review',      s:'Create the Draft'},
   ];
   /* Icon and colour by Report Category, so a type reads at a glance. */
@@ -5077,6 +5143,32 @@ function ScreenNewReport(){
           <input type="month" value={f.period} onChange={e=>set('period',e.target.value)}/></Field>
       </div>
 
+      {custom
+        ? <div className="f-row">
+            <Field label="Team" req hint="The Microsoft Team this report belongs to.">
+              <select value={f.teamName} disabled={!channels}
+                onChange={e=>setF(x=>({...x, teamName:e.target.value, channelId:''}))}>
+                <option value="">{!channels ? 'Reading teams…' : teamNames.length ? 'Select…' : 'No teams loaded'}</option>
+                {teamNames.map(t=><option key={t} value={t}>{t}</option>)}
+              </select></Field>
+            <Field label="Channel" req
+              hint={destination ? <>Saved to <span className="mono">{destination}</span></>
+                : 'Its document location becomes this report’s SharePoint destination.'}>
+              <select value={f.channelId} disabled={!f.teamName} onChange={e=>set('channelId',e.target.value)}>
+                <option value="">{!f.teamName ? 'Choose a Team first' : teamChannels.length ? 'Select…' : 'No channels in this team'}</option>
+                {teamChannels.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+              </select></Field>
+          </div>
+        : destination
+          ? <Note k="info" ic="i">SharePoint destination: <span className="mono">{destination}</span>
+              {channelRow ? <> — from the {channelRow.team} › {channelRow.name} channel on the Setup.</>
+                : <> — the template’s stored destination (it names no channel).</>}</Note>
+          : tplDetail
+            ? <Note k="warn">This Setup names no Team Channel, so this report has no SharePoint destination
+                yet. Set one on the Setup in Governance.</Note>
+            : null}
+      {channelsErr && <Note k="warn">Teams and channels could not be read from Dataverse.</Note>}
+
       {!custom && f.dvBusinessUnitId && <Note k="info" ic="i">Business Unit: <b>{dvBu(f.dvBusinessUnitId)}</b>
         {' '}— set by the Setup's approved placement above.</Note>}
       {!custom && f.dvRegionId && <Note k="info" ic="i">Region: <b>{dvRegion(f.dvRegionId)}</b> — set by
@@ -5153,14 +5245,25 @@ function ScreenNewReport(){
 
     {step===3 && <section className="cs-card cs-form" aria-labelledby="nr-files">
       <h2 className="cs-card-title" id="nr-files">Attachments</h2>
-      <p className="cs-card-note">Where the working copy of this Report lives. Optional — it can be added later
-        from the report itself.</p>
-      <Field label="File"
-        hint={`A link or a file name — max ${FILE_URL_MAX} characters.`}
-        err={f.fileUrl.trim().length>FILE_URL_MAX
-          ? `${f.fileUrl.trim().length} characters — ${FILE_URL_MAX} max.` : null}>
-        <input type="text" value={f.fileUrl} onChange={e=>set('fileUrl',e.target.value)}
-          placeholder="https://… or Laser_Utilisation_Review_Q3.xlsx"/></Field>
+      <p className="cs-card-note">Upload the working file for this report. Optional — it is saved to the
+        report once the Draft is created.</p>
+      <Field label="File" hint={`Any file type, up to ${fmtBytes(REPORT_FILE_MAX)}.`}
+        err={fileTooBig ? `${fmtBytes(file.size)} — the limit is ${fmtBytes(REPORT_FILE_MAX)}.` : null}>
+        <label className="cs-drop">
+          <input type="file" onChange={e=>{ const fl=e.target.files && e.target.files[0]; if(fl) setFile(fl); e.target.value=''; }}/>
+          <FileText size={18} aria-hidden="true"/>
+          <span><b>{file ? 'Choose a different file' : 'Choose a file to upload'}</b>
+            <span className="cs-name-sub">It is uploaded when you Save Draft.</span></span>
+        </label>
+        {file
+          ? <div className="cs-file">
+              <FileText size={13} aria-hidden="true"/>
+              <span className="cs-name" style={{flex:1,minWidth:0,overflow:'hidden',textOverflow:'ellipsis'}}>{file.name}</span>
+              <span className="cs-mono muted">{fmtBytes(file.size)}</span>
+              <button type="button" className="cs-btn" onClick={()=>setFile(null)}>Remove</button>
+            </div>
+          : null}
+      </Field>
     </section>}
 
     {step===4 && <section className="cs-card" aria-labelledby="nr-review">
@@ -5178,7 +5281,9 @@ function ScreenNewReport(){
           ['Function', DV_FUNC_LIST.find(x=>x.id===f.dvFunctionId)?.name || '—'],
           ['Created by', dvPos(f.dvCreatorPositionId) || '—'],
           ['Period', f.period || '—'],
-          ['File', f.fileUrl.trim() || '—'],
+          ['Team / Channel', channelRow ? `${channelRow.team} › ${channelRow.name}` : '—'],
+          ['SharePoint destination', destination || '—'],
+          ['File', file ? `${file.name} (${fmtBytes(file.size)})` : '—'],
           ...(!custom && reviewChain.length
             ? [['Review chain', reviewChain.map(r=>DV_POS_HOLDER[r._lm_reviewerposition_value]
                 || dvPos(r._lm_reviewerposition_value) || '—').join(' → ')]]
