@@ -1,5 +1,64 @@
 # IT environment — schema refresh
 
+## 28 Sep 2026 — IT's live schema vs what the code reads and writes
+
+`pac modelbuilder build --environment https://org2f45e702.crm4.dynamics.com/`
+over every table the code reaches through `dvTable()` (59 collections; IT has
+56 of them), then **compared against `src/services/dataverse.js` itself** —
+every `$select`, `$filter` and `orderby` column, every column written, and every
+lookup's target versus the table the code binds it to. Unlike 23 Sep, this is
+not an IT-vs-DT-New diff: 23 Sep showed that diff can miss the one change that
+breaks the code (a lookup repointed in both environments).
+
+| | |
+|---|---|
+| Collections the code uses | 59 |
+| Present in IT | 56 |
+| Absent from IT | `lm_approvalcycles`, `lm_approvalcyclesteps`, `lm_authoritymatrixrows` (unchanged since 23 Sep) |
+| Read columns checked | 411 distinct |
+
+### Breaks found — both fixed
+
+| Where | IT now | Code did | Effect | Fix |
+|---|---|---|---|---|
+| `lm_reportoccurrencehistory` | **no `lm_name`** column (`lm_action` is the row text) | selected `lm_name`, and wrote it on every history row | the **whole** review-history read failed (one unknown column fails the query), and **every** history write failed — Submit / Approve / Return still changed the status, but no trail and no Return reason was saved | `lm_name` removed from `HISTORY_SELECT` and from `addReportHistory()` |
+| `lm_meetingoccurrenceagenda.lm_CarriedFromAgendaItem` | targets **`lm_meetingoccurrenceagenda`** (an earlier occurrence's item) | bound `/lm_meetingtemplateagendaitems(...)` | would 400 — **latent**: no caller sets `carriedFromId` yet. AG-04 scoring already reads it as an occurrence item | bind now `/lm_meetingoccurrenceagendas(...)`; the "carried from the Meeting Template" label corrected |
+
+### Checked and correct
+
+- Every other read column exists on its table (411 checked).
+- Every write column exists on the table it is written to. (The first pass
+  flagged 53, all a heuristic artefact — row-builder helpers attributed to the
+  wrong function; each was then confirmed on its real table.)
+- Every lookup the code binds targets the table it binds to, including
+  `lm_POC` → `stf_strategypoc`, `lm_Strategy` → `strategy_strategy`,
+  `lm_TeamChannel` → `and_teamschannellink`, `lm_RescheduledFrom` →
+  `lm_meetingoccurrence`, and Setup Activity's two Template lookups.
+- Expected, not a break: `lm_TeamChannel` / `lm_destinationsharepointlink` /
+  `lm_attachmentfile` on `lm_reportoccurrence` are written by the committed but
+  **undeployed** Create Report uploader change (`4ca0036`) — they do not exist
+  in IT yet, which is exactly why it is held back.
+
+### New in IT, not used by the app yet
+
+| Table | Column | Type | Note |
+|---|---|---|---|
+| `lm_meetingtemplate` | `cr18c_month` | choice (`pm_month`) | a month for **Annual** meetings — the gap the Meeting wizard's `noMonth` note describes ("Add lm_month to lm_meetingtemplates") |
+| `lm_meetingoccurrence` | `lm_teamchannel` | lookup → `and_teamschannellink` | a meeting's own Teams channel |
+| `lm_meetingminutes` | `lm_teamchannel` | lookup → `and_teamschannellink` | the Minutes' channel |
+| `lm_reportoccurrence` | `lm_customname` | text | |
+| `lm_reportoccurrence` | `lm_filename` | text | |
+| `lm_reportoccurrencesections` | `lm_sourcesectionchecklistitem` | lookup → `lm_reporttemplatecontentchecklist` | which template section a report section came from — would replace the "KPI data gaps" heading-match workaround and similar |
+| `lm_reportsectioncitations` | `lm_reviewerconclusion` | text | |
+
+⚠️ Datatype and max-length changes still cannot be seen this way — modelbuilder
+emits `string` for any text width. Name a column and it can be checked directly.
+
+---
+
+## 23 Sep 2026 (previous run, kept for reference)
+
+
 `pac modelbuilder build` run against **both** environments over the same 57 tables the apps reach through `dvTable()`, then compared. Same generator on both sides, so every difference below is real metadata — not a rendering artifact.
 
 | | |

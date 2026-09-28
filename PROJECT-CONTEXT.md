@@ -8077,6 +8077,36 @@ Create Report fail (the create writes the channel and destination). To add:
   this change. Before pushing this one: confirm all three columns in IT, then
   build and push BOTH apps (`xenv.js` changes Governance's bundle too).
 
+### 28 Sep: IT schema refresh — two breaks found and fixed
+
+Per an explicit ask ("refresh the tables from the IT"). Full report:
+**`IT-SCHEMA-REFRESH.md`** (28 Sep section on top; 23 Sep kept below). Method:
+`pac modelbuilder build --environment <IT url>` over all 56 of the code's
+tables that exist in IT, then a script comparing that schema with every read
+(`$select` / filter / orderby) and every write (columns, and each lookup's
+target) in `dataverse.js` — the comparison 23 Sep showed actually catches
+breaks.
+
+- ⚠️ **`lm_reportoccurrencehistory` has no `lm_name` any more** — the review
+  history read (which selected it) failed outright, and every history row
+  written by Submit / Approve / Return failed, so no trail and no Return reason
+  were being kept (the status changes themselves still landed). **Fixed:**
+  dropped from `HISTORY_SELECT` and `addReportHistory()`. `lm_action` is the
+  row's text. This affects the Approve / Return buttons pushed today.
+- **`lm_CarriedFromAgendaItem`** targets `lm_meetingoccurrenceagenda`; the code
+  bound the template agenda table. Latent (no caller sets it). **Fixed.**
+- New unused columns worth knowing: `lm_meetingtemplate.cr18c_month` (a month
+  for Annual meetings — closes the `noMonth` gap), `lm_teamchannel` on
+  `lm_meetingoccurrence` and `lm_meetingminutes`,
+  `lm_reportoccurrencesections.lm_sourcesectionchecklistitem`, and three text
+  columns — table in the report.
+- Traps met this time: the entity-name regex must allow an attribute line
+  between `EntityLogicalNameAttribute` and the class; a write check that
+  inlines helper functions over-reports — confirm each flag on its real table.
+- Both apps build. **Not committed, not pushed.** ⚠️ HEAD is `4ca0036`, the
+  undeployable uploader change — so pushing this fix needs the same split as
+  `8cbd398`: build from a tree without the uploader change.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap

@@ -4406,7 +4406,11 @@ export async function createMeetingOccurrence(payload){
         lm_covered: AGENDA_COVERED_KEY['Not Yet Recorded'],
       };
       if(item.ownerPositionId) row['lm_OwnerPosition@odata.bind'] = `/cr603_organizationstructures(${item.ownerPositionId})`;
-      if(item.carriedFromId)   row['lm_CarriedFromAgendaItem@odata.bind'] = `/lm_meetingtemplateagendaitems(${item.carriedFromId})`;
+      /* The item this one was carried forward FROM -- an earlier occurrence's
+         agenda item. IT's lookup targets lm_meetingoccurrenceagenda (schema
+         refresh, 28 Sep); this bound the template agenda table, which would
+         400. No caller sets carriedFromId yet, so it had never run. */
+      if(item.carriedFromId)   row['lm_CarriedFromAgendaItem@odata.bind'] = `/lm_meetingoccurrenceagendas(${item.carriedFromId})`;
       await Lm_meetingoccurrenceagendasService.create(row);
     }catch(e){ errors.push({ table:'lm_meetingoccurrenceagendas', error:e }); }
   }
@@ -5613,7 +5617,10 @@ export function authorityCheckLive(rows, type, value, creatorLevel){
    truncating. Widen it and this cap can go. */
 export const REPORT_NOTE_MAX = 100;
 
-const HISTORY_SELECT = ['lm_reportoccurrencehistoryid','lm_name','lm_action','lm_note',
+/* ⚠️ No lm_name: the IT schema refresh of 28 Sep found lm_reportoccurrencehistory
+   has no such column any more -- lm_action is the row's text. Selecting it
+   failed the WHOLE history read, and writing it failed every history row. */
+const HISTORY_SELECT = ['lm_reportoccurrencehistoryid','lm_action','lm_note',
                         '_lm_reportoccurrence_value','_lm_actorposition_value','createdon'];
 
 /** The full audit trail for one Report Submission, oldest first -- the order a
@@ -5643,7 +5650,6 @@ export async function fetchReportOccurrenceHistory(occurrenceId){
 export async function addReportHistory(occurrenceId, action, { actorPositionId, note } = {}){
   try{
     const row = {
-      lm_name: action.slice(0,100),
       lm_action: capped(action, 850, 'lm_action'),
       lm_note: note ? capped(note, REPORT_NOTE_MAX, 'lm_note') : null,
       'lm_ReportOccurrence@odata.bind': `/lm_reportoccurrences(${occurrenceId})`,

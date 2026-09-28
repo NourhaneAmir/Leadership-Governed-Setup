@@ -7278,7 +7278,7 @@ function DvMeetingDetail({rec,back}){
               <tr key={a.id}>
                 <td className="dim">{a.seq??'—'}</td>
                 <td><div className="t-main">{a.title||'—'}</div>
-                  {a.carriedFromId?<div className="t-sub">carried from the Meeting Template</div>:null}</td>
+                  {a.carriedFromId?<div className="t-sub">carried forward from an earlier occurrence</div>:null}</td>
                 <td className="dim" style={{fontSize:12}}>{posName(a.ownerPositionId)||'—'}</td>
                 <td className="dim">{a.source||'—'}</td>
                 <td><Tag c={a.covered==='Yes'?'green':a.covered==='No'?'red':'grey'}>
