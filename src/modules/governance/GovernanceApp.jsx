@@ -253,8 +253,9 @@ const FALLBACK_STAGE_WORD=['BU','Region','Group','Top Management'];
 const GROUP_KEY='__group';
 
 /* ---- where it is discussed: Team, then Channel inside that Team ----------- */
-/* Read live from and_teamschannels: one row per CHANNEL, carrying the name of
-   the Team it sits in as plain text (lm_team). There is no Teams table -- a
+/* Read live from and_teamschannellinks (IT; replaced and_teamschannels on
+   22 Sep): one row per CHANNEL, carrying the name of the Team it sits in as
+   plain text (and_teamname). There is no Teams table -- a
    Team exists only as that name repeated across its channels' rows -- so TEAMS
    below is DERIVED from the channel rows, and a Team's id IS its name.
 
@@ -327,9 +328,9 @@ function channelPath(channelId){
 }
 
 /* ---- destination cascade (FR-SET-13) ------------------------------------- */
-/* Site, Library and Folder are not tables of their own either -- they are the
-   SharePoint Site Path, Document Library and Folder columns carried on each
-   and_teamschannels row. So all three are DERIVED from the same channel rows
+/* Site, Library and Folder are not tables of their own either -- they are
+   split out of each channel row's and_rootpath by fetchTeamsChannels() (see
+   there for why that one column, not three). So all three are DERIVED from the same channel rows
    in setTeamsChannels() below: a Site is a distinct Site Path, a Library a
    distinct Site Path + Library, a Folder a distinct Site Path + Library +
    Folder. Ids are the joined path, since there is no key to use. */

@@ -7726,6 +7726,101 @@ styled by the one scoped stylesheet `src/modules/leadership/leadership-design.cs
   `#v-calendar`. Each should opt into `.cs-root` the same way; add
   screen-specific rules in their own block of `leadership-design.css`.
 
+### 28 Sep: a raised Task now defaults to Task Source = Leadership
+
+Per an explicit ask. `createTask()` in `src/services/dataverse.js` now writes
+`cr18c_tasksource` on `hx_tasks` (IT), defaulting to **Leadership**
+(`989230002`) unless a caller passes another `source` label. It is the only
+Task-create path in the code, so "Raise a new task" in Build a report/plan
+and the Reports screen both get it; nothing else changed and no field was
+added to the UI.
+
+- **The values were read from IT, not guessed.** `cr18c_tasksource` is a
+  choice (Int32), and the `cr18c_` publisher numbers each choice column from
+  its own base (`cr18c_tag` starts at 989230000 too, `cr18c_region` at
+  983080000), so no other column's numbers could be reused. Read with
+  `pac env fetch` on `stringmap` (`attributename eq 'cr18c_tasksource'`;
+  `objecttypecode` must be omitted or given as a number, not `'hx_tasks'`).
+  All nine labels are in `TASK_SOURCE_KEY`.
+- Current use on IT's 44k rows: Leadership 20,608, Projects 11,896,
+  Planning&Monitoring 3,197, Teams 2,906, TMS 2,848, Objectives 1,831,
+  Excel 1,204, Strategy 125, Steering 49; 8 blank.
+- Both apps build; the value is in the Leadership bundle only. **Not yet
+  exercised live** (the dev server cannot write to Dataverse), **not
+  committed, not pushed.** After the next push, raise one Task and check its
+  Task Source in IT.
+
+### 28 Sep: Teams channel lookup checked against live IT — lookup fine, document path was wrong
+
+Per an explicit ask ("make sure the Teams channel lookup table is reading
+correctly"). Everything below was read from IT with `pac env fetch`.
+
+**The lookup itself reads correctly.** `and_teamschannellinks` has 288 rows,
+all with a Team and Channel name and a channel link. `lm_TeamChannel` is set
+on the per-unit rows, not the templates (report template 0/56, report BU
+66/74, report region 64/66, meeting template 0/1, meeting BU 4/4), and
+**every one resolves** to a live `and_teamschannellink` row (inner join:
+66, 64, 4). No stale ids from the retired `and_teamschannels` remain.
+
+**The document path built from a Channel was wrong, and is fixed.** The
+22 Sep mapping (flagged at the time as inferred from column names only)
+joined `and_rootpath` + `and_documentlibrary` + `and_rootfolder`. Live:
+`and_rootpath` already holds site + library + folder
+(`/sites/X/Shared Documents/General`), `and_documentlibrary` is empty on all
+288 rows, and `and_rootfolder` is only the last folder's *display* name.
+So `channelPath()` produced `.../General/General` and
+`.../Shared Documents/Documents`, and that is what `destinationOf()` saved.
+`fetchTeamsChannels()` now splits site / library / folder out of
+`and_rootpath` alone; tested on all 285 rows that have one (130 at a library
+root, 155 one folder down) — the rebuilt path equals `and_rootpath` every
+time. The Site → Library → Folder reference cascade in Governance now gets
+three real levels instead of stopping at a "Site" that already contained the
+library. `and_sharepointsitelink` / `and_rootfolderlink` (absolute URLs) are
+now read too, unused so far.
+
+⚠️ **50 of the 53 saved `lm_report_templates.lm_destinationsharepointlink`
+values are wrong** (37 repeat their last folder, 12 end in an extra
+`/Documents`, 1 ends `/General/General Central HR`); the other 3 are
+hand-typed URLs. The code fix does not rewrite them. Each is corrected the
+next time its Setup is saved in Governance (the destination is re-derived on
+every save), or all 50 can be patched in one pass — **not done; a write to IT,
+waiting on a decision.**
+
+Only Governance calls `fetchTeamsChannels()`. Both apps build. **Not
+committed, not pushed.**
+
+### 28 Sep: Decisions restyled to the same design
+
+Per an explicit ask, with a screenshot. Source of truth `#v-decisions`.
+
+- **`ScreenDecisions` render rewritten; data and filters unchanged.** The
+  Status select became tabs with counts (Taken / Not yet taken / Blocked /
+  Rejected / Closed / All Decisions); Pathway became chips; Raised from, Nature
+  and search stay as styled controls with a Clear button. The blocked-mapping
+  note is now the red banner, keeping its "Simulate" action. Register columns
+  unchanged plus a View button; the Status column shows a badge with "where it
+  stands" underneath.
+- **Side column, all from real data:** Decision Flow (the intake → Authority
+  Check → Direct / Request → Execution pipeline, with live counts per path),
+  Decision Health (Direct vs Request split, Not yet taken, Blocked, Rejected,
+  Closed) and Observers (each observer kind on the visible decisions, with how
+  many it watches).
+- **Live Decisions card** (Work Log Decisions, `wlog_decisions`) restyled
+  in place: search, status / review selects, badges, and the expand-a-row
+  detail. Behaviour unchanged.
+- **Not taken from the design:** "Avg Time to Decision" / "Avg Execution
+  Time" (no reliable decided / executed timestamps behind them) and the
+  separate Rejected stat card (its count is on its tab).
+- `leadership-design.css` gained a Decisions block (`cs-banner`,
+  `cs-select`, `cs-flow`, `cs-obs`, `cs-kv`, `.cs-type.bad`,
+  `.cs-tbl.dense`).
+- **Checked locally against the seeded register** (6 decisions, so rows
+  render here, unlike the other restyled screens): tab and card counts agree,
+  chips and Clear filter correctly, a row opens its detail and back returns,
+  the table fits at 1400px and stacks at phone width, no console errors. The
+  Live Decisions card showed only its empty state locally. **Not committed,
+  not pushed.**
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap

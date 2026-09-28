@@ -969,32 +969,53 @@ export async function fetchSetups(){ return notWiredYet('fetchSetups'); }
  *  Region relationship, so Teams can't be narrowed to the unit a Setup runs
  *  in -- every unit is offered every Team, same as before.
  *
- *  and_rootpath / and_documentlibrary / and_rootfolder are the channel's
- *  document location, joined into one path by the caller (channelPath() in
- *  GovernanceApp.jsx) and used to auto-fill a Report Template's Source link
- *  -- the same role lm_sharepointsitepath/lm_documentlibrary/lm_folder
- *  played on the old table. ⚠️ This mapping is inferred from the new
- *  table's column NAMES only (and_rootpath reads as the closest match to
- *  "site path" among and_rootpath/and_sharepointsitelink/and_rootfolderlink)
- *  -- not yet checked against a real populated row, since this table was
- *  only just registered. If a Channel's auto-filled destination path looks
- *  wrong once real data is in it, this is the mapping to revisit first. */
+ *  The channel's document location is and_rootpath ALONE -- checked against
+ *  IT's 288 live rows on 28 Sep, after the first mapping (inferred from
+ *  column names) turned out wrong:
+ *
+ *    and_rootpath        "/sites/StrategicHR/Shared Documents/General" --
+ *                        site, library AND folder in one server-relative path
+ *                        (285 of 288 rows; the other 3 have no location)
+ *    and_rootfolder      "General" -- the DISPLAY name of the path's last
+ *                        folder, not a further part of it: "Documents" when
+ *                        the channel sits at the library root, and on one row
+ *                        "General Central HR" for a path ending ".../General".
+ *    and_documentlibrary empty on all 288 rows.
+ *
+ *  The old mapping joined rootpath + rootfolder, so every auto-filled Report
+ *  destination got a bogus extra folder: ".../General/General",
+ *  ".../Shared Documents/Documents" -- 50 of the 53 saved on
+ *  lm_report_templates as of 28 Sep (the other 3 were typed by hand). So site / library / folder are now split
+ *  out of and_rootpath ("/sites/X", "Shared Documents", "General"), which
+ *  channelPath() in GovernanceApp.jsx rejoins into exactly that path and the
+ *  destination cascade lists as three real levels. and_sharepointsitelink and
+ *  and_rootfolderlink carry the same location as absolute URLs, read for
+ *  whoever needs a clickable link. */
 export async function fetchTeamsChannels(){
   const res = await And_teamschannellinksService.getAll({
     select: ['and_teamschannellinkid','and_channelname','and_channellink','and_teamname',
              'and_teamobjectid','and_channelobjectid',
-             'and_rootpath','and_documentlibrary','and_rootfolder'],
+             'and_rootpath','and_sharepointsitelink','and_rootfolderlink'],
   });
   const rows = res?.data ?? [];
-  return rows.map(r => ({
-    id: r.and_teamschannellinkid,
-    name: r.and_channelname || '(unnamed channel)',
-    link: r.and_channellink ?? null,
-    team: (r.and_teamname || '').trim() || null,
-    sitePath: r.and_rootpath ?? null,
-    library: r.and_documentlibrary ?? null,
-    folder: r.and_rootfolder ?? null,
-  }));
+  return rows.map(r => {
+    /* "/sites/X/Shared Documents/A/B" -> ["sites","X","Shared Documents","A","B"].
+       A path that is not "/sites|teams/<name>/<library>..." keeps the whole
+       thing as its site, so nothing is silently dropped. */
+    const seg = String(r.and_rootpath || '').split('/').map(s => s.trim()).filter(Boolean);
+    const std = seg.length >= 3 && /^(sites|teams)$/i.test(seg[0]);
+    return {
+      id: r.and_teamschannellinkid,
+      name: r.and_channelname || '(unnamed channel)',
+      link: r.and_channellink ?? null,
+      team: (r.and_teamname || '').trim() || null,
+      sitePath: std ? '/' + seg[0] + '/' + seg[1] : (seg.length ? '/' + seg.join('/') : null),
+      library:  std ? seg[2] : null,
+      folder:   std && seg.length > 3 ? seg.slice(3).join('/') : null,
+      siteLink: r.and_sharepointsitelink ?? null,
+      folderLink: r.and_rootfolderlink ?? null,
+    };
+  });
 }
 
 /** Microsoft Group membership -- and_microsoftgroupmembers, one row per
@@ -2170,6 +2191,14 @@ export const TASK_STATUS = {
   123200004:'New', 100000001:'In Progress', 123200005:'Submitted', 100000005:'On Hold',
   123200002:'Closed', 123200003:'Cancelled', 931940001:'Rejected',
 };
+/* cr18c_tasksource -- which system raised the Task. Values read from IT's
+   stringmap on 28 Sep, not guessed: the cr18c_ publisher numbers each choice
+   column from its own base, so no other column's values carry over. */
+export const TASK_SOURCE_KEY = {
+  'Teams':989230000, 'TMS':989230001, 'Leadership':989230002, 'Steering':989230003,
+  'Planning&Monitoring':989230004, 'Strategy':989230005, 'Projects':989230007,
+  'Objectives':989230008, 'Excel':989230009,
+};
 
 /** Tasks -- hx_tasks. A large shared table; only what a citation needs is read. */
 export async function fetchTasks(){
@@ -2217,13 +2246,18 @@ export async function fetchTasks(){
  *  fourth), which is the shape of a column several teams have added to, and
  *  guessing which one means "new" for their process is not this module's call.
  *
+ *  Source, unlike Status, IS set: every Task raised from this app is a
+ *  Leadership Task, so it defaults to 'Leadership' unless a caller names
+ *  another TASK_SOURCE_KEY label.
+ *
  *  @param {{title:string, description?:string, action?:string, assigneeId?:string,
- *           priority?:string, startDate?:string, dueDate?:string}} t
+ *           priority?:string, startDate?:string, dueDate?:string, source?:string}} t
  */
 export async function createTask(t){
   const errors = [];
   const row = {
     hx_tasktitle: t.title,
+    cr18c_tasksource: TASK_SOURCE_KEY[t.source || 'Leadership'] ?? TASK_SOURCE_KEY.Leadership,
     hx_taskdescription: t.description || null,
     /* "Action to be taken" has no column of its own; hx_justifications is the
        free-text field on this table that carries what is to be done and why. */
