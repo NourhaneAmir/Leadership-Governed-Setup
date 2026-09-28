@@ -7903,7 +7903,10 @@ Per an explicit ask, with a screenshot. Source of truth `#v-workarea`.
   colours `.cs-type.green/.blue/.purple/.amber`, `cs-up-*`, `cs-link-row`).
 - Locally the queue is empty (it is live data), so rows were checked on a
   throwaway sample page (real stylesheet, same markup), served by the dev
-  server and deleted. Both apps build. **Not committed, not pushed.**
+  server and deleted. Both apps build. Committed in `6a9d258`; **pushed 28 Sep,
+  Leadership only**, first attempt, from `C:\tmp\cad-exec` to `83db0ef8…`
+  (`.power` / `power.config.json` intact). Governance not pushed: its bundle
+  rebuilt identical.
 
 
 ## 6. Schema facts that are expensive to rediscover
