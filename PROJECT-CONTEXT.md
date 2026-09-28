@@ -7995,8 +7995,12 @@ concept** from the screen.
 - Checked locally: opens from Reports / Plans and My Workspace and Cancel
   returns to each; step gating as above; no console errors. Only the Custom
   card exists locally (templates are live data), so the card grid was checked
-  on a throwaway sample page, served and deleted. **Not saved to Dataverse
-  locally, not committed, not pushed.**
+  on a throwaway sample page, served and deleted. Not saved to Dataverse
+  locally. Committed in `0fe1715`; **pushed 28 Sep, Leadership only**, first
+  attempt, from `C:\tmp\cad-exec` to `83db0ef8…` (`.power` /
+  `power.config.json` intact). Governance rebuilt byte-identical — it does not
+  use `fetchReportTemplatesList()` — so it was not pushed. **Next:** create one
+  report from a template and one Custom in the live app.
 
 
 ## 6. Schema facts that are expensive to rediscover
