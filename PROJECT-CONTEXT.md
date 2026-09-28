@@ -7948,7 +7948,13 @@ Co-Chairman, Facilitator and Attendee list, on the Setup itself.
   kind rule appears in Before publishing, Stage 1 is unchanged. **Not saved to
   Dataverse** (no local connection). The "setState while rendering" warning seen
   there is pre-existing — `Wizard`'s `set` calls `A.promoteDraft` inside a
-  state updater. Both apps build. **Not committed, not pushed.**
+  state updater. Both apps build. Committed in `02dab4a`; **pushed 28 Sep,
+  both apps**, first attempt each — Governance from `C:\tmp\cad-gov` to
+  `4912152c…`, Leadership from `C:\tmp\cad-exec` to `83db0ef8…`
+  (`.power` / `power.config.json` intact in both). **Next:** save one Stage 4
+  Setup covering two Business Units in the live Governance app and reopen it —
+  it should come back as Stage 4 with both ticked, and two scope-only rows in
+  `lm_meetingtemplatebusinessunitses`.
 
 
 ## 6. Schema facts that are expensive to rediscover
