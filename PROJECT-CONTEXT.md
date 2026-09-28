@@ -7881,6 +7881,30 @@ live name (the target line skipped `taskName`). Now:
   `power.config.json` intact). Governance not pushed: its bundle rebuilt
   byte-identical (same hashed filenames), so there was nothing new to deploy.
 
+### 28 Sep: My Workspace restyled to the same design
+
+Per an explicit ask, with a screenshot. Source of truth `#v-workarea`.
+
+- **`ScreenWorkspace` render rewritten; data, tabs and quick filters
+  unchanged.** Header with New Report (ghost) / New Meeting (gold), tabs with
+  counts, four accent stat cards, quick-filter chips, the Work Queue table
+  (priority bar, area pill, item, accountable with position, status badge,
+  due / Overdue, action button — the first row's is gold), and the side column
+  (Upcoming with date blocks and time chips; This Month). "Where things live"
+  kept below, restyled.
+- **"More Filters" is now "Reset filters"** and only shows when a filter is
+  on — the old button only ever reset, so the label was wrong.
+- Title stays **My Workspace** (the design says "Work Area"; the sidebar and
+  registry label are unchanged). This Month keeps its four real rows; the
+  design's MOM Approved / Decisions Closed / Audit Grid Pass Rate are not
+  added — no live records behind them (see the screen's own comment).
+- The unused `statusColour` helper went with the old render.
+  `leadership-design.css` gained a My Workspace block (`cs-prio`, area pill
+  colours `.cs-type.green/.blue/.purple/.amber`, `cs-up-*`, `cs-link-row`).
+- Locally the queue is empty (it is live data), so rows were checked on a
+  throwaway sample page (real stylesheet, same markup), served by the dev
+  server and deleted. Both apps build. **Not committed, not pushed.**
+
 
 ## 6. Schema facts that are expensive to rediscover
 

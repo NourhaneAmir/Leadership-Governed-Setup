@@ -307,6 +307,32 @@
 .cs-root .cs-kv-v{ font:400 11.5px var(--cs-body-font); color:var(--cs-text); margin-top:2px }
 .cs-root .cs-kv a{ color:var(--cs-gold); word-break:break-all }
 
+/* ---------- My Workspace (#v-workarea) ---------- */
+.cs-root .cs-prio{ display:block; width:3px; height:30px; border-radius:3px; background:var(--cs-green) }
+.cs-root .cs-prio.hi{ background:var(--cs-danger) }
+.cs-root .cs-prio.md{ background:var(--cs-warning) }
+/* Area pills: Report keeps the base gold; the rest follow the Calendar's split. */
+.cs-root .cs-type.green { background:var(--cs-green-soft); color:var(--cs-green) }
+.cs-root .cs-type.blue  { background:rgba(59,108,160,.12); color:#3B6CA0 }
+.cs-root .cs-type.purple{ background:rgba(112,76,150,.12); color:#704C96 }
+.cs-root .cs-type.amber { background:var(--cs-warn-soft); color:var(--cs-warning) }
+.cs-root .cs-up{ display:flex; flex-direction:column }
+.cs-root .cs-up-item{
+  display:flex; align-items:center; gap:10px; width:100%; padding:9px 2px; text-align:left;
+  background:none; border:none; border-bottom:1px solid var(--cs-border); cursor:pointer;
+}
+.cs-root .cs-up-item:last-child{ border-bottom:none }
+.cs-root .cs-up-item:hover{ background:var(--cs-hover) }
+.cs-root .cs-up-item:focus-visible{ outline:2px solid var(--cs-gold); outline-offset:2px }
+.cs-root .cs-up-d{ width:34px; flex-shrink:0; text-align:center; line-height:1.05 }
+.cs-root .cs-up-dd{ display:block; font:700 13px var(--cs-mono); color:var(--cs-text) }
+.cs-root .cs-up-mo{ display:block; font:700 7.5px var(--cs-sans); letter-spacing:.8px; text-transform:uppercase; color:var(--cs-dim) }
+.cs-root .cs-up-time{
+  margin-left:auto; flex-shrink:0; padding:2px 7px; border-radius:6px;
+  font:600 9.5px var(--cs-mono); color:var(--cs-gold); background:var(--cs-gold-soft);
+}
+.cs-root .cs-link-row td:last-child{ font:600 11px var(--cs-sans); color:var(--cs-gold); white-space:nowrap }
+
 @media (max-width:1100px){ .cs-root .cs-two-col{ grid-template-columns:1fr } }
 @media (max-width:640px){ .cs-root .cs-chips-end{ margin-left:0 } .cs-root .cs-search input{ width:100% } }
 @media (max-width:1024px){ .cs-root .cs-stats{ grid-template-columns:repeat(2,minmax(0,1fr)) } }

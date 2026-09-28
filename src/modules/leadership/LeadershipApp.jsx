@@ -2969,8 +2969,6 @@ function ScreenWorkspace(){
     w.bucket==='review' ? (w.area==='Report'?'Under Review':w.area==='Decision'?'Pending':'In Review')
     : w.bucket==='finish' ? 'Needs Completion'
     : w.area==='Meeting' ? 'Scheduled' : 'Pending';
-  const statusColour = s => ({Scheduled:'blue','In Review':'amber','Under Review':'amber',
-    Pending:'grey','Needs Completion':'red'}[s]||'grey');
   const actionVerb = w => w.urgent ? 'Follow Up'
     : w.area==='Meeting' ? 'Prepare' : w.area==='Report' ? 'Track' : w.area==='Decision' ? 'View'
     : w.area==='Minutes' ? 'Follow Up' : w.area==='Audit Grid' ? 'Score' : w.area==='Task' ? 'Execute'
@@ -2994,129 +2992,156 @@ function ScreenWorkspace(){
     && o.agenda.length && o.agenda.every(a=>a.covered && a.covered!=='Not Yet Recorded')).length;
 
 
-  return <>
-    <div className="ph ph-row">
-      <div style={{flex:1}}><h1>My Workspace</h1>
-        <div className="sub">Your pending tasks, upcoming meetings, and action items across all modules.</div></div>
-      {/* 'orpt' is the Reports / Plans TAB in the sidebar. This used to go to
-          'rpt', the hidden seeded composer -- a different screen with the
-          confusingly similar label "Reports & Plans". Safe to redirect
-          because this call site passes no id; the ones that DO pass an id
-          still need 'rpt' until ScreenOrgReports can receive a selection
-          (see the note on the hidden registry entry). */}
-      <Btn onClick={()=>go('orpt')}>+ New Report</Btn>
-      <Btn k="pri" onClick={()=>go('mtg')}>+ New Meeting</Btn>
-    </div>
+  /* Restyled 28 Sep to the approved design (`leadership-practice (2).html`,
+     #v-workarea), styled by leadership-design.css under .cs-root. Same data,
+     tabs and quick filters. The old "More Filters" button only ever reset the
+     filters, so it is labelled Reset filters now. */
+  const AREA_PILL = {'Report':'', 'Meeting':'green', 'Minutes':'blue',
+                     'Audit Grid':'purple', 'Decision':'amber', 'Task':'adhoc'};
+  const STATUS_BADGE = {'Scheduled':'scheduled', 'In Review':'pending', 'Under Review':'pending',
+                        'Pending':'draft', 'Needs Completion':'returned'};
+  const openItem = w => w._dv
+    ? openDvRec(w.area==='Report'?'Report':'Meeting', w._rec)
+    : w.screen==='mtg' ? openMeeting(w.rid,w.tab||'detail') : go(w.screen,w.rid);
+  const pendingCt = work.due.length+work.finish.length;
 
-    <div className="tabs">
-      {TABS.map(t=>{
-        const n = t.id==='All' ? tagged.length : tagged.filter(w=>w.area===t.id).length;
-        return <button key={t.id} className={tab===t.id?'on':''} onClick={()=>setTab(t.id)}>
-          {t.label}<span className="c">{n}</span></button>;})}
-    </div>
-
-    <div className="stats">
-      <Stat label="Pending Actions" v={work.due.length+work.finish.length}
-        d="requiring your attention" c={(work.due.length+work.finish.length)?'teal':'muted'}/>
-      <Stat label="Meetings This Week" v={meetingsThisWeek.length}
-        d={meetingsThisWeek.filter(m=>m.status==='Held').length+' held'} c="green"/>
-      <Stat label="Overdue Items" v={overdue.length}
-        d={overdue.length? overdueReports+' report'+(overdueReports===1?'':'s')+' + '+
-           (overdue.length-overdueReports)+' other' : 'none outstanding'}
-        c={overdue.length?'amber':'muted'}/>
-      <Stat label="Pending Approvals" v={work.review.length} d="with a reviewer or approver"
-        c={work.review.length?'red':'muted'}/>
-    </div>
-
-    <div className="chip-row" style={{alignItems:'center'}}>
-      {QUICK.map(q=>
-        <button key={q.id} className={'pill'+(quick===q.id?' on':'')} onClick={()=>setQuick(q.id)}>
-          {q.label}</button>)}
-      <div style={{flex:1}}/>
-      <Btn k="sm" onClick={()=>{setTab('All');setQuick('all');}}>▾ More Filters</Btn>
-    </div>
-
-    <div className="wa-grid">
-      <div className="card flush">
-        <div className="card-hd" style={{display:'flex',alignItems:'flex-start',gap:12}}>
-          <div className="wa-icon gold"><ClipboardCheck size={16} color="#fff" strokeWidth={2.25}/></div>
-          <div style={{flex:1}}><h2>Work Queue</h2>
-            <div className="csub">Everything open right now — open a record to act on it.</div></div>
-          <Btn k="sm" onClick={()=>{setTab('All');setQuick('all');}}>View All</Btn>
+  return <div className="cs-root">
+    <div className="cs-head">
+      <div className="cs-head-top">
+        <div><h1 className="cs-title">My Workspace</h1>
+          <p className="cs-sub">Your pending tasks, upcoming meetings, and action items across all modules.</p></div>
+        <div className="cs-actions">
+          {/* 'orpt' is the Reports / Plans TAB in the sidebar. This used to go to
+              'rpt', the hidden seeded composer -- a different screen with the
+              confusingly similar label "Reports & Plans". Safe to redirect
+              because this call site passes no id; the ones that DO pass an id
+              still need 'rpt' until ScreenOrgReports can receive a selection
+              (see the note on the hidden registry entry). */}
+          <button type="button" className="cs-btn ghost lg" onClick={()=>go('orpt')}>
+            <Plus size={13}/>New Report</button>
+          <button type="button" className="cs-btn primary lg" onClick={()=>go('mtg')}>
+            <Plus size={13}/>New Meeting</button>
         </div>
-        {rows.length===0 ? <div style={{padding:'8px 17px 17px'}}>
-            <Empty ic="✓">Nothing matches these filters.</Empty></div>
-        : <div className="t-wrap"><table className="data">
-            <thead><tr><th style={{width:4}}></th><th>Area</th><th>Item</th><th>Accountable</th><th>Status</th>
-              <th>Due</th><th>Action</th></tr></thead>
+      </div>
+      <div className="cs-tabs" role="tablist" aria-label="Filter the work queue by area">
+        {TABS.map(t=>{
+          const n = t.id==='All' ? tagged.length : tagged.filter(w=>w.area===t.id).length;
+          return <button key={t.id} type="button" role="tab" aria-selected={tab===t.id}
+            className={'cs-tab'+(tab===t.id?' on':'')} onClick={()=>setTab(t.id)}>
+            {t.label}<span className="cs-tab-badge">{n}</span></button>;})}
+      </div>
+    </div>
+
+    <div className="cs-stats">
+      <div className="cs-stat acc-gold"><div className="cs-stat-lbl">Pending actions</div>
+        <div className="cs-stat-val">{pendingCt}</div><div className="cs-stat-meta">requiring your attention</div></div>
+      <div className="cs-stat acc-green"><div className="cs-stat-lbl">Meetings this week</div>
+        <div className="cs-stat-val">{meetingsThisWeek.length}</div>
+        <div className="cs-stat-meta">{meetingsThisWeek.filter(m=>m.status==='Held').length} held</div></div>
+      <div className="cs-stat acc-amber"><div className="cs-stat-lbl">Overdue items</div>
+        <div className="cs-stat-val">{overdue.length}</div>
+        <div className="cs-stat-meta">{overdue.length
+          ? <><span className="c-amber">{overdueReports} report{overdueReports===1?'':'s'}</span>
+              {' + '}{overdue.length-overdueReports} other</>
+          : 'none outstanding'}</div></div>
+      <div className="cs-stat acc-alert"><div className="cs-stat-lbl">Pending approvals</div>
+        <div className="cs-stat-val">{work.review.length}</div>
+        <div className="cs-stat-meta">with a reviewer or approver</div></div>
+    </div>
+
+    <div className="cs-chips" role="group" aria-label="Quick filters">
+      {QUICK.map(q=>
+        <button key={q.id} type="button" aria-pressed={quick===q.id}
+          className={'cs-chip'+(quick===q.id?' on':'')} onClick={()=>setQuick(q.id)}>{q.label}</button>)}
+      {(tab!=='All'||quick!=='all') && <button type="button" className="cs-btn cs-chips-end"
+        onClick={()=>{setTab('All');setQuick('all');}}><RotateCcw size={11}/>Reset filters</button>}
+    </div>
+
+    <div className="cs-two-col">
+      <section className="cs-card flush" aria-labelledby="wa-queue">
+        <div className="cs-card-top">
+          <div className="cs-card-title-grp">
+            <span className="cs-icon gold" aria-hidden="true"><ClipboardCheck size={16}/></span>
+            <div><h2 className="cs-card-title" id="wa-queue">Work Queue</h2>
+              <div className="cs-card-note">Everything open right now — open a record to act on it.</div></div>
+          </div>
+          <span className="cs-search-n">{rows.length} of {tagged.length}</span>
+        </div>
+        {rows.length===0 ? <div className="cs-empty">Nothing matches these filters.</div>
+        : <div className="cs-tbl-wrap"><table className="cs-tbl dense" style={{minWidth:760}}>
+            <thead><tr><th style={{width:4}}><span className="sr-only">Priority</span></th><th>Area</th>
+              <th>Item</th><th>Accountable</th><th>Status</th><th>Due</th>
+              <th><span className="sr-only">Action</span></th></tr></thead>
             <tbody>{rows.map((w,i)=>{
               const st = statusOf(w);
-              const priCls = w.urgent ? 'p-high' : w.bucket==='review' ? 'p-med' : 'p-low';
-              const openRow = ()=> w._dv
-                ? openDvRec(w.area==='Report'?'Report':'Meeting', w._rec)
-                : w.screen==='mtg' ? openMeeting(w.rid,w.tab||'detail') : go(w.screen,w.rid);
-              return <tr key={w.bucket+w.area+w.rid+i} className="click" onClick={openRow}>
-                <td><div className={'wq-priority '+priCls}/></td>
-                <td><Tag c={AREA_C[w.area]}>{w.area}</Tag></td>
-                <td><div className="t-main">{w.title}</div><div className="t-sub">{w.sub}</div></td>
-                <td className="dim">{w.owner?P(w.owner).name:'—'}
-                  {w.owner && <div className="t-sub">{P(w.owner).position}</div>}</td>
-                <td><Tag c={statusColour(st)}>{st}</Tag></td>
-                <td className="dim">{w.date && w.date<TODAY
-                    ? <span style={{color:'var(--red)',fontWeight:650}}>Overdue</span>
-                    : (w.date?fmtDS(w.date):'—')}</td>
-                <td style={{textAlign:'right'}}>
-                  <Btn k={i===0?'pri sm':'sm'} style={{borderRadius:20}}>{actionVerb(w)}</Btn></td>
+              const late = w.date && w.date<TODAY;
+              const open = ()=>openItem(w);
+              return <tr key={w.bucket+w.area+w.rid+i} className="cs-row" tabIndex={0} onClick={open}
+                  onKeyDown={e=>{ if(e.key==='Enter'){ e.preventDefault(); open(); } }}>
+                <td><span className={'cs-prio'+(w.urgent?' hi':w.bucket==='review'?' md':'')}
+                  title={w.urgent?'Urgent':w.bucket==='review'?'With a reviewer':'Open'}/></td>
+                <td><span className={'cs-type '+(AREA_PILL[w.area]??'adhoc')}>{w.area}</span></td>
+                <td><div className="cs-name">{w.title}</div><div className="cs-name-sub">{w.sub}</div></td>
+                <td>{w.owner ? <><div className="cs-name">{P(w.owner).name}</div>
+                    <div className="cs-name-sub">{P(w.owner).position}</div></> : '—'}</td>
+                <td><span className={'cs-badge '+(STATUS_BADGE[st]||'draft')}><i/>{st}</span></td>
+                <td>{late ? <span className="cs-mono c-red">Overdue</span>
+                  : <span className="cs-mono">{w.date?fmtDS(w.date):'—'}</span>}</td>
+                <td><button type="button" className={'cs-btn'+(i===0?' primary':'')}
+                    onClick={e=>{ e.stopPropagation(); open(); }}>{actionVerb(w)}</button></td>
               </tr>;})}
             </tbody></table></div>}
-      </div>
+      </section>
 
-      <div className="wa-side">
-        <div className="card">
-          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:2}}>
-            <div className="wa-icon green">🗓</div>
-            <h2 style={{flex:1}}>Upcoming</h2>
-            <Btn k="sm" onClick={()=>go('cal')}>Full Calendar</Btn>
+      <div className="cs-side">
+        <section className="cs-card" aria-labelledby="wa-up">
+          <div className="cs-card-top">
+            <div className="cs-card-title-grp">
+              <span className="cs-icon green" aria-hidden="true"><CalendarDays size={16}/></span>
+              <h2 className="cs-card-title" id="wa-up">Upcoming</h2></div>
+            <button type="button" className="cs-btn" onClick={()=>go('cal')}>Full Calendar</button>
           </div>
-          <div className="csub" style={{marginBottom:2}}>Next Meetings, Committees and Report due dates.</div>
-          {upcoming.length===0 ? <Empty ic="🗓">Nothing scheduled yet.</Empty>
-          : upcoming.map((i,n)=>{
-              return <div key={i.kind+i.id+n} className="wa-up-r"
-                  onClick={()=> i._dv
-                    ? openDvRec(i.kind==='Report'?'Report':'Meeting', i._rec)
-                    : i.screen==='mtg' ? openMeeting(i.id,i.tab||'detail') : go(i.screen,i.id)}>
-                <div className="wa-date plain"><span className="dd">{i.date.slice(8)}</span>
-                  <span className="mo">{MONTHS[+i.date.slice(5,7)-1]}</span></div>
-                <div className="wa-up-t">
-                  <div className="n">{i.restricted&&'🔒 '}{i.title}</div>
-                  <div className="m">{i.sub}</div>
-                </div>
-                {i.time && <div className="wa-up-time">{i.time}</div>}
-              </div>;})}
-        </div>
+          {upcoming.length===0 ? <div className="cs-card-note">Nothing scheduled yet.</div>
+          : <div className="cs-up">{upcoming.map((it,n)=>
+              <button key={it.kind+it.id+n} type="button" className="cs-up-item"
+                  onClick={()=> it._dv
+                    ? openDvRec(it.kind==='Report'?'Report':'Meeting', it._rec)
+                    : it.screen==='mtg' ? openMeeting(it.id,it.tab||'detail') : go(it.screen,it.id)}>
+                <span className="cs-up-d"><span className="cs-up-dd">{it.date.slice(8)}</span>
+                  <span className="cs-up-mo">{MONTHS[+it.date.slice(5,7)-1]}</span></span>
+                <span style={{minWidth:0}}>
+                  <div className="cs-name">{it.restricted && <Lock size={10} className="cs-lock" aria-label="Restricted"/>}{it.title}</div>
+                  <div className="cs-name-sub">{it.sub}</div></span>
+                {it.time && <span className="cs-up-time">{it.time}</span>}
+              </button>)}</div>}
+        </section>
 
-        <div className="card">
-          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:2}}>
-            <div className="wa-icon amber">📈</div>
-            <h2 style={{flex:1}}>This Month</h2>
+        <section className="cs-card" aria-labelledby="wa-month">
+          <div className="cs-card-top"><div className="cs-card-title-grp">
+            <span className="cs-icon amber" aria-hidden="true"><Activity size={16}/></span>
+            <h2 className="cs-card-title" id="wa-month">This Month</h2></div></div>
+          <p className="cs-card-note">Read from the Meeting and Report Occurrence tables.</p>
+          <div>
+            <div className="cs-qs"><span>Meetings Held</span>
+              <span className="cs-qs-v">{meetingsHeld} / {meetingsTotal}</span></div>
+            <div className="cs-qs"><span>Agenda Fully Recorded</span>
+              <span className="cs-qs-v">{agendaRecorded} / {meetingsHeld}</span></div>
+            <div className="cs-qs"><span>Reports Submitted</span>
+              <span className="cs-qs-v">{reportsSubmitted} / {dvReportOccs.length}</span></div>
+            <div className="cs-qs"><span>Reports Approved</span>
+              <span className="cs-qs-v">{reportsApproved} / {dvReportOccs.length}</span></div>
           </div>
-          <div className="csub" style={{marginBottom:2}}>Read from the Meeting and Report Occurrence tables.</div>
-          <div className="wa-mo-r divider"><label>Meetings Held</label>
-            <span className="v">{meetingsHeld} / {meetingsTotal}</span></div>
-          <div className="wa-mo-r divider"><label>Agenda Fully Recorded</label>
-            <span className="v">{agendaRecorded} / {meetingsHeld}</span></div>
-          <div className="wa-mo-r divider"><label>Reports Submitted</label>
-            <span className="v">{reportsSubmitted} / {dvReportOccs.length}</span></div>
-          <div className="wa-mo-r divider"><label>Reports Approved</label>
-            <span className="v">{reportsApproved} / {dvReportOccs.length}</span></div>
-        </div>
+        </section>
       </div>
     </div>
 
-    <div className="card" style={{marginTop:16}}>
-      <h2>Where things live</h2>
-      <div className="csub">Five places, and nothing is hidden behind a sixth.</div>
-      <div className="t-wrap"><table className="data">
+    <section className="cs-card flush" aria-labelledby="wa-where">
+      <div className="cs-card-top"><div className="cs-card-title-grp">
+        <span className="cs-icon gold" aria-hidden="true"><Layers size={16}/></span>
+        <div><h2 className="cs-card-title" id="wa-where">Where things live</h2>
+          <div className="cs-card-note">Five places, and nothing is hidden behind a sixth.</div></div>
+      </div></div>
+      <div className="cs-tbl-wrap"><table className="cs-tbl" style={{minWidth:480}}>
         <thead><tr><th>I want to…</th><th>Go to</th></tr></thead>
         <tbody>
           {[['See what needs doing across everything','My Workspace','work'],
@@ -3128,12 +3153,14 @@ function ScreenWorkspace(){
             ['Log a Decision, or see every Decision raised','Decisions','dec'],
             ['Compare Committee scores over time','Committee Scores','grid'],
           ].map(([q,where,sc])=>
-            <tr key={q} className="click" onClick={()=>go(sc)}>
-              <td>{q}</td><td className="t-main">{where} →</td></tr>)}
+            <tr key={q} className="cs-row cs-link-row" tabIndex={0} onClick={()=>go(sc)}
+                onKeyDown={e=>{ if(e.key==='Enter'){ e.preventDefault(); go(sc); } }}>
+              <td>{q}</td><td>{where} →</td></tr>)}
         </tbody></table></div>
-    </div>
-  </>;
+    </section>
+  </div>;
 }
+
 /* =========================================================================
    3 · REPORTS & PLANS
    ========================================================================= */
