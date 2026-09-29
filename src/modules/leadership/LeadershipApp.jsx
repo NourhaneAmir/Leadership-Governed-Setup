@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Activity, ArrowUpRight, BarChart3, CalendarDays, CheckSquare, ClipboardCheck, ClipboardList, CircleAlert,
          Download, FileText, Gauge, Layers, LineChart, Lock, Menu, MessageSquare, MessagesSquare, Network, PenLine, Plus, RotateCcw, Shield, Eye,
-         Users, UsersRound, X }
+         Users, UsersRound, X, Briefcase }
   from 'lucide-react';
 import './leadership-design.css';
 /* Dates, the working calendar and number formatting now live in src/shared so
@@ -1481,6 +1481,12 @@ const SCREENS = [
   {id:'newrpt', group:'Artifact',    label:'New Report',             Icon:null,           wide:true,
    Screen:ScreenNewReport,         hidden:true,
    hint:'Create a Report from an approved template, or a Custom one.'},
+  /* Schedule Meeting (29 Sep, was NewMeetingModal). Hidden from the sidebar:
+     reached from Meetings' "Ad Hoc from Setup" / "New Meeting" through
+     go('newmtg', 'adhoc' | 'custom'). */
+  {id:'newmtg', group:'Meetings',    label:'Schedule Meeting',       Icon:null,           wide:true,
+   Screen:ScreenNewMeeting,        hidden:true,
+   hint:'Schedule a Meeting from an approved Setup, or a Custom Ad Hoc one.'},
 ];
 
 /* everything below is derived — nothing else in the file lists screens */
@@ -4606,44 +4612,6 @@ const APPROVED_STATUS = 'Active / Approved';
 const setupIsApproved = s =>
   (TEMPLATE_STATUS_LABEL[s?.statusCode] || APPROVED_STATUS) === APPROVED_STATUS;
 
-/* A search box above a native select. The select is kept deliberately: it
-   already handles keyboard, touch and the long-list behaviour each platform
-   expects, and the search only has to narrow what it offers. */
-function ApprovedSetupPicker({id,list,val,onChange,labelOf,emptyText,extraOption}){
-  const [q,setQ] = useState('');
-  const approved = useMemo(()=>(list||[]).filter(setupIsApproved), [list]);
-  const needle = q.trim().toLowerCase();
-  /* The current selection always stays in the list, so narrowing the search
-     can never blank out what is already chosen. */
-  const shown = needle
-    ? approved.filter(s => labelOf(s).toLowerCase().includes(needle) || s.id === val)
-    : approved;
-  const hidden = (list||[]).length - approved.length;
-
-  return <>
-    <input type="search" value={q} placeholder="Search approved Setups…"
-      aria-label="Search approved Setups"
-      style={{width:'100%',marginBottom:6}}
-      onChange={e=>setQ(e.target.value)}/>
-    <select id={id} value={val} onChange={e=>onChange(e.target.value)}>
-      <option value="">{approved.length?'Select…':emptyText}</option>
-      {extraOption || null}
-      {shown.map(s=><option key={s.id} value={s.id}>{labelOf(s)}</option>)}
-    </select>
-    {needle
-      ? <div className="holder">
-          {shown.length} of {approved.length} approved {approved.length===1?'Setup':'Setups'} match “{q.trim()}”.</div>
-      : hidden>0
-        ? <div className="holder">
-            {approved.length} approved · {hidden} not approved and hidden.</div>
-        : null}
-    {(list||[]).length>0 && approved.length===0
-      ? <Note k="warn">None of the {(list||[]).length} Setups read from Dataverse is Active / Approved,
-          so there is nothing to create from. Approve one in Governance Setup first.</Note>
-      : null}
-  </>;
-}
-
 /* The report's working file is uploaded into a Dataverse File column, whose
    default ceiling is 32 MB -- refused here rather than by a failed upload after
    the report already exists. */
@@ -5452,8 +5420,7 @@ const occStatusTag = (o,mom,grid) => {
    Template's threshold by liveQuorum() (29 Sep); quorum does not decide
    whether a Meeting is settled. */
 function ScreenMeetings(){
-  const {sel,setSel,dvMeetingOccs,dvMinutes,S,dvLoading,dvError,openMeeting} = use();
-  const [mk,setMk]=useState(null);
+  const {sel,setSel,dvMeetingOccs,dvMinutes,S,dvLoading,dvError,openMeeting,go} = use();
   const [tab,setTab]=useState('due');
   const [typeFilter,setTypeFilter]=useState('all');
   /* Declared with the other state, ABOVE the early return below — a hook after
@@ -5573,9 +5540,9 @@ function ScreenMeetings(){
         <div><h1 className="cs-title">Meetings</h1>
           <p className="cs-sub">Every Meeting Occurrence in Dataverse — scheduled, held and cancelled.</p></div>
         <div className="cs-actions">
-          <button type="button" className="cs-btn ghost lg" onClick={()=>setMk('adhoc')}>
+          <button type="button" className="cs-btn ghost lg" onClick={()=>go('newmtg','adhoc')}>
             <CalendarDays size={13}/>Ad Hoc from Setup</button>
-          <button type="button" className="cs-btn primary lg" onClick={()=>setMk('custom')}>
+          <button type="button" className="cs-btn primary lg" onClick={()=>go('newmtg','custom')}>
             <Plus size={13}/>New Meeting</button>
         </div>
       </div>
@@ -5740,7 +5707,6 @@ function ScreenMeetings(){
       </div>
     </div>
 
-    {mk && <NewMeetingModal kind={mk} onClose={()=>setMk(null)}/>}
   </div>;
 }
 
@@ -8915,9 +8881,17 @@ function naturalRecurrenceDate(frequency, dayOfMonth, monthInQuarter, fromDate){
   return null;
 }
 
-function NewMeetingModal({kind,onClose}){
-  const {me,toast,refreshOccurrences}=use();
-  const custom = kind==='custom';
+/* Schedule Meeting -- a full page since 29 Sep (was NewMeetingModal), styled to
+   the approved design: Setup cards, Meeting Details, People, Agenda, and a side
+   column with the Meeting Summary, Members and Quorum Rules. Same data, same
+   rules and the same save as the modal it replaced -- only the layout changed.
+   Opened with go('newmtg', 'adhoc' | 'custom'); a Setup card or the Custom
+   Meeting card switches between the two on the page. */
+function ScreenNewMeeting(){
+  const {me,toast,refreshOccurrences,sel,go}=use();
+  const [custom,setCustom]=useState(sel?.newmtg==='custom');
+  const onClose=()=>go('mtg');
+  const [setupQ,setSetupQ]=useState('');
   const [f,setF]=useState({setup:'', tplUnitKey:'', name:'', purpose:'', bu:'AHJ',
     date:addDays(TODAY,5), start:'09:00', end:'10:00', mode:'Online', location:'',
     adhoc:'Governance', restricted:false, dept:P(me).dept, stage:'Business Unit',
@@ -9163,184 +9137,370 @@ function NewMeetingModal({kind,onClose}){
     }finally{ setSaving(false); }
   };
 
-  return <Modal wide onClose={onClose}
-    title={custom?'Create a Custom Ad Hoc Meeting':'Create an Ad Hoc occurrence from an approved Setup'}
-    sub={custom?'Use this only where no approved Setup exists. The Meeting is scheduled immediately and the metadata is sent to Taxonomy with a No-Setup flag.'
-               :'The approved Setup and its classification are preserved. Only execution-level information can be changed.'}
-    footer={<><Btn onClick={onClose} disabled={saving}>Cancel</Btn>
-      <Btn k="pri" disabled={!ok||saving} onClick={save}>
-        {saving?'Saving…':(custom?'Schedule the Meeting':'Create the occurrence')}</Btn></>}>
+  /* ---- what the page shows, derived from the same state as the form ---- */
+  const approvedSetups = (DV_TPL_LIST||[]).filter(setupIsApproved);
+  const hiddenSetups = (DV_TPL_LIST||[]).length - approvedSetups.length;
+  const setupNeedle = setupQ.trim().toLowerCase();
+  const shownSetups = setupNeedle
+    ? approvedSetups.filter(t=>matchesQuery(setupNeedle,[t.name, MEETING_SETUP_TYPE[t.setupTypeCode],
+        MEETING_CATEGORY[t.categoryCode], MEETING_FREQUENCY[t.frequencyCode]]) || t.id===f.setup)
+    : approvedSetups;
+  const setupRow = f.setup ? dvTplDetail(f.setup) : null;
+  const setupType = setupRow ? (MEETING_SETUP_TYPE[setupRow.setupTypeCode]||null) : null;
+  const setupCategory = setupRow ? (MEETING_CATEGORY[setupRow.categoryCode]||null) : null;
+  const setupCadence = setupRow
+    ? [MEETING_FREQUENCY[setupRow.frequencyCode], MEETING_DAY_OF_WEEK[setupRow.dayOfWeekCode]].filter(Boolean).join(' — ')||null
+    : null;
+  const quorumPct = !custom ? (tplDetail?.parent?.lm_quorumthreshold ?? setupRow?.quorumPct ?? null) : null;
+  const requiredCount = f.dvAttend.filter(a=>(a.type||'Required')==='Required').length;
+  const scopeLabel = stageBU ? (dvBu(f.dvBusinessUnitId)||null)
+    : stageRegion ? (dvRegion(f.dvRegionId)||null) : 'Group-wide';
+  const title = custom ? f.name
+    : (tplDetail?.parent?.lm_meetingtemplatename || dvTpl(f.setup) || '');
+  const showForm = custom || (f.setup && !tplLoading);
+  const pickSetup = id => { setCustom(false); if(id!==f.setup) set('setup', id); };
+  const pickCustom = () => { setCustom(true); set('setup',''); };
+  const initials = t => String(t||'?').split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase();
+  const members = [
+    ...(f.dvChairPositionId ? [{id:f.dvChairPositionId, role:'Chair'}] : []),
+    ...(f.dvFacilitatorPositionId ? [{id:f.dvFacilitatorPositionId, role:'Facilitator'}] : []),
+    ...f.dvAttend.map(a=>({id:a.positionId, role:a.type||'Required'})),
+  ];
+  const MEMBERS_SHOWN = 5;
+  const why = !ok ? [
+    !custom && !f.setup ? 'choose a Setup' : null,
+    custom && !f.name.trim() ? 'a meeting name' : null,
+    custom && !f.purpose.trim() ? 'a purpose' : null,
+    !custom && f.setup && tplUnits.length>1 && !f.tplUnitKey ? 'the Business Unit / Region' : null,
+    !scopeOk ? 'the scope' : null,
+    !f.dvChairPositionId ? 'a Chair' : null,
+    !f.dvFacilitatorPositionId ? 'a Facilitator' : null,
+    !f.tz ? 'a time zone' : null,
+    !f.dvAttend.length ? 'at least one attendee' : null,
+    !agenda.length ? 'at least one agenda item' : null,
+    !modeOk ? (needsLink && !f.link.trim() ? 'a meeting link' : 'a location') : null,
+  ].filter(Boolean) : [];
 
-    {!custom && <>
-      <Field label="Approved Setup" req
-        hint="Approved Setups only, read live from Dataverse.">
-        <ApprovedSetupPicker list={DV_TPL_LIST} val={f.setup}
-          onChange={v=>set('setup',v)}
-          emptyText="No Meeting Templates loaded from Dataverse"
-          labelOf={s=>`${s.name}${s.setupTypeCode?' — '+(MEETING_SETUP_TYPE[s.setupTypeCode]||''):''}`}/>
-      </Field>
-      {f.setup && tplLoading &&
-        <Note k="info" ic="i">Reading this Setup's organizational placement, Chair, Facilitator, Attendees
-          and Agenda from Dataverse…</Note>}
-      {f.setup && !tplLoading && tplUnits.length>1 &&
-        <Field label="Business Unit / Region" req
-          hint="This Setup is approved for more than one place — choose which one this occurrence belongs to.">
-          <select value={f.tplUnitKey} onChange={e=>applyUnit(tplUnits.find(u=>u.key===e.target.value)||null)}>
-            <option value="">Select…</option>
-            {tplUnits.map(u=><option key={u.key} value={u.key}>{u.label}</option>)}
-          </select></Field>}
-      {f.setup && !tplLoading && tplUnits.length===1 &&
-        <Note k="info" ic="i">Business Unit / Region: <b>{tplUnits[0].label}</b> — the only place this
-          Setup is approved to run.</Note>}
-      {f.setup && !tplLoading && tplUnits.length===0 &&
-        <Note k="info" ic="i">This Setup runs once, group-wide — no Business Unit or Region scope applies.</Note>}
-      {f.setup && !tplLoading &&
-        <Note k="lock">Locked by Taxonomy for this occurrence: controlled name, Setup Type, classification,
-          TOR reference and quorum threshold. Chair, Facilitator, Attendees and Agenda are pre-filled from
-          the Setup below and can still be adjusted for this occurrence only.</Note>}
-    </>}
-
-    {(custom || (f.setup && !tplLoading)) && <>
-      {custom && <Note k="info" ic="i">This form creates a real Meeting Occurrence, with its agenda and
-        attendees. Business Unit, Chair and Attendees are therefore read from Dataverse — the seeded demo
-        people used elsewhere in this module are not real rows and the lookups would reject them.
-        <div style={{marginTop:6}}><b>Purpose</b> is the one field not saved — there is nowhere to store
-        it yet.</div></Note>}
-      {custom && <Field label="Meeting name" req><input type="text" value={f.name}
-        onChange={e=>set('name',e.target.value)} placeholder="e.g. Sterilisation incident review"/></Field>}
-      {custom && <Field label="Purpose" req hint="Not stored — the occurrence table has no Purpose column.">
-        <textarea value={f.purpose} onChange={e=>set('purpose',e.target.value)}/></Field>}
-      {custom && <div className="f-row">
-        <Field label="Organizational Stage" req
-          hint="Stage 1 runs in one Business Unit, Stage 2 in one Region. Group and ExCom run once, group-wide.">
-          <select value={f.stage} onChange={e=>{
-            const v=e.target.value;
-            // Switching Stage clears the scope that no longer applies, so a
-            // Business Unit can never be left behind on a Region Meeting --
-            // and the Department with it, since it is narrowed by that scope.
-            setF(x=>({...x, stage:v, dvBusinessUnitId:'', dvRegionId:'',
-                              dvDepartmentId:'', dvChairPositionId:'', dvFacilitatorPositionId:''}));
-          }}>
-          {['Business Unit','Region','Group','ExCom'].map(s=><option key={s}>{s}</option>)}</select></Field>
-
-        {stageBU
-          ? <Field label="Business Unit" req hint="Shown as Business Unit — Region.">
-              <select value={f.dvBusinessUnitId} onChange={e=>{
-                const id=e.target.value;
-                const bu=DV_BU_LIST.find(b=>b.id===id);
-                const rn=bu?dvRegion(bu.region):null;
-                // Picking scope pre-selects the time zone that scope sits in.
-                setF(x=>({...x, dvBusinessUnitId:id, dvDepartmentId:'', dvChairPositionId:'',
-                                dvFacilitatorPositionId:'', dvAttend:[],
-                                tz:rn?tzForRegionName(rn):x.tz}));
-              }}>
-                <option value="">{DV_BU_LIST.length?'Select…':'No Business Units loaded'}</option>
-                {DV_BU_LIST.map(b=>{ const rn=dvRegion(b.region);
-                  return <option key={b.id} value={b.id}>{rn?`${b.name} — ${rn}`:b.name}</option>; })}
-              </select></Field>
-          : stageRegion
-            ? <Field label="Region" req>
-                <select value={f.dvRegionId} onChange={e=>{
-                  const id=e.target.value;
-                  const rg=DV_REGION_LIST.find(r=>r.id===id);
-                  setF(x=>({...x, dvRegionId:id, dvDepartmentId:'', dvChairPositionId:'',
-                                  dvFacilitatorPositionId:'', dvAttend:[],
-                                  tz:rg?tzForRegionName(rg.name):x.tz}));
-                }}>
-                  <option value="">{DV_REGION_LIST.length?'Select…':'No Regions loaded'}</option>
-                  {DV_REGION_LIST.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
-                </select></Field>
-            : <Field label="Scope" hint="Group and ExCom Meetings run once, group-wide — no Business Unit or Region.">
-                <input type="text" value="Group-wide" disabled/></Field>}
-      </div>}
-
-      <div className="f-row">
-        <Field label="Meeting Chair" req hint={scopeHint}>
-          <PositionSelect value={f.dvChairPositionId} onChange={v=>set('dvChairPositionId',v)}
-            opts={chairOpts} disabled={!scopeChosen}
-            placeholder={scopePlaceholder} emptyText="No Positions in this scope"/></Field>
-        <Field label="Facilitator" req
-          hint="The Facilitator owns the agenda items and writes up the Minutes.">
-          <PositionSelect value={f.dvFacilitatorPositionId} onChange={v=>set('dvFacilitatorPositionId',v)}
-            opts={chairOpts} disabled={!scopeChosen}
-            placeholder={scopePlaceholder} emptyText="No Positions in this scope"/></Field>
-        <Field label="Time zone" req>
-          <select value={f.tz} onChange={e=>set('tz',e.target.value)}>
-            <option value="">Select…</option>
-            {TIME_ZONES.map(t=><option key={t.id} value={t.id}>{t.label}</option>)}</select></Field>
+  return <div className="cs-root cs-newmtg">
+    <div className="cs-head" style={{paddingBottom:16}}>
+      <div className="cs-crumb"><button type="button" onClick={onClose}>Meetings</button> › <b>New Meeting</b></div>
+      <div className="cs-head-top">
+        <div><h1 className="cs-title">Schedule Meeting</h1>
+          <p className="cs-sub">{custom
+            ? 'A Custom Ad Hoc Meeting — for where no approved Setup exists. It is scheduled immediately and sent to Taxonomy with a No-Setup flag.'
+            : 'Create a meeting from an approved Setup — it inherits the Setup’s classification, people and agenda.'}</p></div>
+        <div className="cs-actions">
+          <button type="button" className="cs-btn ghost lg" onClick={onClose} disabled={saving}>Cancel</button>
+          <button type="button" className="cs-btn primary lg" onClick={save} disabled={!ok||saving}
+            title={ok ? 'Schedule this meeting' : 'Still needed: '+why.join(', ')}>
+            <CalendarDays size={13}/>{saving?'Saving…':'Schedule Meeting'}</button>
+        </div>
       </div>
-      <DvAttendeePicker value={f.dvAttend} onChange={v=>set('dvAttend',v)}
-        opts={chairOpts} scopeChosen={scopeChosen} scopeHint={scopeHint}/>
-      <Field label="Department"
-        hint={fromSetup
-          ? `The ${deptOpts.length} Department${deptOpts.length===1?'':'s'} this Setup is for.`
-          : stageBU
-            ? 'Narrowed to the Departments inside the chosen Business Unit.'
-            : stageRegion
-              ? 'Narrowed to the Departments inside every Business Unit in the chosen Region.'
-              : 'Group and ExCom Meetings are not narrowed — every Department is offered.'}>
-        <select value={f.dvDepartmentId} onChange={e=>set('dvDepartmentId',e.target.value)}
-          disabled={(stageBU&&!f.dvBusinessUnitId)||(stageRegion&&!f.dvRegionId)}>
-          <option value="">{
-            stageBU&&!f.dvBusinessUnitId ? 'Choose a Business Unit first'
-            : stageRegion&&!f.dvRegionId ? 'Choose a Region first'
-            : deptOpts.length ? 'Select…'
-            : fromSetup ? 'This Setup names no Department' : 'No Departments in this scope'}</option>
-          {deptOpts.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
-        </select></Field>
-    </>}
-
-    <Field label="Ad Hoc Type" req hint="A one-to-one or skip-level Meeting uses Leadership or Governance.">
-      <Pills val={f.adhoc} onChange={v=>set('adhoc',v||'Governance')} opts={ADHOC_TYPES}/></Field>
-
-    <div className="f-row3">
-      <Field label="Date" req
-        hint={moved
-          ? `${dayName(f.date)} is a non-working day. This occurrence will be booked on ${fmtD(bookedDate)} — the series is unchanged.`
-          : 'The working week is Sunday to Thursday.'}>
-        <input type="date" value={f.date} onChange={e=>set('date',e.target.value)}/></Field>
-      <Field label="Start" req><input type="time" value={f.start}
-        onChange={e=>set('start',e.target.value)}/></Field>
-      <Field label="End" req><input type="time" value={f.end}
-        onChange={e=>set('end',e.target.value)}/></Field>
-    </div>
-    {/* Mode decides what a Meeting needs to be reachable: Online needs a joining
-        link, In person needs a room, Hybrid needs both. Only what applies is shown. */}
-    <div className="f-row">
-      <Field label="Mode"><select value={f.mode} onChange={e=>set('mode',e.target.value)}>
-        {['Online','In person','Hybrid'].map(m=><option key={m}>{m}</option>)}</select></Field>
-      {needsLocation
-        ? <Field label="Location" req hint="The room this Meeting is held in.">
-            <input type="text" value={f.location} onChange={e=>set('location',e.target.value)}
-              placeholder="e.g. Meeting Room 4"/></Field>
-        : null}
-      {needsLink
-        ? <Field label="Meeting link" req hint="The joining URL attendees use.">
-            <input type="text" value={f.link} onChange={e=>set('link',e.target.value)}
-              placeholder="https://teams.microsoft.com/l/meetup-join/…"/></Field>
-        : null}
     </div>
 
-    <Field label="">
-      <label className="chk"><input type="checkbox" checked={f.restricted}
-        onChange={e=>set('restricted',e.target.checked)}/>
-        <span>Restrict visibility to participants — use for a one-to-one or skip-level Meeting.
-          The occurrence and its Minutes will be hidden from everyone else except permitted governance
-          roles.</span></label></Field>
+    <div className="cs-two-col cs-wide-side">
+      <div className="cs-side" style={{gap:14}}>
 
-    <Field label="Agenda Items" req hint={custom
-      ? 'At least one Agenda Item is required for every Meeting.'
-      : 'Pre-filled from the Setup’s controlled Agenda — add, edit or remove items for this occurrence only.'}>
-      {f.agenda.map((a,i)=>
-        <div key={i} style={{display:'flex',gap:7,marginBottom:6}}>
-          <input type="text" value={a} placeholder={'Agenda Item '+(i+1)}
-            onChange={e=>set('agenda',f.agenda.map((x,j)=>j===i?e.target.value:x))}
-            style={{flex:1,border:'1px solid var(--border-d)',borderRadius:7,padding:'7px 9px',fontSize:13}}/>
-          {f.agenda.length>1 && <Btn k="sm" onClick={()=>set('agenda',f.agenda.filter((_,j)=>j!==i))}>×</Btn>}
-        </div>)}
-      <Btn k="sm" onClick={()=>set('agenda',[...f.agenda,''])}>+ Add another</Btn>
-    </Field>
-  </Modal>;
+        {/* ---- Select Setup ---- */}
+        <section className="cs-card" aria-labelledby="nm-setup">
+          <div className="cs-card-top" style={{marginBottom:4}}>
+            <h2 className="cs-card-title" id="nm-setup">Select Setup</h2>
+            <span className="cs-search">
+              <input type="search" value={setupQ} placeholder="Search Setups…" aria-label="Search Setups"
+                onChange={e=>setSetupQ(e.target.value)}/>
+              {setupNeedle ? <span className="cs-search-n">{shownSetups.length} of {approvedSetups.length}</span> : null}
+            </span>
+          </div>
+          <p className="cs-card-note" style={{marginBottom:12}}>
+            Meetings inherit their classification, people, cadence, agenda and quorum from the selected Setup.
+            {hiddenSetups>0 ? ` ${hiddenSetups} Setup${hiddenSetups===1?' is':'s are'} not approved and hidden.` : ''}</p>
+          {(DV_TPL_LIST||[]).length>0 && approvedSetups.length===0
+            ? <Note k="warn">None of the {(DV_TPL_LIST||[]).length} Setups read from Dataverse is Active /
+                Approved, so there is nothing to create from. Approve one in Governance Setup first — or
+                schedule a Custom Meeting.</Note>
+            : null}
+          <div className="cs-tpl-grid" role="radiogroup" aria-label="Meeting Setups">
+            {shownSetups.map(t=>{
+              const committee = /committee/i.test(MEETING_SETUP_TYPE[t.setupTypeCode]||'');
+              const Ic = committee ? Shield : Briefcase;
+              const units = (t.businessUnitIds||[]).length + (t.regionIds||[]).length;
+              return <button key={t.id} type="button" role="radio" aria-checked={!custom && f.setup===t.id}
+                  className={'cs-tpl'+(!custom && f.setup===t.id?' on':'')} onClick={()=>pickSetup(t.id)}>
+                <span style={{display:'flex',gap:10,alignItems:'center'}}>
+                  <span className={'cs-icon '+(committee?'green':'gold')} aria-hidden="true"><Ic size={16}/></span>
+                  <span style={{display:'flex',flexDirection:'column',gap:2}}>
+                    <span className="cs-tpl-t">{t.name}</span>
+                    <span className="cs-tpl-d">{[MEETING_SETUP_TYPE[t.setupTypeCode], MEETING_FREQUENCY[t.frequencyCode]]
+                      .filter(Boolean).join(' · ') || 'Meeting Setup'}</span>
+                  </span>
+                </span>
+                <span className="cs-tpl-tags">
+                  <span className="cs-type green">Active</span>
+                  {MEETING_CATEGORY[t.categoryCode] ? <span className="cs-type">{MEETING_CATEGORY[t.categoryCode]}</span> : null}
+                  <span className="cs-type adhoc">{units ? `${units} unit${units===1?'':'s'}` : 'Group-wide'}</span>
+                </span>
+              </button>;})}
+            <button type="button" role="radio" aria-checked={custom}
+                className={'cs-tpl'+(custom?' on':'')} onClick={pickCustom}>
+              <span style={{display:'flex',gap:10,alignItems:'center'}}>
+                <span className="cs-icon dark" aria-hidden="true"><PenLine size={16}/></span>
+                <span style={{display:'flex',flexDirection:'column',gap:2}}>
+                  <span className="cs-tpl-t">Custom Meeting</span>
+                  <span className="cs-tpl-d">No approved Setup — you name it and pick everyone.</span>
+                </span>
+              </span>
+              <span className="cs-tpl-tags"><span className="cs-type adhoc">No Setup</span></span>
+            </button>
+          </div>
+          {!custom && f.setup && tplLoading &&
+            <div className="cs-info" style={{marginTop:12}}><Users size={13} aria-hidden="true"/>
+              <span>Reading this Setup’s placement, Chair, Facilitator, Attendees and Agenda from Dataverse…</span></div>}
+        </section>
+
+        {showForm && <>
+          {/* ---- Meeting Details ---- */}
+          <section className="cs-card cs-mtg-form" aria-labelledby="nm-details">
+            <h2 className="cs-card-title" id="nm-details" style={{marginBottom:10}}>Meeting Details</h2>
+            {!custom &&
+              <div className="cs-info" style={{marginBottom:12}}><Lock size={13} aria-hidden="true"/>
+                <span>Locked by Taxonomy for this occurrence: the controlled name, Setup Type, classification,
+                  TOR reference and quorum threshold. Everything else below can be adjusted for this occurrence only.</span></div>}
+            <Field label="Meeting title" req={custom}
+              hint={custom ? null : 'The Setup’s controlled name — it cannot be changed here.'}>
+              <input type="text" value={title} disabled={!custom}
+                onChange={e=>set('name',e.target.value)} placeholder="e.g. Sterilisation incident review"/></Field>
+            {custom && <Field label="Purpose" req hint="Not stored — the occurrence table has no Purpose column.">
+              <textarea value={f.purpose} onChange={e=>set('purpose',e.target.value)}/></Field>}
+
+            {!custom && tplUnits.length>1 &&
+              <Field label="Business Unit / Region" req
+                hint="This Setup is approved for more than one place — choose which one this occurrence belongs to.">
+                <select value={f.tplUnitKey} onChange={e=>applyUnit(tplUnits.find(u=>u.key===e.target.value)||null)}>
+                  <option value="">Select…</option>
+                  {tplUnits.map(u=><option key={u.key} value={u.key}>{u.label}</option>)}
+                </select></Field>}
+            {!custom && tplUnits.length===1 &&
+              <Field label="Business Unit / Region" hint="The only place this Setup is approved to run.">
+                <input type="text" value={tplUnits[0].label} disabled/></Field>}
+            {!custom && tplUnits.length===0 &&
+              <Field label="Scope" hint="This Setup runs once, group-wide.">
+                <input type="text" value="Group-wide" disabled/></Field>}
+
+            {custom && <div className="f-row">
+              <Field label="Organizational Stage" req
+                hint="Stage 1 runs in one Business Unit, Stage 2 in one Region. Group and ExCom run once, group-wide.">
+                <select value={f.stage} onChange={e=>{
+                  const v=e.target.value;
+                  // Switching Stage clears the scope that no longer applies, and
+                  // the Department with it, since it is narrowed by that scope.
+                  setF(x=>({...x, stage:v, dvBusinessUnitId:'', dvRegionId:'',
+                                    dvDepartmentId:'', dvChairPositionId:'', dvFacilitatorPositionId:''}));
+                }}>
+                {['Business Unit','Region','Group','ExCom'].map(s=><option key={s}>{s}</option>)}</select></Field>
+              {stageBU
+                ? <Field label="Business Unit" req hint="Shown as Business Unit — Region.">
+                    <select value={f.dvBusinessUnitId} onChange={e=>{
+                      const id=e.target.value;
+                      const bu=DV_BU_LIST.find(b=>b.id===id);
+                      const rn=bu?dvRegion(bu.region):null;
+                      // Picking scope pre-selects the time zone that scope sits in.
+                      setF(x=>({...x, dvBusinessUnitId:id, dvDepartmentId:'', dvChairPositionId:'',
+                                      dvFacilitatorPositionId:'', dvAttend:[],
+                                      tz:rn?tzForRegionName(rn):x.tz}));
+                    }}>
+                      <option value="">{DV_BU_LIST.length?'Select…':'No Business Units loaded'}</option>
+                      {DV_BU_LIST.map(b=>{ const rn=dvRegion(b.region);
+                        return <option key={b.id} value={b.id}>{rn?`${b.name} — ${rn}`:b.name}</option>; })}
+                    </select></Field>
+                : stageRegion
+                  ? <Field label="Region" req>
+                      <select value={f.dvRegionId} onChange={e=>{
+                        const id=e.target.value;
+                        const rg=DV_REGION_LIST.find(r=>r.id===id);
+                        setF(x=>({...x, dvRegionId:id, dvDepartmentId:'', dvChairPositionId:'',
+                                        dvFacilitatorPositionId:'', dvAttend:[],
+                                        tz:rg?tzForRegionName(rg.name):x.tz}));
+                      }}>
+                        <option value="">{DV_REGION_LIST.length?'Select…':'No Regions loaded'}</option>
+                        {DV_REGION_LIST.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
+                      </select></Field>
+                  : <Field label="Scope" hint="Group and ExCom Meetings run once, group-wide — no Business Unit or Region.">
+                      <input type="text" value="Group-wide" disabled/></Field>}
+            </div>}
+
+            <div className="f-row3">
+              <Field label="Date" req
+                hint={moved
+                  ? `${dayName(f.date)} is a non-working day. This occurrence will be booked on ${fmtD(bookedDate)} — the series is unchanged.`
+                  : 'The working week is Sunday to Thursday.'}>
+                <input type="date" value={f.date} onChange={e=>set('date',e.target.value)}/></Field>
+              <Field label="Start" req><input type="time" value={f.start}
+                onChange={e=>set('start',e.target.value)}/></Field>
+              <Field label="End" req><input type="time" value={f.end}
+                onChange={e=>set('end',e.target.value)}/></Field>
+            </div>
+            {/* Mode decides what a Meeting needs to be reachable: Online needs a
+                joining link, In person needs a room, Hybrid needs both. */}
+            <div className="f-row">
+              <Field label="Mode"><select value={f.mode} onChange={e=>set('mode',e.target.value)}>
+                {['Online','In person','Hybrid'].map(m=><option key={m}>{m}</option>)}</select></Field>
+              {needsLocation
+                ? <Field label="Location" req hint="The room this Meeting is held in.">
+                    <input type="text" value={f.location} onChange={e=>set('location',e.target.value)}
+                      placeholder="e.g. Room 4B — Building A"/></Field>
+                : null}
+              {needsLink
+                ? <Field label="Meeting link" req hint="The joining URL attendees use.">
+                    <input type="text" value={f.link} onChange={e=>set('link',e.target.value)}
+                      placeholder="https://teams.microsoft.com/l/meetup-join/…"/></Field>
+                : null}
+            </div>
+            <div className="f-row">
+              <Field label="Time zone" req>
+                <select value={f.tz} onChange={e=>set('tz',e.target.value)}>
+                  <option value="">Select…</option>
+                  {TIME_ZONES.map(t=><option key={t.id} value={t.id}>{t.label}</option>)}</select></Field>
+              {!custom
+                ? <Field label="Cadence (from Setup)">
+                    <input type="text" value={setupCadence||'Not set on the Setup'} disabled/></Field>
+                : null}
+            </div>
+            <Field label="Ad Hoc Type" req hint="A one-to-one or skip-level Meeting uses Leadership or Governance.">
+              <Pills val={f.adhoc} onChange={v=>set('adhoc',v||'Governance')} opts={ADHOC_TYPES}/></Field>
+            <Field label="">
+              <label className="chk"><input type="checkbox" checked={f.restricted}
+                onChange={e=>set('restricted',e.target.checked)}/>
+                <span>Restrict visibility to participants — use for a one-to-one or skip-level Meeting.
+                  The occurrence and its Minutes will be hidden from everyone else except permitted governance
+                  roles.</span></label></Field>
+          </section>
+
+          {/* ---- People ---- */}
+          <section className="cs-card cs-mtg-form" aria-labelledby="nm-people">
+            <div className="cs-card-top" style={{marginBottom:10}}>
+              <h2 className="cs-card-title" id="nm-people">People</h2>
+              {!custom ? <span className="cs-type adhoc">From Setup</span> : null}
+            </div>
+            <div className="f-row">
+              <Field label="Meeting Chair" req hint={scopeHint}>
+                <PositionSelect value={f.dvChairPositionId} onChange={v=>set('dvChairPositionId',v)}
+                  opts={chairOpts} disabled={!scopeChosen}
+                  placeholder={scopePlaceholder} emptyText="No Positions in this scope"/></Field>
+              <Field label="Facilitator" req
+                hint="The Facilitator owns the agenda items and writes up the Minutes.">
+                <PositionSelect value={f.dvFacilitatorPositionId} onChange={v=>set('dvFacilitatorPositionId',v)}
+                  opts={chairOpts} disabled={!scopeChosen}
+                  placeholder={scopePlaceholder} emptyText="No Positions in this scope"/></Field>
+            </div>
+            <Field label="Department"
+              hint={fromSetup
+                ? `The ${deptOpts.length} Department${deptOpts.length===1?'':'s'} this Setup is for.`
+                : stageBU
+                  ? 'Narrowed to the Departments inside the chosen Business Unit.'
+                  : stageRegion
+                    ? 'Narrowed to the Departments inside every Business Unit in the chosen Region.'
+                    : 'Group and ExCom Meetings are not narrowed — every Department is offered.'}>
+              <select value={f.dvDepartmentId} onChange={e=>set('dvDepartmentId',e.target.value)}
+                disabled={(stageBU&&!f.dvBusinessUnitId)||(stageRegion&&!f.dvRegionId)}>
+                <option value="">{
+                  stageBU&&!f.dvBusinessUnitId ? 'Choose a Business Unit first'
+                  : stageRegion&&!f.dvRegionId ? 'Choose a Region first'
+                  : deptOpts.length ? 'Select…'
+                  : fromSetup ? 'This Setup names no Department' : 'No Departments in this scope'}</option>
+                {deptOpts.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
+              </select></Field>
+            <DvAttendeePicker value={f.dvAttend} onChange={v=>set('dvAttend',v)}
+              opts={chairOpts} scopeChosen={scopeChosen} scopeHint={scopeHint}/>
+          </section>
+
+          {/* ---- Agenda ---- */}
+          <section className="cs-card cs-mtg-form" aria-labelledby="nm-agenda">
+            <div className="cs-card-top" style={{marginBottom:10}}>
+              <h2 className="cs-card-title" id="nm-agenda">Agenda</h2>
+              {!custom ? <span className="cs-type adhoc">From Setup</span> : null}
+            </div>
+            <p className="cs-card-note" style={{marginBottom:10}}>{custom
+              ? 'At least one Agenda Item is required for every Meeting.'
+              : 'Pre-filled from the Setup’s controlled Agenda — add, edit or remove items for this occurrence only.'}</p>
+            <div className="cs-agenda">
+              {f.agenda.map((a,i)=>
+                <div key={i} className="cs-agenda-row">
+                  <span className="cs-agenda-n">{i+1}.</span>
+                  <input type="text" value={a} placeholder={'Agenda Item '+(i+1)} aria-label={'Agenda Item '+(i+1)}
+                    onChange={e=>set('agenda',f.agenda.map((x,j)=>j===i?e.target.value:x))}/>
+                  {f.agenda.length>1
+                    ? <button type="button" className="cs-btn" aria-label={'Remove Agenda Item '+(i+1)}
+                        onClick={()=>set('agenda',f.agenda.filter((_,j)=>j!==i))}><X size={12}/></button>
+                    : null}
+                </div>)}
+            </div>
+            <button type="button" className="cs-btn" style={{marginTop:8}} onClick={()=>set('agenda',[...f.agenda,''])}>
+              <Plus size={12}/>Add an item</button>
+          </section>
+        </>}
+      </div>
+
+      {/* ---- side column ---- */}
+      <div className="cs-side">
+        <section className="cs-card" aria-labelledby="nm-summary">
+          <h2 className="cs-card-title" id="nm-summary" style={{marginBottom:6}}>Meeting Summary</h2>
+          <div className="cs-sum">
+            {[['Setup', custom ? 'Custom — no Setup' : (dvTpl(f.setup)||'—')],
+              ['Type', custom ? 'Ad Hoc' : (setupType||'—')],
+              ['Category', custom ? '—' : (setupCategory||'—')],
+              ['Cadence', custom ? 'One-off' : (setupCadence||'—'), true],
+              ['Scope', scopeLabel||'—'],
+              ['Date', bookedDate ? fmtD(bookedDate) : '—', true],
+              ['Time', f.start&&f.end ? `${f.start} – ${f.end}` : '—', true],
+             ].map(([k,v,mono])=><div key={k} className="cs-sum-row">
+               <span>{k}</span><b className={mono?'cs-mono':''}>{v}</b></div>)}
+          </div>
+        </section>
+
+        <section className="cs-card" aria-labelledby="nm-members">
+          <div className="cs-card-top" style={{marginBottom:8}}>
+            <h2 className="cs-card-title" id="nm-members">Members</h2>
+            {!custom && f.setup ? <span className="cs-type adhoc">From Setup</span> : null}
+          </div>
+          {members.length===0
+            ? <p className="cs-card-note">{showForm ? 'No Chair, Facilitator or Attendee chosen yet.'
+                : 'Choose a Setup to see who it brings.'}</p>
+            : <div className="cs-members">
+                {members.slice(0,MEMBERS_SHOWN).map((m,i)=>{
+                  const holder=DV_POS_HOLDER[m.id]||null, pos=dvPos(m.id)||'Position';
+                  return <div key={m.id+'-'+i} className="cs-member">
+                    <span className={'cs-avatar'+(i%2?' g':'')} aria-hidden="true">{initials(holder||pos)}</span>
+                    <span className="cs-member-t"><b>{holder||pos}</b>{holder?<span>{pos}</span>:null}</span>
+                    <span className={'cs-type '+(m.role==='Chair'?'':m.role==='Facilitator'?'green':'adhoc')}>{m.role}</span>
+                  </div>; })}
+                {members.length>MEMBERS_SHOWN
+                  ? <p className="cs-card-note">+{members.length-MEMBERS_SHOWN} more — see People.</p> : null}
+              </div>}
+        </section>
+
+        <section className="cs-card" aria-labelledby="nm-quorum">
+          <h2 className="cs-card-title" id="nm-quorum" style={{marginBottom:8}}>Quorum Rules</h2>
+          {custom
+            ? <p className="cs-card-note">A Custom Meeting has no Setup, so no quorum threshold applies.</p>
+            : !f.setup
+            ? <p className="cs-card-note">Choose a Setup to see its quorum threshold.</p>
+            : quorumPct==null
+            ? <p className="cs-card-note">This Setup sets no quorum threshold.</p>
+            : <div className="cs-rule">✓ Min {Math.ceil(quorumPct/100*requiredCount)} of {requiredCount} required
+                {' '}({quorumPct}%)</div>}
+          <p className="cs-card-note" style={{marginTop:8}}>Quorum is measured when attendance is taken — the
+            same count the Audit Grid scores.</p>
+        </section>
+
+        {!ok && showForm
+          ? <section className="cs-card" aria-label="Still needed">
+              <h2 className="cs-card-title" style={{marginBottom:6}}>Still needed</h2>
+              <p className="cs-card-note">{why.join(' · ')}</p>
+            </section>
+          : null}
+      </div>
+    </div>
+  </div>;
 }
 /* =========================================================================
    5 · MEETING MINUTES

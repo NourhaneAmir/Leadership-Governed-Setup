@@ -405,6 +405,63 @@
 }
 .cs-root .cs-file svg{ color:var(--cs-gold); flex-shrink:0 }
 
+/* ---- Schedule Meeting (29 Sep) ---------------------------------------- */
+.cs-root .cs-two-col.cs-wide-side{ grid-template-columns:minmax(0,1fr) 310px }
+.cs-root.cs-newmtg .cs-tpl-grid{ grid-template-columns:repeat(auto-fill,minmax(260px,1fr)) }
+.cs-root.cs-newmtg .cs-tpl{ padding:14px }
+.cs-root.cs-newmtg .cs-tpl .cs-tpl-d{ -webkit-line-clamp:1 }
+/* Form fields inside the page's cards: small uppercase labels, soft inputs. */
+.cs-root .cs-mtg-form .f > label{
+  font:700 9.5px var(--cs-sans); letter-spacing:.8px; text-transform:uppercase; color:var(--cs-muted);
+}
+.cs-root .cs-mtg-form input[type=text], .cs-root .cs-mtg-form input[type=date],
+.cs-root .cs-mtg-form input[type=time], .cs-root .cs-mtg-form select, .cs-root .cs-mtg-form textarea{
+  border:1px solid var(--cs-border); border-radius:10px; background:#fff; color:var(--cs-text);
+  font:400 13px var(--cs-body-font); padding:9px 12px;
+}
+.cs-root .cs-mtg-form input[type=date], .cs-root .cs-mtg-form input[type=time]{ font-family:var(--cs-mono) }
+.cs-root .cs-mtg-form input:disabled, .cs-root .cs-mtg-form select:disabled{
+  background:var(--cs-hover); color:var(--cs-muted);
+}
+.cs-root .cs-mtg-form input:focus, .cs-root .cs-mtg-form select:focus, .cs-root .cs-mtg-form textarea:focus{
+  border-color:var(--cs-gold); outline:none; box-shadow:0 0 0 3px var(--cs-gold-soft);
+}
+.cs-root .cs-sum{ display:flex; flex-direction:column }
+.cs-root .cs-sum-row{
+  display:flex; justify-content:space-between; gap:10px; padding:9px 0;
+  border-bottom:1px solid var(--cs-border); font:400 11.5px var(--cs-body-font); color:var(--cs-muted);
+}
+.cs-root .cs-sum-row:last-child{ border-bottom:none }
+.cs-root .cs-sum-row b{ font:600 11.5px var(--cs-sans); color:var(--cs-text); text-align:right; min-width:0; overflow-wrap:anywhere }
+.cs-root .cs-sum-row b.cs-mono{ font:500 11px var(--cs-mono) }
+.cs-root .cs-members{ display:flex; flex-direction:column; gap:6px }
+.cs-root .cs-member{
+  display:flex; align-items:center; gap:9px; padding:7px 8px; border-radius:10px; background:var(--cs-hover);
+}
+.cs-root .cs-avatar{
+  flex:0 0 28px; width:28px; height:28px; border-radius:50%; display:grid; place-items:center;
+  background:var(--cs-grad-gold); color:#fff; font:700 9.5px var(--cs-sans);
+}
+.cs-root .cs-avatar.g{ background:var(--cs-grad-green) }
+.cs-root .cs-member-t{ flex:1; min-width:0; display:flex; flex-direction:column }
+.cs-root .cs-member-t b{ font:600 11.5px var(--cs-sans); color:var(--cs-text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.cs-root .cs-member-t span{ font:400 10px var(--cs-body-font); color:var(--cs-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.cs-root .cs-rule{
+  padding:7px 10px; border-radius:8px; border:1px solid rgba(73,96,76,.35); background:var(--cs-green-soft);
+  font:600 11px var(--cs-sans); color:var(--cs-green);
+}
+.cs-root .cs-agenda{ display:flex; flex-direction:column; gap:6px }
+.cs-root .cs-agenda-row{
+  display:flex; align-items:center; gap:8px; padding:4px 4px 4px 12px; border-radius:10px;
+  background:var(--cs-hover); border-left:3px solid var(--cs-gold);
+}
+.cs-root .cs-agenda-n{ font:600 12px var(--cs-mono); color:var(--cs-muted); min-width:20px }
+.cs-root .cs-agenda-row input{
+  flex:1; min-width:0; border:1px solid transparent; background:transparent; border-radius:8px;
+  font:500 13px var(--cs-body-font); color:var(--cs-text); padding:7px 8px;
+}
+.cs-root .cs-agenda-row input:focus{ border-color:var(--cs-gold); background:#fff; outline:none }
+
 @media (max-width:1100px){ .cs-root .cs-two-col{ grid-template-columns:1fr } }
 @media (max-width:640px){ .cs-root .cs-chips-end{ margin-left:0 } .cs-root .cs-search input{ width:100% } }
 @media (max-width:1024px){ .cs-root .cs-stats{ grid-template-columns:repeat(2,minmax(0,1fr)) } }
