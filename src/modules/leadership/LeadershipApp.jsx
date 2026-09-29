@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Activity, ArrowUpRight, BarChart3, CalendarDays, CheckSquare, ClipboardCheck, ClipboardList, CircleAlert,
          Download, FileText, Gauge, Layers, LineChart, Lock, Menu, MessageSquare, MessagesSquare, Network, PenLine, Plus, RotateCcw, Shield, Eye,
-         Users, UsersRound, X, Briefcase }
+         Users, UsersRound, X, Briefcase, Target }
   from 'lucide-react';
 import './leadership-design.css';
 /* Dates, the working calendar and number formatting now live in src/shared so
@@ -16,6 +16,7 @@ import { exportMinutesDocx } from '../../services/minutesExport.js';
 /* The Artifact screens live in their own files — see screens/README-less
    note in domain.jsx for why the domain had to move first. */
 import { ScreenBI } from './screens/BusinessIntelligence.jsx';
+import { ScreenStrategyChain } from './screens/StrategyChain.jsx';
 import { ScreenOrgReports } from './screens/OrgReports.jsx';
 import { DecisionPanel } from './screens/DecisionLink.jsx';
 import { ScreenHierarchy } from './screens/Hierarchy.jsx';
@@ -1481,6 +1482,9 @@ const SCREENS = [
   {id:'bi',   group:'Artifact',      label:'Business intelligence',  Icon:LineChart,      wide:true,
    Screen:ScreenBI,
    hint:'The BI report behind each measure — find it by Process, owning department or report.'},
+  {id:'chain', group:'Artifact',     label:'Strategy chain',         Icon:Target,         wide:true,
+   Screen:ScreenStrategyChain,
+   hint:'Each Strategy from its KPI to execution and actuals, its Projects and POCs, and what reports say about them.'},
   {id:'comms', group:'Exchange',     label:'Communication & execution', Icon:MessagesSquare, wide:true,
    Screen:ScreenComms,
    hint:'Reports sent to you and by you, and the tasks you are accountable for.'},

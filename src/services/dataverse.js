@@ -2222,7 +2222,7 @@ export async function fetchStrategyPocs(){
   const res = await Stf_strategypocsService.getAll({
     select: ['stf_strategypocid','stf_pocname','stf_pocdescription','stf_pocstatus',
              '_stf_region_value','_stf_poccategory_value','_stf_specialty_value',
-             '_stf_strategykpi_value','stf_successcriteria','stf_target'],
+             '_stf_strategykpi_value','stf_successcriteria','stf_target','_stf_project_value'],
     filter: 'statecode eq 0',
   });
   return (res?.data ?? []).map(r => ({
@@ -2241,6 +2241,9 @@ export async function fetchStrategyPocs(){
     kpiName: r['_stf_strategykpi_value' + FV] || null,
     successCriteria: r.stf_successcriteria || null,
     target: r.stf_target ?? null,
+    /* stf_project -> cr603_projects (109 of 112, 29 Sep): the Strategy chain
+       reaches a POC through its Project. */
+    projectId: r._stf_project_value || null,
   }));
 }
 
@@ -2268,13 +2271,62 @@ export async function fetchSpecialties(){
     .sort((a,b)=>a.name.localeCompare(b.name));
 }
 
+/* ---- Strategy chain (29 Sep) ------------------------------------------
+   Strategy -> KPI -> execution (Planning & Monitoring) -> actuals. What IT
+   actually links, checked 29 Sep: strategy_strategy.strategy_kpi (346 of
+   1,182), cr18c_planningmonitoring.cr18c_kpi (4,544 of 24,731 entries),
+   pm_kpiachievments.pm_kpi. The Tactic table (stf_strategytactic) refuses
+   read to ordinary roles and the Strategy-KPI junction holds 3 rows, so
+   neither is used. */
+const Cr18c_planningmonitoringsService = dvTable('cr18c_planningmonitorings', 'cr18c_planningmonitoringid', PIN_ORG);
+
+/* Reads a KPI-filtered table 15 ids at a time -- an or-chain over hundreds
+   of ids is a URL the service will not accept. */
+async function byKpiChunks(ids, read){
+  const out = [];
+  const list = [...new Set((ids || []).filter(Boolean))];
+  for(let i = 0; i < list.length; i += 15) out.push(...(await read(list.slice(i, i + 15))));
+  return out;
+}
+
+/** Planning & Monitoring entries (the execution) for these KPIs. */
+export async function fetchPlanningMonitoringByKpis(kpiIds){
+  return byKpiChunks(kpiIds, async ids => {
+    const res = await Cr18c_planningmonitoringsService.getAll({
+      select: ['cr18c_planningmonitoringid','_cr18c_kpi_value','cr18c_tacticdescription',
+               'cr18c_year','cr18c_month','cr18c_startdate','cr18c_enddate',
+               'cr18c_targetoutput','cr18c_monthactual','cr18c_businessunit','cr18c_department'],
+      filter: `statecode eq 0 and (${ids.map(id => `_cr18c_kpi_value eq ${id}`).join(' or ')})`,
+    });
+    assertSuccess(res);
+    return (res.data ?? []).map(r => ({
+      id: r.cr18c_planningmonitoringid,
+      kpiId: r._cr18c_kpi_value || null,
+      text: r.cr18c_tacticdescription || null,
+      year: r.cr18c_year ?? null,
+      month: r.cr18c_month || null,
+      start: r.cr18c_startdate || null,
+      end: r.cr18c_enddate || null,
+      target: r.cr18c_targetoutput ?? null,
+      actual: r.cr18c_monthactual ?? null,
+      businessUnit: r.cr18c_businessunit || null,
+      department: r.cr18c_department || null,
+    }));
+  });
+}
+
+/** One year's actuals for these KPIs -- fetchKpiAchievements(), in chunks. */
+export async function fetchKpiAchievementsForKpis(year, kpiIds){
+  return byKpiChunks(kpiIds, ids => fetchKpiAchievements(year, { kpiIds: ids }));
+}
+
 /** Strategies -- strategy_strategy. The name is strategy_newcolumn, the same
  *  naming accident the KPI and Process tables carry. */
 export async function fetchStrategies(){
   const res = await Strategy_strategiesService.getAll({
     select: ['strategy_strategyid','strategy_newcolumn','strategy_strategydescription',
              'strategy_strategystatus','strategy_strategylevel','_strategy_region_value',
-             '_strategy_kpi_value'],
+             '_strategy_kpi_value','_cr18c_process_value'],
     filter: 'statecode eq 0',
   });
   return (res?.data ?? []).map(r => ({
@@ -2286,6 +2338,9 @@ export async function fetchStrategies(){
     regionName: r['_strategy_region_value' + FV] || null,
     kpiId: r._strategy_kpi_value || null,
     kpiName: r['_strategy_kpi_value' + FV] || null,
+    /* cr18c_process -> strategy_process, filled on ~555 of 1,182 (29 Sep). */
+    processId: r._cr18c_process_value || null,
+    processName: r['_cr18c_process_value' + FV] || null,
   })).sort((a,b)=>a.name.localeCompare(b.name));
 }
 
@@ -2320,6 +2375,7 @@ export async function fetchProjects(){
        to whichever team owns this table, not reviewed closely enough to
        show with confidence). */
     select: ['cr603_projectsid','cr603_projectname','cr603_projectstatus','cr603_projectcategory',
+             '_project_strategyname_value',
              '_cr603_region_value','_cr603_bu_value','_cr603_department_value',
              'cr603_projectsubcategory','cr603_projectstrategictype','cr603_prioritylevel',
              'cr603_approvalstatus','cr603_projectperiod','cr603_progress',
@@ -2346,6 +2402,9 @@ export async function fetchProjects(){
     period: r['cr603_projectperiod' + FV] || null,
     progress: r.cr603_progress ?? null,
     sponsorName: r['_cr603_projectsponsor_value' + FV] || null,
+    /* project_strategyname -> strategy_strategy (213 projects, 29 Sep) -- the
+       Strategy chain's Strategy -> Project link. */
+    strategyId: r._project_strategyname_value || null,
   })).sort((a,b)=>a.name.localeCompare(b.name));
 }
 
