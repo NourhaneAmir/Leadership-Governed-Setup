@@ -2670,6 +2670,11 @@ function meetingTemplateParentPayload(payload){
     lm_seconddayoftheweek: payload.secondDayOfWeek ? MEETING_SECOND_DAY_OF_WEEK_KEY[payload.secondDayOfWeek] : null,
     lm_seconddayofthemonth: typeof payload.secondDayOfMonth === 'number' ? payload.secondDayOfMonth : null,
     lm_monthofthesemesterseme: payload.monthInSemester ? MEETING_MONTH_IN_SEMESTER_KEY[payload.monthInSemester] : null,
+    /* The calendar month an Annual Meeting falls in (29 Sep). cr18c_month is
+       the global pm_month choice, 1 = January ... 12 = December -- the same
+       numbers as the Report Template's lm_month, so MONTH_KEY serves both.
+       Present in IT and DT New alike. */
+    cr18c_month: payload.month ? MONTH_KEY[payload.month] : null,
     lm_defaultmeetingmode: payload.mode ? MEETING_MODE_KEY[payload.mode] : null,
     lm_meetingconfidentiality: payload.confidentiality ? MEETING_CONFIDENTIALITY_KEY[payload.confidentiality] : null,
     lm_quorumthreshold: typeof payload.quorum === 'number' ? payload.quorum : null,
@@ -3446,6 +3451,7 @@ export async function fetchMeetingTemplateDetail(id){
       'lm_frequency','lm_daysoftheweek','lm_dayofweeks','lm_dayofthemonth','lm_monthofthequarter',
       'lm_seconddayoftheweek','lm_seconddayofthemonth','lm_monthofthesemesterseme','lm_defaultmeetingmode',
       'lm_meetingconfidentiality','lm_quorumthreshold','lm_torpolicylink','lm_meetingstatus','lm_version','modifiedon','createdon',
+      'cr18c_month',
       'lm_momwriteuphours','lm_momapprovalhours','lm_gridsubmithours',
       // Group-wide (Stage 3/4) Chairman/Co-Chairman/Facilitator/Team-Channel --
       // see meetingTemplateParentPayload()'s comment for why these live here
@@ -5442,16 +5448,19 @@ export async function updateAgendaCovered(agendaItemId, covered){
  *  Meeting is Held, since Minutes coverage (AG-04) is written against
  *  whatever the Agenda held at that point. `sequence` is the caller's job:
  *  the modal passes rec.agenda.length+1 so a new item always lands last. */
-export async function createMeetingOccurrenceAgendaItem(occurrenceId, { title, sequence, ownerPositionId }){
+export async function createMeetingOccurrenceAgendaItem(occurrenceId, { title, sequence, ownerPositionId, source, carriedFromId }){
   try{
     const row = {
       'lm_MeetingOccurrence@odata.bind': `/lm_meetingoccurrences(${occurrenceId})`,
       lm_title: (title||'').trim(),
       lm_sequence: sequence,
-      lm_source: 'Ad Hoc',
+      lm_source: source || 'Ad Hoc',
       lm_covered: AGENDA_COVERED_KEY['Not Yet Recorded'],
     };
     if(ownerPositionId) row['lm_OwnerPosition@odata.bind'] = `/cr603_organizationstructures(${ownerPositionId})`;
+    /* Carried forward (29 Sep): the earlier occurrence's agenda item this one
+       continues -- same lookup createMeetingOccurrence() binds. */
+    if(carriedFromId) row['lm_CarriedFromAgendaItem@odata.bind'] = `/lm_meetingoccurrenceagendas(${carriedFromId})`;
     const created = await Lm_meetingoccurrenceagendasService.create(row);
     const id = idOrThrow(created, 'lm_meetingoccurrenceagendaid');
     return { id, errors: [] };

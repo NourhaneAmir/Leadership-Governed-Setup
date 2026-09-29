@@ -1223,6 +1223,28 @@ function liveAttendance(attendees, mode){
      met / missed
    An unrecorded attendee counts as not present, so a quorum already met with
    some unrecorded stays met. */
+/* Carried forward from the previous meeting (prototype's carriedForward(),
+   PRO-03, 29 Sep). The previous meeting is the latest HELD occurrence of the
+   same Setup in the same place (same Business Unit / Region, or both empty for
+   a group-wide Setup) dated before this one. What it carries is every agenda
+   item it did not cover (anything but Yes) that no occurrence has carried yet
+   -- lm_CarriedFromAgendaItem on the new item points back at it, the same link
+   AG-04 reads. A Custom meeting has no Setup, so nothing carries into it. */
+function previousOccurrence(occ, all){
+  if(!occ?.templateId) return null;
+  return (all||[]).filter(o=>o.id!==occ.id && o.templateId===occ.templateId && o.status==='Held'
+      && (o.businessUnitId||null)===(occ.businessUnitId||null)
+      && (o.regionId||null)===(occ.regionId||null)
+      && (!occ.date || (o.date||'') < occ.date))
+    .sort((a,b)=>(b.date||'').localeCompare(a.date||''))[0] || null;
+}
+function carryCandidates(prev, all){
+  if(!prev) return [];
+  const carried = new Set((all||[]).flatMap(o=>(o.agenda||[]).map(a=>a.carriedFromId).filter(Boolean)));
+  return (prev.agenda||[]).filter(a=>a.title && a.covered!=='Yes' && !carried.has(a.id));
+}
+const DECISION_DONE = new Set(['Completed','Closed','Cancelled']);
+
 function liveQuorum(occ, tpl, mode){
   const threshold = tpl?.quorumPct;
   if(threshold==null) return { state:'none' };
@@ -6895,7 +6917,7 @@ function DvGridBody({rec,grid,olderVersions,minutes,quorumPct,torLink,accred,S,p
 }
 
 function DvMeetingDetail({rec,back}){
-  const {sel,setSel,toast,refreshOccurrences,openMeeting,S,dvMeetingOccs,dvReportOccs,openDvRec}=use();
+  const {sel,setSel,toast,refreshOccurrences,openMeeting,S,dvMeetingOccs,dvReportOccs,openDvRec,dvDecisions=[]}=use();
   const tab = sel.mtgTab || 'detail';
   const setTab = t=>setSel(v=>({...v,mtgTab:t}));
   const [markingHeld,setMarkingHeld]=useState(false);
@@ -7233,6 +7255,31 @@ function DvMeetingDetail({rec,back}){
   const required = rec.attendees.filter(a=>(a.type||'Required')==='Required');
   const requiredPresent = required.filter(a=>a.present==='Present').length;
   const quorum = liveQuorum(rec, tpl, S.delegatedAttend);
+  /* Carried forward -- previousOccurrence()/carryCandidates(). */
+  const prevOcc = previousOccurrence(rec, dvMeetingOccs);
+  const carriedIn = rec.agenda.filter(a=>a.carriedFromId);
+  const carryWaiting = rec.status==='Scheduled' ? carryCandidates(prevOcc, dvMeetingOccs) : [];
+  const prevAgendaIds = new Set((prevOcc?.agenda||[]).map(a=>a.id));
+  const prevOpenDecisions = dvDecisions.filter(d=>d.agendaItemId && prevAgendaIds.has(d.agendaItemId)
+                                               && !DECISION_DONE.has(d.status));
+  const [carrying,setCarrying]=useState(false);
+  const carryIn = async items => {
+    setCarrying(true);
+    try{
+      let seq = rec.agenda.length, failed = 0;
+      for(const a of items){
+        const {id,errors} = await createMeetingOccurrenceAgendaItem(rec.id, {
+          title:a.title, sequence:++seq, ownerPositionId:a.ownerPositionId||rec.facilitatorPositionId||undefined,
+          source:'Carried forward', carriedFromId:a.id });
+        if(!id){ failed++; console.warn('[dataverse] carrying an agenda item failed:', errors); }
+      }
+      toast(failed ? 'Not all carried' : 'Carried forward',
+        failed ? `${items.length-failed} of ${items.length} added. Check the console for the rest.`
+               : `${items.length} item${items.length===1?'':'s'} added to this meeting's agenda.`,
+        failed ? 'warn' : 'ok');
+      await refreshOccurrences();
+    }finally{ setCarrying(false); }
+  };
   const durMin = (()=>{
     if(!rec.start||!rec.end) return null;
     const [sh,sm]=rec.start.split(':').map(Number), [eh,em]=rec.end.split(':').map(Number);
@@ -7443,6 +7490,36 @@ function DvMeetingDetail({rec,back}){
             {S.delegatedAttend==='exclude' ? ' Attendance by a delegate is not counted.'
               : S.delegatedAttend==='half' ? ' Attendance by a delegate counts as half.'
               : ' Attendance by a delegate counts in full.'}</div>
+        </div>}
+
+        {(prevOcc || carriedIn.length>0) && <div className="card">
+          <h2>Carried forward</h2>
+          <div className="csub">{prevOcc
+            ? <>From the previous meeting of this Setup: <b>{prevOcc.name}</b>, {fmtD(prevOcc.date)}.</>
+            : 'From an earlier occurrence.'}</div>
+          {carriedIn.length>0 && <>
+            <div className="t-sub" style={{fontWeight:600,marginTop:6}}>Already on this agenda</div>
+            {carriedIn.map(a=><div key={a.id} style={{fontSize:12.5,padding:'3px 0'}}>↪ {a.title}</div>)}
+          </>}
+          {carryWaiting.length>0 && <>
+            <div className="t-sub" style={{fontWeight:600,marginTop:8}}>Not covered last time, not carried yet</div>
+            {carryWaiting.map(a=><div key={a.id} style={{display:'flex',gap:8,alignItems:'center',padding:'3px 0'}}>
+              <span style={{flex:1,fontSize:12.5}}>{a.title}</span>
+              <Btn k="sm" disabled={carrying} onClick={()=>carryIn([a])}>Carry in</Btn></div>)}
+            {carryWaiting.length>1 &&
+              <Btn k="sm pri" disabled={carrying} style={{marginTop:6}} onClick={()=>carryIn(carryWaiting)}>
+                {carrying?'Carrying…':`Carry all ${carryWaiting.length}`}</Btn>}
+          </>}
+          {prevOcc && <>
+            <div className="t-sub" style={{fontWeight:600,marginTop:8}}>Open decisions from that meeting</div>
+            {prevOpenDecisions.length
+              ? prevOpenDecisions.map(d=><div key={d.id} style={{display:'flex',gap:8,alignItems:'baseline',padding:'3px 0'}}>
+                  <span style={{flex:1,fontSize:12.5}}>{d.name}</span>
+                  {d.status?<Tag c={d.status==='Escalated'?'amber':'grey'}>{d.status}</Tag>:null}</div>)
+              : <div className="t-sub">None open.</div>}
+            <div className="t-sub" style={{marginTop:6}}>Open tasks can't be carried yet: a task has no link to a
+              meeting in IT.</div>
+          </>}
         </div>}
 
         <div className="card">
@@ -8863,11 +8940,14 @@ function DvAttendeePicker({value,onChange,opts,scopeChosen,scopeHint}){
    is generalized here to "1st/2nd/3rd slice of the period" -- a working
    assumption, not a confirmed rule. */
 const PERIOD_MONTHS = { Monthly:1, Quarterly:3, Semesterly:6, Annually:12 };
-function naturalRecurrenceDate(frequency, dayOfMonth, monthInQuarter, fromDate){
+function naturalRecurrenceDate(frequency, dayOfMonth, monthInQuarter, fromDate, monthOfYear){
   const periodMonths = PERIOD_MONTHS[frequency];
   if(!periodMonths || !dayOfMonth) return null;
   const sliceIdx = { '1st month':0, '2nd month':1, '3rd month':2 }[monthInQuarter] ?? 0;
-  const offset = periodMonths===1 ? 0 : sliceIdx * (periodMonths/3);
+  /* An Annual Setup now names its month (cr18c_month, 1..12, 29 Sep) -- that
+     beats the slice assumption above whenever it is set. */
+  const annualMonth = periodMonths===12 && monthOfYear>=1 && monthOfYear<=12 ? monthOfYear-1 : null;
+  const offset = annualMonth!=null ? annualMonth : periodMonths===1 ? 0 : sliceIdx * (periodMonths/3);
 
   const from = new Date(fromDate+'T00:00:00');
   const anchorMonth = from.getMonth() - (from.getMonth()%periodMonths);
@@ -8888,8 +8968,10 @@ function naturalRecurrenceDate(frequency, dayOfMonth, monthInQuarter, fromDate){
    Opened with go('newmtg', 'adhoc' | 'custom'); a Setup card or the Custom
    Meeting card switches between the two on the page. */
 function ScreenNewMeeting(){
-  const {me,toast,refreshOccurrences,sel,go}=use();
+  const {me,toast,refreshOccurrences,sel,go,dvMeetingOccs}=use();
   const [custom,setCustom]=useState(sel?.newmtg==='custom');
+  /* previous-meeting agenda items the user UNticked (all are carried by default) */
+  const [skipCarry,setSkipCarry]=useState(()=>new Set());
   const onClose=()=>go('mtg');
   const [setupQ,setSetupQ]=useState('');
   const [f,setF]=useState({setup:'', tplUnitKey:'', name:'', purpose:'', bu:'AHJ',
@@ -9056,6 +9138,7 @@ function ScreenNewMeeting(){
       typeof p.lm_dayofthemonth==='number' ? p.lm_dayofthemonth : null,
       MEETING_MONTH_IN_QUARTER[p.lm_monthofthequarter]||null,
       TODAY,
+      typeof p.cr18c_month==='number' ? p.cr18c_month : null,
     );
     setF(x=>({...x, agenda: ag.length?ag:[''], date: natural || x.date }));
     if(tplUnits.length<=1) applyUnit(tplUnits[0]||null);
@@ -9073,7 +9156,18 @@ function ScreenNewMeeting(){
   const needsLocation = f.mode==='In person' || f.mode==='Hybrid';
   const modeOk = (!needsLink || f.link.trim()) && (!needsLocation || f.location.trim());
 
-  const ok = !!f.date && agenda.length>0 && f.dvAttend.length>0 && scopeOk
+  /* What this new meeting would carry from the previous one -- see
+     previousOccurrence(). Worked out from the Setup and the place chosen, so it
+     follows the Business Unit / Region picker. */
+  const carryPrev = custom ? null : previousOccurrence({
+    templateId: f.setup || null,
+    businessUnitId: stageBU ? (f.dvBusinessUnitId||null) : null,
+    regionId: stageRegion ? (f.dvRegionId||null) : null,
+    date: bookedDate,
+  }, dvMeetingOccs);
+  const carryAll = carryCandidates(carryPrev, dvMeetingOccs);
+  const carryNow = carryAll.filter(a=>!skipCarry.has(a.id));
+  const ok = !!f.date && (agenda.length+carryNow.length)>0 && f.dvAttend.length>0 && scopeOk
     && f.dvChairPositionId && f.dvFacilitatorPositionId && f.tz && modeOk
     && (custom
       ? f.name.trim() && f.purpose.trim()
@@ -9106,8 +9200,14 @@ function ScreenNewMeeting(){
         location:needsLocation ? (f.location.trim()||null) : null,
         link:needsLink ? (f.link.trim()||null) : null,
         adhocType:f.adhoc, restricted:!!f.restricted, inviteSent:TODAY,
-        agenda:agenda.map(t=>({title:t, source:'Ad Hoc',
-                               ownerPositionId:f.dvFacilitatorPositionId||f.dvChairPositionId||undefined})),
+        /* Carried-forward items first, each linked to the item it continues
+           (lm_CarriedFromAgendaItem), then the ones typed here. */
+        agenda:[
+          ...carryNow.map(a=>({title:a.title, source:'Carried forward', carriedFromId:a.id,
+                               ownerPositionId:a.ownerPositionId||f.dvFacilitatorPositionId||f.dvChairPositionId||undefined})),
+          ...agenda.map(t=>({title:t, source:'Ad Hoc',
+                             ownerPositionId:f.dvFacilitatorPositionId||f.dvChairPositionId||undefined})),
+        ],
         // `type` is carried but not yet written -- lm_meetingoccurrenceattendeeses
         // has no attendee-type column. See createMeetingOccurrence().
         attendees:f.dvAttend.map(a=>({positionId:a.positionId, name:a.name||undefined,
@@ -9177,7 +9277,7 @@ function ScreenNewMeeting(){
     !f.dvFacilitatorPositionId ? 'a Facilitator' : null,
     !f.tz ? 'a time zone' : null,
     !f.dvAttend.length ? 'at least one attendee' : null,
-    !agenda.length ? 'at least one agenda item' : null,
+    !(agenda.length+carryNow.length) ? 'at least one agenda item' : null,
     !modeOk ? (needsLink && !f.link.trim() ? 'a meeting link' : 'a location') : null,
   ].filter(Boolean) : [];
 
@@ -9422,6 +9522,20 @@ function ScreenNewMeeting(){
             <p className="cs-card-note" style={{marginBottom:10}}>{custom
               ? 'At least one Agenda Item is required for every Meeting.'
               : 'Pre-filled from the Setup’s controlled Agenda — add, edit or remove items for this occurrence only.'}</p>
+            {carryAll.length>0 &&
+              <div className="cs-carry">
+                <div className="cs-carry-hd">Carried forward from {carryPrev.name} · {fmtD(carryPrev.date)}
+                  <span>{carryNow.length} of {carryAll.length} included</span></div>
+                {carryAll.map(a=>
+                  <label key={a.id} className="cs-carry-row">
+                    <input type="checkbox" checked={!skipCarry.has(a.id)}
+                      onChange={e=>setSkipCarry(x=>{ const n=new Set(x); if(e.target.checked) n.delete(a.id); else n.add(a.id); return n; })}/>
+                    <span>{a.title}</span>
+                    <span className="cs-type adhoc">{a.covered==='No'?'Not covered':'Not recorded'}</span>
+                  </label>)}
+                <p className="cs-card-note" style={{marginTop:6}}>Not covered last time. Each one ticked is added
+                  first and linked back to the item it continues.</p>
+              </div>}
             <div className="cs-agenda">
               {f.agenda.map((a,i)=>
                 <div key={i} className="cs-agenda-row">

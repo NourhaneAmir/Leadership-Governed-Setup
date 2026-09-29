@@ -47,11 +47,11 @@ const DOW_FREQ=['Twice Weekly','Weekly'];
 const DOM_FREQ=['Twice Monthly','Monthly','Quarterly','Semesterly','Annually'];
 /* Month-within-quarter is a quarter's three months, so it applies to Quarterly
    only. Semesterly picks from six months and has its own column and list;
-   Annually needs a month of the year, which has no column yet -- see below. */
+   Annually needs the month of the year -- see below. */
 const MIQ_FREQ=['Quarterly'];
 const MOS_FREQ=['Semesterly'];
 /* An Annual cadence needs the calendar month itself, not a month within a
-   shorter period -- lm_month is a plain 1..12. */
+   shorter period -- lm_month (Report) / cr18c_month (Meeting), both 1..12. */
 const MOY_FREQ=['Annually'];
 const MONTHS_OF_YEAR=['January','February','March','April','May','June',
                       'July','August','September','October','November','December'];
@@ -2523,16 +2523,13 @@ function ScopeFields({s,set,stepNo}){
 }
 
 /* ---- cadence block, shared by both wizards (FR-SET-06) ------------------ */
-/* `noMonth` is set by the Meeting wizard. lm_meetingtemplates has no
-   month-of-year column -- lm_month exists on lm_report_templates only -- so an
-   Annual Meeting Setup has nowhere to record WHICH month it falls in. Rather
-   than offer a dropdown whose value is dropped on save (the silent-loss pattern
-   this file keeps running into), the field is replaced by a note saying what is
-   missing. Add lm_month (1..12) to lm_meetingtemplates and delete the prop. */
+/* Month (Annual only) is stored on both Setups: lm_month on a Report Template,
+   cr18c_month on a Meeting Template (29 Sep -- until then the Meeting wizard
+   showed a note here instead, having nowhere to save it). */
 /* `idp`, `hideFreq` and `hideDays` let the Report wizard reuse this block per
    unit (see UnitSchedules): the Setup-level copy shows Frequency only, and each
    unit's copy shows only its day fields, with ids of its own. */
-function CadenceFields({s,set,noMonth,idp='f-',hideFreq,hideDays}){
+function CadenceFields({s,set,idp='f-',hideFreq,hideDays}){
   const dayMode=s.dayMode||'fixed';
   const freq=hideFreq?null:
     <Field id={idp+'frequency'} label="Frequency" req>
@@ -2597,17 +2594,13 @@ function CadenceFields({s,set,noMonth,idp='f-',hideFreq,hideDays}){
         hint="A semester is six months.">
         <Sel id={idp+'monthInSemester'} val={s.monthInSemester} opts={MONTHS_IN_SEMESTER}
           onChange={v=>set({monthInSemester:v})}/></Field>
-      <Field id={idp+'month'} label="Month" req={!noMonth}
+      <Field id={idp+'month'} label="Month" req
         when={MOY_FREQ.includes(s.frequency)}
-        hint={noMonth?null:"The calendar month the report is due in each year."}>
-        {noMonth
-          ? <div className="holder">
-              Not recorded. There is nowhere yet to store which month an Annual Meeting
-              falls in, so the generator flow cannot create it from this field. Day of
-              month below is stored and will be used once that's added.
-            </div>
-          : <Sel id={idp+'month'} val={s.month} opts={MONTHS_OF_YEAR}
-              onChange={v=>set({month:v})}/>}</Field>
+        hint={s.kind!=='Report Template'
+          ? 'The calendar month the meeting is held in each year.'
+          : 'The calendar month the report is due in each year.'}>
+        <Sel id={idp+'month'} val={s.month} opts={MONTHS_OF_YEAR}
+          onChange={v=>set({month:v})}/></Field>
     </div>
   </>;
 }
@@ -3041,7 +3034,7 @@ function MeetingWizard({rec,onClose}){
       if(step===3) return <div className="card">
         <h2>Frequency</h2>
         <div className="csub">Which day it falls on — nothing more. The same rhythm applies in every unit.</div>
-        <CadenceFields s={s} set={set} noMonth/>
+        <CadenceFields s={s} set={set}/>
         <Field id="f-mode" label="Default Meeting Mode" req
           hint="A default only. Each occurrence may be held differently.">
           <Seg id="f-mode" opts={MODES} val={s.mode} onChange={v=>set({mode:v})}/></Field>
@@ -3204,7 +3197,7 @@ function UnitsTable({s}){
 function MeetingSummary({s}){
   const {db}=use();
   const accred=s.setupType==='Accreditation Committee';
-  const cad=[s.frequency, cadenceDayFragment(s), s.dayOfMonth?('day '+s.dayOfMonth):null, s.monthInQuarter]
+  const cad=[s.frequency, cadenceDayFragment(s), s.dayOfMonth?('day '+s.dayOfMonth):null, s.monthInQuarter, s.monthInSemester, s.month]
         .filter(Boolean).join(' · ');
   const keys=scopeKeys(s);
   /* The governed Category (lm_Category). A Stage 4 meeting can hold several
@@ -3468,7 +3461,7 @@ function ReportSummary({s}){
      one can be open at a time and they render identically. */
   const [view,setView]=useState(null);
   const dest=destinationOf(s);
-  const cad=[s.frequency,cadenceDayFragment(s),s.dayOfMonth?('day '+s.dayOfMonth):null,s.monthInQuarter]
+  const cad=[s.frequency,cadenceDayFragment(s),s.dayOfMonth?('day '+s.dayOfMonth):null,s.monthInQuarter,s.monthInSemester,s.month]
     .filter(Boolean).join(' · ');
   const keys=scopeKeys(s);
   return <>
@@ -3702,6 +3695,7 @@ function buildMeetingTemplatePayload(f){
     secondDayOfWeek: f.secondDayOfWeek || undefined,
     secondDayOfMonth: typeof f.secondDayOfMonth==='number' ? f.secondDayOfMonth : undefined,
     monthInSemester: f.monthInSemester || undefined,
+    month: f.month || undefined,
     mode: f.mode,
     quorum: f.quorum,
     momWriteupHours: f.momWriteupHours,
@@ -4260,6 +4254,7 @@ function dataverseMeetingToSetup(detail){
     secondDayOfWeek:DV_MEETING_SECOND_DAY_OF_WEEK[p.lm_seconddayoftheweek]||null,
     secondDayOfMonth:p.lm_seconddayofthemonth ?? null,
     monthInSemester:DV_MEETING_MONTH_IN_SEMESTER[p.lm_monthofthesemesterseme]||null,
+    month:byCode1(MONTHS_OF_YEAR,p.cr18c_month),
     mode:DV_MEETING_MODE[p.lm_defaultmeetingmode]||null,
     quorum:p.lm_quorumthreshold ?? null,
     momWriteupHours:p.lm_momwriteuphours ?? null,
