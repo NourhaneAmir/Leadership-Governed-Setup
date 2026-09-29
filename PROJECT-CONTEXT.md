@@ -6,12 +6,109 @@
 > updated 07 Sep 2026 (twice), updated 08 Sep 2026, updated 12 Sep 2026
 > (covering 09-12 Sep), updated 13 Sep 2026, updated 14 Sep 2026,
 > updated 16 Sep 2026, updated 17 Sep 2026 (three times), against branch `leadership-practice`;
-> since then updated per session through 28 Sep 2026, now on branch `CrossEnv-Leadership`.
+> since then updated per session through 28 Sep 2026, now on branch `CrossEnv-Leadership`;
+> **status snapshot below refreshed 29 Sep 2026.**
 >
 > This file records **decisions, hard-won schema facts and open questions** —
 > the things that are expensive to rediscover. It is not a substitute for the
 > BRD or the prototype specification; it points at them and records how they
 > relate.
+
+---
+
+## 0. Current status — read this first (29 Sep 2026)
+
+The dated entries in §5 are the history; this section is where things stand.
+Everything below was checked against the repo and IT when written.
+
+### Deployment
+
+| | |
+|---|---|
+| Branch | `CrossEnv-Leadership`, pushed to GitHub (`origin`), HEAD `c90af88` |
+| Governance Setup (live) | `4912152c-b5c8-4beb-bb74-c9f43550405b`, Code App Development, pushed from `C:\tmp\cad-gov` |
+| Leadership Execution (live) | `83db0ef8-4c62-4eef-84ac-dadab326b704`, Code App Development, pushed from `C:\tmp\cad-exec` |
+| Data | **IT** (`org2f45e702`) for every table but `lm_setupactivities` (follows `DATA_ORG`) |
+| What is live | **HEAD minus `4ca0036`** — see the warning below |
+
+⚠️ **One commit is in git but deliberately NOT deployed: `4ca0036`** — the
+Create Report file uploader and Team Channel → SharePoint destination. It
+writes three `lm_reportoccurrence` columns that **do not exist in IT yet**
+(re-checked before every push on 28 Sep): `lm_attachmentfile` (File),
+`lm_TeamChannel` (lookup → `and_teamschannellink`), `lm_destinationsharepointlink`
+(text, 850). Deploying it before they exist makes **every** Create Report fail.
+
+**How to push until those columns exist** (used for every push since 28 Sep):
+
+```bash
+git show 4ca0036 -- src | git apply -R --check && git show 4ca0036 -- src | git apply -R
+npm run build
+# copy apps/governance/dist -> C:\tmp\cad-gov\dist and apps/leadership/dist -> C:\tmp\cad-exec\dist
+# (replace the dist SUBFOLDER only), then power-apps push from inside each folder
+git checkout -- src      # restore HEAD afterwards
+```
+
+Once the three columns exist in IT: confirm them (`pac env fetch` on
+`lm_reportoccurrence`), then build HEAD as it is and push **both** apps
+(`xenv.js` changes Governance's bundle too). Procedure details: §5, 25 Sep.
+
+### Built and live on 28 Sep (details in §5, dated 28 Sep)
+
+- **Design restyle** (`leadership-practice (2).html`, one scoped stylesheet
+  `leadership-design.css` under `.cs-root`): Committee Scores, Meeting Minutes,
+  Meetings, Decisions (full width), My Workspace, and **Create Report — now a
+  4-step full page** with template cards.
+- **Reports:** Approve / Return in Reports / Plans (`ReviewBar`); a cited
+  Task shows its full record; review history works again (IT dropped
+  `lm_name` — fixed).
+- **Decisions:** live register; raised / attached on report sections and
+  Minutes agenda items (IT's new `lm_CitedReportSection` /
+  `lm_MeetingOccurrenceAgenda`).
+- **Tasks:** Task Source defaults to Leadership; the Assignee is searchable.
+- **Governance Setups:** Stage 4 meetings name the Business Units OR Regions
+  they cover (scope-only child rows) plus Departments, and take several
+  Categories (`lm_topmanagementmeetingcategories`); a Department can repeat
+  with different Functions (and Functions now save under their own Department).
+- **Teams channel path fixed:** built from `and_rootpath` alone (the old join
+  doubled the last folder).
+- **IT schema refresh:** `IT-SCHEMA-REFRESH.md` — two breaks found and fixed.
+
+### Waiting on IT / the product owner
+
+| Item | Needed | Blocks |
+|---|---|---|
+| `lm_attachmentfile`, `lm_TeamChannel`, `lm_destinationsharepointlink` on `lm_reportoccurrence` | IT to add | deploying `4ca0036` |
+| **Append To** on `strategy_strategy` and `stf_strategypoc` (Organization level) | IT security role | citing a POC or Strategy (the save fails with `0x80040220`) |
+| **50 of 53** Report Template destinations saved with the doubled folder | a decision: repair in one pass, or let each fix itself on its next save | nothing — cosmetic until the SharePoint save exists |
+| `cr18c_month` on `lm_meetingtemplate` | confirm it is the Annual-meeting month | wiring Annual meetings (§9) |
+| The Meeting Occurrence **generator flow** (planned, not built) | must take the group-wide branch for Stage 4 — their BU / Region rows are scope only | correct Stage 4 occurrences once the flow exists |
+
+### First checks in the live apps (none yet done)
+
+1. Raise a decision on a report section and on a Minutes agenda item — settles
+   whether IT requires a **Work Log** on a new decision, and users' **Append /
+   Append To** on it.
+2. Approve and Return a report in Reports / Plans — Review History should now
+   show both, with the Return reason.
+3. Save a Stage 4 meeting Setup covering two Business Units, with two
+   Categories and a repeated Department; reopen it — still Stage 4, all ticked.
+4. Create a report from a template and a Custom one through the new page.
+5. Raise a task — Task Source Leadership in IT; search the Assignee.
+6. Open Meetings, Meeting Minutes, Committee Scores, Decisions and My Workspace
+   with real data — every restyle was checked on empty or sample data only.
+
+### Traps worth knowing before touching anything
+
+- `pac env fetch` output loses its column padding when redirected, and
+  FetchXML `top` conflicts with pac's paging (use a date filter). Choice values:
+  read `stringmap`. Lookup targets: `pac modelbuilder build`.
+- A `\t` inside a Python string written through a shell heredoc becomes a TAB —
+  it broke `C:\tmp\...` paths in this file three times on 28–29 Sep (even while
+  writing this note). Edit such paths with a file editor, and check with
+  `grep -c $'C:\tmp' PROJECT-CONTEXT.md` (should print 0).
+- Commit before building: several pushes on 28 Sep needed a partial commit
+  split, done by staging exact file versions (`git hash-object -w` +
+  `git update-index --cacheinfo`).
 
 ---
 
@@ -99,7 +196,7 @@ The BRD **contradicts itself** in three places, and the code picked a side:
 | Governance Setup module (Meeting + Report Template register) | ✅ live |
 | **Group-wide (Stage 3/4) Chairman/Co-Chairman/Facilitator (Meeting) and Owner/Submitting Position/Team Channel/Speciality (Report)** | ✅ **live** (this session) |
 | Meeting Occurrences — create, edit, **cancel**, **reschedule**, mark Held, **Agenda add/remove/reorder/record-distribution**, attendance | ✅ live (Attendance/Held/Edit from an earlier session; Cancel/Reschedule/Agenda edit **this session**) |
-| Report Occurrences — create (Template **and** Custom), file URL, review chain (submit / approve / RMI) + history | 🟡 **half reconnected (26 Sep)** — `NewReportModal` is wired again: Workspace and Reports / Plans both open it, it defaults Created-by to the signed-in user's Position, offers only the Setup's own Department/Function pairs, copies the Setup's checklist down into Sections and Citations, and opens the new report. ⚠️ **`DvReportDetail` is still rendered nowhere**, so nothing can approve, return or request information on a report — see §9. The 02 Sep "disconnected" note above it is superseded. |
+| Report Occurrences — create (Template **and** Custom), file URL, review chain (submit / approve / RMI) + history | ✅ **live (28 Sep)** — **Create Report is a full page** (`ScreenNewReport`, hidden screen `newrpt`): template cards → Details → Attachments → Review → Save Draft; every "+ New Report" opens it. **Review:** `ReviewBar` in Reports / Plans — Approve step / Approve report, **Return** (status Returned, reason in history); anyone who opens the report can act (product owner's call). **History** read and write were BROKEN until 28 Sep (IT dropped `lm_name` on `lm_reportoccurrencehistory`) — fixed, `e3c5f24`. ⚠️ `DvReportDetail` is still rendered nowhere (§9). ⚠️ The **file uploader + Team Channel / SharePoint destination** on Create Report is committed but **NOT deployed** — see Current status. |
 | **Meeting Minutes tab** (nav screen) — reads `lm_meetingminuteses` directly | ✅ **live** (01 Sep — the write path itself, `DvMinutesBody`, was already live from an earlier session; only the top-level list screen was still seeded until now) |
 | **Build a report/plan tab** (Artifact group, `ScreenBuildReport`) | ✅ **live, read + write** (17 Sep) — opens a Draft or Returned, unlocked `lm_reportoccurrences` row; edits its title, Sections and Citations; saves only what changed; submits it for review. Exercised against real IT data repeatedly since 24 Sep — the "not yet exercised" caveat that stood here is superseded. |
 | **Reports / Plans tab** (Artifact group, `ScreenOrgReports`) | ✅ **live** (17 Sep) — reads `lm_reportoccurrences`, `lm_reportoccurrencesections` and `lm_reportsectioncitations`. See §5. |
@@ -107,18 +204,19 @@ The BRD **contradicts itself** in three places, and the code picked a side:
 | Authority Matrix + Approval Cycles | ✅ live, read-only by design (`AuthorityMatrixPanel`, embedded in Governance Settings) |
 | **Audit Grid scoring** — Meeting Occurrence's own Grid tab | ✅ **live** — `liveScoreGrid()` computes all 16 questions from the live occurrence/Minutes/Template; full Facilitator→Chair lifecycle (score, evidence, submit, approve+publish, return, open a correction version) writes through the backend functions that were already built. **28 Sep:** the tab is no longer gated on Setup Type — **every** meeting is scored, Committee or Business Meeting (§7 decision 1) — and a person can now **answer any question the system could not compute** (`applyManualOverrides`), so the six that sit at Not Applicable on a live meeting (AG-10–AG-14, and AG-01 off an accreditation Committee) are answerable with an evidence note. ⚠️ A question the system **did** compute stays locked to every user. ⚠️ A Grid is created **on Minutes closure**, so meetings already closed do not backfill. |
 | **My Workspace (nav screen)** | ✅ **live** — reads its Work Queue, Upcoming panel and This Month stats directly off the full `dvMeetingOccs`/`dvReportOccs` arrays via `dvWorkItems()`. Two silent-data-loss bugs fixed here 01 Sep — see §5: an overdue Meeting with partial attendance recording used to vanish from Work Queue, and a blank/unrecognized status code used to vanish a row from every screen at once. Its Decisions filter tab still shows 0 because Decisions (below) only just went live. |
-| **Decisions register** | 🟡 **partially live, and richer since 27 Sep** — reads IT's `wlog_decisions` (**39 rows**: 21 Completed, 15 Pending, 3 Escalated) with search, a status filter, a review filter and expandable rows showing decision taken, expected output, manager note, reviewer, evidence link and the escalation block. Every decision names its parent **Work Log** (39/39). Minimal create still wired alongside the seeded Decision workflow. ⚠️ **Still cannot be linked to the Report Section that raised it**: IT's `wlog_decision` has **36 columns to DT New's 59**, and the 23 it lacks include `lm_citedreportsection`, `wlog_wlogworklogid` and the whole `pms_` corrective-action family. Blocked on schema + a product decision (§7/§9), not on app code. |
+| **Decisions register** | ✅ **live and linked (28 Sep)** — the Decisions screen is the live `wlog_decisions` register (IT, 39+ rows): status tabs from the data, source chips, search, and **where each was taken** — a report section (`lm_CitedReportSection`) or a Minutes agenda item (`lm_MeetingOccurrenceAgenda`), both added to IT by 28 Sep — with Open report / Open minutes and Link / Move. `DecisionPanel` (`screens/DecisionLink.jsx`) raises or attaches decisions on report sections (Reports / Plans, Build) and Minutes agenda items. The seeded Authority-Matrix register is off the screen (its tables are not in IT). ⚠️ First live save still to confirm: Work Log required? Append / Append To privileges? |
 | **Committee Scores (nav screen)** | ✅ **live** (01 Sep) — `ScreenGrid` now reads `fetchAuditGridInstances()` joined against `dvMeetingOccs`, instead of seeded `db.grids`. See §5 for the join details and the Approved-only Coverage/Score rule. |
 | **Setup Activity trail** — the Activity tab on a Report/Meeting Setup | ✅ **live** (10 Sep) — `lm_setupactivity` is written on create, edit, publish, approve and expire, and the tab reads the real rows back for any Setup that has a `_dataverseId`. A Setup that has never been saved still shows the seeded sample trail. |
 | **Artifact group** — Business intelligence, Reporting hierarchy | ✅ **live** (superseding the 11 Sep "mixed" note) — Business intelligence reads `lm_bireportdashboards`, and the Reporting hierarchy reads real Report Templates, occurrences, checklists and citations. (Reports / Plans and Build a report/plan, in the same group, are live since 17 Sep — rows above.) The Power BI report itself **cannot be embedded** — see §8. |
-| **How every table is reached** | 🟡 **changed 16 Sep, counted again 27 Sep** — all **64** tables go through `dvTable()` in `src/services/xenv.js`, and as of 27 Sep **every one of them is pinned to IT**. Nothing reads DT New any more. ⚠️ Leadership's `__DATA_ORG__` still says DT New and is now **vestigial** — every table overrides it explicitly. Left that way on purpose: an explicit per-table pin is auditable, and flipping the default instead would silently move any table anyone forgets to pin. `getAll()` follows `@odata.nextLink` to a 200-page cap, so a filtered read is never silently truncated at Dataverse's 5,000-row page. The generated per-table services are no longer imported anywhere. Behaviour is identical while an app is hosted in DT New; the point is that it stays identical when it is not. Creates supply their own primary key since 17 Sep, so a new row's id no longer depends on the response — see §6. |
+| **How every table is reached** | 🟡 **counted again 28 Sep** — the code reaches **60** collections through `dvTable()` in `src/services/xenv.js` (59 + `lm_topmanagementmeetingcategories`); all but `lm_setupactivities` (which follows `DATA_ORG`, = IT in Governance) are pinned to IT. **57 exist in IT**; `lm_approvalcycles`, `lm_approvalcyclesteps`, `lm_authoritymatrixrows` do not. Leadership's `__DATA_ORG__` still says DT New and is vestigial. `getAll()` follows `@odata.nextLink` to a 200-page cap. Creates supply their own primary key since 17 Sep — see §6. Full live-schema comparison: `IT-SCHEMA-REFRESH.md` (28 Sep). |
 | **Export a report to Excel or Word** (`reportExport.js` + `reportWriters.js`) | ✅ **live** (26 Sep) — a sheet per section plus five cross-cutting sheets; a sub-heading per section in the document. Carries every citation's metadata, KPI figures and breakdown members. Written with **ExcelJS** (SheetJS cannot write a fill, font or table style at all) and **docx**, both dynamically imported. ⚠️ One user-reported failure to open the workbook is **still unexplained** — see §5, 26 Sep. |
 | **Dashboard images in the exports** | 🟡 **manual** (27 Sep) — a person attaches a PNG per cited dashboard at export time and it is embedded (inline in Word, on the BI reports sheet in Excel). Nothing is stored. The automatic route (Power BI `exportToFile`) is blocked on three things, none of them code — see §5, 27 Sep. |
 | **KPI coverage** (`KpiCoverage.jsx`, both the author's and the reader's screen) | ✅ **live** (27 Sep) — unions the KPIs the Setup declares (`lm_reporttemplaterelatedkpises`) with the KPIs its sections cite, and names four gaps: not cited, not in the Setup, no achievement, no Target. Processes the Setup names are listed too. |
 | **KPI data gaps section** | ✅ **live** (27 Sep) — an explicit button writes a real `lm_reportoccurrencesections` row citing every KPI with no Actual or no Target, and re-running drops the ones whose data has arrived, deleting the section when the last gap is filled. ⚠️ Identified by its **heading**; there is no spare column to mark it with. Never runs on open, and only on a Draft/Returned, unlocked report. |
 | **KPI achievement scope** | ✅ **live** (27 Sep) — `matchAchievement()` disqualifies a row only on a real conflict and reports which dimensions were ambiguous; `reportAchievementScope()` releases Department and Function for an **All Departments** report so it matches on Business Unit and Period alone. Both replaced rules that had been matching **nothing** for common reports. |
 | **Citing in bulk** (Build a report/plan) | ✅ **live** (28 Sep) — multi-select and select-all on KPI, Process, POC, Strategy, Task and Project; each selection becomes its own `lm_reportsectioncitations` row. ⚠️ **Uncapped by explicit decision**, so the writes go ten at a time in `saveReportOccurrenceContent` rather than one at a time. Breakdown is excluded on purpose: it carries a dimension per citation. Task gains BU / delay state / status / priority / department filters, Strategy gains level / status / region. |
-| Tasks, Comments, Governance Settings (persisted values) | ❌ **seeded demo data only** |
+| **Tasks** (`hx_tasks`, IT) | ✅ **raise + cite + read (28 Sep)** — "Raise a task" writes `hx_tasks` with **Task Source = Leadership** (`cr18c_tasksource` 989230002) and a **searchable Assignee**; a cited Task shows its full record in Reports / Plans (`fetchTasksByIds`). No Tasks screen of its own. |
+| Comments, Governance Settings (persisted values) | ❌ **seeded demo data only** |
 | **Meeting Setup "Completion Periods"** (MOM Write-up / MOM Approval / Audit Grid Completion-Submission, each an hours field) | ✅ **live** (15 Sep) — three plain columns on `lm_meetingtemplates` (`lm_momwriteuphours`, `lm_momapprovalhours`, `lm_gridsubmithours`), written/read alongside `quorum`/`torLink` in `dataverse.js` and `GovernanceApp.jsx`. **Persistence only — not yet consumed.** AG-16/AG-05 scoring still reads the global `DEFAULT_SETTINGS` values (§9), not this per-Setup one; the UI says so. |
 | **`lm_meetingoccurrencelinkedreports`** | 🔴 **registered, not wired to any screen** (15 Sep) — table + generated models exist (`lm_reportname`, lookups to `lm_meetingoccurrences`, `lm_reportoccurrences`, `lm_report_templates`); no app code reads or writes it yet. |
 
@@ -8005,9 +8103,12 @@ concept** from the screen.
 ### 28 Sep: Approve / Return on In Review reports in Reports / Plans
 
 Per an explicit ask; two points decided by the user: **anyone who opens the
-report can act** (no reviewer-Position gate — the same as the existing
-report panel, `DvReportDetail`), and **Return sets status Returned**, not
-Draft.
+report can act** (no reviewer-Position gate — `DvReportDetail`'s buttons
+had none either), and **Return sets status Returned**, not Draft.
+⚠️ **Corrected 29 Sep:** `DvReportDetail` is **not** reachable — it is still
+rendered nowhere (§9). Opening a report from My Workspace / Calendar /
+Decisions shows the read-only `DvOccurrenceModal`. So this `ReviewBar` is the
+**only** place a report can be approved or returned.
 
 - **`ReviewBar`** (`OrgReports.jsx`), above the open report's Template card.
   In Review: "Step N of M — waiting on <reviewer>", **Approve step** /
@@ -8258,6 +8359,48 @@ change: commits `dad7f54` (Departments) and `1c25356` (Assignee search), built
 from HEAD minus `4ca0036` (uploader columns re-checked: still absent), then the
 tree restored. Governance carries the Department rules; Leadership the
 searchable Assignee.
+
+### 29 Sep: a Report Setup's units can submit on different days
+
+Per an explicit ask: BU A submits on the 5th, BU B on the 10th, same report.
+IT added the parent's eight schedule columns to **both** unit tables
+(`lm_reporttemplatebusinessunitses`, `lm_reporttemplateregions`):
+`lm_dayoftheweek`, `lm_seconddayoftheweek`, `lm_dayofweeks`, `lm_dayofthemonth`,
+`lm_seconddayofthemonth`, `lm_monthofthequarter`, `lm_monthofthesemester`,
+`lm_month`. Read with `pac modelbuilder build`: same logical names and the same
+codes as `lm_report_templates` (the BU table's second day is bound to
+`lm_weekdays`, the Region's to `lm_dayoftheweek`, and both run Sunday=1 to Thursday=5,
+plus Saturday=6), so the parent's encoders are reused as-is.
+
+- **Governance, step 5 (Cadence):** a **Submission day** toggle, "Same for every
+  Business Unit / Different per Business Unit" (Region wording at Region
+  level), shown only for a BU/Region Setup with 2+ units and not Ad Hoc.
+  **Frequency stays shared**; when ON, a block per unit holds only that unit's
+  day fields (`CadenceFields` reused with `idp` / `hideFreq`), with "Use this
+  day for every …". ON seeds each unit with the current day; OFF keeps the
+  first unit's. Changing Frequency clears every unit's day.
+- **Validation:** `cadenceRules` runs once per unit, messages prefixed with the unit.
+- **Save:** each unit row gets its own day (`unitScheduleColumns`), and
+  reconcile PATCHes only the schedule columns that changed (`unitScheduleDiff`).
+  The **parent row keeps the first unit's day** as a fallback for anything that
+  reads only the Template. OFF writes the unit columns as **null**.
+- **Load:** there is no column for the toggle. A Setup reopens as "different per
+  unit" when any unit row holds a day.
+- ⚠️ **Nothing downstream reads the unit days yet.** The Report Occurrence
+  generator flow (`REPORT-OCCURRENCE-FLOW-PLAN.md`, not built) must take a unit
+  row's day when it has one, else the parent's.
+- Both apps build; lint unchanged (19). **Not checked in a browser**: no browser
+  tool was available this session. **Not committed, not pushed.**
+
+### 29 Sep: Category shown on the Meeting Setup's Summary
+
+Per an explicit ask. `MeetingSummary` (the register's Summary tab and the
+wizard's review step) had Setup Type, Classification and Name but not the
+governed Category. It now shows **Category** after Classification, or
+**Categories** for a Stage 4 meeting holding several (main one first). Names
+come from the live Category list, with a fallback to the stamped
+`lm_category_name`. Governance builds; lint unchanged. Not browser-checked,
+not committed.
 
 ## 6. Schema facts that are expensive to rediscover
 
@@ -9272,6 +9415,10 @@ original single-environment wiring and no longer gates anything.
    Report has no Template, so **it can be created but never reviewed**. Needs either
    a per-occurrence reviewer table or a borrowed chain. *Currently shows an explicit
    warning in the UI rather than failing silently.*
+   **28 Sep, interim:** the Reports / Plans review bar treats a report with no
+   chain as having **one approval** that anyone can give (the product owner chose
+   "anyone who opens it can act"). The real question — WHO reviews a Custom
+   report — is still open.
 4. **Quorum: percentage or minimum head count?** The BRD flags this as unresolved in
    its own dependencies. Schema and code both assume percentage.
 5. **One history table or three?** Reports have `lm_reportoccurrencehistories`.
@@ -9290,7 +9437,14 @@ original single-environment wiring and no longer gates anything.
    theory, and `lm_reportoccurrence.lm_attachementfile` already exists to hold
    it. This does **not** unpause the decision; it only means the option no
    longer needs proving.
-7. **How does a live Decision link to the Meeting Agenda Item / Report that raised
+7. ✅ **ANSWERED 28 Sep — IT added both lookups.** `wlog_decision` in IT now has
+   **`lm_CitedReportSection`** → `lm_reportoccurrencesections` and
+   **`lm_MeetingOccurrenceAgenda`** → `lm_meetingoccurrenceagenda`, and both are
+   wired (§5, 28 Sep "Decisions linked…"). The `pms_` corrective-action shape
+   below was NOT adopted; Decisions stay free text with a status. The history
+   below is kept for context.
+
+   *Original question:* **How does a live Decision link to the Meeting Agenda Item / Report that raised
    it?** `wlog_decisions` (§6) has no lookup column for either today. Deferred by
    explicit instruction (2026-08-31): the link is added later, base read/create
    was wired without it. Don't build the Report/Meeting-side "Decisions raised
@@ -9853,21 +10007,16 @@ none is blocked on design.
       `lm_report_templates`. The flow branch and the form change are written;
       only the column is missing. Until then the Meeting wizard shows a note
       where the Month dropdown belongs. See §6.
-- [ ] **Decisions raised on a report section** — add
-      **`lm_citedreportsection`** to `wlog_decision` **in IT**, targeting
-      `lm_reportoccurrencesectionses`. DT New's copy has it; IT's does not, and
-      the sections live in IT, so today neither environment can hold the link.
-      ⚠️ **The gap is wider than one lookup.** Compared live 27 Sep: IT's
-      `wlog_decision` has **36 columns, DT New's has 59**. The 23 missing
-      include `wlog_wlogworklogid` and the entire `pms_` corrective-action
-      family — `pms_rootcausedescription`, `pms_currentkpiactual` /
-      `pms_currentkpitarget`, `pms_expectedkpiactual` / `pms_expectedkpitarget`,
-      `pms_outcomekpi`, `pms_raisedby`, `pms_taskowner`, `pms_relevancy`,
-      `pms_validity`, the feedback fields and employee BU/department/sector.
-      So IT models a decision as **free text with a status** while DT New models
-      it as **root cause → KPI before/after → owner → outcome**. Which of those
-      the process wants is §7's question and should be settled *before* the
-      column is designed, or the wrong lookup gets added.
+      **28 Sep:** IT now has **`cr18c_month`** on `lm_meetingtemplate` (choice,
+      global option set `pm_month`) — probably this column under another name.
+      Not wired: confirm it is the intended one and read its option values
+      before using it (`stringmap`, see §6).
+- [x] ~~**Decisions raised on a report section**~~ — **done 28 Sep.** IT added
+      `lm_CitedReportSection` (and `lm_MeetingOccurrenceAgenda`) to
+      `wlog_decision`; decisions are raised / attached on report sections and
+      Minutes agenda items and listed in the live Decisions register (§5, 28 Sep).
+      Still to confirm on first live use: whether a **Work Log** is required on
+      create, and users' **Append / Append To** privileges.
 - [x] ~~**Widen `lm_reportobjective`**~~ — done by the product owner, 27 Sep:
       **100 → 4000**. `REPORT_OBJECTIVE_MAX` now lives in `dataverse.js` and is
       imported by the UI, so the two cannot disagree. ⚠️ **Four columns are
@@ -9966,6 +10115,11 @@ none is blocked on design.
       still works against live Dataverse. No schema dependency; it was held back
       only by the "nothing until Part 1 exists" instruction, which has now
       largely lapsed.
+      **28 Sep:** still rendered nowhere (opening a report from My Workspace,
+      Calendar or the Decisions register shows the read-only
+      `DvOccurrenceModal`). Its review job is now done by `ReviewBar` in
+      Reports / Plans (Approve / Return). What it still has that nothing else
+      shows: the per-step review-chain display and the file-URL editor.
 
 ### Blocked — needs a decision, not a table
 See §7 in full. In priority order by what they unblock: authority-level location
@@ -9976,6 +10130,12 @@ Grid)~~ — **answered 28 Sep**, and it turned out not to gate the Grid at all.
 ### Paused — by explicit instruction, not by a blocker
 - [ ] Real file storage for Report working copies (SharePoint upload or
       equivalent) — see §7.6. Don't pick this up without asking first.
+      **28 Sep — picked up at the user's request:** Create Report now uploads the
+      file into a Dataverse File column and records a Team Channel + SharePoint
+      destination path "to be used later". Committed (`4ca0036`) but **not
+      deployed**: its three `lm_reportoccurrence` columns do not exist in IT yet
+      (see Current status at the top). The actual SharePoint save is still to
+      come.
 
 ### Smaller, self-contained gaps
 - [x] **Commit the working tree.** Resolved — branch `leadership-practice`,

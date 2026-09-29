@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { ClipboardList, ListChecks, ArrowUpRight, FileText, CalendarDays, Check, MoreHorizontal } from 'lucide-react';
 import { fetchRegions, fetchBusinessUnits, fetchDepartments, fetchFunctions, fetchProcesses, fetchKpis, fetchSections, fetchPositions, departmentBuIndex, fetchTeamsChannels, fetchMicrosoftGroupMembers, fetchMeetingCategories, fetchCurrentUser, saveReportTemplateToDataverse, saveMeetingTemplateToDataverse, updateReportTemplateToDataverse, updateMeetingTemplateToDataverse, updateReportTemplateStatus, updateMeetingTemplateStatus, fetchReportTemplatesList, fetchMeetingTemplatesList, fetchReportTemplateDetail, fetchMeetingTemplateDetail, fetchMeetingOccurrencesByTemplate, fetchReportOccurrencesByTemplate, TEMPLATE_STATUS_LABEL,
   logSetupActivity, logSetupActivityBatch, fetchSetupActivity, uploadReportTemplateFile,
-  decodeDayOfWeeksMulti, DAY_OF_WEEKS_CAP } from '../../services/dataverse.js';
+  decodeDayOfWeeksMulti, DAY_OF_WEEKS_CAP, REPORT_SCHEDULE_COLS } from '../../services/dataverse.js';
 import { FilePreview, canPreview } from '../../shared/FilePreview.jsx';
 import './governance-modern.css';
 
@@ -72,6 +72,26 @@ const cadenceDayFragment=s=>
   (DOW_FREQ.includes(s.frequency) && (s.dayMode||'fixed')==='multi')
     ? ((s.dayOfWeeks||[]).length ? 'days '+s.dayOfWeeks.slice().sort((a,b)=>a-b).join(', ') : null)
     : s.dayOfWeek;
+/* The cadence fields that say WHEN in the period a report is submitted --
+   everything CadenceFields collects except Frequency. A Report Setup can hold
+   them once for every unit, or (perUnitSchedule) once per Business Unit /
+   Region on u.schedule, so BU A can submit on the 5th while BU B submits on
+   the 10th. Frequency stays shared either way: it is one report, on one
+   cadence -- only the day inside each period differs. */
+const scheduleOf=src=>({
+  dayMode:src?.dayMode||'fixed', dayOfWeek:src?.dayOfWeek??null, dayOfWeeks:(src?.dayOfWeeks||[]).slice(),
+  secondDayOfWeek:src?.secondDayOfWeek??null, dayOfMonth:src?.dayOfMonth??null,
+  secondDayOfMonth:src?.secondDayOfMonth??null, monthInQuarter:src?.monthInQuarter??null,
+  monthInSemester:src?.monthInSemester??null, month:src?.month??null});
+/* Only a Report Setup scoped to Business Units or Regions can split its day --
+   a group-wide Setup has one section, and Ad Hoc has no cadence at all. */
+const perUnitOn=s=>s.kind==='Report Template' && !!s.perUnitSchedule
+  && stageLevel(s)!=='group' && !isAdHocCategory(s);
+/* One line for a schedule: "Monday", "day 5 · 2nd month", "days 3, 17". */
+const scheduleText=(freq,sch)=>[cadenceDayFragment({...sch,frequency:freq}),
+  sch.secondDayOfWeek, sch.dayOfMonth?('day '+sch.dayOfMonth):null,
+  sch.secondDayOfMonth?('day '+sch.secondDayOfMonth):null,
+  sch.monthInQuarter, sch.monthInSemester, sch.month].filter(Boolean).join(' · ');
 const MONTHS_IN_QUARTER=['1st month','2nd month','3rd month'];
 const MONTHS_IN_SEMESTER=['1st month','2nd month','3rd month',
                           '4th month','5th month','6th month'];
@@ -742,6 +762,7 @@ const BLANK_REPORT={
   secondDayOfWeek:null, secondDayOfMonth:null, monthInSemester:null, month:null,
   checklist:[], processes:[], kpis:[],
   frequency:null, dayOfWeek:null, dayOfWeeks:[], dayMode:'fixed', dayOfMonth:null, monthInQuarter:null,
+  perUnitSchedule:false,
   confidentiality:null, status:'Draft', version:0, updated:TODAY};
 
 function seed(){
@@ -1076,10 +1097,14 @@ function unitRules(s, stepNo){
 }
 /* how many rules a single unit is failing — drives the tag on its section header */
 const unitIssueCount=(s,key,issues)=>issues.filter(i=>i.field==='u-'+key).length;
-function cadenceRules(s, stepNo){
-  const r=[];
-  if(!s.frequency){ r.push({field:'f-frequency', step:stepNo,
-      msg:'Frequency is required — every Setup repeats on a cadence.'}); return r; }
+/* `idp` / `at` let the same rules run once per unit when a Report Setup's units
+   submit on different days: field ids become f-<unitKey>-dayOfMonth (what
+   UnitSchedules renders) and each message is prefixed with the unit's name. */
+function cadenceRules(s, stepNo, idp='f-', at=''){
+  const r0=[];
+  if(!s.frequency){ r0.push({field:'f-frequency', step:stepNo,
+      msg:'Frequency is required — every Setup repeats on a cadence.'}); return r0; }
+  const r={push:(...xs)=>r0.push(...xs.map(x=>({...x, field:idp+x.field.slice(2), msg:at+x.msg})))};
   const dayMode=s.dayMode||'fixed';
   if(DOW_FREQ.includes(s.frequency) && dayMode==='fixed' && !s.dayOfWeek)
     r.push({field:'f-dayOfWeek', step:stepNo, msg:`Day of week is required when Frequency is ${s.frequency}.`});
@@ -1125,7 +1150,7 @@ function cadenceRules(s, stepNo){
       r.push({field:'f-secondDayOfMonth', step:stepNo,
         msg:'The two days of the month must be different.'});
   }
-  return r;
+  return r0;
 }
 
 function validateMeeting(s){
@@ -1204,7 +1229,13 @@ function validateReport(s, all){
   /* 4 — who submits and who reviews, unit by unit */
   r.push(...unitRules(s,4));
   /* 5 — cadence and review. Skipped for Ad Hoc: it has no fixed cadence. */
-  if(!isAdHocCategory(s)) r.push(...cadenceRules(s,5));
+  if(perUnitOn(s)){
+    /* Frequency once, then each unit's own day against it. */
+    if(!s.frequency) r.push(...cadenceRules(s,5));
+    else scopeKeys(s).forEach(k=>r.push(...cadenceRules(
+      {...scheduleOf(unitOf(s,k)?.schedule), frequency:s.frequency}, 5, 'f-'+k+'-', unitLabel(s,k)+': ')));
+  }
+  else if(!isAdHocCategory(s)) r.push(...cadenceRules(s,5));
   if(!s.confidentiality) r.push({field:'f-confidentiality', step:5, msg:'Confidentiality is required.'});
   return r;
 }
@@ -2466,66 +2497,75 @@ function ScopeFields({s,set,stepNo}){
    than offer a dropdown whose value is dropped on save (the silent-loss pattern
    this file keeps running into), the field is replaced by a note saying what is
    missing. Add lm_month (1..12) to lm_meetingtemplates and delete the prop. */
-function CadenceFields({s,set,noMonth}){
+/* `idp`, `hideFreq` and `hideDays` let the Report wizard reuse this block per
+   unit (see UnitSchedules): the Setup-level copy shows Frequency only, and each
+   unit's copy shows only its day fields, with ids of its own. */
+function CadenceFields({s,set,noMonth,idp='f-',hideFreq,hideDays}){
   const dayMode=s.dayMode||'fixed';
-  return <>
-    <Field id="f-frequency" label="Frequency" req>
-      <Sel id="f-frequency" val={s.frequency} opts={FREQUENCIES}
+  const freq=hideFreq?null:
+    <Field id={idp+'frequency'} label="Frequency" req>
+      <Sel id={idp+'frequency'} val={s.frequency} opts={FREQUENCIES}
         onChange={v=>set({frequency:v, dayOfWeek:null, dayOfWeeks:[], dayOfMonth:null, monthInQuarter:null,
                           secondDayOfWeek:null, secondDayOfMonth:null, monthInSemester:null,
-                          month:null})}/></Field>
+                          month:null,
+                          /* a unit's own day belongs to the old Frequency too */
+                          ...(s.perUnitSchedule
+                            ? {units:(s.units||[]).map(u=>({...u, schedule:scheduleOf(null)}))} : {})})}/></Field>;
+  if(hideDays) return freq;
+  return <>
+    {freq}
     {/* Weekly/Twice Weekly only -- a Setup can name its day(s) either as one
         (or two) fixed weekday(s), same as before this toggle existed, or as
         several numbered days from lm_dayofweeks (see dataverse.js's note on
         that column -- the numbers themselves are what's picked, not weekday
         names). Switching clears whichever side just went inactive so a save
         never carries a stale value from the other mode. */}
-    <Field id="f-dayMode" label="How is the day chosen?" when={DOW_FREQ.includes(s.frequency)}>
-      <Seg id="f-dayMode" val={dayMode}
+    <Field id={idp+'dayMode'} label="How is the day chosen?" when={DOW_FREQ.includes(s.frequency)}>
+      <Seg id={idp+'dayMode'} val={dayMode}
         opts={[{v:'fixed',label:'Fixed day'},{v:'multi',label:'Multiple days'}]}
         onChange={v=>set({dayMode:v, dayOfWeek:null, secondDayOfWeek:null, dayOfWeeks:[]})}/>
     </Field>
     <div className="f-row3">
       {/* Twice Weekly repeats on two days, so the first is labelled as such
           only when there is a second to distinguish it from. */}
-      <Field id="f-dayOfWeek"
+      <Field id={idp+'dayOfWeek'}
         label={DOW2_FREQ.includes(s.frequency)?'First day of week':'Day of week'}
         req when={DOW_FREQ.includes(s.frequency) && dayMode==='fixed'}>
-        <Sel id="f-dayOfWeek" val={s.dayOfWeek} opts={DAYS_OF_WEEK}
+        <Sel id={idp+'dayOfWeek'} val={s.dayOfWeek} opts={DAYS_OF_WEEK}
           onChange={v=>set({dayOfWeek:v})}/></Field>
-      <Field id="f-secondDayOfWeek" label="Second day of week" req
+      <Field id={idp+'secondDayOfWeek'} label="Second day of week" req
         when={DOW2_FREQ.includes(s.frequency) && dayMode==='fixed'}
         hint="Must differ from the first day.">
-        <Sel id="f-secondDayOfWeek" val={s.secondDayOfWeek}
+        <Sel id={idp+'secondDayOfWeek'} val={s.secondDayOfWeek}
           opts={DAYS_OF_WEEK.filter(d=>d!==s.dayOfWeek)}
           onChange={v=>set({secondDayOfWeek:v})}/></Field>
-      <Field id="f-dayOfWeeks" label="Days" req
+      <Field id={idp+'dayOfWeeks'} label="Days" req
         when={DOW_FREQ.includes(s.frequency) && dayMode==='multi'}
         hint={`Choose up to ${DAY_OF_WEEKS_CAP(s.frequency)}.`}>
-        <Checks id="f-dayOfWeeks" opts={DAY_NUMBERS} val={s.dayOfWeeks||[]}
+        <Checks id={idp+'dayOfWeeks'} opts={DAY_NUMBERS} val={s.dayOfWeeks||[]}
           max={DAY_OF_WEEKS_CAP(s.frequency)}
           onChange={v=>set({dayOfWeeks:v})}/></Field>
 
-      <Field id="f-dayOfMonth"
+      <Field id={idp+'dayOfMonth'}
         label={DOM2_FREQ.includes(s.frequency)?'First day of month':'Day of month'}
         req when={DOM_FREQ.includes(s.frequency)} hint="1 to 30.">
-        <input id="f-dayOfMonth" type="number" min="1" max="30" value={s.dayOfMonth??''}
+        <input id={idp+'dayOfMonth'} type="number" min="1" max="30" value={s.dayOfMonth??''}
           onChange={e=>set({dayOfMonth:e.target.value===''?null:+e.target.value})}/></Field>
-      <Field id="f-secondDayOfMonth" label="Second day of month" req
+      <Field id={idp+'secondDayOfMonth'} label="Second day of month" req
         when={DOM2_FREQ.includes(s.frequency)} hint="1 to 30, and different from the first.">
-        <input id="f-secondDayOfMonth" type="number" min="1" max="30" value={s.secondDayOfMonth??''}
+        <input id={idp+'secondDayOfMonth'} type="number" min="1" max="30" value={s.secondDayOfMonth??''}
           onChange={e=>set({secondDayOfMonth:e.target.value===''?null:+e.target.value})}/></Field>
 
-      <Field id="f-monthInQuarter" label="Month within quarter" req
+      <Field id={idp+'monthInQuarter'} label="Month within quarter" req
         when={MIQ_FREQ.includes(s.frequency)}>
-        <Sel id="f-monthInQuarter" val={s.monthInQuarter} opts={MONTHS_IN_QUARTER}
+        <Sel id={idp+'monthInQuarter'} val={s.monthInQuarter} opts={MONTHS_IN_QUARTER}
           onChange={v=>set({monthInQuarter:v})}/></Field>
-      <Field id="f-monthInSemester" label="Month within semester" req
+      <Field id={idp+'monthInSemester'} label="Month within semester" req
         when={MOS_FREQ.includes(s.frequency)}
         hint="A semester is six months.">
-        <Sel id="f-monthInSemester" val={s.monthInSemester} opts={MONTHS_IN_SEMESTER}
+        <Sel id={idp+'monthInSemester'} val={s.monthInSemester} opts={MONTHS_IN_SEMESTER}
           onChange={v=>set({monthInSemester:v})}/></Field>
-      <Field id="f-month" label="Month" req={!noMonth}
+      <Field id={idp+'month'} label="Month" req={!noMonth}
         when={MOY_FREQ.includes(s.frequency)}
         hint={noMonth?null:"The calendar month the report is due in each year."}>
         {noMonth
@@ -2534,7 +2574,7 @@ function CadenceFields({s,set,noMonth}){
               falls in, so the generator flow cannot create it from this field. Day of
               month below is stored and will be used once that's added.
             </div>
-          : <Sel id="f-month" val={s.month} opts={MONTHS_OF_YEAR}
+          : <Sel id={idp+'month'} val={s.month} opts={MONTHS_OF_YEAR}
               onChange={v=>set({month:v})}/>}</Field>
     </div>
   </>;
@@ -3041,13 +3081,24 @@ function MeetingSummary({s}){
   const cad=[s.frequency, cadenceDayFragment(s), s.dayOfMonth?('day '+s.dayOfMonth):null, s.monthInQuarter]
         .filter(Boolean).join(' · ');
   const keys=scopeKeys(s);
+  /* The governed Category (lm_Category). A Stage 4 meeting can hold several
+     (lm_topmanagementmeetingcategories), listed main-first; names come from the
+     live Category list, falling back to the name stamped on the Setup for the
+     main one if that list has not loaded or no longer carries it. */
+  const catIds=(s.meetingCategories||[]).length ? s.meetingCategories
+    : (s.meetingCategory ? [s.meetingCategory] : []);
+  const catNames=catIds.map((id,i)=>MEETING_CATEGORIES.find(c=>c.id===id)?.name
+    || (i===0 ? s.meetingCategoryName : null)).filter(Boolean);
+  if(!catNames.length && s.meetingCategoryName) catNames.push(s.meetingCategoryName);
   return <>
     <div className="card">
       <h2>Review</h2>
       <div className="csub">Everything captured, read-only.</div>
       <div className="sum-grid">
         <SumBlock title="Type and identity" items={[
-          ['Setup Type',s.setupType],[!accred&&'Classification',s.category],['Name',displayName(s)],
+          ['Setup Type',s.setupType],[!accred&&'Classification',s.category],
+          [catNames.length>1?'Categories':'Category', catNames.join(' · ')||'—'],
+          ['Name',displayName(s)],
           [s.category===TOT&&'Monitors','The service strategy of '+(depsOf(s)[0]||'its Department')]]}/>
         <SumBlock title="Scope" items={[['Stage',s.stage],['Resolved',scopeString(s)],
           ['Runs in',keys.length?scopeNames(s).join(', '):'—'],
@@ -3202,15 +3253,87 @@ function ReportWizard({rec,onClose}){
           {isAdHocCategory(s)
             ? <Note k="info" ic="i">Ad Hoc reports have no fixed cadence — a submission is raised
                 when it's needed, not on a schedule, so there is nothing to set here.</Note>
-            : <CadenceFields s={s} set={set}/>}
+            : <>
+                <CadenceFields s={s} set={set} hideDays={perUnitOn(s)}/>
+                <SubmissionDayToggle s={s} set={set}/>
+              </>}
           <Field id="f-confidentiality" label="Confidentiality" req
             hint="Inherited by every submission created from this Setup.">
             <Seg id="f-confidentiality" opts={CONFIDENTIALITY} val={s.confidentiality}
               onChange={v=>set({confidentiality:v})}/></Field>
         </div>
+        {perUnitOn(s) ? <UnitSchedules s={s} set={set}/> : null}
         <ReportSummary s={s}/>
       </>;
     }}/>;
+}
+
+/* Same day everywhere, or a day per Business Unit / Region. Offered only when
+   the Setup actually runs in more than one unit. Switching ON seeds every unit
+   with the day already chosen, so each only needs changing where it differs;
+   switching OFF keeps the first unit's day as the shared one. */
+function SubmissionDayToggle({s,set}){
+  const lv=stageLevel(s);
+  const keys=scopeKeys(s);
+  if(lv==='group' || keys.length<2) return null;
+  const word=lv==='region'?'Region':'Business Unit';
+  const on=!!s.perUnitSchedule;
+  const turn=v=>{
+    const units=syncUnits(s);
+    if(v==='per') set({perUnitSchedule:true,
+      units:units.map(u=>({...u, schedule:u.schedule?scheduleOf(u.schedule):scheduleOf(s)}))});
+    else set({perUnitSchedule:false, ...scheduleOf(unitOf({...s,units},keys[0])?.schedule||s)});
+  };
+  return <Field id="f-perUnitSchedule" label="Submission day"
+    hint={on
+      ? `Each ${word} submits on its own day, set below. The Frequency above is shared.`
+      : `Every ${word} submits on the same day. Switch to set a different day for each one.`}>
+    <Seg id="f-perUnitSchedule" val={on?'per':'same'}
+      opts={[{v:'same',label:'Same for every '+word},{v:'per',label:'Different per '+word}]}
+      onChange={turn}/>
+  </Field>;
+}
+
+/* One compact block per unit, holding only that unit's day fields. Saved to
+   the unit's own lm_reporttemplatebusinessunitses / lm_reporttemplateregions
+   row (the eight schedule columns in dataverse.js's REPORT_SCHEDULE_COLS). */
+function UnitSchedules({s,set}){
+  const {toast}=use();
+  const lv=stageLevel(s);
+  const keys=scopeKeys(s);
+  const setSch=(k,patch)=>set({units:syncUnits(s).map(u=>u.key===k
+    ? {...u, schedule:{...scheduleOf(u.schedule), ...patch}} : u)});
+  const copyToAll=k=>{
+    const from=scheduleOf(unitOf(s,k)?.schedule);
+    set({units:syncUnits(s).map(u=>({...u, schedule:scheduleOf(from)}))});
+    toast('Submission day copied', `${unitLabel(s,k)}'s day applied to the other ${keys.length-1}.`,'ok');
+  };
+  if(!s.frequency) return <div className="card">
+    <h2>Submission day per {LEVEL_WORD[lv]||'unit'}</h2>
+    <Note k="info" ic="i">Choose a Frequency first. Each unit's day depends on it.</Note>
+  </div>;
+  return <div className="card">
+    <h2>Submission day per {LEVEL_WORD[lv]||'unit'}</h2>
+    <div className="sub" style={{marginBottom:10}}>{s.frequency} for all of them. Set the day each one submits.</div>
+    {keys.map((k,i)=>{
+      const sch={...scheduleOf(unitOf(s,k)?.schedule), frequency:s.frequency};
+      return <div className="unit-card" key={k} id={'us-'+k}>
+        <div className="unit-hd">
+          <span className="unit-ix">{i+1}</span>
+          <span className="unit-nm">
+            <span className="n">{unitLabel(s,k)}</span>
+            <span className="m">{scheduleText(s.frequency,sch)||'No day set yet'}</span>
+          </span>
+        </div>
+        <div className="unit-bd">
+          <CadenceFields s={sch} set={p=>setSch(k,p)} idp={'f-'+k+'-'} hideFreq/>
+        </div>
+        <div className="unit-ft">
+          <div className="sp"/>
+          <Btn k="sm" onClick={()=>copyToAll(k)}>Use this day for every {LEVEL_WORD[lv]||'unit'}</Btn>
+        </div>
+      </div>;})}
+  </div>;
 }
 
 function ReportSummary({s}){
@@ -3257,7 +3380,11 @@ function ReportSummary({s}){
           ['Sections',(s.checklist||[]).length+' section(s)']]}/>
         <SumBlock title="Submission" items={[
           ['Sections',keys.length+' — one per '+(LEVEL_WORD[stageLevel(s)]||'unit')]]}/>
-        <SumBlock title="Cadence" items={[['Cadence',cad],['Confidentiality',s.confidentiality]]}/>
+        <SumBlock title="Cadence" items={perUnitOn(s)
+          ? [['Frequency',s.frequency],
+             ...keys.map(k=>[unitLabel(s,k), scheduleText(s.frequency,scheduleOf(unitOf(s,k)?.schedule))||'— no day set']),
+             ['Confidentiality',s.confidentiality]]
+          : [['Cadence',cad],['Confidentiality',s.confidentiality]]}/>
         <SumBlock title="References" items={[
           ['Processes',(s.processes||[]).length+' linked'],['KPIs',(s.kpis||[]).length+' linked']]}/>
       </div>
@@ -3280,9 +3407,15 @@ function ReportSummary({s}){
    reference data and cascade helpers (DEPARTMENTS, FUNCTIONS, POSITIONS,
    KPI_ID_BY_NAME/PROCESS_ID_BY_NAME, scopeKeys/unitOf/buOf/nameOf), none
    of which the plain data-service module knows about. */
-function buildReportTemplatePayload(f){
-  const lv=stageLevel(f);
-  const keys=scopeKeys(f);
+function buildReportTemplatePayload(f0){
+  const lv=stageLevel(f0);
+  const keys=scopeKeys(f0);
+  /* Units submitting on different days: each unit row carries its own day, and
+     the parent row keeps the FIRST unit's, so anything that reads only the
+     Template (the planned occurrence generator, until it learns the unit
+     columns) still finds a valid day rather than a blank one. */
+  const perUnit=perUnitOn(f0);
+  const f=perUnit && keys.length ? {...f0, ...scheduleOf(unitOf(f0,keys[0])?.schedule)} : f0;
 
   return {
     name: f.name,
@@ -3339,6 +3472,9 @@ function buildReportTemplatePayload(f){
         ownerPositionId: u.owner || undefined,
         submittingPositionId: u.submitter || undefined,
         channelId: u.channel || undefined,
+        /* null = "same day as the Setup": dataverse.js then writes the unit's
+           schedule columns as null, clearing any day left from before. */
+        schedule: perUnit ? scheduleOf(u.schedule) : null,
         reviewChain: (u.reviewChain||[]).map((posId,i)=>({
           step: i+1,
           positionId: posId || undefined,
@@ -3735,9 +3871,27 @@ const DV_MEETING_STAGE={1:STAGES[0],2:STAGES[1],3:STAGES[2],4:STAGES[3]};
 /* id -> name lookups the save side didn't need (it only went name -> id) */
 const idToName=(map,id)=>{ const hit=Object.entries(map).find(([,v])=>v===id); return hit?hit[0]:null; };
 
+/* A row's submission-day columns in the wizard's shape. The same eight columns
+   and codes on lm_report_templates and on both per-unit tables. */
+const scheduleFromRow=r=>({
+  dayOfWeek:byCode1(DV_DAY_OF_WEEK,r.lm_dayoftheweek),
+  dayOfWeeks:decodeDayOfWeeksMulti(r.lm_dayofweeks),
+  dayMode:decodeDayOfWeeksMulti(r.lm_dayofweeks).length ? 'multi' : 'fixed',
+  dayOfMonth:r.lm_dayofthemonth ?? null,
+  monthInQuarter:byCode1(DV_MONTH_IN_QUARTER,r.lm_monthofthequarter),
+  secondDayOfWeek:byCode1(DAYS_OF_WEEK,r.lm_seconddayoftheweek),
+  secondDayOfMonth:r.lm_seconddayofthemonth ?? null,
+  monthInSemester:byCode1(MONTHS_IN_SEMESTER,r.lm_monthofthesemester),
+  month:byCode1(MONTHS_OF_YEAR,r.lm_month)});
+/* Nothing stores the toggle itself: a Setup reopens as "different per unit"
+   exactly when any of its unit rows holds a day of its own. */
+const rowHasSchedule=r=>REPORT_SCHEDULE_COLS.some(c=>r[c]!=null && r[c]!=='');
+
 function dataverseReportToSetup(detail){
   const p=detail.parent;
+  const perUnitSchedule=[...(detail.businessUnits||[]), ...(detail.regions||[])].some(rowHasSchedule);
   const buUnits=(detail.businessUnits||[]).map(bu=>({
+    schedule:perUnitSchedule ? scheduleFromRow(bu) : null,
     id:'dvu-'+bu.lm_reporttemplatebusinessunitsid, key:bu._lm_businessunit_value,
     section:bu._lm_speciality_value||null,
     channel:bu._lm_teamchannel_value||null, team:teamOfChannel(bu._lm_teamchannel_value),
@@ -3746,6 +3900,7 @@ function dataverseReportToSetup(detail){
       .map(r=>r._lm_reviewerposition_value||null),
   }));
   const regionUnits=(detail.regions||[]).map(rg=>({
+    schedule:perUnitSchedule ? scheduleFromRow(rg) : null,
     id:'dvu-'+rg.lm_reporttemplateregionid, key:rg._lm_region_value,
     section:rg._lm_reportspeciality_value||null,
     channel:rg._lm_teamchannel_value||null, team:teamOfChannel(rg._lm_teamchannel_value),
@@ -3785,6 +3940,7 @@ function dataverseReportToSetup(detail){
     submissionTiming:byCode1(DV_SUBMISSION_TIMING,p.lm_submissiontiming),
     reportCategory:byCode1(DV_REPORT_CATEGORY,p.lm_reportcategory),
     frequency:byCode1(DV_FREQUENCY,p.lm_frequency),
+    perUnitSchedule,
     dayOfWeek:byCode1(DV_DAY_OF_WEEK,p.lm_dayoftheweek),
     /* dayOfWeeks (plural) is the alternate, multi-select way of naming this --
        see dataverse.js's own note on lm_dayofweeks. Mode is inferred, not

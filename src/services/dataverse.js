@@ -1383,6 +1383,38 @@ function reportTemplateParentPayload(payload){
     lm_submissiontiming: payload.submissionTiming
       ? SUBMISSION_TIMING_KEY[payload.submissionTiming] : null,
     lm_frequency: payload.frequency ? FREQUENCY_KEY[payload.frequency] : null,
+    ...reportScheduleColumns(payload),
+    lm_confidentiality: payload.confidentiality ? CONFIDENTIALITY_KEY[payload.confidentiality] : null,
+    lm_destinationsharepointlink: payload.destinationLink || null,
+    lm_fileattachement: payload.fileAttachment || null,
+    /* Stage is now a real column. It used to be inferred on read from whether
+       the Template had Business Unit or Region child rows, which could not tell
+       Stage 3 from Stage 4 -- both are group-wide -- so a Stage 4 Template came
+       back as Stage 3 and was silently renamed on the next save. */
+    lm_stage: REPORT_STAGE_KEY[payload.stage] ?? null,
+    lm_reportstatus: payload.status ? TEMPLATE_STATUS_KEY[payload.status] : null,
+    lm_version: typeof payload.version === 'number' ? payload.version : null,
+  };
+  if(groupUnit?.ownerPositionId)      row['lm_OwnerPosition@odata.bind']      = `/cr603_organizationstructures(${groupUnit.ownerPositionId})`;
+  if(groupUnit?.submittingPositionId) row['lm_SubmittingPosition@odata.bind'] = `/cr603_organizationstructures(${groupUnit.submittingPositionId})`;
+  if(groupUnit?.channelId)            row['lm_TeamChannel@odata.bind']        = `/and_teamschannellinks(${groupUnit.channelId})`;
+  if(groupUnit?.specialityId)         row['lm_ReportSpecialty@odata.bind']    = `/cr301_specialtyksa_service_hubs(${groupUnit.specialityId})`;
+  return row;
+}
+
+/* The submission-day columns. lm_report_templates carries them for the whole
+   Setup; lm_reporttemplatebusinessunitses and lm_reporttemplateregions carry the
+   same eight (added 29 Sep) for a Setup whose units submit on different days.
+   Same logical names and the same choice codes on all three tables -- read from
+   IT with `pac modelbuilder build` (the unit tables' second day of week is bound
+   to lm_weekdays rather than lm_dayoftheweek, but both run Sunday=1..Thursday=5).
+   Frequency is NOT here: it stays on the parent, shared by every unit. */
+export const REPORT_SCHEDULE_COLS = ['lm_dayoftheweek','lm_dayofweeks','lm_dayofthemonth',
+  'lm_monthofthequarter','lm_seconddayoftheweek','lm_seconddayofthemonth',
+  'lm_monthofthesemester','lm_month'];
+
+function reportScheduleColumns(payload){
+  return {
     lm_dayoftheweek: payload.dayOfWeek ? DAY_OF_WEEK_KEY[payload.dayOfWeek] : null,
     /* The wizard keeps dayOfWeek/dayOfWeeks mutually exclusive (switching the
        toggle clears whichever just went inactive), so this can write straight
@@ -1411,22 +1443,27 @@ function reportTemplateParentPayload(payload){
     lm_seconddayofthemonth: typeof payload.secondDayOfMonth === 'number' ? payload.secondDayOfMonth : null,
     lm_monthofthesemester: payload.monthInSemester ? MONTH_IN_SEMESTER_KEY[payload.monthInSemester] : null,
     lm_month: payload.month ? MONTH_KEY[payload.month] : null,
-    lm_confidentiality: payload.confidentiality ? CONFIDENTIALITY_KEY[payload.confidentiality] : null,
-    lm_destinationsharepointlink: payload.destinationLink || null,
-    lm_fileattachement: payload.fileAttachment || null,
-    /* Stage is now a real column. It used to be inferred on read from whether
-       the Template had Business Unit or Region child rows, which could not tell
-       Stage 3 from Stage 4 -- both are group-wide -- so a Stage 4 Template came
-       back as Stage 3 and was silently renamed on the next save. */
-    lm_stage: REPORT_STAGE_KEY[payload.stage] ?? null,
-    lm_reportstatus: payload.status ? TEMPLATE_STATUS_KEY[payload.status] : null,
-    lm_version: typeof payload.version === 'number' ? payload.version : null,
   };
-  if(groupUnit?.ownerPositionId)      row['lm_OwnerPosition@odata.bind']      = `/cr603_organizationstructures(${groupUnit.ownerPositionId})`;
-  if(groupUnit?.submittingPositionId) row['lm_SubmittingPosition@odata.bind'] = `/cr603_organizationstructures(${groupUnit.submittingPositionId})`;
-  if(groupUnit?.channelId)            row['lm_TeamChannel@odata.bind']        = `/and_teamschannellinks(${groupUnit.channelId})`;
-  if(groupUnit?.specialityId)         row['lm_ReportSpecialty@odata.bind']    = `/cr301_specialtyksa_service_hubs(${groupUnit.specialityId})`;
-  return row;
+}
+
+/* A unit row's own submission day, or all nulls when the Setup submits on one
+   shared day -- nulls, not omitted, so switching the toggle off clears what a
+   unit row held instead of leaving a stale day behind. */
+const unitScheduleColumns = unit => reportScheduleColumns(unit?.schedule || {});
+
+/* The PATCH for a kept unit row: only the schedule columns that changed.
+   lm_dayofweeks comes back as a comma-separated string whose order is not
+   guaranteed, so it is compared as a sorted set. */
+function unitScheduleDiff(unit, row){
+  const want = unitScheduleColumns(unit);
+  const norm = (col, v) => {
+    if(v == null || v === '') return '';
+    return col === 'lm_dayofweeks' ? String(v).split(',').map(x=>x.trim()).filter(Boolean).sort().join(',') : String(v);
+  };
+  const patch = {};
+  for(const col of REPORT_SCHEDULE_COLS)
+    if(norm(col, row[col]) !== norm(col, want[col])) patch[col] = want[col];
+  return patch;
 }
 
 /** Deletes a batch of already-fetched rows by id, one service.delete() call
@@ -1568,6 +1605,7 @@ async function createReportTemplateChildren(templateId, payload, errors, opts = 
           'lm_ReportTemplate@odata.bind': bind,
           'lm_BusinessUnit@odata.bind': `/businessunits(${unit.businessUnitId})`,
           lm_name: unit.name || undefined,
+          ...unitScheduleColumns(unit),
         };
         if(unit.specialityId) rowPayload['lm_Speciality@odata.bind'] = `/cr301_specialtyksa_service_hubs(${unit.specialityId})`;
         if(unit.ownerPositionId) rowPayload['lm_OwnerPosition@odata.bind'] = `/cr603_organizationstructures(${unit.ownerPositionId})`;
@@ -1583,6 +1621,7 @@ async function createReportTemplateChildren(templateId, payload, errors, opts = 
           'lm_ReportTemplate@odata.bind': bind,
           'lm_Region@odata.bind': `/crd04_regionses(${unit.regionId})`,
           lm_name: unit.name || undefined,
+          ...unitScheduleColumns(unit),
         };
         if(unit.specialityId) rowPayload['lm_ReportSpeciality@odata.bind'] = `/cr301_specialtyksa_service_hubs(${unit.specialityId})`;
         if(unit.ownerPositionId) rowPayload['lm_OwnerPosition@odata.bind'] = `/cr603_organizationstructures(${unit.ownerPositionId})`;
@@ -1686,10 +1725,10 @@ async function reconcileReportUnits(templateId, payload, existing, errors){
     if(u.ownerPositionId)     f['lm_OwnerPosition@odata.bind'] = posBind(u.ownerPositionId);
     if(u.submittingPositionId) f['lm_SubmittingPosition@odata.bind'] = posBind(u.submittingPositionId);
     if(u.channelId)           f['lm_TeamChannel@odata.bind'] = `/and_teamschannellinks(${u.channelId})`;
-    return f;
+    return { ...f, ...unitScheduleColumns(u) };
   };
   const diffOf = specialityValueField => (u, row) => {
-    const patch = {};
+    const patch = unitScheduleDiff(u, row);
     if((row.lm_name || null) !== (u.name || null)) patch.lm_name = u.name || null;
     if(u.specialityId && lookupChanged(row[specialityValueField], u.specialityId))
       patch[specialityValueField === '_lm_speciality_value' ? 'lm_Speciality@odata.bind' : 'lm_ReportSpeciality@odata.bind']
@@ -1783,10 +1822,10 @@ async function fetchReportTemplateChildIds(dvId){
        needs them to tell an existing unit from a new one. */
     Lm_reporttemplatebusinessunitsesService.getAll({ filter, select:['lm_reporttemplatebusinessunitsid',
       'lm_name','_lm_businessunit_value','_lm_speciality_value','_lm_ownerposition_value',
-      '_lm_submittingposition_value','_lm_teamchannel_value'] }),
+      '_lm_submittingposition_value','_lm_teamchannel_value', ...REPORT_SCHEDULE_COLS] }),
     Lm_reporttemplateregionsService.getAll({ filter, select:['lm_reporttemplateregionid',
       'lm_name','_lm_region_value','_lm_reportspeciality_value','_lm_ownerposition_value',
-      '_lm_submittingposition_value','_lm_teamchannel_value'] }),
+      '_lm_submittingposition_value','_lm_teamchannel_value', ...REPORT_SCHEDULE_COLS] }),
   ]);
   const businessUnits = busRes?.data ?? [];
   const regions = regionsRes?.data ?? [];
@@ -3173,8 +3212,8 @@ export async function fetchReportTemplateDetail(id){
     Lm_reporttemplatedepartmentfunctionsService.getAll({ filter, select:['_lm_department_value','_lm_function_value'] }),
     Lm_reporttemplaterelatedkpisesService.getAll({ filter, select:['_lm_relatedkpi_value'] }),
     Lm_reporttemplaterelatedprocessesesService.getAll({ filter, select:['_lm_relatedprocess_value'] }),
-    Lm_reporttemplatebusinessunitsesService.getAll({ filter, select:['lm_reporttemplatebusinessunitsid','lm_name','_lm_businessunit_value','_lm_speciality_value','_lm_ownerposition_value','_lm_submittingposition_value','_lm_teamchannel_value'] }),
-    Lm_reporttemplateregionsService.getAll({ filter, select:['lm_reporttemplateregionid','lm_name','_lm_region_value','_lm_reportspeciality_value','_lm_ownerposition_value','_lm_submittingposition_value','_lm_teamchannel_value'] }),
+    Lm_reporttemplatebusinessunitsesService.getAll({ filter, select:['lm_reporttemplatebusinessunitsid','lm_name','_lm_businessunit_value','_lm_speciality_value','_lm_ownerposition_value','_lm_submittingposition_value','_lm_teamchannel_value', ...REPORT_SCHEDULE_COLS] }),
+    Lm_reporttemplateregionsService.getAll({ filter, select:['lm_reporttemplateregionid','lm_name','_lm_region_value','_lm_reportspeciality_value','_lm_ownerposition_value','_lm_submittingposition_value','_lm_teamchannel_value', ...REPORT_SCHEDULE_COLS] }),
   ]);
 
   const businessUnits = busRes?.data ?? [];
