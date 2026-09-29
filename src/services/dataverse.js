@@ -1165,6 +1165,110 @@ export async function fetchCurrentUser(){
 }
 
 /* =========================================================================
+   Can the signed-in reader open a record in another IT app? (29 Sep)
+   ========================================================================= *
+   Used before recordLinks.js opens a cited KPI/Process/Project/Task/... in
+   its model-driven app, so a reader without access is told so in this app
+   instead of landing on Dataverse's own error page. Two checks, both run AS
+   the reader (the connector reads with their permissions):
+
+   1. The record -- a one-column read of it. Refused -> no access to that
+      record (or its table). A "does not exist" answer is reported apart.
+   2. The app -- a model-driven app opens for the security roles assigned to
+      it (appmoduleroles). The reader's roles are their own
+      (systemuserroles) plus their teams' (teammembership -> teamroles).
+      ⚠️ Dataverse keeps one COPY of every role per business unit, each
+      pointing at its root through role.parentrootroleid, and an app is
+      assigned the root -- so each of the reader's roles is compared by its
+      own id AND its root id.
+
+   Neither check may stop a reader who does have access: when a check can't
+   be run (the reader can't read the role tables, no linked user, a read
+   fails), it answers "unknown" and the caller opens the link as before. The
+   reader's roles are read once per session; each app's roles once. */
+const AppmodulerolesService  = dvTable('appmodulerolescollection', 'appmoduleroleid', IT_ORG);
+const SystemuserrolesService = dvTable('systemuserrolescollection', 'systemuserroleid', IT_ORG);
+const TeammembershipsService = dvTable('teammemberships', 'teammembershipid', IT_ORG);
+const TeamrolesService       = dvTable('teamrolescollection', 'teamroleid', IT_ORG);
+const RolesService           = dvTable('roles', 'roleid', IT_ORG);
+
+const orFilter = (field, ids) => ids.map(id => `${field} eq ${id}`).join(' or ');
+async function getAllChunked(service, field, ids, select){
+  const out = [];
+  for(let i = 0; i < ids.length; i += 15){
+    const res = await service.getAll({ filter: orFilter(field, ids.slice(i, i + 15)), select });
+    assertSuccess(res);
+    out.push(...(res.data ?? []));
+  }
+  return out;
+}
+
+let myRoleIdsPromise = null;   // Set of role ids AND their root ids, or null when unknown
+async function readMyRoleIds(){
+  const me = await fetchCurrentUser();
+  if(!me?.systemUserId) return null;
+  const own = await SystemuserrolesService.getAll({
+    filter: `systemuserid eq ${me.systemUserId}`, select: ['roleid'] });
+  assertSuccess(own);
+  const teams = await TeammembershipsService.getAll({
+    filter: `systemuserid eq ${me.systemUserId}`, select: ['teamid'] });
+  assertSuccess(teams);
+  const teamIds = [...new Set((teams.data ?? []).map(t => t.teamid).filter(Boolean))];
+  const teamRoles = teamIds.length ? await getAllChunked(TeamrolesService, 'teamid', teamIds, ['roleid']) : [];
+  const roleIds = [...new Set([...(own.data ?? []), ...teamRoles].map(r => r.roleid).filter(Boolean))];
+  const roles = roleIds.length ? await getAllChunked(RolesService, 'roleid', roleIds, ['roleid', '_parentrootroleid_value']) : [];
+  const ids = new Set(roleIds);
+  for(const r of roles) if(r._parentrootroleid_value) ids.add(r._parentrootroleid_value);
+  return ids;
+}
+function myRoleIds(){
+  if(!myRoleIdsPromise)
+    myRoleIdsPromise = readMyRoleIds().catch(e => {
+      console.warn('[dataverse] reading the signed-in user\'s security roles failed:', e);
+      myRoleIdsPromise = null;   // try again next time rather than caching the failure
+      return null;
+    });
+  return myRoleIdsPromise;
+}
+
+const appRoleCache = new Map();   // appId -> Promise<Set<roleId>|null>
+function appRoleIds(appId){
+  if(!appRoleCache.has(appId))
+    /* Both columns here are LOOKUPS (unlike the plain-GUID ids on
+       systemuserroles/teamroles/teammembership), so they are read as
+       _x_value -- a lookup selected by its plain name fails the read. */
+    appRoleCache.set(appId, AppmodulerolesService.getAll({
+        filter: `_appmoduleid_value eq ${appId}`, select: ['_roleid_value'] })
+      .then(res => { assertSuccess(res); return new Set((res.data ?? []).map(r => r._roleid_value).filter(Boolean)); })
+      .catch(e => {
+        console.warn('[dataverse] reading the app\'s security roles failed:', e);
+        appRoleCache.delete(appId);
+        return null;
+      }));
+  return appRoleCache.get(appId);
+}
+
+/** -> { state: 'ok' | 'noRecord' | 'missing' | 'noApp' | 'unknown', error? }
+ *  ok and unknown both mean "open it". */
+export async function checkRecordAccess({ entitySet, pkField, id, appId }){
+  try{
+    const res = await dvTable(entitySet, pkField, IT_ORG).get(id, { select: [pkField] });
+    if(!res?.success){
+      const msg = String(res?.error?.message || res?.error || '');
+      return { state: /does not exist|not found|404/i.test(msg) ? 'missing' : 'noRecord', error: res?.error };
+    }
+  }catch(e){
+    const msg = String(e?.message || e || '');
+    return { state: /does not exist|not found|404/i.test(msg) ? 'missing' : 'noRecord', error: e };
+  }
+  if(!appId) return { state: 'ok' };
+  const [mine, app] = await Promise.all([myRoleIds(), appRoleIds(appId)]);
+  if(!mine || !app || !app.size) return { state: 'unknown' };
+  for(const r of app) if(mine.has(r)) return { state: 'ok' };
+  return { state: 'noApp' };
+}
+
+/* =========================================================================
    Report Template save -- lm_report_templates and its five child tables
    ========================================================================= *
    Status: WRITES THE PART THAT'S SAFELY RESOLVABLE. Two things are

@@ -20,7 +20,7 @@
    ========================================================================= */
 import React, { useState, useEffect, useMemo } from 'react';
 import { use } from '../store.jsx';
-import { recordUrl, openRecord, citationRecordId } from '../recordLinks.js';
+import { OpenRecord, citationRecordId } from '../recordLinks.jsx';
 import { Btn, Tag, Note, Empty, Combo, KVBlock } from '../../../shared/ui.jsx';
 import { fmtP, TODAY } from '../../../shared/format.js';
 import { DiagChip, rptTagC, matchesQuery, processMetaRows, projectMetaRows } from '../domain.jsx';
@@ -849,16 +849,7 @@ function SectionEditor({ s, i, total, busy, patch, move, remove, uncite, cite, p
                 {c.breakdown ? <span className="dg none">by {c.breakdown}</span> : null}
                 {!c.id ? <Tag c="amber">not saved</Tag> : null}
                 {/* Opens the cited record in its own app (recordLinks.js). */}
-                {(() => {
-                  const link = recordUrl(c.kind, citationRecordId(c));
-                  return link
-                    ? <a role="button" tabIndex={0} title={`Open this ${c.kind} in ${link.app}, in a new tab`}
-                        style={{ fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap', cursor: 'pointer' }}
-                        onClick={() => openRecord(c.kind, citationRecordId(c))}
-                        onKeyDown={e => { if (e.key === 'Enter') openRecord(c.kind, citationRecordId(c)); }}>
-                        Open in {link.app} ↗</a>
-                    : null;
-                })()}
+                <OpenRecord kind={c.kind} id={citationRecordId(c)} asLink/>
               </div>
               {c.label && c.label !== citeTarget(c) ? <div className="cite-m">{c.label}</div> : null}
               {c.kind === 'KPI' || c.kind === 'Breakdown'
