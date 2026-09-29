@@ -25,32 +25,80 @@ Everything below was checked against the repo and IT when written.
 
 | | |
 |---|---|
-| Branch | `CrossEnv-Leadership`, pushed to GitHub (`origin`), HEAD `3180e59` |
+| Branch | `CrossEnv-Leadership`, pushed to GitHub (`origin`), HEAD `2fbccef` |
 | Governance Setup (live) | `4912152c-b5c8-4beb-bb74-c9f43550405b`, Code App Development, pushed from `C:\tmp\cad-gov` |
 | Leadership Execution (live) | `83db0ef8-4c62-4eef-84ac-dadab326b704`, Code App Development, pushed from `C:\tmp\cad-exec` |
 | Data | **Leadership: IT** (`org2f45e702`) for every table but `lm_setupactivities` (follows `DATA_ORG`). **Governance: DT New** (`org319b4ea9`) for **every** table since 29 Sep (end of day), per an explicit ask — temporary, "we will go back to IT". One switch: `__DATA_ORG__` + `__PIN_ORG__` in `apps/governance/vite.config.js` (see `PIN_ORG` in `xenv.js`). ⚠️ While split, **Leadership does not see Setups saved in Governance**. Checked before switching: all 65 tables exist in DT New, every lm_ column IT has is there, every lm_ choice value matches. |
-| What is live | **HEAD minus `4ca0036`** — see the warning below |
+| What is live | **Leadership: `2fbccef` minus `4ca0036`** (pushed 29 Sep, end of day). **Governance: the working copy of 29 Sep ≈ `2fbccef`**, pushed *with* `4ca0036`'s code — harmless there (Governance never creates a Report Occurrence), see below. |
 
 ⚠️ **One commit is in git but deliberately NOT deployed: `4ca0036`** — the
 Create Report file uploader and Team Channel → SharePoint destination. It
 writes three `lm_reportoccurrence` columns that **do not exist in IT yet**
-(re-checked before every push on 28 and 29 Sep — still missing at `3180e59`): `lm_attachmentfile` (File),
+(re-checked before every push on 28 and 29 Sep — still missing at `2fbccef`): `lm_attachmentfile` (File),
 `lm_TeamChannel` (lookup → `and_teamschannellink`), `lm_destinationsharepointlink`
 (text, 850). Deploying it before they exist makes **every** Create Report fail.
 
-**How to push until those columns exist** (used for every push since 28 Sep):
+**How to push until those columns exist — NEW STEPS (29 Sep, end of day).**
+
+⚠️ The old way (`git show 4ca0036 -- src | git apply -R`) **no longer
+applies**: commits after it (`2fbccef`'s `PIN_ORG` rename, `a581a9e`'s removal
+of `ApprovedSetupPicker`, the Schedule Meeting CSS) touch the lines right next
+to it. On 29 Sep it failed, the `&&` chain skipped the build, and the push that
+followed **sent the previous build — uploader included — to Leadership for
+about 90 seconds** before it was caught and replaced. Never push a `dist/`
+without checking it was built from the tree you meant.
+
+The uploader only matters to **Leadership** (Create Report). Governance
+never creates a Report Occurrence, so a Governance-only push may be built
+from HEAD as it is.
+
+Leadership, from a **clean** working copy (commit first — `git status
+--short` must print nothing):
 
 ```bash
-git show 4ca0036 -- src | git apply -R --check && git show 4ca0036 -- src | git apply -R
-npm run build
-# copy apps/governance/dist -> C:\tmp\cad-gov\dist and apps/leadership/dist -> C:\tmp\cad-exec\dist
-# (replace the dist SUBFOLDER only), then power-apps push from inside each folder
-git checkout -- src      # restore HEAD afterwards
+# 1. Undo the uploader with a real 3-way merge (NOT git apply -R).
+git revert --no-commit 4ca0036
+#    It stops on conflicts. On 29 Sep there were two, and the right answer for
+#    this temporary build was to DROP BOTH SIDES of each block:
+#      - LeadershipApp.jsx: HEAD's side is the uploader's file helpers
+#        (REPORT_FILE_MAX / fileToBase64 / fmtBytes); the other side
+#        re-adds ApprovedSetupPicker, which nothing uses any more.
+#      - dataverse.js: HEAD's side is uploadReportOccurrenceFile(); the
+#        other side is empty.
+#    Check no marker is left:
+grep -c "^<<<<<<<\|^>>>>>>>" src/modules/leadership/LeadershipApp.jsx src/services/dataverse.js   # 0 and 0
+
+# 2. Build Leadership ONLY, and prove the uploader is gone from the bundle.
+npm run build:leadership
+grep -o "lm_attachmentfile\|lm_TeamChannel@odata.bind" apps/leadership/dist/assets/*.js | sort | uniq -c
+#    -> must print NOTHING. One lm_destinationsharepointlink is expected: it is
+#       the Report TEMPLATE's own column, always there.
+
+# 3. Stage and push (replace the dist SUBFOLDER only).
+rm -rf /c/tmp/cad-exec/dist && cp -r apps/leadership/dist /c/tmp/cad-exec/dist
+(cd /c/tmp/cad-exec && "<repo>/node_modules/.bin/power-apps" push)   # look for "pushed successfully"
+
+# 4. End the temporary revert -- the working copy goes back to HEAD exactly.
+git revert --abort
+git status --short    # must print nothing
 ```
 
-Once the three columns exist in IT: confirm them (`pac env fetch` on
-`lm_reportoccurrence`), then build HEAD as it is and push **both** apps
-(`xenv.js` changes Governance's bundle too). Procedure details: §5, 25 Sep.
+If a later commit adds new conflicts in step 1, resolve them the same way:
+keep whatever the current HEAD needs **except** the uploader's code, and let
+step 2's `grep` be the judge. If in doubt, stop — do not push.
+
+Governance (no uploader step needed):
+
+```bash
+npm run build:governance
+grep -o "org319b4ea9\|org2f45e702" apps/governance/dist/assets/*.js | sort | uniq -c   # DT New only while it is on DT New
+rm -rf /c/tmp/cad-gov/dist && cp -r apps/governance/dist /c/tmp/cad-gov/dist
+(cd /c/tmp/cad-gov && "<repo>/node_modules/.bin/power-apps" push)
+```
+
+Once the three columns exist in IT: confirm them (the check below prints 0),
+then build HEAD as it is and push **both** apps — no revert step at all, and
+this whole section can go. Procedure history: §5, 25 Sep.
 
 The quick check used before each push (prints 1 while the column is missing):
 
@@ -87,6 +135,16 @@ published as a private Artifact: https://claude.ai/artifact/QgJAm1RF3tGqkzugS8CA
   `recordLinks.jsx` opens a cited KPI / Strategy / Process / Project / Task /
   POC in its own IT app, after `checkRecordAccess()` checks the record and the
   app's security roles; a reader without access gets a message instead.
+- **Schedule Meeting page** (`a581a9e`): ad hoc meeting creation (from a Setup
+  or Custom) is a full page (`ScreenNewMeeting`, hidden screen `newmtg`) in the
+  approved design — Setup cards, Details, People, Agenda, and a side column with
+  Summary, Members and the Setup's quorum threshold. Same logic as the old
+  `NewMeetingModal`. No Notes field (no column to store it).
+- **Governance on DT New + submitters per Department & Function**
+  (`2fbccef`): see the Data row above; the Report Setup's "Who submits" toggle
+  saves one `lm_reporttemplatedepartmentfunctions` row per unit × line with
+  `lm_BU`/`lm_Region`, both positions and `lm_TeamChannel` (DT New only).
+  Leadership does not use the per-line people yet.
 - **Find related reports** (EXT-08, `3180e59`): Business intelligence filters
   by KPI, Process, Department and Function across Reports / Plans and
   dashboards; Reports / Plans can now be opened on a given report
@@ -163,7 +221,12 @@ published as a private Artifact: https://claude.ai/artifact/QgJAm1RF3tGqkzugS8CA
   `grep -c $'C:\tmp' PROJECT-CONTEXT.md` (should print 0).
 - Commit before building: several pushes on 28 Sep needed a partial commit
   split, done by staging exact file versions (`git hash-object -w` +
-  `git update-index --cacheinfo`).
+  `git update-index --cacheinfo`). And since 29 Sep the Leadership push
+  **requires** a clean tree — `git revert --no-commit` refuses otherwise, and
+  `git revert --abort` would throw uncommitted work away.
+- A failed step in a `&&` chain skips the build silently, and `dist/` still
+  holds the LAST build — copying it anyway is how the uploader reached
+  Leadership on 29 Sep. Run the steps one by one, or check the bundle first.
 - **Two sessions may edit the same files at once** (it happened 29 Sep). Check
   `git status` before committing and say whose changes a commit carries.
 - **Shell heredocs mangle long Python edit scripts** (quotes/backticks) — write
