@@ -450,6 +450,15 @@
   padding:7px 10px; border-radius:8px; border:1px solid rgba(73,96,76,.35); background:var(--cs-green-soft);
   font:600 11px var(--cs-sans); color:var(--cs-green);
 }
+/* Strategy chain (29 Sep): the opened row -- three columns, stacking on narrow screens. */
+.cs-root .cs-chain{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:18px; padding:6px 4px }
+.cs-root .cs-chain-col{ min-width:0 }
+.cs-root .cs-chain-item{
+  padding:7px 0; border-bottom:1px solid var(--cs-border); font:400 12px var(--cs-body-font); color:var(--cs-text);
+}
+.cs-root .cs-chain-item:last-child{ border-bottom:none }
+@media (max-width:900px){ .cs-root .cs-chain{ grid-template-columns:1fr } }
+
 /* Carried forward from the previous meeting, above the agenda list. */
 .cs-root .cs-carry{
   margin-bottom:12px; padding:10px 12px; border-radius:12px;
