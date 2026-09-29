@@ -29,7 +29,7 @@ Everything below was checked against the repo and IT when written.
 | Governance Setup (live) | `4912152c-b5c8-4beb-bb74-c9f43550405b`, Code App Development, pushed from `C:\tmp\cad-gov` |
 | Leadership Execution (live) | `83db0ef8-4c62-4eef-84ac-dadab326b704`, Code App Development, pushed from `C:\tmp\cad-exec` |
 | Data | **Leadership: IT** (`org2f45e702`) for every table but `lm_setupactivities` (follows `DATA_ORG`). **Governance: DT New** (`org319b4ea9`) for **every** table since 29 Sep (end of day), per an explicit ask — temporary, "we will go back to IT". One switch: `__DATA_ORG__` + `__PIN_ORG__` in `apps/governance/vite.config.js` (see `PIN_ORG` in `xenv.js`). ⚠️ While split, **Leadership does not see Setups saved in Governance**. Checked before switching: all 65 tables exist in DT New, every lm_ column IT has is there, every lm_ choice value matches. |
-| What is live | **Leadership: `2fbccef` minus `4ca0036`** (pushed 29 Sep, end of day). **Governance: the working copy of 29 Sep ≈ `2fbccef`**, pushed *with* `4ca0036`'s code — harmless there (Governance never creates a Report Occurrence), see below. |
+| What is live | **Leadership: `2fbccef` minus `4ca0036`** (pushed 29 Sep, end of day). **Governance: `afc3b5a`** (pushed 29 Sep, later, from HEAD with a clean tree; bundle checked DT New only), *with* `4ca0036`'s code — harmless there (Governance never creates a Report Occurrence), see below. ⚠️ `afc3b5a` is **not on GitHub yet** (the push was refused by a permission check), and Leadership has **not** had `6b79978`/`65cca22`/`afc3b5a` pushed. |
 
 ⚠️ **One commit is in git but deliberately NOT deployed: `4ca0036`** — the
 Create Report file uploader and Team Channel → SharePoint destination. It
