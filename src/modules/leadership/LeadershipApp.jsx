@@ -6950,6 +6950,53 @@ function DvGridBody({rec,grid,olderVersions,minutes,quorumPct,torLink,accred,S,p
   </>;
 }
 
+/* Link a Report Occurrence to a meeting DIRECTLY (29 Sep) -- any status,
+   Draft included, and Custom reports too (they have no Template, so the
+   Documents tab's Template-first flow could never reach them). The ones in
+   the meeting's own place (Business Unit / Region / Department) are listed
+   first. `taken` is the ids already linked or chosen. */
+const RPT_STATUS_WORD = s => s==='In Review' ? 'Submitted — in review'
+  : s==='Draft' ? 'Draft — not submitted yet' : s || '—';
+function ReportLinkPicker({reports, taken, place, onPick, busy, pickLabel='Link'}){
+  const [q,setQ]=useState('');
+  const [all,setAll]=useState(false);
+  const inPlace = r => (!place.businessUnitId || r.businessUnitId===place.businessUnitId)
+    && (!place.regionId || r.regionId===place.regionId)
+    && (!place.departmentId || r.departmentId===place.departmentId);
+  const hasPlace = !!(place.businessUnitId || place.regionId || place.departmentId);
+  const pool = (reports||[]).filter(r=>!taken.has(r.id) && r.status!=='Rejected');
+  const needle = q.trim();
+  const shown = pool
+    .filter(r=>all || !hasPlace || needle || inPlace(r))
+    .filter(r=>matchesQuery(needle,[r.name, r.status, fmtP(r.period), dvRptTpl(r.templateId)||'Custom',
+                                    dvBu(r.businessUnitId), dvDept(r.departmentId)]))
+    .sort((a,b)=>(inPlace(b)-inPlace(a)) || String(b.period||'').localeCompare(String(a.period||''))
+                 || String(a.name).localeCompare(String(b.name)));
+  const outside = hasPlace && !all && !needle ? pool.filter(r=>!inPlace(r)).length : 0;
+  return <div>
+    <input type="search" value={q} onChange={e=>setQ(e.target.value)}
+      placeholder="Search reports by name, template, period, status…" aria-label="Search reports"
+      style={{width:'100%',marginBottom:8}}/>
+    {shown.length===0
+      ? <Note k="info" ic="i">{pool.length ? 'No report matches.' : 'Every report is already linked.'}</Note>
+      : <div style={{maxHeight:280,overflowY:'auto'}}>
+          {shown.slice(0,40).map(r=>
+            <div key={r.id} className="sched-r" style={{cursor:'default'}}>
+              <div className="sched-t"><div className="n">{r.name}</div>
+                <div className="m">{[fmtP(r.period), dvRptTpl(r.templateId)||'Custom report',
+                  dvBu(r.businessUnitId)||dvRegion(r.regionId), dvDept(r.departmentId)].filter(Boolean).join(' · ')}</div></div>
+              <Tag c={rptTagC(r.status)}>{r.status}</Tag>
+              <Btn k="sm pri" disabled={busy} onClick={()=>onPick(r)}>{pickLabel}</Btn>
+            </div>)}
+          {shown.length>40 ? <div className="t-sub" style={{padding:6}}>Showing 40 of {shown.length} — search to narrow.</div> : null}
+        </div>}
+    {outside>0
+      ? <Btn k="sm" style={{marginTop:8}} onClick={()=>setAll(true)}>
+          Show {outside} more from other places</Btn>
+      : null}
+  </div>;
+}
+
 function DvMeetingDetail({rec,back}){
   const {sel,setSel,toast,refreshOccurrences,openMeeting,S,dvMeetingOccs,dvReportOccs,openDvRec,dvDecisions=[]}=use();
   const tab = sel.mtgTab || 'detail';
@@ -7731,8 +7778,8 @@ function DvMeetingDetail({rec,back}){
               <div className="t-sub">{x.required?'Required by the Setup':'Linked to this meeting'}</div></td>
             <td className="dim">{dvRptTpl(x.tplId)||'—'}</td>
             <td className="dim">{x.occ?fmtP(x.occ.period):'—'}</td>
-            <td>{x.ready ? <Tag c="green">{x.status}</Tag>
-              : x.occ ? <Tag c={x.occ.status==='Returned'||x.occ.status==='Rejected'?'red':'amber'}>{x.status}</Tag>
+            <td>{x.ready ? <Tag c="green">{RPT_STATUS_WORD(x.status)}</Tag>
+              : x.occ ? <Tag c={x.occ.status==='Returned'||x.occ.status==='Rejected'?'red':'amber'}>{RPT_STATUS_WORD(x.status)}</Tag>
               : <Tag c="red">{x.status}</Tag>}</td>
             <td style={{textAlign:'right',whiteSpace:'nowrap'}}>
               {x.occ
@@ -7821,7 +7868,7 @@ function DvMeetingDetail({rec,back}){
                 </tbody></table>}
 
           <div className="card">
-            <h3 style={{fontSize:13,marginBottom:2}}>Link a document</h3>
+            <h3 style={{fontSize:13,marginBottom:2}}>Link a document by Report Template</h3>
             <div className="csub" style={{marginBottom:10}}>
               Choose a Report Template. A live Report Occurrence for the same Template,
               this Meeting's own {rec.businessUnitId?'Business Unit':rec.regionId?'Region':'scope'}
@@ -7859,6 +7906,36 @@ function DvMeetingDetail({rec,back}){
                 </div>
             ) : null}
           </div>
+
+          {/* Ad hoc meetings: link any Report Occurrence straight away -- a Draft
+              or a Custom report included. It counts on the Submissions tab, and
+              becomes submitted there the moment its author submits it. */}
+          {(rec.adhocType || !rec.templateId) && <div className="card">
+            <h3 style={{fontSize:13,marginBottom:2}}>Link a report directly</h3>
+            <div className="csub" style={{marginBottom:10}}>
+              For an ad hoc meeting: any report or plan, whatever its status — a Draft included, and Custom
+              reports that have no Template. It shows on the <b>Submissions</b> tab, and counts as submitted there
+              once its author submits it for review.
+            </div>
+            <ReportLinkPicker reports={dvReportOccs} busy={linking}
+              taken={new Set((docs||[]).map(d=>d.reportOccurrenceId).filter(Boolean))}
+              place={{businessUnitId:rec.businessUnitId, regionId:rec.regionId, departmentId:rec.departmentId}}
+              onPick={async r=>{
+                setLinking(true);
+                try{
+                  const {id,errors} = await linkMeetingOccurrenceReport({
+                    meetingOccurrenceId: rec.id, reportOccurrenceId: r.id,
+                    reportTemplateId: r.templateId || undefined, name: r.name });
+                  if(!id){
+                    console.warn('[dataverse] linkMeetingOccurrenceReport() failed:', errors);
+                    toast('Not linked','Linking this report failed. Check the console for details.','err');
+                    return;
+                  }
+                  toast('Report linked', `${r.name} is linked${r.status==='Draft'?' — still a Draft, not submitted yet':''}.`,'ok');
+                  await reloadDocs();
+                }finally{ setLinking(false); }
+              }}/>
+          </div>}
         </>}
       </div>
     </div>}
@@ -9006,6 +9083,10 @@ function ScreenNewMeeting(){
   const [custom,setCustom]=useState(sel?.newmtg==='custom');
   /* previous-meeting agenda items the user UNticked (all are carried by default) */
   const [skipCarry,setSkipCarry]=useState(()=>new Set());
+  /* Reports to link to the new meeting once it exists (29 Sep) -- any status,
+     Draft and Custom included; see ReportLinkPicker. */
+  const [linkReports,setLinkReports]=useState([]);
+  const {dvReportOccs=[]}=use();
   const onClose=()=>go('mtg');
   const [setupQ,setSetupQ]=useState('');
   const [f,setF]=useState({setup:'', tplUnitKey:'', name:'', purpose:'', bu:'AHJ',
@@ -9251,6 +9332,13 @@ function ScreenNewMeeting(){
         console.warn('[dataverse] Meeting Occurrence create failed:', errors);
         toast('Not saved','Creating the Meeting Occurrence in Dataverse failed. Check the console for details.','err');
         return;
+      }
+      /* The chosen reports, linked now the meeting has an id. A failure here is
+         reported with the rest; the meeting itself is already saved. */
+      for(const r of linkReports){
+        const res = await linkMeetingOccurrenceReport({ meetingOccurrenceId:id, reportOccurrenceId:r.id,
+          reportTemplateId:r.templateId||undefined, name:r.name });
+        if(!res.id) errors.push(...res.errors);
       }
       if(errors.length){
         console.warn('[dataverse] Meeting Occurrence saved with some child rows failing:', errors);
@@ -9584,6 +9672,33 @@ function ScreenNewMeeting(){
             </div>
             <button type="button" className="cs-btn" style={{marginTop:8}} onClick={()=>set('agenda',[...f.agenda,''])}>
               <Plus size={12}/>Add an item</button>
+          </section>
+
+          {/* ---- Reports ---- */}
+          <section className="cs-card cs-mtg-form" aria-labelledby="nm-reports">
+            <div className="cs-card-top" style={{marginBottom:6}}>
+              <h2 className="cs-card-title" id="nm-reports">Reports for this meeting</h2>
+              <span className="cs-type adhoc">Optional</span>
+            </div>
+            <p className="cs-card-note" style={{marginBottom:10}}>Link any report or plan — a Draft included, and
+              Custom reports. They appear on the meeting’s Submissions tab and count as submitted once their
+              author submits them for review.</p>
+            {linkReports.length>0 &&
+              <div className="cs-members" style={{marginBottom:10}}>
+                {linkReports.map(r=><div key={r.id} className="cs-member">
+                  <span className="cs-member-t"><b>{r.name}</b>
+                    <span>{[fmtP(r.period), dvRptTpl(r.templateId)||'Custom report'].filter(Boolean).join(' · ')}</span></span>
+                  <span className={'cs-type '+(r.status==='Draft'?'adhoc':r.status==='In Review'?'green':'')}>{RPT_STATUS_WORD(r.status)}</span>
+                  <button type="button" className="cs-btn" aria-label={'Remove '+r.name}
+                    onClick={()=>setLinkReports(x=>x.filter(y=>y.id!==r.id))}><X size={12}/></button>
+                </div>)}
+              </div>}
+            <ReportLinkPicker reports={dvReportOccs} busy={saving} pickLabel="Add"
+              taken={new Set(linkReports.map(r=>r.id))}
+              place={{businessUnitId: stageBU ? f.dvBusinessUnitId : null,
+                      regionId: stageRegion ? f.dvRegionId : null,
+                      departmentId: f.dvDepartmentId || null}}
+              onPick={r=>setLinkReports(x=>[...x,r])}/>
           </section>
         </>}
       </div>
