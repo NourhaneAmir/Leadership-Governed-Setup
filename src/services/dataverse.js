@@ -5254,6 +5254,24 @@ export async function fetchMeetingOccurrenceLinkedReports(occurrenceId){
   }));
 }
 
+/** The reports a Meeting Setup names as its INPUTS (lm_meetingtemplatelinkedreports,
+ *  lm_reporttype Input) -- what the Submissions tab expects to see linked and
+ *  ready before the meeting. Outputs are left out; a row with no type is read
+ *  as an Input, which is what the Setup wizard writes by default. */
+export async function fetchMeetingTemplateInputReports(templateId){
+  const res = await Lm_meetingtemplatelinkedreportsesService.getAll({
+    select: ['lm_meetingtemplatelinkedreportsid', 'lm_name', 'lm_reporttype', '_lm_reporttemplate_value'],
+    filter: `_lm_meetingtemplate_value eq ${templateId}`,
+  });
+  return (res?.data ?? [])
+    .filter(r => r.lm_reporttype == null || r.lm_reporttype === LINKED_REPORT_TYPE_KEY.Input)
+    .map(r => ({
+      id: r.lm_meetingtemplatelinkedreportsid,
+      name: r.lm_name || null,
+      reportTemplateId: r._lm_reporttemplate_value || null,
+    }));
+}
+
 /** Links one document to a Meeting Occurrence -- a Report Occurrence, a
  *  Report Template (when no occurrence exists for it yet), or both, per the
  *  Documents tab's own linking flow. */

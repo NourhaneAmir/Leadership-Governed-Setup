@@ -30,7 +30,7 @@ import { fetchMeetingOccurrences, fetchReportOccurrences, createMeetingOccurrenc
          updateMeetingOccurrenceStatus, updateMeetingOccurrenceAttendance, updateMeetingOccurrence,
          cancelMeetingOccurrence, recordAgendaDistribution, createMeetingOccurrenceAgendaItem,
          archiveMeetingOccurrenceAgendaItem, updateMeetingOccurrenceAgendaSequence,
-         fetchMeetingOccurrenceDepartments, fetchMeetingOccurrenceLinkedReports,
+         fetchMeetingOccurrenceDepartments, fetchMeetingOccurrenceLinkedReports, fetchMeetingTemplateInputReports,
          linkMeetingOccurrenceReport, unlinkMeetingOccurrenceReport,
          attachReportOccurrenceToLink,
          fetchBusinessUnits, fetchPositions, fetchDepartments, fetchFunctions, fetchRegions,
@@ -6815,6 +6815,44 @@ function DvMeetingDetail({rec,back}){
   const matchingOccs = occsForTemplate(linkTplId, !showAll);
   const outsideScope = linkTplId ? occsForTemplate(linkTplId,false).length - occsForTemplate(linkTplId,true).length : 0;
 
+  /* Submissions -- pre-meeting input readiness (prototype's Submissions tab,
+     OD-39). The inputs are every document linked above plus every Input report
+     the Setup names that is not linked yet. An input is ready once its Report
+     Occurrence has reached the readiness minimum: In Review (submitted) by
+     default, or Approved when Governance Settings say so. Returned and
+     Rejected count as not submitted. An Ad Hoc meeting has no Setup, so only
+     its linked documents count. */
+  const [setupInputs,setSetupInputs]=useState([]);
+  useEffect(()=>{
+    let cancelled=false;
+    if(!rec.templateId){ setSetupInputs([]); return undefined; }
+    fetchMeetingTemplateInputReports(rec.templateId)
+      .then(r=>{ if(!cancelled) setSetupInputs(r); })
+      .catch(e=>{ console.warn('[dataverse] fetchMeetingTemplateInputReports() failed:', e);
+        if(!cancelled) setSetupInputs([]); });
+    return ()=>{cancelled=true;};
+  },[rec.templateId]);
+  const needApproved = S.inputReadiness==='approved';
+  const INPUT_RANK = {'In Review':1,'Approved':2};
+  const requiredTplIds = new Set(setupInputs.map(s=>s.reportTemplateId).filter(Boolean));
+  const linkedTplIds = new Set((docs||[]).map(d=>d.reportTemplateId).filter(Boolean));
+  const submissions = [
+    ...(docs||[]).map(d=>{
+      const occ = d.reportOccurrenceId ? dvReportOccs.find(r=>r.id===d.reportOccurrenceId) : null;
+      return { key:d.id, link:d, occ, tplId:d.reportTemplateId,
+        name: occ ? occ.name : d.name,
+        status: occ ? occ.status : d.reportOccurrenceId ? 'Not loaded' : 'No occurrence yet',
+        ready: !!occ && (INPUT_RANK[occ.status]||0) >= (needApproved?2:1),
+        required: !!d.reportTemplateId && requiredTplIds.has(d.reportTemplateId) };
+    }),
+    ...setupInputs.filter(s=>!s.reportTemplateId || !linkedTplIds.has(s.reportTemplateId)).map(s=>({
+      key:'setup-'+s.id, link:null, occ:null, tplId:s.reportTemplateId,
+      name: dvRptTpl(s.reportTemplateId) || s.name || 'Input named by the Setup',
+      status:'Not linked', ready:false, required:true })),
+  ];
+  const readyCount = submissions.filter(x=>x.ready).length;
+  const notReady = submissions.length - readyCount;
+
   /* Attaching an occurrence to a link that was made against the Template
      alone -- which link is open, and whether its list is scoped. */
   const [attachFor,setAttachFor]=useState(null);
@@ -7064,6 +7102,10 @@ function DvMeetingDetail({rec,back}){
     {rec.rescheduledFromId && <Note k="warn"><b>Rescheduled.</b> This occurrence carries a link to the
       one it was moved from. Only this occurrence moved — the series is unchanged.</Note>}
     {rec.status==='Cancelled' && <Note k="err"><b>Cancelled.</b> {rec.cancelReason||'No reason recorded.'}</Note>}
+    {rec.status==='Scheduled' && !docsLoading && notReady>0 &&
+      <Note k="warn"><b>{notReady} input{notReady===1?' is':'s are'} not yet {needApproved?'approved':'submitted'}.</b>
+        {' '}Every input should reach at least {needApproved?'Approved':'In Review'} before the meeting.
+        {' '}<a onClick={()=>setTab('inputs')} style={{fontWeight:650}}>See Submissions</a></Note>}
 
     <div className="tabs">
       <button className={tab==='detail'?'on':''} onClick={()=>setTab('detail')}>Overview</button>
@@ -7075,6 +7117,8 @@ function DvMeetingDetail({rec,back}){
         {minutes && <span className="c">{minutes.notes.length}</span>}</button>
       <button className={tab==='docs'?'on':''} onClick={()=>setTab('docs')}>Documents
         {docs && docs.length>0 && <span className="c">{docs.length}</span>}</button>
+      <button className={tab==='inputs'?'on':''} onClick={()=>setTab('inputs')}>Submissions
+        {submissions.length>0 && <span className="c">{readyCount}/{submissions.length}</span>}</button>
       {/* Every meeting is scored (product owner, 28 Sep) — Committees and
           Business Meetings alike — so the tab is no longer gated on the Setup
           Type. `accred` still exists, but now decides only whether AG-01's TOR
@@ -7359,6 +7403,47 @@ function DvMeetingDetail({rec,back}){
           quorumPct={tpl?.quorumPct} torLink={tpl?.torLink} accred={accred} S={S} posName={posName}
           dvMeetingOccs={dvMeetingOccs} onReload={reloadGovernance}/>}
     </>}
+
+    {tab==='inputs' && <div className="card flush">
+      <div className="card-hd" style={{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
+        <h2 style={{flex:1}}>Pre-Meeting Submissions</h2>
+        <div style={{display:'flex',alignItems:'center',gap:8,minWidth:140}}>
+          <Bar v={submissions.length?readyCount/submissions.length*100:0} c="green"/>
+          <span className="dim" style={{fontSize:11,whiteSpace:'nowrap'}}>{readyCount}/{submissions.length} ready</span>
+        </div>
+      </div>
+      <div style={{padding:'0 17px'}}>
+        <Note k="info">Meeting input readiness minimum <OD id="OD-39"/>: every input must reach at
+          least <b>{needApproved?'Approved':'In Review (submitted)'}</b> before the meeting.
+          {' '}Inputs are the reports linked on the Documents tab{rec.templateId
+            ? ', plus the Input reports this meeting\'s Setup names' : ''}.</Note>
+      </div>
+      {docsLoading ? <div style={{padding:'8px 17px 17px'}}><Empty ic="…">Reading inputs…</Empty></div>
+      : submissions.length===0
+        ? <div style={{padding:'8px 17px 17px'}}><Empty>No input is linked, and the Setup names none.</Empty></div>
+      : <div className="t-wrap"><table className="data">
+          <thead><tr><th>Submission</th><th>Report Template</th><th>Period</th><th>Status</th><th></th></tr></thead>
+          <tbody>{submissions.map(x=><tr key={x.key}>
+            <td><div className="t-main">{x.name}</div>
+              <div className="t-sub">{x.required?'Required by the Setup':'Linked to this meeting'}</div></td>
+            <td className="dim">{dvRptTpl(x.tplId)||'—'}</td>
+            <td className="dim">{x.occ?fmtP(x.occ.period):'—'}</td>
+            <td>{x.ready ? <Tag c="green">{x.status}</Tag>
+              : x.occ ? <Tag c={x.occ.status==='Returned'||x.occ.status==='Rejected'?'red':'amber'}>{x.status}</Tag>
+              : <Tag c="red">{x.status}</Tag>}</td>
+            <td style={{textAlign:'right',whiteSpace:'nowrap'}}>
+              {x.occ
+                ? <Btn k="sm" onClick={()=>openDvRec('Report',x.occ)}>Open</Btn>
+                : x.link
+                ? (x.link.reportTemplateId && !x.link.reportOccurrenceId
+                    ? <Btn k="sm" onClick={()=>{ setAttachFor(x.link.id); setAttachAll(false); setTab('docs'); }}>
+                        Attach an occurrence</Btn> : null)
+                : x.tplId
+                ? <Btn k="sm" onClick={()=>{ setLinkTplId(x.tplId); setShowAll(false); setTab('docs'); }}>Link it</Btn>
+                : null}</td>
+          </tr>)}
+          </tbody></table></div>}
+    </div>}
 
     {tab==='docs' && <div className="card flush">
       <div className="card-hd" style={{display:'flex',alignItems:'center',gap:10}}>
