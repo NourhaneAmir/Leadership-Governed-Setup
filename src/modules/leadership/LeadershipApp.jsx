@@ -1280,12 +1280,23 @@ function quorumLine(qr){
    text rather than hidden:
      - AG-01 checks only whether a TOR/Policy link is held, not whether it's
        past a review date -- there is no live "TOR review date" column.
-     - AG-06 counts only Discussion Notes toward "has an outcome" -- MOM
-       Outputs (Tasks/Decisions) aren't live, so that half of the question
-       can't be checked yet.
-   AG-10 through AG-14 always read 'na': every one of them needs Decisions,
-   Tasks or MOM Outputs, none of which have a live table. */
-function liveScoreGrid(occ, minutes, quorumPct, torLink, accred, S, grid, allOccs){
+     - AG-06 counts Discussion Notes and Decisions as an outcome, not Tasks:
+       hx_tasks has no link to a meeting or agenda item yet (PRO-02).
+   AG-10 to AG-14 (29 Sep, PRO-13). The live MOM Outputs are the Decisions
+   raised on this occurrence's agenda items (wlog_decision.lm_MeetingOccurrenceAgenda,
+   `decisions` = the app's dvDecisions register):
+     - AG-10 scores from them. Because the link IS the agenda item, every one
+       traces by construction; the question still reads Not Applicable when
+       the Minutes produced none, as scoreGrid() does.
+     - AG-11 / AG-12 stay Not Applicable: IT's wlog_decision carries no
+       Direct-vs-Request path and no Authority Check result (§7 decision 2),
+       so there is nothing to score them from.
+     - AG-13 / AG-14 stay Not Applicable until PRO-02 links Tasks to meetings.
+   Each Not Applicable reason says exactly that, and a person can still
+   answer them manually (applyManualOverrides). */
+function liveScoreGrid(occ, minutes, quorumPct, torLink, accred, S, grid, allOccs, decisions){
+  const agendaIds = new Set(occ.agenda.map(a=>a.id));
+  const meetingDecisions = (decisions||[]).filter(d=>d.agendaItemId && agendaIds.has(d.agendaItemId));
   const R = [];
   const manual = grid?.manual||{}, evid = grid?.evidence||{};
   const push = (id,state,score,ev,na) => R.push({id, q:AG_QUESTIONS.find(x=>x.id===id), state, score, ev, na});
@@ -1326,11 +1337,12 @@ function liveScoreGrid(occ, minutes, quorumPct, torLink, accred, S, grid, allOcc
       `Approved ${h} hour${h===1?'':'s'} after submission (limit ${S.momApprovalHours}h).`);
   }
 
-  const withNote = occ.agenda.filter(a=>(minutes?.notesByAgenda?.[a.id]||'').trim());
-  const p6 = occ.agenda.length ? withNote.length/occ.agenda.length*100 : 100;
+  const withOutcome = occ.agenda.filter(a=>(minutes?.notesByAgenda?.[a.id]||'').trim()
+    || meetingDecisions.some(d=>d.agendaItemId===a.id));
+  const p6 = occ.agenda.length ? withOutcome.length/occ.agenda.length*100 : 100;
   push('AG-06','auto', band(p6),
-    `${withNote.length} of ${occ.agenda.length} Agenda item(s) carry a Discussion Note in the Minutes. `+
-    `Adapted: Task/Decision outputs aren't live yet, so only Discussion Notes count toward this question for now.`);
+    `${withOutcome.length} of ${occ.agenda.length} Agenda item(s) record a Discussion Note or a Decision → ${pct(p6)}. `+
+    `Tasks are not counted yet: they have no link to a meeting (PRO-02).`);
 
   push('AG-07','retired',null,null);
 
@@ -1344,11 +1356,26 @@ function liveScoreGrid(occ, minutes, quorumPct, torLink, accred, S, grid, allOcc
   const a9 = liveAttendance(occ.attendees, S.delegatedAttend);
   push('AG-09','auto', band(a9.pct), `${a9.present} of ${a9.total} Required Attendees present → ${pct(a9.pct)}.`);
 
-  push('AG-10','na',null,null,'MOM Outputs (Tasks and Decisions) are not live yet.');
-  push('AG-11','na',null,null,'Decisions are not live yet.');
-  push('AG-12','na',null,null,'Decision Requests and the Authority Matrix routing check are not live yet.');
-  push('AG-13','na',null,null,'TMS Tasks are not live yet.');
-  push('AG-14','na',null,null,'TMS Tasks are not live yet.');
+  /* AG-10 -- Decisions only; see the header. */
+  if(!meetingDecisions.length)
+    push('AG-10','na',null,null,'The Minutes produced no Decision. Tasks are not counted yet: they have no link to a meeting (PRO-02).');
+  else{
+    const ok = meetingDecisions.filter(d=>agendaIds.has(d.agendaItemId));
+    const p = ok.length/meetingDecisions.length*100;
+    push('AG-10','auto', band(p),
+      `${ok.length} of ${meetingDecisions.length} Decision${meetingDecisions.length===1?'':'s'} raised in these Minutes `+
+      `resolve to a parent Agenda Item → ${pct(p)}. Tasks are not counted yet: they have no link to a meeting (PRO-02).`);
+  }
+  push('AG-11','na',null,null,
+    meetingDecisions.length
+      ? `${meetingDecisions.length} Decision${meetingDecisions.length===1?' was':'s were'} recorded, but a Decision in IT carries no Direct / Request path and no Authority Check result, so this cannot be scored.`
+      : 'No Decision was recorded from this Meeting.');
+  push('AG-12','na',null,null,
+    meetingDecisions.length
+      ? 'A Decision in IT carries no Direct / Request path and no Approval Cycle, so the Authority Matrix route cannot be checked.'
+      : 'No Decision was recorded from this Meeting.');
+  push('AG-13','na',null,null,'Tasks have no link to a meeting yet (PRO-02), so the Tasks created from these Minutes cannot be found.');
+  push('AG-14','na',null,null,'Tasks have no link to a meeting yet (PRO-02), so the earlier meetings’ Tasks cannot be found.');
 
   if(S.inviteLeadDays==null) push('AG-15','na',null,null,'No invitation lead time is configured.');
   else{
@@ -6714,14 +6741,14 @@ function DvGridQuestion({r,editable,savingId,onScore,onEvidence,onClear}){
    newest-first); `olderVersions` is whatever is left, shown read-only below --
    normally empty, populated only once a correction version has been opened. */
 function DvGridBody({rec,grid,olderVersions,minutes,quorumPct,torLink,accred,S,posName,dvMeetingOccs,onReload}){
-  const {toast}=use();
+  const {toast,dvDecisions=[]}=use();
   const [savingId,setSavingId]=useState(null);
   const [submitting,setSubmitting]=useState(false);
   const [approving,setApproving]=useState(false);
   const [returning,setReturning]=useState(false);
   const [openingVersion,setOpeningVersion]=useState(false);
 
-  const rows = liveScoreGrid(rec, minutes, quorumPct, torLink, accred, S, grid, dvMeetingOccs);
+  const rows = liveScoreGrid(rec, minutes, quorumPct, torLink, accred, S, grid, dvMeetingOccs, dvDecisions);
   const live = gridTotals(rows);
   const frozen = !!grid.frozen;
   const display = frozen

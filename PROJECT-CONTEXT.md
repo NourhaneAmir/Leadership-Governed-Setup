@@ -8562,6 +8562,30 @@ guess and cannot hold this (Setup + Category only).
 - Only the Minutes tab shows live note text (other `mom.notes` readers are
   seeded). Both apps build; lint unchanged. Not browser-checked, not committed.
 
+### 29 Sep: Audit Grid AG-10 to AG-14 on live Decisions (PRO-13), as far as IT allows
+
+`liveScoreGrid()` takes a 9th argument, `decisions` (the app's `dvDecisions`;
+`DvGridBody` passes it). The live MOM Outputs are the Decisions whose
+`agendaItemId` is one of this occurrence's agenda items.
+
+- **AG-10 is now scored.** It is Not Applicable when the Minutes produced no
+  Decision. Every linked Decision traces by construction, so it scores 5
+  whenever there is one.
+- **AG-06** now counts a Decision as an outcome, alongside a Discussion Note.
+- **AG-11 / AG-12 stay Not Applicable, with an exact reason.** IT's
+  `wlog_decision` has no Direct / Request path, no Authority Check result and
+  no Approval Cycle (§7 decision 2). There is nothing to score them from until
+  that model exists.
+- **AG-13 / AG-14 stay Not Applicable until PRO-02** (a Task → agenda item
+  lookup on `hx_tasks`).
+- Approved (frozen) Grids keep their stored scores. A manual answer given
+  earlier to AG-10 or AG-06 no longer applies once the system computes the
+  question (`applyManualOverrides` only fills Not Applicable or blank rows).
+- ⚠️ Not changed: the Minutes' submit rule (RULE-MOM-02 in `DvMinutesBody`)
+  still demands a Discussion Note on every item, even one that carries a
+  Decision.
+- Both apps build; lint unchanged. Not browser-checked, not pushed.
+
 ### 29 Sep: every reference opens — KPI coverage and Business intelligence too (EXT-12)
 
 EXT-12 was already live for **citations** (`d89a977`, `cf524ca`:
