@@ -31,13 +31,16 @@ export default defineConfig({
      the IT environment (https://org2f45e702.crm4.dynamics.com) and leaves
      Leadership on DT New. While DATA_ORG was a single shared constant that
      was impossible. Change this line in ONE app to move ONE app. */
-  /* 29 Sep: back on DT New, per an explicit ask -- BOTH lines, because the
-     shared code pins most tables through __PIN_ORG__ (see xenv.js PIN_ORG)
-     and only lm_setupactivities follows __DATA_ORG__. To return Governance to
-     IT, set both to 'https://org2f45e702.crm4.dynamics.com' and rebuild. */
+  /* BOTH lines decide it: the shared code pins most tables through
+     __PIN_ORG__ (see xenv.js PIN_ORG) and only lm_setupactivities follows
+     __DATA_ORG__. History: IT until 29 Sep; DT New for part of 29 Sep, per an
+     explicit ask; back on IT the same day, per an explicit ask, once IT had
+     the lm_reporttemplatedepartmentfunction columns (lm_BU, lm_Region,
+     lm_SubmittingPosition, lm_OwnerPosition, lm_TeamChannel) the per
+     Department & Function submitters write. To move again, change both. */
   define: {
-    __DATA_ORG__: JSON.stringify('https://org319b4ea9.crm4.dynamics.com'),
-    __PIN_ORG__:  JSON.stringify('https://org319b4ea9.crm4.dynamics.com'),
+    __DATA_ORG__: JSON.stringify('https://org2f45e702.crm4.dynamics.com'),
+    __PIN_ORG__:  JSON.stringify('https://org2f45e702.crm4.dynamics.com'),
   },
   root: here,
   base: './', // required for Power Apps Code Apps: assets are hosted under a
