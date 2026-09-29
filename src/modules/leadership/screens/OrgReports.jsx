@@ -35,6 +35,7 @@ import { NewTaskForm, CiteMeta } from './BuildReport.jsx';
 import { ExportReportButtons } from './ExportReport.jsx';
 import { KpiCoverage } from './KpiCoverage.jsx';
 import { DecisionPanel } from './DecisionLink.jsx';
+import { RespondPanel } from './RespondToSection.jsx';
 import { AchievementFigures } from './AchievementFigures.jsx';
 
 /* The dashboards behind a cited KPI. Collapsed by default -- a report citing
@@ -237,6 +238,8 @@ export function ScreenOrgReports(){
   const [taskList, setTaskList] = useState(null);   // null while reading
   const [taskQ, setTaskQ] = useState('');
   const [citing, setCiting] = useState(false);
+  /* Which section's Respond panel is open (a section id), see RespondToSection.jsx. */
+  const [respondFor, setRespondFor] = useState(null);
   const L = dvLookup || {};
   const nm = (fn, id) => (id && typeof fn === 'function' ? fn(id) : null);
 
@@ -308,6 +311,11 @@ export function ScreenOrgReports(){
   const mine = new Set(L.myPositionIds || []);
   const reports = dvReportOccs || [];
   const isMine = r => !!r.creatorPositionId && mine.has(r.creatorPositionId);
+  /* Where a response can be written: the reader's own reports that Build a
+     report/plan would still let them edit, most recently changed first. */
+  const myEditable = (dvReportOccs || [])
+    .filter(r => isMine(r) && !r.locked && (r.status === 'Draft' || r.status === 'Returned'))
+    .sort((a, b) => String(b.updated || '').localeCompare(String(a.updated || '')));
   const inTab = (r, k) => (k === 'all' ? true : k === 'out' ? isMine(r) : !isMine(r));
 
   const sectionsOf = r => sectionsByReport[r.id] || [];
@@ -673,6 +681,22 @@ export function ScreenOrgReports(){
                                       onCancel={() => { setTaskFor(null); setTaskQ(''); }}
                                       onPick={t => attachTask(s.id, t)}
                                       onNew={t => attachTask(s.id, t)}/>
+                                  : null}
+                                {/* A comment on a received report is written as a
+                                    draft section in the reader's own report. */}
+                                {!isMine(rec)
+                                  ? <div style={{ marginTop: 6 }}>
+                                      <Btn k="sm" disabled={citing}
+                                        title="Write a response as a draft section in one of your own reports"
+                                        onClick={() => setRespondFor(respondFor === s.id ? null : s.id)}>
+                                        {respondFor === s.id ? 'Cancel response' : 'Respond in my report'}</Btn>
+                                      {respondFor === s.id
+                                        ? <RespondPanel key={s.id} section={s} report={rec} myReports={myEditable}
+                                            toast={toast} go={go} openNewReport={openNewReport}
+                                            onCancel={() => setRespondFor(null)}
+                                            onSaved={() => setTick(t => t + 1)}/>
+                                        : null}
+                                    </div>
                                   : null}
                                 <DecisionPanel target={{ kind: 'section', id: s.id, label: s.heading }}/>
                               </div>

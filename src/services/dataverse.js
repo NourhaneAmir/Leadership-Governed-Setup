@@ -4082,6 +4082,57 @@ export async function citeTaskOnSection(sectionId, task){
   }
 }
 
+/** A reader answers a section of someone else's report by writing a section in
+ *  one of their OWN Draft/Returned reports (Leadership Practice Extension:
+ *  "comment on a report as a draft paragraph").
+ *
+ *  Writes exactly two rows and touches nothing else in either report:
+ *    - a new lm_reportoccurrencesections row at the end of the reader's report
+ *      (source Added), holding the response;
+ *    - one lm_reportsectioncitations row on it, kind Paragraph, with
+ *      lm_CitedReportOccurrence -> the answered report. A citation has no
+ *      lookup to a single section (lm_citedsection is its own parent), so
+ *      the answered section is named in the label.
+ *  The caller checks the target is the reader's and still editable.
+ *
+ *  -> { id: new section id | null, errors } */
+export async function respondToReportSection({ targetOccurrenceId, heading, body, angle,
+                                               citedReportId, citedLabel }){
+  const errors = [];
+  if(!targetOccurrenceId || !citedReportId)
+    return { id:null, errors:[{ table:'lm_reportoccurrencesections',
+                                error:new Error('a target report and the answered report are both required') }] };
+  let sectionId = null;
+  try{
+    const res = await Lm_reportoccurrencesectionsesService.getAll({
+      filter: `_lm_reportoccurrence_value eq ${targetOccurrenceId}`,
+      select: ['lm_reportoccurrencesectionsid', 'lm_sequence'],
+    });
+    assertSuccess(res);
+    const last = Math.max(0, ...(res.data ?? []).map(s => s.lm_sequence ?? 0));
+    const created = await Lm_reportoccurrencesectionsesService.create({
+      lm_heading: capped(heading, 850, 'Section heading'),
+      lm_body: capped(body, 4000, 'Section text'),
+      lm_diagnosticangle: SECTION_ANGLE_KEY[angle] ?? SECTION_ANGLE_KEY.Untyped,
+      lm_sequence: last + 1,
+      lm_source: SECTION_SOURCE_ADDED,
+      'lm_ReportOccurrence@odata.bind': `/lm_reportoccurrences(${targetOccurrenceId})`,
+    });
+    sectionId = idOrThrow(created, 'lm_reportoccurrencesectionsid');
+  }catch(e){
+    return { id:null, errors:[{ table:'lm_reportoccurrencesections', error:e }] };
+  }
+  try{
+    const c = await Lm_reportsectioncitationsesService.create(
+      reportCitationRow({ kind:'Paragraph', citedReportId, label:citedLabel || 'Responds to a section' }, sectionId));
+    idOrThrow(c, 'lm_reportsectioncitationsid');
+  }catch(e){
+    /* The response itself is saved; only the link back is missing. */
+    errors.push({ table:'lm_reportsectioncitations', error:e });
+  }
+  return { id: sectionId, errors };
+}
+
 /* One lm_reportsectioncitations row. Lookups are bound only when they have a
    value -- an empty bind path is a 400 (see PROJECT-CONTEXT section 5, 17 Sep). */
 function reportCitationRow(c, sectionId){
