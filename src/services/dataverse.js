@@ -81,7 +81,7 @@ function rowsOrThrow(res){
    read from each generated service's create() signature -- which lets
    create() supply the new row's GUID itself; see xenv.js.
    --------------------------------------------------------------------- */
-import { dvTable, uploadFileColumn, IT_ORG } from './xenv.js';
+import { dvTable, uploadFileColumn, PIN_ORG } from './xenv.js';
 
 /* All IT. Every record that carries a Business Unit / Region / Department /
    Function id -- Report Templates, Report Occurrences, Meeting Templates,
@@ -94,10 +94,10 @@ import { dvTable, uploadFileColumn, IT_ORG } from './xenv.js';
    table, which is what "(Business Unit not in the loaded list)" was.
 
    No-op for Governance, whose DATA_ORG is already IT. */
-const BusinessunitsService = dvTable('businessunits', undefined, IT_ORG);
-const Crd04_regionsesService = dvTable('crd04_regionses', undefined, IT_ORG);
-const Cr603_chklst_departmentsesService = dvTable('cr603_chklst_departmentses', undefined, IT_ORG);
-const Hr_functionsService = dvTable('hr_functions', undefined, IT_ORG);
+const BusinessunitsService = dvTable('businessunits', undefined, PIN_ORG);
+const Crd04_regionsesService = dvTable('crd04_regionses', undefined, PIN_ORG);
+const Cr603_chklst_departmentsesService = dvTable('cr603_chklst_departmentses', undefined, PIN_ORG);
+const Hr_functionsService = dvTable('hr_functions', undefined, PIN_ORG);
 /* ⚠️ SUPERSEDED 26 Sep, and now pure duplication. Kept only because
    BuildReport.jsx still calls the fetch*ForIT() wrappers below.
 
@@ -117,11 +117,11 @@ const Hr_functionsService = dvTable('hr_functions', undefined, IT_ORG);
    pointing BuildReport.jsx's Scope panel at the context's existing dvLookup
    resolvers instead of fetching its own copy; left as its own change rather
    than bundled into this one. */
-const BusinessunitsItService = dvTable('businessunits', undefined, IT_ORG);
-const Crd04_regionsesItService = dvTable('crd04_regionses', undefined, IT_ORG);
-const Cr603_chklst_departmentsesItService = dvTable('cr603_chklst_departmentses', undefined, IT_ORG);
-const Hr_functionsItService = dvTable('hr_functions', undefined, IT_ORG);
-const Cr603_organizationstructuresItService = dvTable('cr603_organizationstructures', undefined, IT_ORG);
+const BusinessunitsItService = dvTable('businessunits', undefined, PIN_ORG);
+const Crd04_regionsesItService = dvTable('crd04_regionses', undefined, PIN_ORG);
+const Cr603_chklst_departmentsesItService = dvTable('cr603_chklst_departmentses', undefined, PIN_ORG);
+const Hr_functionsItService = dvTable('hr_functions', undefined, PIN_ORG);
+const Cr603_organizationstructuresItService = dvTable('cr603_organizationstructures', undefined, PIN_ORG);
 
 /** IT-side siblings of fetchBusinessUnits/fetchDepartments/fetchFunctions/
  *  fetchRegions/fetchPositions (name only, no holder chain) -- see the note
@@ -162,8 +162,8 @@ export async function fetchPositionNamesForIT(){
    these two tables (fetchKpis/fetchProcesses are shared, not
    Build-a-report/plan-only), so this moves their KPI/Process/Task data to
    IT too, on purpose -- see PROJECT-CONTEXT.md for the scope decision. */
-const Strategy_kpisesService = dvTable('strategy_kpises', undefined, IT_ORG);
-const Strategy_processesService = dvTable('strategy_processes', undefined, IT_ORG);
+const Strategy_kpisesService = dvTable('strategy_kpises', undefined, PIN_ORG);
+const Strategy_processesService = dvTable('strategy_processes', undefined, PIN_ORG);
 /* Pinned to IT_ORG (24 Sep) same day as strategy_kpises above, for the same
    reason: fetchKpiAchievements() filters this table by _pm_kpi_value, and
    since a KPI citation's id now comes from IT's strategy_kpises, an
@@ -171,11 +171,11 @@ const Strategy_processesService = dvTable('strategy_processes', undefined, IT_OR
    achievement rows point at DT New's KPI ids, not IT's. Both readers
    (BuildReport.jsx, OrgReports.jsx) are Report Occurrence / citation
    screens, already IT-hosted, so this is a plain repoint, not a fork. */
-const Pm_kpiachievmentsService = dvTable('pm_kpiachievments', undefined, IT_ORG);
+const Pm_kpiachievmentsService = dvTable('pm_kpiachievments', undefined, PIN_ORG);
 /* IT: lm_Speciality / lm_ReportSpeciality on Report and Meeting Templates
    all bind to this, and those rows are IT. */
-const Cr301_specialtyksa_service_hubsService = dvTable('cr301_specialtyksa_service_hubs', undefined, IT_ORG);
-const And_microsoftgroupmembersService = dvTable('and_microsoftgroupmembers', undefined, IT_ORG);
+const Cr301_specialtyksa_service_hubsService = dvTable('cr301_specialtyksa_service_hubs', undefined, PIN_ORG);
+const And_microsoftgroupmembersService = dvTable('and_microsoftgroupmembers', undefined, PIN_ORG);
 /* IT, not the app's own org. Every record that binds lm_CreatorPosition /
    lm_ChairPosition / lm_ReviewerPosition and friends to
    /cr603_organizationstructures(id) is now written to IT, so the id has to be
@@ -195,7 +195,7 @@ const And_microsoftgroupmembersService = dvTable('and_microsoftgroupmembers', un
    holder resolution degrades to the name route rather than breaking.
 
    ⚠️ Cost: ~11.4k rows at app load, three pages instead of one. */
-const Cr603_organizationstructuresService = dvTable('cr603_organizationstructures', undefined, IT_ORG);
+const Cr603_organizationstructuresService = dvTable('cr603_organizationstructures', undefined, PIN_ORG);
 /* ⚠️ IT_ORG (27 Sep). This was a FORK -- one service on DT New for name
    resolution, an IT-pinned sibling for picking a user to bind -- and the fork
    collapsed the moment hr_employees moved to IT (26 Sep, below). Its stated
@@ -215,7 +215,7 @@ const Cr603_organizationstructuresService = dvTable('cr603_organizationstructure
    IT id, so myPositionIds can finally match it against holderUserId (which
    hr_employees, also IT, supplies) instead of always falling through to the
    name comparison. */
-const SystemusersService = dvTable('systemusers', undefined, IT_ORG);
+const SystemusersService = dvTable('systemusers', undefined, PIN_ORG);
 /* ⚠️ IT_ORG (26 Sep), and it has to be. Its ONLY caller is
    fetchEmployeeIndex(), whose whole job is to join employees to Positions --
    and cr603_organizationstructures is IT-pinned above. On this app's own
@@ -230,7 +230,7 @@ const SystemusersService = dvTable('systemusers', undefined, IT_ORG);
    systemuserids, which still cannot match a DT New currentUser.systemUserId,
    so that match finds nothing exactly as before and falls through to the name
    route -- which this change makes work for many more Positions. */
-const Hr_employeesService = dvTable('hr_employees', undefined, IT_ORG);
+const Hr_employeesService = dvTable('hr_employees', undefined, PIN_ORG);
 /* and_teamschannels retired 22 Sep in favour of and_teamschannellinks (below)
    -- a newly-registered table with a real Team/Channel object id on each
    row, not just a repeated name.
@@ -248,7 +248,7 @@ const Hr_employeesService = dvTable('hr_employees', undefined, IT_ORG);
    rows need their Channel re-picked; nothing here repairs them. */
 /* IT: lm_TeamChannel binds to this from Report and Meeting Templates, which
    are IT -- and the bind was only repointed to this table on 23 Sep. */
-const And_teamschannellinksService = dvTable('and_teamschannellinks', undefined, IT_ORG);
+const And_teamschannellinksService = dvTable('and_teamschannellinks', undefined, PIN_ORG);
 
 /** Regions -- table crd04_regions (generated as Crd04_regionsesService).
  *  Primary key crd04_regionsid; crd04_id holds the display name. */
@@ -485,7 +485,7 @@ export async function fetchKpiAchievements(year, only = {}){
 }
 
 const Stf_kpiachievmentbreakdownsService =
-  dvTable('stf_kpiachievmentbreakdowns', 'stf_kpiachievmentbreakdownid', IT_ORG);
+  dvTable('stf_kpiachievmentbreakdowns', 'stf_kpiachievmentbreakdownid', PIN_ORG);
 
 /* ⚠️ stf_breakdowntype is NOT SECTION_BREAKDOWN_DIM. Only "Account" shares a
    code; everything else is offset, so passing the citation's own code through
@@ -1186,11 +1186,11 @@ export async function fetchCurrentUser(){
    be run (the reader can't read the role tables, no linked user, a read
    fails), it answers "unknown" and the caller opens the link as before. The
    reader's roles are read once per session; each app's roles once. */
-const AppmodulerolesService  = dvTable('appmodulerolescollection', 'appmoduleroleid', IT_ORG);
-const SystemuserrolesService = dvTable('systemuserrolescollection', 'systemuserroleid', IT_ORG);
-const TeammembershipsService = dvTable('teammemberships', 'teammembershipid', IT_ORG);
-const TeamrolesService       = dvTable('teamrolescollection', 'teamroleid', IT_ORG);
-const RolesService           = dvTable('roles', 'roleid', IT_ORG);
+const AppmodulerolesService  = dvTable('appmodulerolescollection', 'appmoduleroleid', PIN_ORG);
+const SystemuserrolesService = dvTable('systemuserrolescollection', 'systemuserroleid', PIN_ORG);
+const TeammembershipsService = dvTable('teammemberships', 'teammembershipid', PIN_ORG);
+const TeamrolesService       = dvTable('teamrolescollection', 'teamroleid', PIN_ORG);
+const RolesService           = dvTable('roles', 'roleid', PIN_ORG);
 
 const orFilter = (field, ids) => ids.map(id => `${field} eq ${id}`).join(' or ');
 async function getAllChunked(service, field, ids, select){
@@ -1252,7 +1252,7 @@ function appRoleIds(appId){
  *  ok and unknown both mean "open it". */
 export async function checkRecordAccess({ entitySet, pkField, id, appId }){
   try{
-    const res = await dvTable(entitySet, pkField, IT_ORG).get(id, { select: [pkField] });
+    const res = await dvTable(entitySet, pkField, PIN_ORG).get(id, { select: [pkField] });
     if(!res?.success){
       const msg = String(res?.error?.message || res?.error || '');
       return { state: /does not exist|not found|404/i.test(msg) ? 'missing' : 'noRecord', error: res?.error };
@@ -1311,14 +1311,14 @@ export async function checkRecordAccess({ entitySet, pkField, id, appId }){
    already equals IT_ORG, so this whole block is a no-op there -- see
    xenv.js's IT_ORG for the full rationale, same pattern as the Report
    Occurrence family a few sections down. */
-const Lm_report_templatesService = dvTable('lm_report_templates', 'lm_report_templateid', IT_ORG);
+const Lm_report_templatesService = dvTable('lm_report_templates', 'lm_report_templateid', PIN_ORG);
 const Lm_reporttemplatebusinessunitsesService =
-  dvTable('lm_reporttemplatebusinessunitses', 'lm_reporttemplatebusinessunitsid', IT_ORG);
-const Lm_reporttemplateregionsService = dvTable('lm_reporttemplateregions', 'lm_reporttemplateregionid', IT_ORG);
+  dvTable('lm_reporttemplatebusinessunitses', 'lm_reporttemplatebusinessunitsid', PIN_ORG);
+const Lm_reporttemplateregionsService = dvTable('lm_reporttemplateregions', 'lm_reporttemplateregionid', PIN_ORG);
 const Lm_reporttemplatecontentchecklistsService =
-  dvTable('lm_reporttemplatecontentchecklists', 'lm_reporttemplatecontentchecklistid', IT_ORG);
+  dvTable('lm_reporttemplatecontentchecklists', 'lm_reporttemplatecontentchecklistid', PIN_ORG);
 const Lm_reporttemplatesectionitemsesService =
-  dvTable('lm_reporttemplatesectionitemses', 'lm_reporttemplatesectionitemsid', IT_ORG);
+  dvTable('lm_reporttemplatesectionitemses', 'lm_reporttemplatesectionitemsid', PIN_ORG);
 
 /* Report Template Section (Expected Content Checklist item) option sets.
    Mapped by CODE, not by label -- 'Physician ' carries a trailing space in the
@@ -1406,13 +1406,13 @@ async function createSectionItems(checklistId, items, errors){
 /* Rest of the Report Template family -- see the comment above
    Lm_report_templatesService, same IT_ORG pin, same reason. */
 const Lm_reporttemplatedepartmentfunctionsService =
-  dvTable('lm_reporttemplatedepartmentfunctions', 'lm_reporttemplatedepartmentfunctionid', IT_ORG);
+  dvTable('lm_reporttemplatedepartmentfunctions', 'lm_reporttemplatedepartmentfunctionid', PIN_ORG);
 const Lm_reporttemplaterelatedkpisesService =
-  dvTable('lm_reporttemplaterelatedkpises', 'lm_reporttemplaterelatedkpisid', IT_ORG);
+  dvTable('lm_reporttemplaterelatedkpises', 'lm_reporttemplaterelatedkpisid', PIN_ORG);
 const Lm_reporttemplaterelatedprocessesesService =
-  dvTable('lm_reporttemplaterelatedprocesseses', 'lm_reporttemplaterelatedprocessesid', IT_ORG);
+  dvTable('lm_reporttemplaterelatedprocesseses', 'lm_reporttemplaterelatedprocessesid', PIN_ORG);
 const Lm_reporttemplatereviewchainsService =
-  dvTable('lm_reporttemplatereviewchains', 'lm_reporttemplatereviewchainid', IT_ORG);
+  dvTable('lm_reporttemplatereviewchains', 'lm_reporttemplatereviewchainid', PIN_ORG);
 
 // Dataverse choice fields take the numeric key, not the label, on write.
 // These map the app's exact label strings to the real keys from the
@@ -1779,11 +1779,23 @@ async function createReportTemplateChildren(templateId, payload, errors, opts = 
     }catch(e){ errors.push({ table:'lm_reporttemplatecontentchecklists', error:e }); }
   }
 
+  /* One row per Department & Function -- or, when the Setup submits "per
+     Department & Function" (29 Sep), one per unit x line, each carrying that
+     unit (lm_BU / lm_Region) and its own Submitting Position, Owner Position
+     (Accountable) and Team Channel. Those five lookups exist in DT New only
+     (added 29 Sep); IT lacks them, so they are bound only when set -- a Setup
+     in the ordinary one-submitter-per-unit mode writes exactly what it always
+     did, and saves in either environment. */
   for(const line of (payload.lines||[])){
     if(!line?.departmentId) continue;
     try{
       const rowPayload = { 'lm_ReportTemplate@odata.bind': bind, 'lm_Department@odata.bind': `/cr603_chklst_departmentses(${line.departmentId})` };
       if(line.functionId) rowPayload['lm_Function@odata.bind'] = `/hr_functions(${line.functionId})`;
+      if(line.businessUnitId)       rowPayload['lm_BU@odata.bind']                  = `/businessunits(${line.businessUnitId})`;
+      if(line.regionId)             rowPayload['lm_Region@odata.bind']              = `/crd04_regionses(${line.regionId})`;
+      if(line.submittingPositionId) rowPayload['lm_SubmittingPosition@odata.bind'] = `/cr603_organizationstructures(${line.submittingPositionId})`;
+      if(line.ownerPositionId)      rowPayload['lm_OwnerPosition@odata.bind']      = `/cr603_organizationstructures(${line.ownerPositionId})`;
+      if(line.channelId)            rowPayload['lm_TeamChannel@odata.bind']        = `/and_teamschannellinks(${line.channelId})`;
       await Lm_reporttemplatedepartmentfunctionsService.create(rowPayload);
     }catch(e){ errors.push({ table:'lm_reporttemplatedepartmentfunctions', error:e }); }
   }
@@ -1908,6 +1920,32 @@ async function reconcileReportUnits(templateId, payload, existing, errors){
   for(const u of regionWanted)
     await doChain(u, regionIds.get(String(u.regionId)),
       'lm_ReportTemplatePerRegion@odata.bind', 'lm_reporttemplateregions');
+}
+
+/* A Report Setup's Department & Function rows. The five columns added 29 Sep
+   (lm_BU, lm_Region, lm_SubmittingPosition, lm_OwnerPosition, lm_TeamChannel)
+   exist in DT New but NOT in IT, and $select-ing a missing column fails the
+   whole read -- so the wide read is tried first and, if it is refused, the
+   narrow one it always was. Leadership reads Setups from IT through this, and
+   must keep working there. */
+const LINE_SELECT_BASE = ['_lm_department_value','_lm_function_value'];
+const LINE_SELECT_WIDE = [...LINE_SELECT_BASE, '_lm_bu_value','_lm_region_value',
+  '_lm_submittingposition_value','_lm_ownerposition_value','_lm_teamchannel_value'];
+async function readReportTemplateLines(filter){
+  try{
+    const wide = await Lm_reporttemplatedepartmentfunctionsService.getAll({ filter, select: LINE_SELECT_WIDE });
+    if(wide?.success !== false) return wide;
+  }catch{ /* falls through to the narrow read */ }
+  return Lm_reporttemplatedepartmentfunctionsService.getAll({ filter, select: LINE_SELECT_BASE });
+}
+/* Each Department & Function pair once, in the order first seen. */
+function uniqueLines(rows){
+  const seen = new Set();
+  return rows.filter(r => {
+    const k = `${r._lm_department_value || ''}|${r._lm_function_value || ''}`;
+    if(seen.has(k)) return false;
+    seen.add(k); return true;
+  });
 }
 
 /** Ids only (not the full display shape fetchReportTemplateDetail() builds)
@@ -2095,25 +2133,25 @@ export async function updateReportTemplateToDataverse(dvId, payload){
    reports, attendees).
    ========================================================================= */
 
-const Lm_meetingtemplatesService = dvTable('lm_meetingtemplates', 'lm_meetingtemplateid', IT_ORG);
-const Lm_meetingtemplatebusinessunitsesService = dvTable('lm_meetingtemplatebusinessunitses', 'lm_meetingtemplatebusinessunitsid', IT_ORG);
-const Lm_meetingtemplateregionsService = dvTable('lm_meetingtemplateregions', 'lm_meetingtemplateregionid', IT_ORG);
-const Lm_meetingtemplateagendaitemsService = dvTable('lm_meetingtemplateagendaitems', 'lm_meetingtemplateagendaitemid', IT_ORG);
-const Lm_meetingtemplatesupportivefunctionsesService = dvTable('lm_meetingtemplatesupportivefunctionses', 'lm_meetingtemplatesupportivefunctionsid', IT_ORG);
-const Lm_meetingtemplatedepartmentfunctionsService = dvTable('lm_meetingtemplatedepartmentfunctions', 'lm_meetingtemplatedepartmentfunctionid', IT_ORG);
-const Lm_meetingtemplatelinkedreportsesService = dvTable('lm_meetingtemplatelinkedreportses', 'lm_meetingtemplatelinkedreportsid', IT_ORG);
+const Lm_meetingtemplatesService = dvTable('lm_meetingtemplates', 'lm_meetingtemplateid', PIN_ORG);
+const Lm_meetingtemplatebusinessunitsesService = dvTable('lm_meetingtemplatebusinessunitses', 'lm_meetingtemplatebusinessunitsid', PIN_ORG);
+const Lm_meetingtemplateregionsService = dvTable('lm_meetingtemplateregions', 'lm_meetingtemplateregionid', PIN_ORG);
+const Lm_meetingtemplateagendaitemsService = dvTable('lm_meetingtemplateagendaitems', 'lm_meetingtemplateagendaitemid', PIN_ORG);
+const Lm_meetingtemplatesupportivefunctionsesService = dvTable('lm_meetingtemplatesupportivefunctionses', 'lm_meetingtemplatesupportivefunctionsid', PIN_ORG);
+const Lm_meetingtemplatedepartmentfunctionsService = dvTable('lm_meetingtemplatedepartmentfunctions', 'lm_meetingtemplatedepartmentfunctionid', PIN_ORG);
+const Lm_meetingtemplatelinkedreportsesService = dvTable('lm_meetingtemplatelinkedreportses', 'lm_meetingtemplatelinkedreportsid', PIN_ORG);
 /* Stage 4 (Top Management) meetings' Categories, one row per (Setup, Category)
    -- added to IT by 28 Sep. Lookups: lm_MeetingTemplate and lm_Meetingcategory
    (lowercase c: the bind name must match the schema name exactly). */
-const Lm_topmanagementmeetingcategoriesService = dvTable('lm_topmanagementmeetingcategories', 'lm_topmanagementmeetingcategoryid', IT_ORG);
+const Lm_topmanagementmeetingcategoriesService = dvTable('lm_topmanagementmeetingcategories', 'lm_topmanagementmeetingcategoryid', PIN_ORG);
 const TOP_CATEGORY_SELECT = ['lm_topmanagementmeetingcategoryid','lm_name','_lm_meetingcategory_value'];
 const topCategoryRow = (templateId, c) => ({
   'lm_MeetingTemplate@odata.bind': `/lm_meetingtemplates(${templateId})`,
   'lm_Meetingcategory@odata.bind': `/lm_meetingcategories(${c.categoryId})`,
   lm_name: c.name || undefined,
 });
-const Lm_meetingattendeeslistsService = dvTable('lm_meetingattendeeslists', 'lm_meetingattendeeslistid', IT_ORG);
-const Lm_meetingcategoriesService = dvTable('lm_meetingcategories', 'lm_meetingcategoryid', IT_ORG);
+const Lm_meetingattendeeslistsService = dvTable('lm_meetingattendeeslists', 'lm_meetingattendeeslistid', PIN_ORG);
+const Lm_meetingcategoriesService = dvTable('lm_meetingcategories', 'lm_meetingcategoryid', PIN_ORG);
 
 /* ========================================================================
    Strategy execution -- POCs, Strategies, BI reports and Tasks.
@@ -2138,18 +2176,18 @@ const Lm_meetingcategoriesService = dvTable('lm_meetingcategories', 'lm_meetingc
    reads from IT, those ids are IT's ids, and resolving them against DT
    New's copies of the two lookup tables would fail the same way an
    unpinned KPI/Process bind would have. */
-const Stf_strategypocsService       = dvTable('stf_strategypocs', 'stf_strategypocid', IT_ORG);
-const Stf_executioncategoriesService= dvTable('stf_executioncategories', 'stf_executioncategoryid', IT_ORG);
-const Crd04_specialtiesesService    = dvTable('crd04_specialtieses', 'crd04_specialtiesid', IT_ORG);
-const Strategy_strategiesService    = dvTable('strategy_strategies', 'strategy_strategyid', IT_ORG);
-const Lm_bireportdashboardsService  = dvTable('lm_bireportdashboards', 'lm_bireportdashboardid', IT_ORG);
-const Hx_taskesService              = dvTable('hx_taskses', 'hx_tasksid', IT_ORG);
+const Stf_strategypocsService       = dvTable('stf_strategypocs', 'stf_strategypocid', PIN_ORG);
+const Stf_executioncategoriesService= dvTable('stf_executioncategories', 'stf_executioncategoryid', PIN_ORG);
+const Crd04_specialtiesesService    = dvTable('crd04_specialtieses', 'crd04_specialtiesid', PIN_ORG);
+const Strategy_strategiesService    = dvTable('strategy_strategies', 'strategy_strategyid', PIN_ORG);
+const Lm_bireportdashboardsService  = dvTable('lm_bireportdashboards', 'lm_bireportdashboardid', PIN_ORG);
+const Hx_taskesService              = dvTable('hx_taskses', 'hx_tasksid', PIN_ORG);
 /* cr603_projects -- entity set cr603_projectses (double-s, same publisher
    convention as cr603_chklst_departmentses/crd04_specialtieses), confirmed
    via `pac modelbuilder build -enf cr603_projects`. Read-only: this app
    only cites a Project, never creates or edits one. Pinned to IT_ORG (24
    Sep), same reasoning as its siblings above. */
-const Cr603_projectsesService       = dvTable('cr603_projectses', undefined, IT_ORG);
+const Cr603_projectsesService       = dvTable('cr603_projectses', undefined, PIN_ORG);
 
 /** POC status, read from the live option set stf_stfpocstatus. */
 export const POC_STATUS = { 1:'Active', 2:'Succeeded', 3:'Failed', 4:'Retired' };
@@ -3313,7 +3351,7 @@ export async function fetchReportTemplateDetail(id){
   const filter = `_lm_reporttemplate_value eq ${id}`;
   const [checklistRes, linesRes, kpisRes, procsRes, busRes, regionsRes] = await Promise.all([
     Lm_reporttemplatecontentchecklistsService.getAll({ filter, select:['lm_reporttemplatecontentchecklistid','lm_checklistitemname','lm_checklistitemstep','lm_diagnosticangle','lm_fileattachement'] }),
-    Lm_reporttemplatedepartmentfunctionsService.getAll({ filter, select:['_lm_department_value','_lm_function_value'] }),
+    readReportTemplateLines(filter),
     Lm_reporttemplaterelatedkpisesService.getAll({ filter, select:['_lm_relatedkpi_value'] }),
     Lm_reporttemplaterelatedprocessesesService.getAll({ filter, select:['_lm_relatedprocess_value'] }),
     Lm_reporttemplatebusinessunitsesService.getAll({ filter, select:['lm_reporttemplatebusinessunitsid','lm_name','_lm_businessunit_value','_lm_speciality_value','_lm_ownerposition_value','_lm_submittingposition_value','_lm_teamchannel_value', ...REPORT_SCHEDULE_COLS] }),
@@ -3381,7 +3419,13 @@ export async function fetchReportTemplateDetail(id){
         fileStoredName: it.lm_attachementfile_name || '',
       })),
     })),
-    lines: linesRes?.data ?? [],
+    /* One entry per Department & Function, as before -- a Setup saved "per
+       Department & Function" has one row per unit x line, so the same pair
+       repeats; readers that want the lines see each once. The rows as stored,
+       with their unit and people, are `lineRoles`. */
+    lines: uniqueLines(linesRes?.data ?? []),
+    lineRoles: (linesRes?.data ?? []).filter(r =>
+      r._lm_submittingposition_value || r._lm_ownerposition_value || r._lm_teamchannel_value),
     kpiIds: (kpisRes?.data ?? []).map(r => r._lm_relatedkpi_value).filter(Boolean),
     processIds: (procsRes?.data ?? []).map(r => r._lm_relatedprocess_value).filter(Boolean),
     businessUnits: businessUnits.map((bu,i) => ({ ...bu, reviewChain: buChains[i] })),
@@ -3475,11 +3519,11 @@ export async function fetchMeetingTemplateDetail(id){
    (lm_meetingoccurrenceattendees, entity set lm_meetingoccurrenceattendeeses)
    -- same quirk as lm_meetingtemplatesupportivefunctions. Kept as generated. */
 
-const Lm_meetingoccurrencesService = dvTable('lm_meetingoccurrences', 'lm_meetingoccurrenceid', IT_ORG);
-const Lm_meetingoccurrenceagendasService = dvTable('lm_meetingoccurrenceagendas', 'lm_meetingoccurrenceagendaid', IT_ORG);
-const Lm_meetingoccurrenceattendeesesService = dvTable('lm_meetingoccurrenceattendeeses', 'lm_meetingoccurrenceattendeesid', IT_ORG);
-const Lm_meetingoccurrencedepartmentfunctionsService = dvTable('lm_meetingoccurrencedepartmentfunctions', 'lm_meetingoccurrencedepartmentfunctionid', IT_ORG);
-const Lm_meetingoccurrencelinkedreportsesService = dvTable('lm_meetingoccurrencelinkedreportses', 'lm_meetingoccurrencelinkedreportsid', IT_ORG);
+const Lm_meetingoccurrencesService = dvTable('lm_meetingoccurrences', 'lm_meetingoccurrenceid', PIN_ORG);
+const Lm_meetingoccurrenceagendasService = dvTable('lm_meetingoccurrenceagendas', 'lm_meetingoccurrenceagendaid', PIN_ORG);
+const Lm_meetingoccurrenceattendeesesService = dvTable('lm_meetingoccurrenceattendeeses', 'lm_meetingoccurrenceattendeesid', PIN_ORG);
+const Lm_meetingoccurrencedepartmentfunctionsService = dvTable('lm_meetingoccurrencedepartmentfunctions', 'lm_meetingoccurrencedepartmentfunctionid', PIN_ORG);
+const Lm_meetingoccurrencelinkedreportsesService = dvTable('lm_meetingoccurrencelinkedreportses', 'lm_meetingoccurrencelinkedreportsid', PIN_ORG);
 /* The whole Report Occurrence family -- the occurrence itself plus its own
    Sections, Citations, History and Shares -- reads and writes
    IT_ORG (the IT environment) always, independent of this
@@ -3489,11 +3533,11 @@ const Lm_meetingoccurrencelinkedreportsesService = dvTable('lm_meetingoccurrence
    xenv.js's IT_ORG for the full rationale. Everything else on
    this page -- Meeting Occurrences included -- is unaffected and still
    follows this app's own DATA_ORG. */
-const Lm_reportoccurrencesService = dvTable('lm_reportoccurrences', 'lm_reportoccurrenceid', IT_ORG);
-const Lm_meetingminutesesService = dvTable('lm_meetingminuteses', 'lm_meetingminutesid', IT_ORG);
-const Lm_momnotesesService = dvTable('lm_momnoteses', 'lm_momnotesid', IT_ORG);
-const Lm_auditgridinstancesService = dvTable('lm_auditgridinstances', 'lm_auditgridinstanceid', IT_ORG);
-const Lm_auditgridanswersService = dvTable('lm_auditgridanswers', 'lm_auditgridanswerid', IT_ORG);
+const Lm_reportoccurrencesService = dvTable('lm_reportoccurrences', 'lm_reportoccurrenceid', PIN_ORG);
+const Lm_meetingminutesesService = dvTable('lm_meetingminuteses', 'lm_meetingminutesid', PIN_ORG);
+const Lm_momnotesesService = dvTable('lm_momnoteses', 'lm_momnotesid', PIN_ORG);
+const Lm_auditgridinstancesService = dvTable('lm_auditgridinstances', 'lm_auditgridinstanceid', PIN_ORG);
+const Lm_auditgridanswersService = dvTable('lm_auditgridanswers', 'lm_auditgridanswerid', PIN_ORG);
 /* ⚠️ IT_ORG (27 Sep) -- every table this app reads now points at IT.
 
    These three have NO TABLE in IT: lm_approvalcycle, lm_approvalcyclestep and
@@ -3507,20 +3551,20 @@ const Lm_auditgridanswersService = dvTable('lm_auditgridanswers', 'lm_auditgrida
    Authority Matrix and Approval Cycle panels render empty with a console
    warning instead of failing. When the tables are created in IT they will
    start reading with no code change. */
-const Lm_approvalcyclesService = dvTable('lm_approvalcycles', undefined, IT_ORG);
-const Lm_approvalcyclestepsService = dvTable('lm_approvalcyclesteps', undefined, IT_ORG);
-const Lm_authoritymatrixrowsService = dvTable('lm_authoritymatrixrows', undefined, IT_ORG);
+const Lm_approvalcyclesService = dvTable('lm_approvalcycles', undefined, PIN_ORG);
+const Lm_approvalcyclestepsService = dvTable('lm_approvalcyclesteps', undefined, PIN_ORG);
+const Lm_authoritymatrixrowsService = dvTable('lm_authoritymatrixrows', undefined, PIN_ORG);
 const Lm_reportoccurrencehistoriesService =
-  dvTable('lm_reportoccurrencehistories', 'lm_reportoccurrencehistoryid', IT_ORG);
+  dvTable('lm_reportoccurrencehistories', 'lm_reportoccurrencehistoryid', PIN_ORG);
 /* A Report Occurrence's content: its Sections, and the Citations inside them.
    Entity sets are double-plural -- the logical names are already plural. */
 const Lm_reportoccurrencesectionsesService =
-  dvTable('lm_reportoccurrencesectionses', 'lm_reportoccurrencesectionsid', IT_ORG);
+  dvTable('lm_reportoccurrencesectionses', 'lm_reportoccurrencesectionsid', PIN_ORG);
 const Lm_reportsectioncitationsesService =
-  dvTable('lm_reportsectioncitationses', 'lm_reportsectioncitationsid', IT_ORG);
-const Wlog_decisionsService = dvTable('wlog_decisions', 'wlog_decisionid', IT_ORG);
+  dvTable('lm_reportsectioncitationses', 'lm_reportsectioncitationsid', PIN_ORG);
+const Wlog_decisionsService = dvTable('wlog_decisions', 'wlog_decisionid', PIN_ORG);
 const Lm_reportoccurrencesharesService =
-  dvTable('lm_reportoccurrenceshares', 'lm_reportoccurrenceshareid', IT_ORG);
+  dvTable('lm_reportoccurrenceshares', 'lm_reportoccurrenceshareid', PIN_ORG);
 
 /** Every Report Occurrence share -- who sent what to whom, and when.
  *
@@ -4965,7 +5009,7 @@ export async function createReportOccurrence(payload){
 export async function uploadReportOccurrenceFile(occurrenceId, fileName, base64Content){
   try{
     await uploadFileColumn('lm_reportoccurrences', occurrenceId, 'lm_attachmentfile',
-      fileName, base64Content, IT_ORG);
+      fileName, base64Content, PIN_ORG);
     return { errors: [] };
   }catch(e){
     return { errors: [{ table:'lm_reportoccurrences.lm_attachmentfile', error:e }] };
@@ -5062,7 +5106,7 @@ const NOTE_SELECT = ['lm_momnotesid','lm_name','lm_notes','lm_confidential','_lm
    readable to anyone with Read on lm_momnotes; real protection needs
    Dataverse security on top. */
 const Lm_meetingminutesreviewerlistsService =
-  dvTable('lm_meetingminutesreviewerlists', 'lm_meetingminutesreviewerlistid', IT_ORG);
+  dvTable('lm_meetingminutesreviewerlists', 'lm_meetingminutesreviewerlistid', PIN_ORG);
 const VIEWER_SELECT = ['lm_meetingminutesreviewerlistid','_lm_momnotes_value','_lm_vieweruser_value'];
 
 /* Viewer rows for the given notes, grouped by note id. Filtered by note id so
@@ -6260,7 +6304,7 @@ export async function fetchReportSectionsByIds(ids = []){
    `createdon` is the timestamp; there is deliberately no lm_occurredon column
    to keep in sync with it.
    ========================================================================= */
-const Lm_setupactivitiesService = dvTable('lm_setupactivities', 'lm_setupactivityid', IT_ORG);
+const Lm_setupactivitiesService = dvTable('lm_setupactivities', 'lm_setupactivityid', PIN_ORG);
 
 /* Dataverse renders option 3 as "Editopened" with no space -- the label was
    typed without one. Both directions go through these maps rather than the

@@ -682,6 +682,19 @@ function copyUnitBody(kind,from){
        coreMembers:(from.coreMembers||[]).map(m=>({...m,id:uid('cm')}))};
 }
 
+/* ---- Submitting per Department & Function (29 Sep) -----------------------
+   A Report Setup either has one Submitting Position, Owner Position
+   (Accountable) and Team Channel per unit, or -- perLineSubmit -- one per
+   Department & Function line inside each unit. The latter is saved on
+   lm_reporttemplatedepartmentfunctions: one row per unit x line with lm_BU /
+   lm_Region, lm_SubmittingPosition, lm_OwnerPosition and lm_TeamChannel (the
+   last five exist in DT New only). A line is keyed by its ids, not its names,
+   so the key survives a reload. */
+const lineKeyOf=l=>{ const x=lineIds(l); return x.departmentId ? `${x.departmentId}|${x.functionId||''}` : null; };
+const lineRoleKey=(unitKey,l)=>`${unitKey}::${lineKeyOf(l)}`;
+const lineRoleOf=(s,unitKey,l)=>(s.lineRoles||{})[lineRoleKey(unitKey,l)]||{};
+const perLineOn=s=>s.kind==='Report Template' && !!s.perLineSubmit && linesOf(s).length>0;
+
 /* =========================================================================
    SEED — eight Setups covering every branch the acceptance checks exercise.
    Seeded on first visit only; after that, the working copy lives in
@@ -763,6 +776,11 @@ const BLANK_REPORT={
   checklist:[], processes:[], kpis:[],
   frequency:null, dayOfWeek:null, dayOfWeeks:[], dayMode:'fixed', dayOfMonth:null, monthInQuarter:null,
   perUnitSchedule:false,
+  /* Submitting per Department & Function (29 Sep): off = one Submitting /
+     Owner Position and Team Channel per unit (the unit row); on = each
+     Department & Function line in each unit has its own, keyed
+     `<unitKey>::<departmentId>|<functionId>` (see lineRoleKey). */
+  perLineSubmit:false, lineRoles:{},
   confidentiality:null, status:'Draft', version:0, updated:TODAY};
 
 function seed(){
@@ -1078,15 +1096,29 @@ function unitRules(s, stepNo){
     // one. But having picked a Team without a Channel is incomplete, since the
     // Channel is the part that actually carries a location.
     const uTeam=u.team||teamOfChannel(u.channel);
-    if(uTeam && !u.channel)
+    if(uTeam && !u.channel && !perLineOn(s))
       r.push({field:f, step:stepNo, msg:`${at}: choose the Channel inside ${uTeam}.`});
     if(s.kind==='Report Template'){
-      if(!u.submitter) r.push({field:f, step:stepNo, msg:`${at}: the Position that submits is required.`});
-      if(!u.owner)     r.push({field:f, step:stepNo, msg:`${at}: Owner Position is required.`});
       const chain=(u.reviewChain||[]).filter(Boolean);
+      if(perLineOn(s)){
+        /* Per Department & Function: each line needs its own Submitter and
+           Accountable; the unit's own two are hidden and not required. */
+        linesOf(s).forEach(l=>{
+          const x=lineRoleOf(s,k,l), lt=`${at} › ${lineLabel(l)}`;
+          if(!x.submitter) r.push({field:f, step:stepNo, msg:`${lt}: the Position that submits is required.`});
+          if(!x.owner)     r.push({field:f, step:stepNo, msg:`${lt}: the Accountable Position is required.`});
+          const xTeam=x.team||teamOfChannel(x.channel);
+          if(xTeam && !x.channel) r.push({field:f, step:stepNo, msg:`${lt}: choose the Channel inside ${xTeam}.`});
+          if(x.submitter && chain.includes(x.submitter))
+            r.push({field:f, step:stepNo, msg:`${lt}: the Submitting Position cannot be part of the review chain.`});
+        });
+      }else{
+        if(!u.submitter) r.push({field:f, step:stepNo, msg:`${at}: the Position that submits is required.`});
+        if(!u.owner)     r.push({field:f, step:stepNo, msg:`${at}: Owner Position is required.`});
+        if(u.submitter && chain.includes(u.submitter))
+          r.push({field:f, step:stepNo, msg:`${at}: the Submitting Position cannot be part of the review chain.`});
+      }
       if(!chain.length) r.push({field:f, step:stepNo, msg:`${at}: at least one review step is required.`});
-      if(u.submitter && chain.includes(u.submitter))
-        r.push({field:f, step:stepNo, msg:`${at}: the Submitting Position cannot be part of the review chain.`});
     } else {
       if(!u.chairman)    r.push({field:f, step:stepNo, msg:`${at}: Chairman is required.`});
       if(!u.facilitator) r.push({field:f, step:stepNo, msg:`${at}: Organizer / Facilitator is required.`});
@@ -2601,9 +2633,18 @@ function UnitSetup({s,set,issues,shared,intro}){
 
   const units=s.units||[];
   const setUnit=(key,patch)=>set({units:units.map(u=>u.key===key?{...u,...patch}:u)});
+  const perLine=perLineOn(s);
+  const setLineRole=(key,l,patch)=>{
+    const rk=lineRoleKey(key,l);
+    set({lineRoles:{...(s.lineRoles||{}), [rk]:{...((s.lineRoles||{})[rk]||{}), ...patch}}});
+  };
   const copyToAll=key=>{
     const from=unitOf(s,key); if(!from) return;
-    set({units:units.map(u=>u.key===key?u:{...u,...copyUnitBody(s.kind,from)})});
+    /* per Department & Function, each line's people are copied too */
+    const roles={...(s.lineRoles||{})};
+    if(perLine) keys.filter(k=>k!==key).forEach(k=>linesOf(s).forEach(l=>{
+      roles[lineRoleKey(k,l)]={...lineRoleOf(s,key,l)}; }));
+    set({units:units.map(u=>u.key===key?u:{...u,...copyUnitBody(s.kind,from)}), lineRoles:roles});
     const n=keys.length-1;
     toast('Copied to every section',
       `${unitLabel(s,key)} — ${report?'submitter, owner and review chain':'roles and attendees'} `+
@@ -2620,6 +2661,7 @@ function UnitSetup({s,set,issues,shared,intro}){
   return <>
     {intro}
     {shared}
+    {report ? <SubmitterModeToggle s={s} set={set} keys={keys}/> : null}
     {keys.length>1
       ? <div className="unit-bar">
           <label htmlFor="u-copy">Set one up, then reuse it</label>
@@ -2667,6 +2709,7 @@ function UnitSetup({s,set,issues,shared,intro}){
                 opts={secs.map(x=>({v:x.id,label:`${x.name} · ${nameOf(DEPARTMENTS,x.dept)}`}))}
                 onChange={v=>setUnit(k,{section:v})}/></Field>
 
+            {perLine ? null : <>
             <div className="f-row">
               <Field id={'u-team-'+k} label="Team"
                 hint="The Team this unit discusses it in. Every Team is offered — the Teams table carries no Business Unit or Region, so it can't be narrowed to this unit.">
@@ -2701,10 +2744,13 @@ function UnitSetup({s,set,issues,shared,intro}){
                     : <div className="dest-v empty">Choose a Channel above and its SharePoint path appears here</div>}
                 </Field>
               : null}
+            </>}
 
             {report
               ? <>
-                  <div className="f-row">
+                  {perLine
+                    ? <LineRoles s={s} k={k} setLineRole={setLineRole}/>
+                    : <div className="f-row">
                     <Field id={'u-sub-'+k} label="Submitting Position" req
                       hint="Who prepares and submits this report in this unit.">
                       <PosSel id={'u-sub-'+k} val={u.submitter} opts={positionsInScope(s,k)}
@@ -2717,7 +2763,7 @@ function UnitSetup({s,set,issues,shared,intro}){
                         fullOpts={POSITIONS}
                         onChange={v=>setUnit(k,{owner:v})}/>
                     </Field>
-                  </div>
+                  </div>}
                   <UnitChain u={u} k={k} s={s} setUnit={setUnit}/>
                 </>
               : <>
@@ -2749,6 +2795,77 @@ function UnitSetup({s,set,issues,shared,intro}){
         </>}
       </div>;})}
   </>;
+}
+
+/* One Submitter per unit, or one per Department & Function line in each unit.
+   Offered when the Setup has at least one Department & Function line.
+   Switching ON seeds every line from its unit's own Submitter, Owner and
+   Channel, so each only needs changing where it differs; switching OFF keeps
+   the unit's own values, which were only hidden. */
+function SubmitterModeToggle({s,set,keys}){
+  const ls=linesOf(s);
+  if(!ls.length) return null;
+  const lv=stageLevel(s);
+  const word=lv==='region'?'Region':lv==='bu'?'Business Unit':'the group';
+  const on=!!s.perLineSubmit;
+  const turn=v=>{
+    if(v!=='line'){ set({perLineSubmit:false}); return; }
+    const roles={...(s.lineRoles||{})};
+    keys.forEach(k=>{ const u=unitOf(s,k)||{};
+      ls.forEach(l=>{ const rk=lineRoleKey(k,l);
+        if(!roles[rk]) roles[rk]={submitter:u.submitter||null, owner:u.owner||null,
+                                  team:u.team||null, channel:u.channel||null}; }); });
+    set({perLineSubmit:true, lineRoles:roles});
+  };
+  return <div className="card" style={{marginBottom:12}}>
+    <Field id="f-perLineSubmit" label="Who submits"
+      hint={on
+        ? `Each Department & Function in each ${lv==='group'?'Setup':word} has its own Submitter, Accountable and Team Channel, set in the sections below.`
+        : `One Submitter, Owner and Team Channel for each ${lv==='group'?'Setup':word}. Switch to set them per Department & Function.`}>
+      <Seg id="f-perLineSubmit" val={on?'line':'unit'}
+        opts={[{v:'unit',label:lv==='group'?'One submitter for the group':'One submitter per '+word},
+               {v:'line',label:'Per Department & Function'}]}
+        onChange={turn}/>
+    </Field>
+  </div>;
+}
+
+/* Inside one unit: a block per Department & Function line with its own
+   Submitting Position, Accountable (Owner) Position and Team Channel. */
+function LineRoles({s,k,setLineRole}){
+  const teams=teamsIn();
+  return <div className="line-roles">
+    {linesOf(s).map(l=>{
+      const x=lineRoleOf(s,k,l);
+      const xTeam=x.team||teamOfChannel(x.channel);
+      const idp='u-ln-'+k+'-'+(lineKeyOf(l)||'').replace(/[^a-z0-9]/gi,'');
+      return <div key={lineRoleKey(k,l)} style={{border:'1px solid var(--border)',borderRadius:8,
+                                                 padding:'10px 12px',marginBottom:10}}>
+        <div style={{fontWeight:600,fontSize:12.5,marginBottom:6}}>{lineLabel(l)}</div>
+        <div className="f-row">
+          <Field id={idp+'-sub'} label="Submitting Position" req
+            hint="Who prepares and submits this report for this Department & Function.">
+            <PosSel id={idp+'-sub'} val={x.submitter} opts={positionsInScope(s,k)} fullOpts={POSITIONS}
+              onChange={v=>setLineRole(k,l,{submitter:v})}/></Field>
+          <Field id={idp+'-own'} label="Accountable" req hint="Accountable for the content.">
+            <PosSel id={idp+'-own'} val={x.owner} opts={positionsInScope(s,k)} fullOpts={POSITIONS}
+              onChange={v=>setLineRole(k,l,{owner:v})}/></Field>
+        </div>
+        <div className="f-row">
+          <Field id={idp+'-team'} label="Team">
+            <Sel id={idp+'-team'} val={xTeam} opts={teams.map(t=>({v:t.id,label:t.name}))}
+              placeholder={teams.length?'Select…':'No Teams found'}
+              onChange={v=>setLineRole(k,l,{team:v,channel:null})}/></Field>
+          <Field id={idp+'-chan'} label="Channel" req={!!xTeam}
+            hint={xTeam && channelPath(x.channel) ? channelPath(x.channel) : null}>
+            <Sel id={idp+'-chan'} val={x.channel} disabled={!xTeam}
+              placeholder={xTeam?'Select…':'Choose a Team first'}
+              opts={channelsIn(xTeam).map(c=>({v:c.id,label:c.name}))}
+              onChange={v=>setLineRole(k,l,{channel:v})}/></Field>
+        </div>
+      </div>;
+    })}
+  </div>;
 }
 
 /* per-unit review chain — the Submitting Position cannot review its own submission,
@@ -3059,7 +3176,13 @@ function UnitsTable({s}){
           <td className="k">{unitLabel(s,k)}
             <div className="t-sub">{unitSub(s,k)}</div></td>
           {lv==='bu'?<td className="d">{u.section?nameOf(SECTIONS,u.section):'Whole Business Unit'}</td>:null}
-          {report
+          {report && perLineOn(s)
+            /* Per Department & Function: each line's Submitter › Accountable. */
+            ? <><td colSpan={2} className="d">{linesOf(s).map(l=>{ const x=lineRoleOf(s,k,l);
+                  return <div key={lineRoleKey(k,l)}><b>{lineLabel(l)}</b>: {posName(x.submitter)||'—'}
+                    {' › '}{posName(x.owner)||'—'}</div>; })}</td>
+                <td className="d">{(u.reviewChain||[]).filter(Boolean).map(posName).join(' → ')||'—'}</td></>
+          : report
             ? <><td><PosCell id={u.submitter}/></td><td><PosCell id={u.owner}/></td>
                 <td className="d">{(u.reviewChain||[]).filter(Boolean).map(posName).join(' → ')||'—'}</td></>
             : <><td><PosCell id={u.chairman}/>
@@ -3068,8 +3191,11 @@ function UnitsTable({s}){
                 <td className="d">{core.length
                   ? `${core.filter(m=>m.type==='Core').length} core · ${core.filter(m=>m.type!=='Core').length} supportive`
                   : '—'}</td></>}
-          <td className="d">{(u.team||teamOfChannel(u.channel))||'—'}
-            {u.channel?<div className="t-sub">{nameOf(CHANNELS,u.channel)}</div>:null}</td>
+          {report && perLineOn(s)
+            ? <td className="d">{linesOf(s).map(l=>{ const x=lineRoleOf(s,k,l);
+                  return <div key={lineRoleKey(k,l)}>{x.channel ? nameOf(CHANNELS,x.channel) : '—'}</div>; })}</td>
+            : <td className="d">{(u.team||teamOfChannel(u.channel))||'—'}
+                {u.channel?<div className="t-sub">{nameOf(CHANNELS,u.channel)}</div>:null}</td>}
         </tr>;})}
       </tbody></table></div>
   </div>;
@@ -3521,7 +3647,19 @@ function buildReportTemplatePayload(f0){
         return null;
       }).filter(it=>it && (it.kpiId || it.processId || it.childTemplateId || it.type==='File')),
     })),
-    lines: linesOf(f).map(lineIds).filter(l=>l.departmentId),
+    /* Per Department & Function: one row per unit x line, carrying the unit
+       and that line's people; otherwise one row per line, as always. */
+    lines: perLineOn(f)
+      ? keys.flatMap(k=>linesOf(f).map(l=>{
+          const ids=lineIds(l), x=lineRoleOf(f,k,l);
+          return {...ids,
+            businessUnitId: lv==='bu' ? k : undefined,
+            regionId: lv==='region' ? k : undefined,
+            submittingPositionId: x.submitter || undefined,
+            ownerPositionId: x.owner || undefined,
+            channelId: x.channel || undefined};
+        })).filter(l=>l.departmentId)
+      : linesOf(f).map(lineIds).filter(l=>l.departmentId),
     kpiIds: (f.kpis||[]).map(name=>KPI_ID_BY_NAME[name]).filter(Boolean),
     processIds: (f.processes||[]).map(name=>PROCESS_ID_BY_NAME[name]).filter(Boolean),
   };
@@ -4011,6 +4149,14 @@ function dataverseReportToSetup(detail){
       department:nameOf(DEPARTMENTS,l._lm_department_value)||'',
       function:l._lm_function_value ? (nameOf(FUNCTIONS,l._lm_function_value)||'') : '',
     })),
+    /* Submitting per Department & Function: nothing stores the toggle itself
+       -- a Setup reopens in that mode when any line row carries a person or a
+       Channel. Each row's unit is its lm_BU / lm_Region (none = group-wide). */
+    perLineSubmit:(detail.lineRoles||[]).length>0,
+    lineRoles:Object.fromEntries((detail.lineRoles||[]).map(r=>[
+      `${r._lm_bu_value||r._lm_region_value||GROUP_KEY}::${r._lm_department_value}|${r._lm_function_value||''}`,
+      {submitter:r._lm_submittingposition_value||null, owner:r._lm_ownerposition_value||null,
+       team:null, channel:r._lm_teamchannel_value||null}])),
     kpis:(detail.kpiIds||[]).map(id=>idToName(KPI_ID_BY_NAME,id)).filter(Boolean),
     processes:(detail.processIds||[]).map(id=>idToName(PROCESS_ID_BY_NAME,id)).filter(Boolean),
     /* Read the real Stage off lm_stage. The old inference is kept only as a

@@ -28,7 +28,7 @@ Everything below was checked against the repo and IT when written.
 | Branch | `CrossEnv-Leadership`, pushed to GitHub (`origin`), HEAD `3180e59` |
 | Governance Setup (live) | `4912152c-b5c8-4beb-bb74-c9f43550405b`, Code App Development, pushed from `C:\tmp\cad-gov` |
 | Leadership Execution (live) | `83db0ef8-4c62-4eef-84ac-dadab326b704`, Code App Development, pushed from `C:\tmp\cad-exec` |
-| Data | **IT** (`org2f45e702`) for every table but `lm_setupactivities` (follows `DATA_ORG`) |
+| Data | **Leadership: IT** (`org2f45e702`) for every table but `lm_setupactivities` (follows `DATA_ORG`). **Governance: DT New** (`org319b4ea9`) for **every** table since 29 Sep (end of day), per an explicit ask — temporary, "we will go back to IT". One switch: `__DATA_ORG__` + `__PIN_ORG__` in `apps/governance/vite.config.js` (see `PIN_ORG` in `xenv.js`). ⚠️ While split, **Leadership does not see Setups saved in Governance**. Checked before switching: all 65 tables exist in DT New, every lm_ column IT has is there, every lm_ choice value matches. |
 | What is live | **HEAD minus `4ca0036`** — see the warning below |
 
 ⚠️ **One commit is in git but deliberately NOT deployed: `4ca0036`** — the

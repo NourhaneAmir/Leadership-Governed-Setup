@@ -84,6 +84,22 @@ export const DATA_ORG =
    nothing outside Governance touches them). */
 export const IT_ORG = 'https://org2f45e702.crm4.dynamics.com';
 
+/* Where the tables dataverse.js PINS go (the dvTable(..., PIN_ORG) calls --
+   every table but lm_setupactivities). IT by default, so Leadership is
+   unchanged; an app overrides it at build time with `__PIN_ORG__` in its
+   vite.config.js `define`, next to `__DATA_ORG__`.
+
+   29 Sep: Governance Setup reads and writes DT New again, per an explicit
+   ask ("we will go back to IT environment again") -- apps/governance/
+   vite.config.js sets both defines to DT New. To go back to IT, set both
+   there to IT_ORG's URL (or delete __PIN_ORG__) and rebuild Governance.
+   Checked before switching: all 65 tables the code uses exist in DT New,
+   every lm_ column IT has is in DT New too, and every lm_ choice value
+   matches. Leadership stays on IT, so it does not see Setups saved while
+   Governance is on DT New. */
+export const PIN_ORG =
+  (typeof __PIN_ORG__ === 'string' && __PIN_ORG__) ? __PIN_ORG__ : IT_ORG;
+
 /* The connector wants the table's ENTITY SET (plural) name, e.g.
    `lm_setupactivities`, not the logical name `lm_setupactivity`. Both are in
    power.config.json under databaseReferences -- entitySetName is the one. */
