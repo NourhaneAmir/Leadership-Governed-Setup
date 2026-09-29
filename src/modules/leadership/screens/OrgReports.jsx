@@ -36,6 +36,7 @@ import { ExportReportButtons } from './ExportReport.jsx';
 import { KpiCoverage } from './KpiCoverage.jsx';
 import { DecisionPanel } from './DecisionLink.jsx';
 import { RespondPanel } from './RespondToSection.jsx';
+import { recordUrl, openRecord, citationRecordId } from '../recordLinks.js';
 import { AchievementFigures } from './AchievementFigures.jsx';
 
 /* The dashboards behind a cited KPI. Collapsed by default -- a report citing
@@ -646,6 +647,16 @@ export function ScreenOrgReports(){
                                             ? <CiteMeta rows={projectMetaRows(
                                                 (procProj.projects || []).find(p => p.id === c.projectId))}/>
                                             : null}
+                                          {/* The record itself, in the app it lives in (recordLinks.js). */}
+                                          {(() => {
+                                            const link = recordUrl(c.kind, citationRecordId(c));
+                                            return link
+                                              ? <div style={{ marginTop: 6 }}>
+                                                  <Btn k="sm" title={`Open this ${c.kind} in ${link.app}, in a new tab`}
+                                                    onClick={() => openRecord(c.kind, citationRecordId(c))}>
+                                                    Open in {link.app} ↗</Btn></div>
+                                              : null;
+                                          })()}
                                           {c.citedReportId && reports.some(r => r.id === c.citedReportId)
                                             ? <div style={{ marginTop: 6 }}>
                                                 <Btn k="sm" onClick={() => { setDir('all'); setQ('');

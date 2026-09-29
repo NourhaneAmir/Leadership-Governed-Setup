@@ -30,6 +30,7 @@ import { Btn, Tag, Empty, Note, Combo } from '../../../shared/ui.jsx';
 import { fmtD, fmtP, TODAY } from '../../../shared/format.js';
 import { matchesQuery } from '../domain.jsx';
 import { NewTaskForm } from './BuildReport.jsx';
+import { openRecord } from '../recordLinks.js';
 import { fetchReportShares, shareReportOccurrence, fetchTasks,
          fetchAssignableUsers } from '../../../services/dataverse.js';
 
@@ -180,7 +181,8 @@ function TaskList({rows, mineOnly}){
     (DONE.has(a.status) - DONE.has(b.status))
     || String(a.due || '9999').localeCompare(String(b.due || '9999')));
   return <table className="data">
-    <thead><tr><th>Task</th><th>Assignee</th><th>Priority</th><th>Due</th><th>Status</th></tr></thead>
+    <thead><tr><th>Task</th><th>Assignee</th><th>Priority</th><th>Due</th><th>Status</th>
+      <th aria-label="Open"></th></tr></thead>
     <tbody>{sorted.map(t => {
       const late = t.due && !DONE.has(t.status) && t.due < TODAY;
       return <tr key={t.id}>
@@ -194,6 +196,9 @@ function TaskList({rows, mineOnly}){
         <td className="dim">{t.due ? fmtD(t.due) : '—'}
           {late ? <Tag c="red" style={{marginLeft:6}}>overdue</Tag> : null}</td>
         <td><Tag c={DONE.has(t.status) ? 'grey' : 'teal'}>{t.status || '—'}</Tag></td>
+        {/* The task's own record, in TMS App (recordLinks.js). */}
+        <td style={{textAlign:'right'}}><Btn k="sm" title="Open this task in TMS App, in a new tab"
+          onClick={() => openRecord('Task', t.id)}>Open ↗</Btn></td>
       </tr>;})}
     </tbody></table>;
 }
