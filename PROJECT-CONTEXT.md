@@ -8402,6 +8402,60 @@ come from the live Category list, with a fallback to the stamped
 `lm_category_name`. Governance builds; lint unchanged. Not browser-checked,
 not committed.
 
+### 29 Sep: confidential agenda items in Stage 4 Minutes
+
+Per an explicit ask. Stage 4 meetings only (`rec.stage` starts "Stage 4").
+Schema read from IT with `pac modelbuilder build`:
+**`lm_momnotes.lm_confidential`** (Yes/No, already there) and
+**`lm_meetingminutesreviewerlist`** (`lm_meetingminutesreviewerlists`):
+`lm_MOMNotes` → `lm_momnotes`, `lm_ViewerUser` → **`systemusers`**, `lm_name`.
+The user named this table. `lm_topmanagementmeetingcategory` was the first
+guess and cannot hold this (Setup + Category only).
+
+- **Minutes tab (`DvMinutesBody`):** the **Facilitator** (signed-in user holds
+  `rec.facilitatorPositionId`) gets a Confidential checkbox per agenda item while
+  the Minutes are being drafted, then a checklist of the occurrence's attendees.
+  Each attendee's Position resolves to its holder's systemuser id
+  (`DV_POS_LIST.holderUserId`). An attendee whose Position has no linked user
+  can't be ticked.
+- **Who reads a confidential item:** ticked viewers, the Facilitator and the
+  Chair. Everyone else sees the title and a 🔒 tag, but not the note or the
+  decisions panel. An item marked before any note exists gets an empty note row
+  to carry the flag.
+- **Data:** `setMomNoteConfidential()`, `saveMomNoteViewers()` (add / delete
+  rows), and `fetchNoteViewers()` reading viewers for confidential notes on both
+  Minutes fetches. Switching confidentiality off keeps the viewer rows.
+- ⚠️ **App-side hiding only.** The note text still reaches every client that
+  can read `lm_momnotes`. Real protection needs Dataverse security.
+- ⚠️ Facilitator and Chair are identified through `myPositionIds`. If the
+  signed-in user's Position doesn't resolve, they get no controls.
+- Only the Minutes tab shows live note text (other `mom.notes` readers are
+  seeded). Both apps build; lint unchanged. Not browser-checked, not committed.
+
+### 29 Sep: Meeting Minutes export to Word
+
+Per an explicit ask. **Export to Word** button in the Minutes tab header
+(`DvMinutesBody`), any Minutes status. New `src/services/minutesExport.js`:
+`minutesToDocx(model)` is a pure writer (docx, dynamically imported, like
+`reportToDocx`), and `exportMinutesDocx()` downloads through `reportExport.js`'s
+`downloadBlob`.
+
+- **Contents:**
+  - meeting details (date, time, mode, location, Stage, Chair, Facilitator)
+  - Minutes status and signature
+  - attendance table
+  - per agenda item: owner, covered, the discussion note, and its decisions
+    (`fetchWorkLogDecisions()` read fresh, matched on `agendaItemId`)
+  - an export stamp
+- **Confidential Stage 4 items follow the screen's rule (`canRead`).** A reader
+  who isn't allowed gets the title and a "withheld" line, with no note and no
+  decisions. An allowed reader gets a CONFIDENTIAL mark and the viewer list.
+- The export uses the text shown on screen, which includes a note still being
+  typed and not yet saved.
+- Checked: both apps build, lint unchanged. A sample model through
+  `minutesToDocx` in Node produced a valid .docx (document.xml parses; the
+  withheld item and a decision are present). Not browser-checked, not committed.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap

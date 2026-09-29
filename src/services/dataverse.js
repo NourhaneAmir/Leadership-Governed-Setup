@@ -4897,17 +4897,54 @@ const nowIso = () => new Date().toISOString();
 const MOM_SELECT = ['lm_meetingminutesid','lm_name','lm_status','lm_submittedat','lm_approvedat',
                     'lm_closedat','lm_returnreason','lm_signeddate','lm_signedtime','lm_signedname',
                     '_lm_meetingoccurrence_value','_lm_signedbyposition_value','modifiedon','createdon'];
-const NOTE_SELECT = ['lm_momnotesid','lm_name','lm_notes','_lm_meetingminutes_value','_lm_agendaitem_value'];
+const NOTE_SELECT = ['lm_momnotesid','lm_name','lm_notes','lm_confidential','_lm_meetingminutes_value','_lm_agendaitem_value'];
+
+/* Confidential agenda items (Stage 4 meetings only -- the rule lives in the
+   Minutes tab). A MOM Note carries lm_confidential; who may read it is one
+   lm_meetingminutesreviewerlists row per person: lm_MOMNotes -> lm_momnoteses,
+   lm_ViewerUser -> systemusers (targets read with `pac modelbuilder build`,
+   29 Sep). ⚠️ This hides the note in the app only -- the rows are still
+   readable to anyone with Read on lm_momnotes; real protection needs
+   Dataverse security on top. */
+const Lm_meetingminutesreviewerlistsService =
+  dvTable('lm_meetingminutesreviewerlists', 'lm_meetingminutesreviewerlistid', IT_ORG);
+const VIEWER_SELECT = ['lm_meetingminutesreviewerlistid','_lm_momnotes_value','_lm_vieweruser_value'];
+
+/* Viewer rows for the given notes, grouped by note id. Filtered by note id so
+   one meeting's Minutes do not pull the whole table; chunked because an OData
+   filter has a length limit. A failure leaves every note with no viewers,
+   which only ever hides more, never less. */
+async function fetchNoteViewers(noteIds){
+  const ids = [...new Set((noteIds || []).filter(Boolean))];
+  const out = new Map();
+  for(let i = 0; i < ids.length; i += 25){
+    const chunk = ids.slice(i, i + 25);
+    try{
+      const res = await Lm_meetingminutesreviewerlistsService.getAll({
+        select: VIEWER_SELECT,
+        filter: `statecode eq 0 and (${chunk.map(id => `_lm_momnotes_value eq ${id}`).join(' or ')})`,
+      });
+      for(const r of (res?.data ?? [])){
+        const k = r._lm_momnotes_value; if(!k) continue;
+        if(!out.has(k)) out.set(k, []);
+        out.get(k).push({ rowId: r.lm_meetingminutesreviewerlistid, userId: r._lm_vieweruser_value || null });
+      }
+    }catch(e){ console.warn('[dataverse] MOM note viewers fetch failed:', e); }
+  }
+  return out;
+}
 
 /* One Minutes row plus the Notes belonging to it, in the shape the Minutes tab
    and the scoring engine already expect. `notes` carries the row ids an edit
    needs; `notesByAgenda` is the plain {agendaItemId: text} map the Audit Grid's
    AG-06 reads. Both are returned because they serve different callers. */
-function shapeMinutes(m, noteRows){
+function shapeMinutes(m, noteRows, viewersByNote){
   const notes = (noteRows || []).map(n => ({
     id: n.lm_momnotesid,
     agendaItemId: n._lm_agendaitem_value || null,
     text: n.lm_notes || '',
+    confidential: !!n.lm_confidential,
+    viewers: viewersByNote?.get(n.lm_momnotesid) || [],
   }));
   const notesByAgenda = {};
   notes.forEach(n => { if(n.agendaItemId) notesByAgenda[n.agendaItemId] = n.text; });
@@ -4940,7 +4977,8 @@ export async function fetchMeetingMinutes(){
       .catch(e=>{ console.warn('[dataverse] MOM notes fetch failed:', e); return null; }),
   ]);
   const notesBy = groupBy(noteRes?.data, '_lm_meetingminutes_value');
-  return (momRes?.data ?? []).map(m => shapeMinutes(m, notesBy.get(m.lm_meetingminutesid)));
+  const viewers = await fetchNoteViewers((noteRes?.data ?? []).filter(n => n.lm_confidential).map(n => n.lm_momnotesid));
+  return (momRes?.data ?? []).map(m => shapeMinutes(m, notesBy.get(m.lm_meetingminutesid), viewers));
 }
 
 /** The Minutes of one occurrence, or null. Server-side filtered so the Meeting
@@ -4956,7 +4994,8 @@ export async function fetchMeetingMinutesByOccurrence(occurrenceId){
     filter: `_lm_meetingminutes_value eq ${m.lm_meetingminutesid} and statecode eq 0`,
     select: NOTE_SELECT,
   }).catch(e=>{ console.warn('[dataverse] MOM notes fetch failed:', e); return null; });
-  return shapeMinutes(m, noteRes?.data);
+  const viewers = await fetchNoteViewers((noteRes?.data ?? []).filter(n => n.lm_confidential).map(n => n.lm_momnotesid));
+  return shapeMinutes(m, noteRes?.data, viewers);
 }
 
 /**
@@ -5043,6 +5082,51 @@ export async function archiveMomNote(noteId){
   }catch(e){
     return { id: null, errors: [{ table:'lm_momnoteses', error:e }] };
   }
+}
+
+/**
+ * Marks one Agenda Item's note confidential (or not). An item marked before
+ * anything is written has no note row yet, so one is created, empty, to carry
+ * the flag. Switching it off leaves the viewer rows alone: they only take
+ * effect while the flag is on, and keeping them means switching back on does
+ * not lose the list.
+ */
+export async function setMomNoteConfidential(minutesId, agendaItemId, noteId, confidential){
+  try{
+    let id = noteId;
+    if(!id) id = await createMomNoteRow(minutesId, agendaItemId, '');
+    assertSuccess(await Lm_momnotesesService.update(id, { lm_confidential: !!confidential }));
+    return { id, errors: [] };
+  }catch(e){
+    return { id: null, errors: [{ table:'lm_momnoteses', error:e }] };
+  }
+}
+
+/**
+ * Makes a note's viewer list exactly `userIds` (systemuser ids): adds a
+ * lm_meetingminutesreviewerlists row for each new person, deletes the row of
+ * each one taken off. `current` is the note's viewers as last read.
+ */
+export async function saveMomNoteViewers(noteId, userIds, current){
+  const errors = [];
+  const want = new Set((userIds || []).filter(Boolean));
+  const have = new Map((current || []).filter(v => v.userId).map(v => [v.userId, v.rowId]));
+  for(const uid of want){
+    if(have.has(uid)) continue;
+    try{
+      await Lm_meetingminutesreviewerlistsService.create({
+        lm_name: 'MOM note viewer',
+        'lm_MOMNotes@odata.bind': `/lm_momnoteses(${noteId})`,
+        'lm_ViewerUser@odata.bind': `/systemusers(${uid})`,
+      });
+    }catch(e){ errors.push({ table:'lm_meetingminutesreviewerlists', error:e }); }
+  }
+  for(const [uid, rowId] of have){
+    if(want.has(uid) || !rowId) continue;
+    try{ await Lm_meetingminutesreviewerlistsService.delete(rowId); }
+    catch(e){ errors.push({ table:'lm_meetingminutesreviewerlists', error:e }); }
+  }
+  return { id: errors.length ? null : noteId, errors };
 }
 
 /**

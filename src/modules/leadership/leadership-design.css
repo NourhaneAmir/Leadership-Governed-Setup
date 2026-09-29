@@ -58,6 +58,9 @@
 
 /* ---------- stat cards ---------- */
 .cs-root .cs-stats{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:11px }
+.cs-root .cs-stats.five{ grid-template-columns:repeat(5,minmax(0,1fr)) }
+@media (max-width:1024px){ .cs-root .cs-stats.five{ grid-template-columns:repeat(2,minmax(0,1fr)) } }
+@media (max-width:560px){ .cs-root .cs-stats.five{ grid-template-columns:1fr } }
 .cs-root .cs-stat{
   background:var(--cs-grad-card); border:1px solid var(--cs-border); border-radius:16px;
   padding:13px 15px; position:relative; overflow:hidden;

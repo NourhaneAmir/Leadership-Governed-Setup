@@ -12,6 +12,7 @@ import { ymd, TODAY, PERIOD, HOLIDAYS, isNonWorking, isWeekend,
          addDays, addHours, nowStamp, money, pct, uid,
          band, scoreColour, pctColour } from '../../shared/format.js';
 import { Ctx, use } from './store.jsx';
+import { exportMinutesDocx } from '../../services/minutesExport.js';
 /* The Artifact screens live in their own files — see screens/README-less
    note in domain.jsx for why the domain had to move first. */
 import { ScreenBI } from './screens/BusinessIntelligence.jsx';
@@ -43,6 +44,7 @@ import { fetchMeetingOccurrences, fetchReportOccurrences, createMeetingOccurrenc
          fetchWorkLogDecisions, createWorkLogDecision, linkWorkLogDecision, fetchReportSectionsByIds,
          fetchReportOccurrenceForEdit,
          fetchAuthorityMatrix, createMeetingMinutes, saveMomNote, updateAgendaCovered,
+         setMomNoteConfidential, saveMomNoteViewers,
          submitMeetingMinutes, updateMeetingMinutesStatus, returnMeetingMinutes,
          signMeetingMinutes, createAuditGridInstance, MOM_NOTE_MAX,
          saveAuditGridAnswer, archiveAuditGridAnswer, updateAuditGridState, approveAuditGridInstance,
@@ -1206,6 +1208,46 @@ function liveAttendance(attendees, mode){
   });
   return { pct: den ? (num/den)*100 : 0,
     present: rows.filter(a=>a.present==='Present'||a.delegatePositionId).length, total: rows.length };
+}
+
+/* Quorum for one live occurrence, against its Setup's lm_quorumthreshold (a
+   percentage of Required Attendees -- the Setup stores a %, so the head count
+   is derived: ceil(threshold% x Required)). Measured with liveAttendance(), the
+   same count AG-08 scores, so the meeting page and the Audit Grid never
+   disagree. States:
+     none        -- no Setup, or the Setup has no threshold
+     noRequired  -- a threshold, but no Required Attendee to measure it on
+     pending     -- not held yet (shows what will be needed)
+     incomplete  -- held, not met on what is recorded, some Required attendance
+                    still unrecorded (recording it could still meet it)
+     met / missed
+   An unrecorded attendee counts as not present, so a quorum already met with
+   some unrecorded stays met. */
+function liveQuorum(occ, tpl, mode){
+  const threshold = tpl?.quorumPct;
+  if(threshold==null) return { state:'none' };
+  const req = (occ.attendees||[]).filter(a=>(a.type||'Required')==='Required');
+  const need = Math.ceil(threshold/100*req.length);
+  const base = { threshold, need, total:req.length };
+  if(!req.length) return { ...base, state:'noRequired' };
+  if(occ.status!=='Held') return { ...base, state:'pending' };
+  const a = liveAttendance(occ.attendees, mode);
+  const unrecorded = req.filter(x=>!x.delegatePositionId && (!x.present || x.present==='Not Yet Recorded')).length;
+  const met = a.pct >= threshold;
+  return { ...base, pct:a.pct, present:a.present, unrecorded,
+    state: met ? 'met' : unrecorded ? 'incomplete' : 'missed' };
+}
+const QUORUM_TAG = {
+  met:['green','Quorum met'], missed:['red','Quorum missed'], incomplete:['amber','Quorum not yet met'],
+  pending:['grey','Quorum pending'], noRequired:['grey','No Required Attendee'],
+};
+function quorumLine(qr){
+  if(qr.state==='none') return 'No quorum threshold is configured on the Setup.';
+  if(qr.state==='noRequired') return `The Setup sets a ${qr.threshold}% quorum, but this occurrence has no Required Attendee.`;
+  if(qr.state==='pending') return `Needs ${qr.need} of ${qr.total} Required Attendees present (${qr.threshold}%).`;
+  const got = `${qr.present} of ${qr.total} Required present (${Math.round(qr.pct)}%) against ${qr.threshold}% — ${qr.need} needed.`;
+  return qr.state==='incomplete'
+    ? `${got} ${qr.unrecorded} Required attendance${qr.unrecorded===1?' is':'s are'} not yet recorded.` : got;
 }
 
 /* Live equivalent of scoreGrid() above: same 16-question catalogue, same
@@ -5406,9 +5448,9 @@ const occStatusTag = (o,mom,grid) => {
    Two consequences worth naming. "Held and closed" can no longer mean a closed
    Minutes record, because no such record exists in Dataverse yet — a held
    Meeting counts as settled once every Agenda Item has an outcome and every
-   Attendee has attendance recorded. And quorum is not reported at all: it is a
-   threshold on the Meeting Template, and matching it against live attendance is
-   its own piece of work. */
+   Attendee has attendance recorded. Quorum is measured against the Meeting
+   Template's threshold by liveQuorum() (29 Sep); quorum does not decide
+   whether a Meeting is settled. */
 function ScreenMeetings(){
   const {sel,setSel,dvMeetingOccs,dvMinutes,S,dvLoading,dvError,openMeeting} = use();
   const [mk,setMk]=useState(null);
@@ -5443,6 +5485,9 @@ function ScreenMeetings(){
   const cancelled = list.filter(o=>o.status==='Cancelled').sort(byDateDesc);
   const openAfter = held.filter(o=>!fullyRecorded(o));
   const settled   = held.filter(o=>fullyRecorded(o));
+  /* Quorum per occurrence, against its Setup's threshold -- see liveQuorum(). */
+  const quorumOf = o => liveQuorum(o, dvTplDetail(o.templateId), S.delegatedAttend);
+  const quorumMissed = held.filter(o=>quorumOf(o).state==='missed');
 
   const TABS=[
     {id:'due',    label:'Not yet held',      rows:upcoming},
@@ -5519,8 +5564,9 @@ function ScreenMeetings(){
      #v-meetings), styled by leadership-design.css under .cs-root. Same data,
      filters and search as before, plus Export (CSV of the rows shown). The
      design's Inputs Ready, Calendar, Minutes and Gov. Score columns and its
-     "Quorum missed" card are not added: quorum is not reported (see the
-     header comment), and the rest would be new features, not styling. */
+     "Quorum missed" card were left out at first; the Quorum missed card and a
+     quorum marker under Attendees were added 29 Sep (liveQuorum()). The rest
+     would be new features, not styling. */
   return <div className="cs-root">
     <div className="cs-head">
       <div className="cs-head-top">
@@ -5542,7 +5588,7 @@ function ScreenMeetings(){
       </div>
     </div>
 
-    <div className="cs-stats">
+    <div className="cs-stats five">
       <div className="cs-stat acc-green"><div className="cs-stat-lbl">Not yet held</div>
         <div className="cs-stat-val">{upcoming.length}</div><div className="cs-stat-meta">scheduled</div></div>
       <div className="cs-stat acc-amber"><div className="cs-stat-lbl">Held, record open</div>
@@ -5553,6 +5599,9 @@ function ScreenMeetings(){
       <div className="cs-stat acc-alert"><div className="cs-stat-lbl">Cancelled</div>
         <div className="cs-stat-val">{cancelled.length}</div>
         <div className="cs-stat-meta">create no governance record</div></div>
+      <div className="cs-stat acc-alert"><div className="cs-stat-lbl">Quorum missed</div>
+        <div className="cs-stat-val">{quorumMissed.length}</div>
+        <div className="cs-stat-meta">held below the Setup's threshold</div></div>
     </div>
 
     <div className="cs-chips" role="group" aria-label="Filter by type">
@@ -5626,7 +5675,13 @@ function ScreenMeetings(){
                         ? <span className={'cs-count'+(o.status==='Held'&&recd<o.attendees.length?' warn':'')}>
                             {o.status==='Held'?`${present}/${o.attendees.length} present`
                               :`${o.attendees.length}`}</span>
-                        : <span className="cs-count bad"><i/>None</span>}</td>
+                        : <span className="cs-count bad"><i/>None</span>}
+                        {(()=>{ const qr=quorumOf(o);
+                          return qr.state==='met'||qr.state==='missed'||qr.state==='incomplete'
+                            ? <div className="cs-cov-sub" style={{marginTop:3,
+                                color:qr.state==='met'?'var(--cs-green)':qr.state==='missed'?'var(--cs-danger)':'var(--cs-warning)'}}>
+                                {QUORUM_TAG[qr.state][1]}</div>
+                            : null; })()}</td>
                       <td><span className={'cs-badge '+statusBadge(o)}><i/>{o.status||'—'}</span></td>
                       <td><button type="button" className="cs-btn"
                           onClick={e=>{ e.stopPropagation(); open(); }}>View</button></td>
@@ -6138,14 +6193,66 @@ const fmtISODT = s => { if(!s) return '—';
  * return reason standing. That reason is therefore what distinguishes the two
  * Draft states from each other, and submitting clears it. */
 function DvMinutesBody({rec,minutes,accred,grids,posName,onReload}){
-  const {toast}=use();
+  const {toast,dvLookup,currentUser}=use();
   const [drafts,setDrafts]=useState({});        // agendaItemId -> unsaved text
   const [savingNote,setSavingNote]=useState(null);
   const [busy,setBusy]=useState(null);
   const [returning,setReturning]=useState(false);
 
-  const noteIdFor = {};
-  minutes.notes.forEach(n=>{ if(n.agendaItemId) noteIdFor[n.agendaItemId]=n.id; });
+  const noteIdFor = {}, noteFor = {};
+  minutes.notes.forEach(n=>{ if(n.agendaItemId){ noteIdFor[n.agendaItemId]=n.id; noteFor[n.agendaItemId]=n; } });
+
+  /* Confidential agenda items -- Stage 4 meetings only. The Facilitator marks
+     an item confidential and picks, from this meeting's attendees, who may read
+     its note (lm_momnotes.lm_confidential + lm_meetingminutesreviewerlists).
+     Everyone else sees the item's title but not its note or its decisions.
+     The Facilitator and the Chair always read every item: one writes the
+     Minutes, the other approves them. ⚠️ App-side only -- see dataverse.js. */
+  const stage4 = /^Stage 4/.test(rec.stage||'');
+  const mine = new Set(dvLookup?.myPositionIds||[]);
+  const myUserId = currentUser?.systemUserId || null;
+  const isFacilitator = !!rec.facilitatorPositionId && mine.has(rec.facilitatorPositionId);
+  const isChair = !!rec.chairPositionId && mine.has(rec.chairPositionId);
+  const isConf = a => stage4 && !!noteFor[a.id]?.confidential;
+  const canRead = a => !isConf(a) || isFacilitator || isChair
+    || (!!myUserId && (noteFor[a.id].viewers||[]).some(v=>v.userId===myUserId));
+  /* The people who can be chosen: this occurrence's attendees, each resolved
+     through their Position to the user who holds it. One entry per person. */
+  const attendeeUsers = (()=>{
+    const seen = new Set(), out = [];
+    rec.attendees.filter(a=>a.positionId).forEach(a=>{
+      const p = DV_POS_LIST.find(x=>x.id===a.positionId);
+      const userId = p?.holderUserId || null;
+      if(userId && seen.has(userId)) return;
+      if(userId) seen.add(userId);
+      out.push({ key:a.id, userId,
+        name: p?.holder || DV_POS_HOLDER[a.positionId] || a.name || 'Unnamed attendee',
+        position: posName(a.positionId) || '' });
+    });
+    return out;
+  })();
+
+  const setConfidential = async (a, on) => {
+    setSavingNote(a.id);
+    try{
+      const {id,errors} = await setMomNoteConfidential(minutes.id, a.id, noteIdFor[a.id], on);
+      if(!id){ console.warn('[dataverse] setMomNoteConfidential() failed:', errors);
+               toast('Not saved','The confidentiality flag could not be saved.','err'); return; }
+      await onReload();
+    }finally{ setSavingNote(null); }
+  };
+  const toggleViewer = async (a, userId) => {
+    const n = noteFor[a.id]; if(!n) return;
+    const cur = (n.viewers||[]).map(v=>v.userId).filter(Boolean);
+    const next = cur.includes(userId) ? cur.filter(x=>x!==userId) : [...cur, userId];
+    setSavingNote(a.id);
+    try{
+      const {id,errors} = await saveMomNoteViewers(n.id, next, n.viewers);
+      if(!id){ console.warn('[dataverse] saveMomNoteViewers() failed:', errors);
+               toast('Not saved','Who can see this item could not be saved.','err'); }
+      await onReload();
+    }finally{ setSavingNote(null); }
+  };
 
   const closed       = minutes.status==='Closed';
   const approved     = minutes.status==='Approved';
@@ -6258,6 +6365,64 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload}){
     : awaitingChair ? <Tag c="amber">Submitted — with the Chair</Tag>
     : returned ? <Tag c="red">Returned for revision</Tag>
     : <Tag c="grey">Draft</Tag>;
+  const stateLabel = closed ? 'Closed' : approved ? 'Approved' : awaitingChair ? 'Submitted — with the Chair'
+    : returned ? 'Returned for revision' : 'Draft';
+
+  /* Word export of these Minutes (minutesExport.js). Built from what this tab
+     already shows, so the file matches the screen -- including confidential
+     Stage 4 items, which export as title + "withheld" for anyone who cannot
+     read them here. Decisions are read fresh so the file carries the latest. */
+  const [exporting,setExporting]=useState(false);
+  const holderOr = id => (id && DV_POS_HOLDER[id]) || posName(id) || null;
+  const exportWord = async () => {
+    if(exporting) return;
+    setExporting(true);
+    try{
+      let decisions = [];
+      try{ decisions = await fetchWorkLogDecisions(); }
+      catch(e){ console.warn('[minutesExport] decisions could not be read; exporting without them:', e); }
+      const userName = id => attendeeUsers.find(u=>u.userId===id)?.name || null;
+      const model = {
+        meeting: {
+          name: rec.name, date: rec.date ? fmtD(rec.date) : null,
+          time: [rec.start, rec.end].filter(Boolean).join(' – ') || null,
+          mode: rec.mode, location: rec.location, link: rec.link, stage: rec.stage, status: rec.status,
+          chair: holderOr(rec.chairPositionId), facilitator: holderOr(rec.facilitatorPositionId),
+        },
+        minutes: {
+          status: stateLabel,
+          submitted: minutes.submittedAt ? fmtISODT(minutes.submittedAt) : null,
+          approved: minutes.approvedAt ? fmtISODT(minutes.approvedAt) : null,
+          closed: minutes.closedAt ? fmtISODT(minutes.closedAt) : null,
+          signedBy: posName(minutes.signedByPositionId) || minutes.signedName || null,
+          signedOn: minutes.signedDate
+            ? fmtD(minutes.signedDate) + (minutes.signedTime ? ' · ' + minutes.signedTime : '') : null,
+        },
+        attendees: rec.attendees.map(a=>({
+          name: (a.positionId && DV_POS_HOLDER[a.positionId]) || a.name || null,
+          position: posName(a.positionId) || null, type: a.type, present: a.present })),
+        agenda: rec.agenda.map((a,i)=>{
+          const readable = canRead(a), conf = isConf(a);
+          return {
+            seq: a.seq ?? i+1, title: a.title, owner: posName(a.ownerPositionId) || null,
+            covered: a.covered, confidential: conf, withheld: !readable,
+            viewers: conf && readable ? (noteFor[a.id]?.viewers||[]).map(v=>userName(v.userId)).filter(Boolean) : [],
+            note: readable ? textFor(a).trim() : null,
+            decisions: readable
+              ? decisions.filter(d=>d.agendaItemId===a.id).map(d=>({ name:d.name, taken:d.decisionTaken, status:d.status }))
+              : [],
+          };
+        }),
+        generatedAt: fmtISODT(new Date().toISOString()),
+        exportedBy: currentUser?.fullName || null,
+      };
+      const { filename } = await exportMinutesDocx(model);
+      toast('Exported', `${filename} has downloaded.`, 'ok');
+    }catch(e){
+      console.warn('[minutesExport] failed:', e);
+      toast('Export failed', 'The Minutes could not be exported: ' + (e?.message || 'unknown error'), 'err');
+    }finally{ setExporting(false); }
+  };
 
   return <>
     <div className="card">
@@ -6265,6 +6430,9 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload}){
         {stateTag}
         {minutes.signedName && <Tag c="grey">🖊 Signed</Tag>}
         {closed && <Tag c="grey">🔒 Locked</Tag>}
+        <div style={{flex:1}}/>
+        <Btn k="sm" disabled={exporting} onClick={exportWord}>
+          {exporting ? 'Exporting…' : 'Export to Word'}</Btn>
       </div>
       <KVBlock items={[
         ['Submitted', fmtISODT(minutes.submittedAt)],
@@ -6290,16 +6458,61 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload}){
             {rec.agenda.map((a,i)=>{
               const val = textFor(a);
               const over = val.trim().length>MOM_NOTE_MAX;
+              const conf = isConf(a);
+              const note = noteFor[a.id];
+              const viewerIds = new Set((note?.viewers||[]).map(v=>v.userId));
+              if(!canRead(a)) return <div key={a.id} style={{borderTop:i?'1px solid var(--border)':'none',paddingTop:i?13:4}}>
+                <div style={{display:'flex',alignItems:'baseline',gap:9,flexWrap:'wrap',marginBottom:6}}>
+                  <span className="dim" style={{fontSize:12}}>{a.seq??i+1}</span>
+                  <b style={{fontSize:13.5,flex:'1 1 220px'}}>{a.title||'—'}</b>
+                  <Tag c="red">🔒 Confidential</Tag>
+                </div>
+                <div style={{fontSize:12.5,color:'var(--muted)'}}>
+                  This item is confidential. Only the people the Facilitator chose can read its notes and decisions.</div>
+              </div>;
               return <div key={a.id} style={{borderTop:i?'1px solid var(--border)':'none',paddingTop:i?13:4}}>
                 <div style={{display:'flex',alignItems:'baseline',gap:9,flexWrap:'wrap',marginBottom:6}}>
                   <span className="dim" style={{fontSize:12}}>{a.seq??i+1}</span>
                   <b style={{fontSize:13.5,flex:'1 1 220px'}}>{a.title||'—'}</b>
+                  {conf && <Tag c="red">🔒 Confidential</Tag>}
                   {editable
                     ? <Pills opts={['Yes','No']} val={a.covered==='Yes'?'Yes':a.covered==='No'?'No':null}
                         onChange={v=>setCovered(a, v||'Not Yet Recorded')}/>
                     : <Tag c={a.covered==='Yes'?'green':a.covered==='No'?'red':'grey'}>
                         {a.covered||'Not Yet Recorded'}</Tag>}
                 </div>
+                {stage4 && isFacilitator && editable
+                  ? <div style={{margin:'2px 0 8px',padding:'8px 10px',border:'1px solid var(--border)',
+                                 borderRadius:8,background:'var(--surface)'}}>
+                      <label style={{display:'flex',alignItems:'center',gap:7,fontSize:12.5,cursor:'pointer'}}>
+                        <input type="checkbox" id={'conf-'+a.id} checked={conf} disabled={savingNote===a.id}
+                          onChange={e=>setConfidential(a, e.target.checked)}/>
+                        <b>Confidential</b>
+                        <span className="dim">Only the people ticked below, the Facilitator and the Chair can read this item.</span>
+                      </label>
+                      {conf && <div style={{marginTop:8}}>
+                        <div style={{fontSize:11.5,color:'var(--muted)',marginBottom:5}}>
+                          Who can see it · {viewerIds.size} chosen</div>
+                        {attendeeUsers.length===0
+                          ? <div className="dim" style={{fontSize:12}}>This meeting has no attendees to choose from.</div>
+                          : <div style={{display:'flex',flexWrap:'wrap',gap:'6px 14px'}}>
+                              {attendeeUsers.map(u=>
+                                <label key={u.key} title={u.userId?u.position:'No user account is linked to this Position'}
+                                  style={{display:'flex',alignItems:'center',gap:6,fontSize:12.5,
+                                          opacity:u.userId?1:.55,cursor:u.userId?'pointer':'not-allowed'}}>
+                                  <input type="checkbox" checked={!!u.userId && viewerIds.has(u.userId)}
+                                    disabled={!u.userId || savingNote===a.id}
+                                    onChange={()=>toggleViewer(a, u.userId)}/>
+                                  {u.name}{u.position?<span className="dim">· {u.position}</span>:null}
+                                </label>)}
+                            </div>}
+                      </div>}
+                    </div>
+                  : conf && isFacilitator
+                    ? <div className="dim" style={{fontSize:11.5,margin:'0 0 6px'}}>
+                        Visible to {attendeeUsers.filter(u=>u.userId && viewerIds.has(u.userId)).map(u=>u.name).join(', ')
+                          || 'nobody besides the Facilitator and the Chair'}.</div>
+                    : null}
                 {editable
                   ? <>
                       <textarea rows={3} value={val} disabled={savingNote===a.id}
@@ -7053,6 +7266,7 @@ function DvMeetingDetail({rec,back}){
   const present = rec.attendees.filter(a=>a.present==='Present').length;
   const required = rec.attendees.filter(a=>(a.type||'Required')==='Required');
   const requiredPresent = required.filter(a=>a.present==='Present').length;
+  const quorum = liveQuorum(rec, tpl, S.delegatedAttend);
   const durMin = (()=>{
     if(!rec.start||!rec.end) return null;
     const [sh,sm]=rec.start.split(':').map(Number), [eh,em]=rec.end.split(':').map(Number);
@@ -7102,6 +7316,7 @@ function DvMeetingDetail({rec,back}){
     {rec.rescheduledFromId && <Note k="warn"><b>Rescheduled.</b> This occurrence carries a link to the
       one it was moved from. Only this occurrence moved — the series is unchanged.</Note>}
     {rec.status==='Cancelled' && <Note k="err"><b>Cancelled.</b> {rec.cancelReason||'No reason recorded.'}</Note>}
+    {quorum.state==='missed' && <Note k="err"><b>Quorum missed.</b> {quorumLine(quorum)}</Note>}
     {rec.status==='Scheduled' && !docsLoading && notReady>0 &&
       <Note k="warn"><b>{notReady} input{notReady===1?' is':'s are'} not yet {needApproved?'approved':'submitted'}.</b>
         {' '}Every input should reach at least {needApproved?'Approved':'In Review'} before the meeting.
@@ -7177,9 +7392,10 @@ function DvMeetingDetail({rec,back}){
             <span style={{fontWeight:700,fontSize:13,minWidth:32,textAlign:'right'}}>
               {requiredPresent}/{required.length}</span>
           </div>
-          {tpl && tpl.quorumPct!=null &&
-            <Note k="info">Attendance is recorded after the meeting is held. Quorum requires
-              {' '}{Math.ceil(tpl.quorumPct/100*required.length)} of {required.length} required members.</Note>}
+          {quorum.state!=='none' &&
+            <Note k={quorum.state==='met'?'ok':quorum.state==='missed'?'err':quorum.state==='incomplete'?'warn':'info'}>
+              {quorum.state==='pending' ? 'Attendance is recorded after the meeting is held. ' : ''}
+              {quorumLine(quorum)}</Note>}
           <div style={{textAlign:'center',marginTop:10}}>
             <a onClick={()=>setTab('att')} style={{fontSize:12,color:'var(--teal-d)',fontWeight:650,
               cursor:'pointer'}}>View full attendance →</a></div>
@@ -7250,11 +7466,17 @@ function DvMeetingDetail({rec,back}){
             </div>)}
         </div>
 
-        {tpl && tpl.quorumPct!=null && <div className="card">
-          <h2>Quorum Rules</h2>
-          <div style={{border:'1px solid var(--green-bd)',background:'var(--green-bg)',borderRadius:8,
-            padding:'7px 10px',fontSize:12,color:'var(--green)',fontWeight:600}}>
-            ✓ Min {Math.ceil(tpl.quorumPct/100*required.length)} of {required.length} required</div>
+        {quorum.state!=='none' && <div className="card">
+          <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6,flexWrap:'wrap'}}>
+            <h2 style={{flex:1,margin:0}}>Quorum</h2>
+            <Tag c={QUORUM_TAG[quorum.state][0]}>{QUORUM_TAG[quorum.state][1]}</Tag>
+          </div>
+          <div style={{fontSize:12,color:'var(--ink-2)'}}>{quorumLine(quorum)}</div>
+          <div className="csub" style={{marginTop:6,marginBottom:0}}>
+            Threshold {quorum.threshold}% of Required Attendees, from the Setup. The same count scores AG-08.
+            {S.delegatedAttend==='exclude' ? ' Attendance by a delegate is not counted.'
+              : S.delegatedAttend==='half' ? ' Attendance by a delegate counts as half.'
+              : ' Attendance by a delegate counts in full.'}</div>
         </div>}
 
         <div className="card">
@@ -7349,7 +7571,11 @@ function DvMeetingDetail({rec,back}){
         <h2 style={{flex:1}}>Attendance</h2>
         {rec.status==='Held' && <Tag c={requiredPresent<required.length?'amber':'green'}>
           {requiredPresent} of {required.length} Required present</Tag>}
+        {quorum.state!=='none' && quorum.state!=='pending' &&
+          <Tag c={QUORUM_TAG[quorum.state][0]}>{QUORUM_TAG[quorum.state][1]}</Tag>}
       </div>
+      {quorum.state!=='none' &&
+        <div style={{padding:'0 17px 10px',fontSize:12,color:'var(--muted)'}}>{quorumLine(quorum)}</div>}
       {rec.status!=='Held' &&
         <div style={{padding:'0 17px 12px',fontSize:12,color:'var(--muted)'}}>
           Attendance is recorded after the meeting is held — mark it Held above to enable this.</div>}
