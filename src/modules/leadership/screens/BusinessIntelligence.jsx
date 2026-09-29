@@ -12,8 +12,9 @@ import { use } from '../store.jsx';
 import { Btn, Tag, Note, Empty, Bar, Combo } from '../../../shared/ui.jsx';
 import { PERIOD, fmtP } from '../../../shared/format.js';
 import { achFor, achPct, achCls, bdDims,
-         matchesQuery } from '../domain.jsx';
-import { fetchKpis, fetchProcesses, fetchBiReportDashboards } from '../../../services/dataverse.js';
+         matchesQuery, rptTagC } from '../domain.jsx';
+import { fetchKpis, fetchProcesses, fetchBiReportDashboards,
+         fetchReportOccurrenceContent } from '../../../services/dataverse.js';
 
 /* The Power BI embed.
 
@@ -267,10 +268,26 @@ export function ScreenBI(){
     return ()=>{ live = false; };
   },[]);
   const biList = biRows || [];
-  const {bu, dvLookup} = use();
+  const {bu, dvLookup, dvReportOccs, go} = use();
   const deptList = dvLookup?.deptList || [];
+  const funcList = dvLookup?.funcList || [];
   const [fProc,setFProc]   = useState('');
   const [fOwner,setFOwner] = useState('');
+  const [fKpi,setFKpi]     = useState('');
+  const [fFunc,setFFunc]   = useState('');
+
+  /* Every Report / Plan's citations -- which KPIs and Processes each one
+     cites -- for "find related reports" (Leadership Practice Extension, 29 Sep).
+     One read, the same one Reports / Plans makes; null while reading. */
+  const [cites,setCites] = useState(null);
+  useEffect(()=>{
+    let live = true;
+    fetchReportOccurrenceContent()
+      .then(c=>{ if(live) setCites(c); })
+      .catch(e=>{ console.warn('[dataverse] Report citations read for Business intelligence failed:', e);
+                  if(live) setCites({ sections: [], citations: [] }); });
+    return ()=>{ live = false; };
+  },[]);
   const [q,setQ]           = useState('');
   const [open,setOpen]     = useState(null);
   /* The month a report's figures are shown as of -- defaults to the current
@@ -305,12 +322,48 @@ export function ScreenBI(){
     biList.map(r=>({...r, kpi: r.kpiId ? (kpiById.get(r.kpiId)||null) : null})),
     [biList, kpiById]);
 
-  const matches = loading ? [] : reports.filter(r=>
-       (!fProc  || r.kpi?.processId===fProc)
+  /* A dashboard's Process and Department are its KPI's; it has no Function
+     of its own, so a Function filter leaves no dashboard. */
+  const matches = loading || fFunc ? [] : reports.filter(r=>
+       (!fKpi   || r.kpiId===fKpi)
+    && (!fProc  || r.kpi?.processId===fProc)
     && (!fOwner || r.kpi?.dept===fOwner)
     && matchesQuery(q,[r.name, r.kpi?.name, r.kpi?.processName, r.kpi?.deptName]));
 
-  const anyFilter = fProc||fOwner||q.trim();
+  /* Reports / Plans. A report's Department and Function are its own; its KPIs
+     are the ones its sections cite (KPI or Breakdown), and its Processes are
+     the ones it cites plus the Process of every KPI it cites. */
+  const related = useMemo(()=>{
+    if(!cites) return [];
+    const reportOfSection = new Map(cites.sections.map(x=>[x.id, x.reportId]));
+    const by = new Map();   // reportId -> { kpis:Set, procs:Set }
+    for(const c of cites.citations){
+      const rid = reportOfSection.get(c.sectionId); if(!rid) continue;
+      if(!by.has(rid)) by.set(rid, { kpis:new Set(), procs:new Set() });
+      const e = by.get(rid);
+      if(c.kpiId){ e.kpis.add(c.kpiId); const k = kpiById.get(c.kpiId); if(k?.processId) e.procs.add(k.processId); }
+      if(c.processId) e.procs.add(c.processId);
+    }
+    return (dvReportOccs||[]).map(r=>({ ...r,
+      kpiIds: by.get(r.id)?.kpis || new Set(), procIds: by.get(r.id)?.procs || new Set() }));
+  }, [cites, dvReportOccs, kpiById]);
+  const nameOf = (list, id) => (list||[]).find(x=>x.id===id)?.name || null;
+  const relatedMatches = related.filter(r=>
+       (!fKpi   || r.kpiIds.has(fKpi))
+    && (!fProc  || r.procIds.has(fProc))
+    && (!fOwner || r.departmentId===fOwner)
+    && (!fFunc  || r.functionId===fFunc)
+    && matchesQuery(q,[r.name, r.status, fmtP(r.period), dvLookup?.dept?.(r.departmentId),
+                       dvLookup?.func?.(r.functionId), dvLookup?.rptTpl?.(r.templateId)]))
+    .sort((a,b)=>String(b.period||'').localeCompare(String(a.period||'')) || a.name.localeCompare(b.name));
+  /* Why a report is listed, in the reader's terms. */
+  const why = () => [
+    fKpi  ? `cites ${nameOf(kpis, fKpi) || 'this KPI'}` : null,
+    fProc ? `covers ${nameOf(procs, fProc) || 'this Process'}` : null,
+  ].filter(Boolean).join(' · ');
+
+  const anyFilter = fKpi||fProc||fOwner||fFunc||q.trim();
+  const clearAll = ()=>{ setFKpi(''); setFProc(''); setFOwner(''); setFFunc(''); setQ(''); };
 
   return <>
     <div className="ph"><h1>Business intelligence</h1>
@@ -318,15 +371,21 @@ export function ScreenBI(){
         measurements — you cite one; there is nothing in it to argue with.</div></div>
 
     <div className="card">
-      <h2>Find a report</h2>
-      <div className="csub">Filters combine. Process and Department come from the report's linked
-        KPI where one exists — a report with no KPI linked is still listed, just not filterable by
-        either.</div>
+      <h2>Find related reports</h2>
+      <div className="csub">Filters combine, across Reports / Plans and dashboards. A report or plan
+        matches a KPI or Process it cites, and its own Department and Function. A dashboard matches
+        through its linked KPI (the KPI's Process and Department) and has no Function.</div>
       <div className="f-row3">
+        <Combo label="KPI" value={fKpi} onChange={setFKpi}
+          opts={loading ? [] : kpis} all="Any KPI" placeholder="Search KPIs…"/>
         <Combo label="Process" value={fProc} onChange={setFProc}
           opts={loading ? [] : procs} all="Any Process" placeholder="Search processes…"/>
-        <Combo label="Owning department" value={fOwner} onChange={setFOwner}
+        <Combo label="Department" value={fOwner} onChange={setFOwner}
           opts={deptList} all="Any department" placeholder="Search departments…"/>
+      </div>
+      <div className="f-row3">
+        <Combo label="Function" value={fFunc} onChange={setFFunc}
+          opts={funcList} all="Any function" placeholder="Search functions…"/>
         <div>
           <label style={{display:'block',fontSize:11.5,fontWeight:600,color:'var(--ink-2)',marginBottom:4}}>
             Figures as of</label>
@@ -344,7 +403,7 @@ export function ScreenBI(){
           style={{flex:'1 1 220px',minWidth:0,border:'1px solid var(--border-d)',
                   borderRadius:8,padding:'6px 10px',fontSize:12.5}}/>
         {anyFilter
-          ? <Btn k="sm" onClick={()=>{setFProc('');setFOwner('');setQ('');}}>Clear</Btn>
+          ? <Btn k="sm" onClick={clearAll}>Clear</Btn>
           : null}
       </div>
       {/* lm_bireportdashboard.lm_kpi is what links the two, added 20 Sep. A
@@ -354,14 +413,49 @@ export function ScreenBI(){
 
     <div className="card flush">
       <div className="card-hd" style={{display:'flex',alignItems:'center',gap:12}}>
+        <div className="wa-icon teal">📄</div>
+        <h2 style={{flex:1}}>{!anyFilter ? 'Reports / Plans'
+          : cites===null ? 'Reading Reports / Plans…'
+          : `${relatedMatches.length} related report${relatedMatches.length===1?'':'s'} / plans`}</h2>
+      </div>
+      {!anyFilter
+        ? <div style={{padding:'0 17px 17px'}} className="t-sub">
+            Choose a KPI, Process, Department or Function to find the reports and plans related to it.</div>
+        : cites===null
+        ? <div style={{padding:'8px 17px 17px'}}><Empty ic="…">Reading report citations from Dataverse.</Empty></div>
+        : relatedMatches.length===0
+        ? <div style={{padding:'8px 17px 17px'}}><Empty>No report or plan matches this combination.</Empty></div>
+        : <div className="t-wrap"><table className="data">
+            <thead><tr><th>Report / Plan</th><th>Department · Function</th><th>Period</th><th>Status</th>
+              <th aria-label="Open"></th></tr></thead>
+            <tbody>{relatedMatches.slice(0,100).map(r=><tr key={r.id}>
+              <td><div className="t-main">{r.name}</div>
+                {why() ? <div className="t-sub">{why()}</div> : null}</td>
+              <td className="dim">{[dvLookup?.dept?.(r.departmentId), dvLookup?.func?.(r.functionId)]
+                .filter(Boolean).join(' · ') || '—'}</td>
+              <td className="dim">{r.period ? fmtP(r.period) : '—'}</td>
+              <td><Tag c={rptTagC(r.status)}>{r.status}</Tag></td>
+              <td style={{textAlign:'right'}}><Btn k="sm" onClick={()=>go('orpt', r.id)}>Open</Btn></td>
+            </tr>)}
+            </tbody></table>
+            {relatedMatches.length>100
+              ? <div className="t-sub" style={{padding:'6px 17px 12px'}}>
+                  Showing 100 of {relatedMatches.length}. Narrow the filters to see the rest.</div>
+              : null}
+          </div>}
+    </div>
+
+    <div className="card flush">
+      <div className="card-hd" style={{display:'flex',alignItems:'center',gap:12}}>
         <div className="wa-icon gold">📊</div>
-        <h2 style={{flex:1}}>{loading ? 'Reading BI reports…' : `${matches.length} of ${reports.length} reports`}</h2>
+        <h2 style={{flex:1}}>{loading ? 'Reading BI reports…' : `${matches.length} of ${reports.length} dashboards`}</h2>
       </div>
       {loading
         ? <div style={{padding:'8px 17px 17px'}}><Empty ic="…">Reading BI reports from Dataverse.</Empty></div>
         : matches.length===0
         ? <div style={{padding:'8px 17px 17px'}}>
-            <Empty>{reports.length ? 'No report matches this combination.' : 'No BI report is registered yet.'}</Empty>
+            <Empty>{fFunc ? 'Dashboards carry no Function. Clear the Function filter to see them.'
+              : reports.length ? 'No dashboard matches this combination.' : 'No BI report is registered yet.'}</Empty>
           </div>
         : <div style={{padding:'4px 17px 17px'}}>
             {matches.map(r=>{

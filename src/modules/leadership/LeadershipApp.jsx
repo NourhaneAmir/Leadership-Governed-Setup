@@ -2911,7 +2911,7 @@ function App({onSwitch}){
     : [];
   const myPositionIds = myPositionIdsById.length ? myPositionIdsById : myPositionIdsByName;
   const dvLookup = { bu:dvBu, region:dvRegion, pos:dvPos, dept:dvDept, func:dvFunc, rptTpl:dvRptTpl, myPositionIds,
-                     deptList:DV_DEPT_LIST };
+                     deptList:DV_DEPT_LIST, funcList:DV_FUNC_LIST };
   const ctx = {db,setDb,mut,me,bu,setBu,businessUnits,navOpen,setNavOpen,currentUser,screen,go,openMeeting,openWork,sel,setSel,
                toast,toasts,reset,S,A,work,cal,counts,onSwitch,
                dvMeetingOccs,dvReportOccs,dvMinutes,dvGridInstances,dvDecisions,dvLoading,dvError,refreshOccurrences,

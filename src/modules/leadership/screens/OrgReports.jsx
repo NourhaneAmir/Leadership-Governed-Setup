@@ -232,7 +232,7 @@ function ReviewBar({ rec, myPositionId, pos, toast, onChanged }){
 }
 
 export function ScreenOrgReports(){
-  const { dvReportOccs, dvLoading, dvError, dvLookup, go, openNewReport, toast, refreshOccurrences } = use();
+  const { dvReportOccs, dvLoading, dvError, dvLookup, go, openNewReport, toast, refreshOccurrences, sel } = use();
   /* Which section's Task panel is open, and in which mode:
      { id, mode: 'pick' | 'new' }. */
   const [taskFor, setTaskFor] = useState(null);
@@ -245,7 +245,9 @@ export function ScreenOrgReports(){
   const nm = (fn, id) => (id && typeof fn === 'function' ? fn(id) : null);
 
   const [dir, setDir]           = useState('all');
-  const [openId, setOpenId]     = useState(null);
+  /* go('orpt', id) opens a given report (Business intelligence's related
+     reports, 29 Sep); otherwise nothing is preselected. */
+  const [openId, setOpenId]     = useState(sel?.orpt || null);
   const [openSec, setOpenSec]   = useState(null);
   const [q, setQ]               = useState('');
   const [content, setContent]   = useState(null);    // { sections, citations } once read
