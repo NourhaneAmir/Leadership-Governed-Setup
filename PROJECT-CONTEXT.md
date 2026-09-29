@@ -29,7 +29,7 @@ Everything below was checked against the repo and IT when written.
 | Governance Setup (live) | `4912152c-b5c8-4beb-bb74-c9f43550405b`, Code App Development, pushed from `C:\tmp\cad-gov` |
 | Leadership Execution (live) | `83db0ef8-4c62-4eef-84ac-dadab326b704`, Code App Development, pushed from `C:\tmp\cad-exec` |
 | Data | **IT** (`org2f45e702`) for **both apps** again, every table but `lm_setupactivities` (follows `DATA_ORG`, = IT in Governance). Governance was on DT New for part of 29 Sep, then moved back to IT the same day per an explicit ask, once IT had the five `lm_reporttemplatedepartmentfunction` columns the per Department & Function submitters write (`lm_BU`, `lm_Region`, `lm_SubmittingPosition`, `lm_OwnerPosition`, `lm_TeamChannel` — checked, same targets as DT New). Switch: `__DATA_ORG__` + `__PIN_ORG__` in `apps/governance/vite.config.js` (see `PIN_ORG` in `xenv.js`). ⚠️ Setups saved in Governance **while it was on DT New** stay in DT New — they are not in IT. |
-| What is live | **Leadership: `2fbccef` minus `4ca0036`** (pushed 29 Sep, end of day). **Governance: `afc3b5a`** (pushed 29 Sep, later, from HEAD with a clean tree; bundle checked DT New only), *with* `4ca0036`'s code — harmless there (Governance never creates a Report Occurrence), see below. ⚠️ `afc3b5a` is **not on GitHub yet** (the push was refused by a permission check), and Leadership has **not** had `6b79978`/`65cca22`/`afc3b5a` pushed. |
+| What is live | **Leadership: `2d19687` minus `4ca0036`** (pushed 30 Sep; carries everything up to and including the Build a report/plan restyle). **Governance: `afc3b5a`** (pushed 29 Sep, later, from HEAD with a clean tree; bundle checked DT New only), *with* `4ca0036`'s code — harmless there (Governance never creates a Report Occurrence), see below. ⚠️ `afc3b5a` is **not on GitHub yet** (the push was refused by a permission check), and Leadership has **not** had `6b79978`/`65cca22`/`afc3b5a` pushed. |
 
 ⚠️ **One commit is in git but deliberately NOT deployed: `4ca0036`** — the
 Create Report file uploader and Team Channel → SharePoint destination. It
@@ -8726,7 +8726,20 @@ only: same data, same actions, same order on screen.
     stylesheets and the screen's markup. That page was then deleted.
   - Desktop and 375px wide both render, with no horizontal scroll.
 - ⚠️ **Not seen with live data.**
-- **Not committed, not pushed.** Leadership needs the revert-based push (§0).
+- **Committed as `2d19687`. Pushed 30 Sep, Leadership only**, to
+  `83db0ef8-4c62-4eef-84ac-dadab326b704`, following §0's revert-based steps:
+  - the two conflicts were the same as on 29 Sep and were resolved the same way;
+  - `dist` was deleted before the build, so the bundle could not be a stale one;
+  - the bundle has no `lm_attachmentfile` / `lm_TeamChannel@odata.bind`, and
+    does have `cs-build`;
+  - "App pushed successfully" was read from the output;
+  - `git revert --abort` put the tree back at HEAD, clean.
+
+  That push also carries `cf14929`, `2e767d1`, `b28ff80` and `64f9c70`,
+  which had not reached Leadership before.
+- **Governance was NOT pushed** on 30 Sep. It was built from HEAD (bundle: IT
+  only), then the push was stopped on request. Its live version is still
+  `afc3b5a`.
 
 ## 6. Schema facts that are expensive to rediscover
 
