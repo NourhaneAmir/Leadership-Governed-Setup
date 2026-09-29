@@ -2974,6 +2974,9 @@ function App({onSwitch}){
   const ctx = {db,setDb,mut,me,bu,setBu,businessUnits,navOpen,setNavOpen,currentUser,screen,go,openMeeting,openWork,sel,setSel,
                toast,toasts,reset,S,A,work,cal,counts,onSwitch,
                dvMeetingOccs,dvReportOccs,dvMinutes,dvGridInstances,dvDecisions,dvLoading,dvError,refreshOccurrences,
+               /* bumped when the module-level name/Setup maps (DV_TPL_DETAIL…) load --
+                  a screen memoising anything read through dvTplDetail() depends on it */
+               dvTick,
                dvOpen,setDvOpen,openDvRec,dvLookup,
                /* Opens the Create Report page. On the context on purpose:
                   OrgReports.jsx's header rule forbids it importing anything
@@ -10215,7 +10218,7 @@ function csDownloadCsv(filename, rows){
 }
 
 function ScreenGrid(){
-  const {dvMeetingOccs,dvGridInstances,openMeeting}=use();
+  const {dvMeetingOccs,dvGridInstances,openMeeting,dvMinutes=[],dvDecisions=[],S,dvTick}=use();
   const occById = useMemo(()=>{
     const m=new Map(); dvMeetingOccs.forEach(o=>m.set(o.id,o)); return m;
   },[dvMeetingOccs]);
@@ -10242,17 +10245,49 @@ function ScreenGrid(){
       cls: tpl ? (MEETING_SETUP_TYPE[tpl.setupTypeCode] || 'Committee') : 'Ad hoc occurrence',
     };
   };
-  const coverageOf = g => (g.state==='Approved' && g.total) ? Math.round(g.coverage/g.total*1000)/10 : null;
+  /* Coverage (PRO-16). An Approved or frozen Grid shows what was stored when it
+     was approved -- history is never recomputed. An open Grid is scored now,
+     with exactly what its own Audit Grid tab uses (liveScoreGrid on the live
+     occurrence, its Minutes, its Setup, the Grid's manual answers and the
+     Decisions register), so the two can never disagree. Void has none.
+     -> { pct, covered, total, live } or null */
+  const minutesByOcc = useMemo(()=>{
+    const m=new Map(); dvMinutes.forEach(x=>{ if(x.occurrenceId) m.set(x.occurrenceId,x); }); return m;
+  },[dvMinutes]);
+  const coverageById = useMemo(()=>{
+    const m=new Map();
+    for(const g of dvGridInstances){
+      if(g.state==='Void') continue;
+      if(g.state==='Approved' || g.frozen){
+        if(g.total) m.set(g.id,{pct:Math.round(g.coverage/g.total*1000)/10, covered:g.coverage, total:g.total, live:false});
+        continue;
+      }
+      const o=occById.get(g.occurrenceId); if(!o) continue;
+      const tpl=dvTplDetail(o.templateId);
+      const accred=(tpl ? MEETING_SETUP_TYPE[tpl.setupTypeCode] : null)==='Accreditation Committee';
+      try{
+        const t=gridTotals(liveScoreGrid(o, minutesByOcc.get(o.id)||null, tpl?.quorumPct, tpl?.torLink,
+                                         accred, S, g, dvMeetingOccs, dvDecisions));
+        m.set(g.id,{pct:t.coverage, covered:t.applicable, total:t.total, live:true});
+      }catch(e){ console.warn('[Committee Scores] live coverage failed for Grid '+g.id+':', e); }
+    }
+    return m;
+  // dvTick is deliberate: dvTplDetail() reads a module-level map the linter
+  // cannot see, and the Setup details (quorum, TOR, Setup Type) load after the Grids.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[dvGridInstances,occById,minutesByOcc,dvMeetingOccs,dvDecisions,S,dvTick]);
+  const covOf = g => coverageById.get(g.id) || null;
 
   const rows = list.filter(tabDef.test).slice().sort((a,b)=>
     (occById.get(b.occurrenceId)?.date||'').localeCompare(occById.get(a.occurrenceId)?.date||''));
 
   const exportCsv = () => {
-    const out = [['Committee','Occurrence','Occurrence date','Template','Version','State','Coverage %','Questions covered','Questions total','Overall score %']];
+    const out = [['Committee','Occurrence','Occurrence date','Template','Version','State','Coverage %','Questions covered','Questions total','Coverage basis','Overall score %']];
     rows.forEach(g=>{
-      const o = occById.get(g.occurrenceId), c = committeeOf(o), cov = coverageOf(g);
+      const o = occById.get(g.occurrenceId), c = committeeOf(o), cv = covOf(g);
       out.push([c.name, o.name, o.date||'', g.templateVersion||'', g.version||1, g.state,
-        cov ?? '', g.state==='Approved' ? g.coverage : '', g.total ?? '',
+        cv?.pct ?? '', cv?.covered ?? '', cv?.total ?? g.total ?? '',
+        cv ? (cv.live ? 'Live (not yet approved)' : 'Stored at approval') : '',
         g.state==='Approved' ? g.score : '']);
     });
     csDownloadCsv(`committee-scores-${tabDef.id}-${ymd(new Date())}.csv`, out);
@@ -10304,7 +10339,7 @@ function ScreenGrid(){
           <thead><tr><th>Committee</th><th>Occurrence</th><th>Template</th><th>State</th>
             <th>Coverage</th><th>Overall score</th><th><span className="sr-only">Action</span></th></tr></thead>
           <tbody>{rows.map(g=>{
-            const o=occById.get(g.occurrenceId), c=committeeOf(o), cov=coverageOf(g);
+            const o=occById.get(g.occurrenceId), c=committeeOf(o), cv=covOf(g), cov=cv?.pct ?? null;
             const [bc,bl]=CS_BADGE[g.state]||['void',g.state||'—'];
             const toScore = CS_TABS[0].test(g), toReview = CS_TABS[1].test(g);
             const band = pctColour(cov);
@@ -10323,7 +10358,10 @@ function ScreenGrid(){
                 ? <><div className="cs-cov">
                       <span className="cs-track"><span className={'cs-fill f-'+band} style={{width:cov+'%',display:'block'}}/></span>
                       <span className={'cs-pct c-'+band}>{cov}%</span></div>
-                    <div className="cs-cov-sub">{g.coverage} of {g.total} questions</div></>
+                    <div className="cs-cov-sub" title={cv.live
+                        ? 'Computed now from the Grid’s answers so far. It becomes final when the Chair approves the Grid.'
+                        : 'Stored when the Grid was approved.'}>
+                      {cv.covered} of {cv.total} questions{cv.live ? ' · live' : ''}</div></>
                 : <><span className="cs-pct c-grey">—</span>
                     <div className="cs-cov-sub">{g.total?`of ${g.total} questions`:'not yet scored'}</div></>}</td>
               <td>{g.state==='Approved'

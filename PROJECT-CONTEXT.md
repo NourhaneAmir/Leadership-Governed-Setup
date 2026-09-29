@@ -8562,6 +8562,26 @@ guess and cannot hold this (Setup + Category only).
 - Only the Minutes tab shows live note text (other `mom.notes` readers are
   seeded). Both apps build; lint unchanged. Not browser-checked, not committed.
 
+### 29 Sep: live coverage on Committee Scores for open Grids (PRO-16)
+
+`ScreenGrid` used to show Coverage "—" until a Grid was Approved. Now:
+
+- **Open Grids:** coverage is computed live with the same inputs as the Grid's
+  own tab. That's `liveScoreGrid()` on the occurrence, its Minutes (`dvMinutes`),
+  its Setup (`dvTplDetail`: quorum, TOR, Setup Type), the Grid's manual answers,
+  `S`, and `dvDecisions`, then `gridTotals()`. The row reads "N of M questions ·
+  live", with a tooltip saying it becomes final at approval.
+- **Approved or frozen Grids:** show the stored `lm_coverage` / `lm_total`, as before.
+- **Void Grids:** show nothing.
+- **Overall score is unchanged:** still "Pending Review" until approval, so an
+  unapproved score is never shown as a result.
+- **CSV export:** carries the live figures plus a "Coverage basis" column
+  (Live / Stored at approval).
+- `dvTick` is now on the context. The memo depends on it because the Setup
+  details load after the Grids (an explained eslint-disable).
+- No new Dataverse reads. Both apps build; lint unchanged. Not
+  browser-checked, not pushed.
+
 ### 29 Sep: Audit Grid AG-10 to AG-14 on live Decisions (PRO-13), as far as IT allows
 
 `liveScoreGrid()` takes a 9th argument, `decisions` (the app's `dvDecisions`;
