@@ -8562,6 +8562,24 @@ guess and cannot hold this (Setup + Category only).
 - Only the Minutes tab shows live note text (other `mom.notes` readers are
   seeded). Both apps build; lint unchanged. Not browser-checked, not committed.
 
+### 29 Sep: every reference opens — KPI coverage and Business intelligence too (EXT-12)
+
+EXT-12 was already live for **citations** (`d89a977`, `cf524ca`:
+`recordLinks.jsx`'s `OpenRecord`, access-checked, used in Build a report/plan,
+Reports / Plans, Communication and Strategy chain). The gap's definition also
+says "or register row", and two screens still listed real records as text only:
+
+- **KPI coverage** (`KpiCoverage.jsx`): each KPI in the table and each Process
+  chip now has **Open ↗**, which opens it in Strategy Formulation or Process Hub.
+- **Business intelligence** (`BusinessIntelligence.jsx`): each dashboard gets
+  **Open the KPI ↗** and **Open the Process ↗** (its KPI's Process) beside
+  "Open the BI report".
+
+Same `OpenRecord`, so the same access check and the same "you can't open this"
+message. The ids passed are `strategy_kpisid` / `strategy_processid`. Both apps
+build; lint unchanged. Not browser-checked. Not pushed: Leadership needs the
+revert-based push (§0).
+
 ### 29 Sep: Meeting Minutes export to Word
 
 Per an explicit ask. **Export to Word** button in the Minutes tab header

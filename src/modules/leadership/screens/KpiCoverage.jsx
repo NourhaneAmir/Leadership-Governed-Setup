@@ -29,6 +29,9 @@ import { Target } from 'lucide-react';
 import { Btn, Note, Empty, Tag } from '../../../shared/ui.jsx';
 import { fmtP } from '../../../shared/format.js';
 import { use } from '../store.jsx';
+/* Each KPI and Process listed here opens in its own IT app (Extension: every
+   reference opens the real object) -- the same access-checked link as a citation. */
+import { OpenRecord } from '../recordLinks.jsx';
 import { fetchReportTemplateRelated, fetchKpiAchievements, matchAchievement,
          syncKpiGapSection, KPI_GAP_SECTION_HEADING } from '../../../services/dataverse.js';
 
@@ -290,7 +293,8 @@ export function KpiCoverage({ templateId, period, scope, unitLabel, citedKpis,
                   </tr></thead>
                   <tbody>
                     {resolved.flatMap(k => {
-                      const label = k.name || '(unnamed KPI)';
+                      const label = <>{k.name || '(unnamed KPI)'}
+                        <OpenRecord kind="KPI" id={k.id} asLink label="Open ↗" style={{ marginLeft: 7 }}/></>;
                       const from = <>
                         {k.fromSetup ? <Tag c="teal">Setup</Tag> : null}
                         {k.sections.length
@@ -341,7 +345,8 @@ export function KpiCoverage({ templateId, period, scope, unitLabel, citedKpis,
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   {related.processes.map(p =>
                     <span key={p.id} className="cref pm" style={{ fontSize: 12 }}>
-                      {p.name || '(unnamed process)'}</span>)}
+                      {p.name || '(unnamed process)'}
+                      <OpenRecord kind="Process" id={p.id} asLink label="Open ↗" style={{ marginLeft: 6 }}/></span>)}
                 </div>
               </div> : null}
 

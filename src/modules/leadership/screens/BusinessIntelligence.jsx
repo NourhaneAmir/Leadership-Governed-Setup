@@ -15,6 +15,9 @@ import { achFor, achPct, achCls, bdDims,
          matchesQuery, rptTagC } from '../domain.jsx';
 import { fetchKpis, fetchProcesses, fetchBiReportDashboards,
          fetchReportOccurrenceContent } from '../../../services/dataverse.js';
+/* A dashboard's KPI and its Process open in their own IT app, the same
+   access-checked link a citation uses (Extension: every reference opens). */
+import { OpenRecord } from '../recordLinks.jsx';
 
 /* The Power BI embed.
 
@@ -482,6 +485,8 @@ export function ScreenBI(){
                 <div className="btn-row" style={{marginTop:8}}>
                   <Btn k="sm" onClick={()=>setOpen(isOpen?null:r.id)}>
                     {isOpen?'Hide the report':'Open the BI report'}</Btn>
+                  {k ? <OpenRecord kind="KPI" id={k.id} label="Open the KPI ↗"/> : null}
+                  {k?.processId ? <OpenRecord kind="Process" id={k.processId} label="Open the Process ↗"/> : null}
                   {(k?.breakdowns||[]).length
                     ? <Tag c="grey">{k.breakdowns.length} breakdown{k.breakdowns.length>1?'s':''} ·
                         {' '}{bdDims(k).join(', ')}</Tag>
