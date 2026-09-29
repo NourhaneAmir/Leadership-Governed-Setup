@@ -8692,6 +8692,42 @@ below and was not republished.
 Deployment for all of the above: HEAD minus `4ca0036`, both apps, each push
 checked for "pushed successfully"; git pushed.
 
+### 30 Sep: Build a report/plan restyled to `leadership-practice (2).html`
+
+Per an explicit ask. The design has **no Build view**, so the theme is taken
+from its nearest views, `#v-rpt-create` and `#v-rpt-review`. Presentation
+only: same data, same actions, same order on screen.
+
+- **`BuildReport.jsx`:**
+  - the screen is wrapped in `cs-root cs-build`;
+  - the old `.ph` header and `.tabs` are replaced by `cs-head` with the Edit
+    / Preview switch as `cs-tab`s;
+  - the top card gains a "Report details" title with a gold icon;
+  - Status is a `cs-badge` (Draft / Returned) instead of a `Tag`, so the
+    `rptTagC` import is gone;
+  - "+ Add a section" sits in a dashed `bld-add` card;
+  - the picker's two inline-styled inputs now use a class, `cpick-q`.
+- **`leadership-design.css`, new `.cs-build` block.** It re-skins the classes
+  the screen already used rather than renaming them: `.card`, `.bld-fld` (the
+  design's field label and 12px input, read-only values as an auto-filled
+  field), `Btn` (outline / gold primary / sm), `Note` (the gold info banner),
+  `Tag`, `.sec` (a bento card with a gold numbered circle), `.dg-seg` (pill),
+  `.cite` / `.cref` (a white row with a gold rule and uppercase kind tags),
+  the picker (its kind switch becomes the design's filter chips), the
+  Raise-a-task form, KPI coverage's `table.data`, the foot and Preview.
+  - Everything is scoped under `.cs-build`, so the same shared classes on
+    every other screen are unchanged.
+  - This also restyles `KpiCoverage`, `AchievementFigures` and
+    `DecisionPanel`, but only where they render inside Build.
+- **Checked:**
+  - Leadership builds, and lint has no finding in `BuildReport.jsx`.
+  - Locally the screen shows only its empty state (no Dataverse), so the
+    populated layout was checked on a throwaway page that used the real
+    stylesheets and the screen's markup. That page was then deleted.
+  - Desktop and 375px wide both render, with no horizontal scroll.
+- ⚠️ **Not seen with live data.**
+- **Not committed, not pushed.** Leadership needs the revert-based push (§0).
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap

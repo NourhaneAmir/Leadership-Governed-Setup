@@ -19,11 +19,12 @@
    and Save draft / Submit at the foot. Nothing is written until Save.
    ========================================================================= */
 import React, { useState, useEffect, useMemo } from 'react';
+import { FileText } from 'lucide-react';
 import { use } from '../store.jsx';
 import { OpenRecord, citationRecordId } from '../recordLinks.jsx';
 import { Btn, Tag, Note, Empty, Combo, KVBlock } from '../../../shared/ui.jsx';
 import { fmtP, TODAY } from '../../../shared/format.js';
-import { DiagChip, rptTagC, matchesQuery, processMetaRows, projectMetaRows } from '../domain.jsx';
+import { DiagChip, matchesQuery, processMetaRows, projectMetaRows } from '../domain.jsx';
 import { DecisionPanel } from './DecisionLink.jsx';
 import { BiFrame } from './BusinessIntelligence.jsx';
 import { ExportReportButtons } from './ExportReport.jsx';
@@ -62,6 +63,9 @@ const PICKED_KINDS = ['POC', 'Strategy', 'BI Report', 'Task', 'Project'];
 const LABEL_KINDS = ['Issue'];
 
 const EDITABLE = r => !!r && !r.locked && (r.status === 'Draft' || r.status === 'Returned');
+/* The design's status badge (leadership-design.css) for the two states this
+   screen can open. */
+const STATUS_BADGE = { Draft: 'draft', Returned: 'returned' };
 const BODY_MAX = 4000;
 
 let keySeq = 0;
@@ -610,10 +614,23 @@ export function ScreenBuildReport(){
   const citeCount = sections.reduce((n, s) => n + s.citations.length, 0);
 
   /* ---- render -------------------------------------------------------- */
-  return <>
-    <div className="ph"><h1>Build a report/plan</h1>
-      <div className="sub">Flexible, like the Excel you use today — but every line you add is a live
-        reference back to its source, not a typed-in copy.</div></div>
+  /* Styled to `leadership-practice (2).html` by leadership-design.css, under
+     .cs-root.cs-build -- the design's header, tabs, cards, fields and chips.
+     The design has no Build view of its own; it follows #v-rpt-create and
+     #v-rpt-review. Presentation only: same data, same actions. */
+  return <div className="cs-root cs-build">
+    <div className="cs-head">
+      <h1 className="cs-title">Build a report/plan</h1>
+      <p className="cs-sub">Flexible, like the Excel you use today — but every line you add is a live
+        reference back to its source, not a typed-in copy.</p>
+      {editable.length
+        ? <div className="cs-tabs" role="tablist" aria-label="Edit or preview the report">
+            {[['edit', 'Edit'], ['preview', 'Preview']].map(([k, l]) =>
+              <button key={k} type="button" role="tab" aria-selected={mode === k}
+                className={'cs-tab' + (mode === k ? ' on' : '')} onClick={() => setMode(k)}>{l}</button>)}
+          </div>
+        : <div style={{ height: 12 }}/>}
+    </div>
 
     {editable.length === 0
       ? <div className="card"><Empty ic={dvLoading ? '…' : '📝'}>
@@ -627,13 +644,15 @@ export function ScreenBuildReport(){
             : null}
         </Empty></div>
       : <>
-          <div className="tabs">
-            {[['edit', 'Edit'], ['preview', 'Preview']].map(([k, l]) =>
-              <button key={k} className={mode === k ? 'on' : ''} onClick={() => setMode(k)}>{l}</button>)}
-          </div>
-
           {/* ---- which report, its scope, its title and template ---- */}
           <div className="card">
+            <div className="cs-card-top bld-card-top">
+              <div className="cs-card-title-grp">
+                <span className="cs-icon gold" aria-hidden="true"><FileText size={15}/></span>
+                <div><h2 className="cs-card-title">Report details</h2>
+                  <div className="cs-card-note">The report being written, what it covers, and its title.</div></div>
+              </div>
+            </div>
             <div className="bld-grid">
               <div className="bld-fld" style={{ gridColumn: 'span 2' }}>
                 <label>Report</label>
@@ -645,7 +664,8 @@ export function ScreenBuildReport(){
               </div>
               <div className="bld-fld">
                 <label>Status</label>
-                <div className="ro"><Tag c={rptTagC(rec.status)}>{rec.status}</Tag></div>
+                <div className="ro"><span className={'cs-badge ' + (STATUS_BADGE[rec.status] || 'scheduled')}>
+                  <i/>{rec.status}</span></div>
               </div>
               <div className="bld-fld">
                 <label>Period</label>
@@ -762,7 +782,7 @@ export function ScreenBuildReport(){
                           tplChildren={tplChildren} attachCite={attachCite}
                           occsOfTemplate={tid => reports.filter(r => r.templateId === tid && r.id !== recId)}/>)}
 
-                  <div className="card" style={{ textAlign: 'center' }}>
+                  <div className="card bld-add">
                     <Btn k="sm pri" disabled={!!busy} onClick={addSection}>+ Add a section</Btn>
                   </div>
                 </>}
@@ -794,7 +814,7 @@ export function ScreenBuildReport(){
             starting at the first reviewer. It stays editable here only while it is Draft or Returned —
             once in review it is read in Reports / Plans.</Note>
         </>}
-  </>;
+  </div>;
 }
 
 /* ---- one section --------------------------------------------------------- */
@@ -1119,9 +1139,7 @@ function CitePicker({ picker, setPicker, onCite, catalog, inScope, reports, take
 
   const search = placeholder =>
     <input type="search" value={picker.q} placeholder={placeholder}
-      onChange={e => set({ q: e.target.value })}
-      style={{ width: '100%', border: '1px solid var(--border-d)', borderRadius: 7,
-               padding: '6px 9px', fontSize: 12.5, marginBottom: 8 }}/>;
+      onChange={e => set({ q: e.target.value })} className="cpick-q"/>;
 
   let body;
   if (k === 'KPI' || k === 'Process') {
@@ -1426,7 +1444,7 @@ function CitePicker({ picker, setPicker, onCite, catalog, inScope, reports, take
         <input value={picker.text} maxLength={850} placeholder={`Name the ${k}`}
           onChange={e => set({ text: e.target.value })}
           onKeyDown={e => { if (e.key === 'Enter' && picker.text.trim()) onCite({ kind: k, label: picker.text.trim() }); }}
-          style={{ flex: 1, border: '1px solid var(--border-d)', borderRadius: 7, padding: '6px 9px', fontSize: 12.5 }}/>
+          className="cpick-q" style={{ flex: 1, marginBottom: 0 }}/>
         <Btn k="sm pri" disabled={!picker.text.trim()} onClick={() => onCite({ kind: k, label: picker.text.trim() })}>Cite</Btn>
       </div>
       <div className="holder" style={{ marginTop: 6 }}>
