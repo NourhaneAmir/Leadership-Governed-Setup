@@ -7,7 +7,7 @@
 > (covering 09-12 Sep), updated 13 Sep 2026, updated 14 Sep 2026,
 > updated 16 Sep 2026, updated 17 Sep 2026 (three times), against branch `leadership-practice`;
 > since then updated per session through 28 Sep 2026, now on branch `CrossEnv-Leadership`;
-> **status snapshot below refreshed 29 Sep 2026.**
+> **status snapshot below refreshed 29 Sep 2026 (end of day, HEAD `3180e59`).**
 >
 > This file records **decisions, hard-won schema facts and open questions** —
 > the things that are expensive to rediscover. It is not a substitute for the
@@ -25,7 +25,7 @@ Everything below was checked against the repo and IT when written.
 
 | | |
 |---|---|
-| Branch | `CrossEnv-Leadership`, pushed to GitHub (`origin`), HEAD `c90af88` |
+| Branch | `CrossEnv-Leadership`, pushed to GitHub (`origin`), HEAD `3180e59` |
 | Governance Setup (live) | `4912152c-b5c8-4beb-bb74-c9f43550405b`, Code App Development, pushed from `C:\tmp\cad-gov` |
 | Leadership Execution (live) | `83db0ef8-4c62-4eef-84ac-dadab326b704`, Code App Development, pushed from `C:\tmp\cad-exec` |
 | Data | **IT** (`org2f45e702`) for every table but `lm_setupactivities` (follows `DATA_ORG`) |
@@ -34,7 +34,7 @@ Everything below was checked against the repo and IT when written.
 ⚠️ **One commit is in git but deliberately NOT deployed: `4ca0036`** — the
 Create Report file uploader and Team Channel → SharePoint destination. It
 writes three `lm_reportoccurrence` columns that **do not exist in IT yet**
-(re-checked before every push on 28 Sep): `lm_attachmentfile` (File),
+(re-checked before every push on 28 and 29 Sep — still missing at `3180e59`): `lm_attachmentfile` (File),
 `lm_TeamChannel` (lookup → `and_teamschannellink`), `lm_destinationsharepointlink`
 (text, 850). Deploying it before they exist makes **every** Create Report fail.
 
@@ -51,6 +51,46 @@ git checkout -- src      # restore HEAD afterwards
 Once the three columns exist in IT: confirm them (`pac env fetch` on
 `lm_reportoccurrence`), then build HEAD as it is and push **both** apps
 (`xenv.js` changes Governance's bundle too). Procedure details: §5, 25 Sep.
+
+The quick check used before each push (prints 1 while the column is missing):
+
+```bash
+pac env fetch --environment https://org2f45e702.crm4.dynamics.com --xml "<fetch count='1'><entity name='lm_reportoccurrence'><attribute name='lm_attachmentfile'/></entity></fetch>" | grep -c "doesn't contain attribute"
+```
+
+⚠️ **The staging folders lost their `node_modules` (29 Sep).** Run the
+project's own CLI from inside each staging folder:
+`"<repo>/node_modules/.bin/power-apps" push`.
+
+### Built and live on 29 Sep (details in §5, dated 29 Sep)
+
+Driven by the **gap register** (Extension + prototype vs the live apps),
+published as a private Artifact: https://claude.ai/artifact/QgJAm1RF3tGqkzugS8CAk8
+(26 gaps; its IDs — EXT-nn / PRO-nn — are used below).
+
+- **Report Setup units submit on different days** (`07e7da1`) and the Meeting
+  Setup Summary shows its Category.
+- **Meeting page — Submissions tab** (PRO-01, `44cd516`): pre-meeting input
+  readiness (OD-39) over the Documents tab's links plus the Setup's Input
+  reports; readiness bar, Open / Link it / Attach, warning on a Scheduled
+  meeting with inputs not ready.
+- **Quorum** (PRO-10, `eab6629`): `liveQuorum()` — Required attendance against
+  the Setup's `lm_quorumthreshold` %, the same count AG-08 scores. Overview card
+  (replaces the always-green "Quorum Rules"), Attendance tab, a header warning
+  when missed, and a "Quorum missed" card + per-row marker on Meetings.
+- **Stage 4 Minutes — confidential agenda items** and **Export Minutes to Word**
+  (`eab6629`, built in a parallel session; not browser-checked).
+- **Respond to a received report** (EXT-06, `d6275ad`): "Respond in my report"
+  on a section writes a draft section at the end of one of the reader's own
+  Draft/Returned reports, with a Paragraph citation back to the answered report.
+- **Every reference opens the real object** (EXT-12, `d89a977` + `cf524ca`):
+  `recordLinks.jsx` opens a cited KPI / Strategy / Process / Project / Task /
+  POC in its own IT app, after `checkRecordAccess()` checks the record and the
+  app's security roles; a reader without access gets a message instead.
+- **Find related reports** (EXT-08, `3180e59`): Business intelligence filters
+  by KPI, Process, Department and Function across Reports / Plans and
+  dashboards; Reports / Plans can now be opened on a given report
+  (`go('orpt', id)`).
 
 ### Built and live on 28 Sep (details in §5, dated 28 Sep)
 
@@ -82,6 +122,8 @@ Once the three columns exist in IT: confirm them (`pac env fetch` on
 | **50 of 53** Report Template destinations saved with the doubled folder | a decision: repair in one pass, or let each fix itself on its next save | nothing — cosmetic until the SharePoint save exists |
 | `cr18c_month` on `lm_meetingtemplate` | confirm it is the Annual-meeting month | wiring Annual meetings (§9) |
 | The Meeting Occurrence **generator flow** (planned, not built) | must take the group-wide branch for Stage 4 — their BU / Region rows are scope only | correct Stage 4 occurrences once the flow exists |
+| **Lookup on `hx_tasks` → `lm_meetingoccurrenceagenda`** (schema name `lm_MeetingOccurrenceAgenda`, optional, delete = remove link; Create/Read/Write + Append on `hx_tasks`, Append To on the agenda table) | IT to add — **requested 29 Sep**, the user chose to wait for it | the meeting **Actions** tab (PRO-02), tasks raised from Minutes, carried-forward tasks, AG-10–14's task questions |
+| A lookup from `lm_reportsectioncitations` to a single **section** | optional, IT | a response (EXT-06) pointing at the exact section it answers, not only the report |
 
 ### First checks in the live apps (none yet done)
 
@@ -96,6 +138,19 @@ Once the three columns exist in IT: confirm them (`pac env fetch` on
 5. Raise a task — Task Source Leadership in IT; search the Assignee.
 6. Open Meetings, Meeting Minutes, Committee Scores, Decisions and My Workspace
    with real data — every restyle was checked on empty or sample data only.
+7. **(29 Sep)** A meeting whose Setup names Input reports — Submissions tab
+   counts and the "not yet submitted" warning.
+8. **(29 Sep)** A held Committee with a quorum threshold — Overview, Attendance
+   tab and Meetings list agree with the Audit Grid's AG-08.
+9. **(29 Sep)** "Open in <app>" on a cited KPI/Task — as a user with access
+   (opens) and one without (message). Confirms users can read
+   `appmodulerolescollection` / `systemuserrolescollection` /
+   `teamrolescollection` / `teammemberships` / `roles`; if they can't, the
+   check answers "unknown" and simply opens.
+10. **(29 Sep)** Respond to a received report's section; the response appears
+    in your own report, citing the answered one.
+11. **(29 Sep)** Business intelligence → pick a KPI → the related reports list,
+    and Open lands on that report in Reports / Plans.
 
 ### Traps worth knowing before touching anything
 
@@ -109,6 +164,16 @@ Once the three columns exist in IT: confirm them (`pac env fetch` on
 - Commit before building: several pushes on 28 Sep needed a partial commit
   split, done by staging exact file versions (`git hash-object -w` +
   `git update-index --cacheinfo`).
+- **Two sessions may edit the same files at once** (it happened 29 Sep). Check
+  `git status` before committing and say whose changes a commit carries.
+- **Shell heredocs mangle long Python edit scripts** (quotes/backticks) — write
+  the script with a file editor into the scratchpad and run it.
+- **Model-driven app access = security roles on `appmoduleroles`**, and a
+  user's role is a per-business-unit **copy**: compare via
+  `role.parentrootroleid`, and include roles from teams (most users get
+  "Andalusia Basic Users" through a team, not directly). On
+  `appmoduleroles` both ids are **lookups** (`_appmoduleid_value`,
+  `_roleid_value`); on the other intersect tables they are plain GUIDs.
 
 ---
 
@@ -207,7 +272,7 @@ The BRD **contradicts itself** in three places, and the code picked a side:
 | **Decisions register** | ✅ **live and linked (28 Sep)** — the Decisions screen is the live `wlog_decisions` register (IT, 39+ rows): status tabs from the data, source chips, search, and **where each was taken** — a report section (`lm_CitedReportSection`) or a Minutes agenda item (`lm_MeetingOccurrenceAgenda`), both added to IT by 28 Sep — with Open report / Open minutes and Link / Move. `DecisionPanel` (`screens/DecisionLink.jsx`) raises or attaches decisions on report sections (Reports / Plans, Build) and Minutes agenda items. The seeded Authority-Matrix register is off the screen (its tables are not in IT). ⚠️ First live save still to confirm: Work Log required? Append / Append To privileges? |
 | **Committee Scores (nav screen)** | ✅ **live** (01 Sep) — `ScreenGrid` now reads `fetchAuditGridInstances()` joined against `dvMeetingOccs`, instead of seeded `db.grids`. See §5 for the join details and the Approved-only Coverage/Score rule. |
 | **Setup Activity trail** — the Activity tab on a Report/Meeting Setup | ✅ **live** (10 Sep) — `lm_setupactivity` is written on create, edit, publish, approve and expire, and the tab reads the real rows back for any Setup that has a `_dataverseId`. A Setup that has never been saved still shows the seeded sample trail. |
-| **Artifact group** — Business intelligence, Reporting hierarchy | ✅ **live** (superseding the 11 Sep "mixed" note) — Business intelligence reads `lm_bireportdashboards`, and the Reporting hierarchy reads real Report Templates, occurrences, checklists and citations. (Reports / Plans and Build a report/plan, in the same group, are live since 17 Sep — rows above.) The Power BI report itself **cannot be embedded** — see §8. |
+| **Artifact group** — Business intelligence, Reporting hierarchy | ✅ **live** (superseding the 11 Sep "mixed" note) — Business intelligence reads `lm_bireportdashboards`, and the Reporting hierarchy reads real Report Templates, occurrences, checklists and citations. **29 Sep:** Business intelligence's "Find related reports" filters by KPI / Process / Department / Function across Reports / Plans (by what they cite, and their own Department / Function) and dashboards (through their KPI; no Function). Reports / Plans (**29 Sep**) also offers "Respond in my report" on received reports' sections. (Reports / Plans and Build a report/plan, in the same group, are live since 17 Sep — rows above.) The Power BI report itself **cannot be embedded** — see §8. |
 | **How every table is reached** | 🟡 **counted again 28 Sep** — the code reaches **60** collections through `dvTable()` in `src/services/xenv.js` (59 + `lm_topmanagementmeetingcategories`); all but `lm_setupactivities` (which follows `DATA_ORG`, = IT in Governance) are pinned to IT. **57 exist in IT**; `lm_approvalcycles`, `lm_approvalcyclesteps`, `lm_authoritymatrixrows` do not. Leadership's `__DATA_ORG__` still says DT New and is vestigial. `getAll()` follows `@odata.nextLink` to a 200-page cap. Creates supply their own primary key since 17 Sep — see §6. Full live-schema comparison: `IT-SCHEMA-REFRESH.md` (28 Sep). |
 | **Export a report to Excel or Word** (`reportExport.js` + `reportWriters.js`) | ✅ **live** (26 Sep) — a sheet per section plus five cross-cutting sheets; a sub-heading per section in the document. Carries every citation's metadata, KPI figures and breakdown members. Written with **ExcelJS** (SheetJS cannot write a fill, font or table style at all) and **docx**, both dynamically imported. ⚠️ One user-reported failure to open the workbook is **still unexplained** — see §5, 26 Sep. |
 | **Dashboard images in the exports** | 🟡 **manual** (27 Sep) — a person attaches a PNG per cited dashboard at export time and it is embedded (inline in Word, on the BI reports sheet in Excel). Nothing is stored. The automatic route (Power BI `exportToFile`) is blocked on three things, none of them code — see §5, 27 Sep. |
@@ -215,10 +280,12 @@ The BRD **contradicts itself** in three places, and the code picked a side:
 | **KPI data gaps section** | ✅ **live** (27 Sep) — an explicit button writes a real `lm_reportoccurrencesections` row citing every KPI with no Actual or no Target, and re-running drops the ones whose data has arrived, deleting the section when the last gap is filled. ⚠️ Identified by its **heading**; there is no spare column to mark it with. Never runs on open, and only on a Draft/Returned, unlocked report. |
 | **KPI achievement scope** | ✅ **live** (27 Sep) — `matchAchievement()` disqualifies a row only on a real conflict and reports which dimensions were ambiguous; `reportAchievementScope()` releases Department and Function for an **All Departments** report so it matches on Business Unit and Period alone. Both replaced rules that had been matching **nothing** for common reports. |
 | **Citing in bulk** (Build a report/plan) | ✅ **live** (28 Sep) — multi-select and select-all on KPI, Process, POC, Strategy, Task and Project; each selection becomes its own `lm_reportsectioncitations` row. ⚠️ **Uncapped by explicit decision**, so the writes go ten at a time in `saveReportOccurrenceContent` rather than one at a time. Breakdown is excluded on purpose: it carries a dimension per citation. Task gains BU / delay state / status / priority / department filters, Strategy gains level / status / region. |
-| **Tasks** (`hx_tasks`, IT) | ✅ **raise + cite + read (28 Sep)** — "Raise a task" writes `hx_tasks` with **Task Source = Leadership** (`cr18c_tasksource` 989230002) and a **searchable Assignee**; a cited Task shows its full record in Reports / Plans (`fetchTasksByIds`). No Tasks screen of its own. |
+| **Tasks** (`hx_tasks`, IT) | ✅ **raise + cite + read (28 Sep)** — "Raise a task" writes `hx_tasks` with **Task Source = Leadership** (`cr18c_tasksource` 989230002) and a **searchable Assignee**; a cited Task shows its full record in Reports / Plans (`fetchTasksByIds`). **29 Sep:** each task opens in TMS App (access-checked). No Tasks screen of its own; ⚠️ **no link to a meeting exists in IT** — `hx_tasks` has no lookup to a meeting, agenda item or Minutes (checked 29 Sep), so the meeting Actions tab waits on IT. |
+| **Quorum** | ✅ **live (29 Sep)** — `liveQuorum()` in `LeadershipApp.jsx`: Pending / Met / Not yet met / Missed against the Setup's `lm_quorumthreshold` (a %); head count derived. Reported only — blocks nothing, and does not decide whether a meeting is settled. |
+| **Cited records open in their IT app** (`recordLinks.jsx`) | ✅ **live (29 Sep)** — KPI/Breakdown/Strategy → Strategy Formulation, Process → Process Hub, Project → Project Module, Task → TMS App, POC → no app (default form); app ids read from `appmodulecomponent`. `checkRecordAccess()` (dataverse.js) checks the record and the app's roles first. Decisions not linked: `wlog_decision` sits only in the admin app. |
 | Comments, Governance Settings (persisted values) | ❌ **seeded demo data only** |
 | **Meeting Setup "Completion Periods"** (MOM Write-up / MOM Approval / Audit Grid Completion-Submission, each an hours field) | ✅ **live** (15 Sep) — three plain columns on `lm_meetingtemplates` (`lm_momwriteuphours`, `lm_momapprovalhours`, `lm_gridsubmithours`), written/read alongside `quorum`/`torLink` in `dataverse.js` and `GovernanceApp.jsx`. **Persistence only — not yet consumed.** AG-16/AG-05 scoring still reads the global `DEFAULT_SETTINGS` values (§9), not this per-Setup one; the UI says so. |
-| **`lm_meetingoccurrencelinkedreports`** | 🔴 **registered, not wired to any screen** (15 Sep) — table + generated models exist (`lm_reportname`, lookups to `lm_meetingoccurrences`, `lm_reportoccurrences`, `lm_report_templates`); no app code reads or writes it yet. |
+| **`lm_meetingoccurrencelinkedreports`** | ✅ **live** — the meeting's **Documents** tab links a Report Occurrence or a Template (and attaches the occurrence later); since 29 Sep the **Submissions** tab reads the same links, plus the Setup's Input reports (`fetchMeetingTemplateInputReports`, `lm_reporttype` Input = 2), for input readiness (OD-39, In Review by default, Approved if Settings say so). The 15 Sep "not wired" note was stale. An approved MOM cannot be an input (no column for it). |
 
 **`scoreGrid()` (seeded) and `liveScoreGrid()` (live) are two separate functions**,
 not one shared implementation — the live version reads a Dataverse occurrence/
@@ -8455,6 +8522,50 @@ Per an explicit ask. **Export to Word** button in the Minutes tab header
 - Checked: both apps build, lint unchanged. A sample model through
   `minutesToDocx` in Node produced a valid .docx (document.xml parses; the
   withheld item and a decision are present). Not browser-checked, not committed.
+
+### 29 Sep (later): gap register, and six gaps closed
+
+**Gap register.** Both HTML sources were read in full (`Leadership Practice
+Extension.html` — Produce / Read / Exchange — and `prototype.html`, the app's
+origin) and compared with the live code and IT's schema. Result: 26 gaps
+(12 Extension, 14 prototype), each with what the source shows, what the app
+does, what closing it needs and the blocker; published as a private Artifact,
+https://claude.ai/artifact/QgJAm1RF3tGqkzugS8CAk8. Its "already covered" list
+and IDs are the reference for the entries below. ⚠️ It predates the fixes
+below and was not republished.
+
+- **Submissions tab (PRO-01)** — `44cd516`. Inputs = Documents-tab links +
+  the Setup's Input `lm_meetingtemplatelinkedreports` not yet linked. Ready =
+  occurrence status rank ≥ 1 (In Review) or 2 (Approved) per
+  `S.inputReadiness`; Returned/Rejected are not ready. Warns, does not block
+  Mark as Held (the prototype didn't either). No due date: a Report Occurrence
+  has a period, not a due date.
+- **Actions tab (PRO-02) — NOT built, waiting on IT.** `hx_tasks`' relationships
+  were read with `pac modelbuilder` (with the meeting tables in the filter so
+  navigation properties generate): no lookup to any meeting table, and none of
+  them points at a task. Decisions do link (`lm_MeetingOccurrenceAgenda`). The
+  user chose to wait for IT rather than build a Decisions-only tab; the column
+  spec is in §0's waiting table.
+- **Quorum (PRO-10)** — `eab6629`. See §4. The BRD's open "percentage or head
+  count" (§7.4) is settled in practice by what the Setup stores: a %.
+- **Respond to a received report (EXT-06)** — `d6275ad`,
+  `respondToReportSection()` + `screens/RespondToSection.jsx`. Two rows only
+  (section with `lm_source` Added at max sequence + 1; citation kind
+  Paragraph = 8 with `lm_CitedReportOccurrence`). Build keeps citations it
+  didn't create (it deletes only ids removed from the draft), so the Paragraph
+  citation survives later saves.
+- **Every reference opens the real object (EXT-12)** — `d89a977`, `cf524ca`.
+  Tables → apps from `appmodulecomponent` (componenttype 1) joined to
+  `appmodule`. The open is done by opening a blank tab inside the click and
+  redirecting it after the (async) access check — a tab opened after an await
+  is blocked as a pop-up.
+- **Find related reports (EXT-08)** — `3180e59`. Report KPIs = its KPI /
+  Breakdown citations; Processes = its Process citations + the Process of
+  each cited KPI. KPIs/Processes a Setup declares but no section cites do not
+  count. Results capped at 100 rows.
+
+Deployment for all of the above: HEAD minus `4ca0036`, both apps, each push
+checked for "pushed successfully"; git pushed.
 
 ## 6. Schema facts that are expensive to rediscover
 
