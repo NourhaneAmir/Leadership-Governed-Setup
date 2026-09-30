@@ -1791,6 +1791,12 @@ async function createReportTemplateChildren(templateId, payload, errors, opts = 
     try{
       const rowPayload = { 'lm_ReportTemplate@odata.bind': bind, 'lm_Department@odata.bind': `/cr603_chklst_departmentses(${line.departmentId})` };
       if(line.functionId) rowPayload['lm_Function@odata.bind'] = `/hr_functions(${line.functionId})`;
+      /* The line's position on the Setup, in the row's name (lm_newcolumn,
+         100 chars) -- "3. Nursing › Quality" (30 Sep). A Report Setup may list
+         the same Department & Function more than once, each with its own
+         people, and this is what tells the copies apart and puts them back in
+         order on reopen (see readReportTemplateLines). */
+      if(line.seq) rowPayload.lm_newcolumn = `${line.seq}. ${line.label || ''}`.trim().slice(0, 100);
       if(line.businessUnitId)       rowPayload['lm_BU@odata.bind']                  = `/businessunits(${line.businessUnitId})`;
       if(line.regionId)             rowPayload['lm_Region@odata.bind']              = `/crd04_regionses(${line.regionId})`;
       if(line.submittingPositionId) rowPayload['lm_SubmittingPosition@odata.bind'] = `/cr603_organizationstructures(${line.submittingPositionId})`;
@@ -1855,6 +1861,15 @@ async function reconcileReportUnits(templateId, payload, existing, errors){
       patch['lm_SubmittingPosition@odata.bind'] = posBind(u.submittingPositionId);
     if(u.channelId && lookupChanged(row._lm_teamchannel_value, u.channelId))
       patch['lm_TeamChannel@odata.bind'] = `/and_teamschannellinks(${u.channelId})`;
+    /* Per Department & Function (30 Sep): the people live on the line rows,
+       so the unit's own Submitter, Owner and Channel are CLEARED -- only what
+       the Setup currently uses is saved. A lookup is cleared by binding it to
+       null; only ones that hold a value are touched. */
+    if(u.clearPeople){
+      if(row._lm_ownerposition_value)      patch['lm_OwnerPosition@odata.bind'] = null;
+      if(row._lm_submittingposition_value) patch['lm_SubmittingPosition@odata.bind'] = null;
+      if(row._lm_teamchannel_value)        patch['lm_TeamChannel@odata.bind'] = null;
+    }
     return patch;
   };
 
@@ -1928,7 +1943,7 @@ async function reconcileReportUnits(templateId, payload, existing, errors){
    whole read -- so the wide read is tried first and, if it is refused, the
    narrow one it always was. Leadership reads Setups from IT through this, and
    must keep working there. */
-const LINE_SELECT_BASE = ['_lm_department_value','_lm_function_value'];
+const LINE_SELECT_BASE = ['_lm_department_value','_lm_function_value','lm_newcolumn','createdon'];
 const LINE_SELECT_WIDE = [...LINE_SELECT_BASE, '_lm_bu_value','_lm_region_value',
   '_lm_submittingposition_value','_lm_ownerposition_value','_lm_teamchannel_value'];
 async function readReportTemplateLines(filter){
@@ -1938,6 +1953,7 @@ async function readReportTemplateLines(filter){
   }catch{ /* falls through to the narrow read */ }
   return Lm_reporttemplatedepartmentfunctionsService.getAll({ filter, select: LINE_SELECT_BASE });
 }
+const lineSeqOf = r => { const m = /^(\d+)\./.exec(r.lm_newcolumn || ''); return m ? Number(m[1]) : 1e6; };
 /* Each Department & Function pair once, in the order first seen. */
 function uniqueLines(rows){
   const seen = new Set();
@@ -2095,7 +2111,16 @@ export async function updateReportTemplateToDataverse(dvId, payload){
        Setup saved. That silently swallowed the lm_version bump on a
        re-publish: the local Setup showed version N+1 while Dataverse kept N,
        and the next publish computed N+1 again from the stale read. */
-    const parentResult = await Lm_report_templatesService.update(dvId, reportTemplateParentPayload(payload));
+    const parentRow = reportTemplateParentPayload(payload);
+    /* A group-wide Setup keeps its one section's people on this row. Per
+       Department & Function they move to the line rows, so clear them here
+       (30 Sep) -- same rule as the unit rows in reconcileReportUnits(). */
+    if(payload.stageLevel==='group' && (payload.units||[])[0]?.clearPeople){
+      parentRow['lm_OwnerPosition@odata.bind'] = null;
+      parentRow['lm_SubmittingPosition@odata.bind'] = null;
+      parentRow['lm_TeamChannel@odata.bind'] = null;
+    }
+    const parentResult = await Lm_report_templatesService.update(dvId, parentRow);
     assertSuccess(parentResult);
   }catch(e){
     errors.push({ table:'lm_report_templates', error:e });
@@ -3490,6 +3515,11 @@ export async function fetchReportTemplateDetail(id){
     lines: uniqueLines(linesRes?.data ?? []),
     lineRoles: (linesRes?.data ?? []).filter(r =>
       r._lm_submittingposition_value || r._lm_ownerposition_value || r._lm_teamchannel_value),
+    /* Every row, in line order -- the number saved at the start of lm_newcolumn,
+       then creation time for rows saved before that (30 Sep). Governance
+       rebuilds its lines from these, repeated pairs included. */
+    lineRows: [...(linesRes?.data ?? [])].sort((a, b) =>
+      (lineSeqOf(a) - lineSeqOf(b)) || String(a.createdon || '').localeCompare(String(b.createdon || ''))),
     kpiIds: (kpisRes?.data ?? []).map(r => r._lm_relatedkpi_value).filter(Boolean),
     processIds: (procsRes?.data ?? []).map(r => r._lm_relatedprocess_value).filter(Boolean),
     businessUnits: businessUnits.map((bu,i) => ({ ...bu, reviewChain: buChains[i] })),

@@ -690,7 +690,10 @@ function copyUnitBody(kind,from){
    lm_Region, lm_SubmittingPosition, lm_OwnerPosition and lm_TeamChannel (the
    last five exist in DT New only). A line is keyed by its ids, not its names,
    so the key survives a reload. */
-const lineKeyOf=l=>{ const x=lineIds(l); return x.departmentId ? `${x.departmentId}|${x.functionId||''}` : null; };
+/* Keyed by the LINE (its local id), not by its Department & Function: a
+   Report Setup may list the same pair more than once, each copy with its own
+   people (30 Sep). dataverseReportToSetup() rebuilds the same keys on load. */
+const lineKeyOf=l=>l && l.id;
 const lineRoleKey=(unitKey,l)=>`${unitKey}::${lineKeyOf(l)}`;
 const lineRoleOf=(s,unitKey,l)=>(s.lineRoles||{})[lineRoleKey(unitKey,l)]||{};
 const perLineOn=s=>s.kind==='Report Template' && !!s.perLineSubmit && linesOf(s).length>0;
@@ -780,7 +783,7 @@ const BLANK_REPORT={
      Owner Position and Team Channel per unit (the unit row); on = each
      Department & Function line in each unit has its own, keyed
      `<unitKey>::<departmentId>|<functionId>` (see lineRoleKey). */
-  perLineSubmit:false, lineRoles:{},
+  perLineSubmit:true, lineRoles:{},
   confidentiality:null, status:'Draft', version:0, updated:TODAY};
 
 function seed(){
@@ -1017,8 +1020,11 @@ function scopeRules(s, stepNo){
      (28 Sep, per the product owner). What cannot repeat is the same pair, and a
      Department cannot be both "the whole department" and one of its Functions
      -- the whole-department line already covers every Function. */
+  /* A Report Setup MAY repeat the same pair (30 Sep, per the product owner):
+     each copy gets its own Submitter, Accountable and Team Channel. Meeting
+     Setups still may not. */
   const seenPair=new Set();
-  ls.forEach(l=>{
+  if(s.kind!=='Report Template') ls.forEach(l=>{
     const key=l.department+'|'+(l.function||'');
     if(seenPair.has(key))
       r.push({field:'f-lines', step:stepNo, msg:`${lineLabel(l)} is listed twice.`});
@@ -2477,6 +2483,10 @@ function ScopeFields({s,set,stepNo}){
           hint={tot
             ? 'A Team of Teams belongs to one Department. Leave the Function empty and it covers the '+
               'whole Department.'
+            : s.kind==='Report Template'
+            ? 'Choose a Department, then a Function inside it. Leave the Function empty and the whole '+
+              'Department is covered. The same Department and Function can be added more than once — '+
+              'each copy gets its own Submitter, Accountable and Team Channel on Submission per unit.'
             : 'Choose a Department, then a Function inside it. Leave the Function empty and the whole '+
               'Department is on this committee. Add a line for every Department it covers — the same '+
               'Department can be added again with a different Function.'}>
@@ -2490,8 +2500,9 @@ function ScopeFields({s,set,stepNo}){
               /* Every Department stays on offer -- one can repeat with another
                  Function. Only the Functions already on another line for THIS
                  Department are hidden. */
-              const takenFns=(s.lines||[]).filter((x,j)=>j!==i && x.department===r.department)
-                .map(x=>x.function).filter(Boolean);
+              const takenFns=s.kind==='Report Template' ? []
+                : (s.lines||[]).filter((x,j)=>j!==i && x.department===r.department)
+                    .map(x=>x.function).filter(Boolean);
               const fns=r.department?functionsIn(r.department).filter(f=>!takenFns.includes(f)||f===r.function):[];
               return <div className="f-row">
                 <Field id={'f-line-dep-'+i} label="Department" req>
@@ -2828,13 +2839,16 @@ function SubmitterModeToggle({s,set,keys}){
 function LineRoles({s,k,setLineRole}){
   const teams=teamsIn();
   return <div className="line-roles">
-    {linesOf(s).map(l=>{
+    {linesOf(s).map((l,i,all)=>{
       const x=lineRoleOf(s,k,l);
+      /* the same pair can repeat on a Report Setup -- number the copies */
+      const same=all.filter(y=>y.department===l.department && (y.function||'')===(l.function||''));
+      const copy=same.length>1 ? ` · copy ${same.indexOf(l)+1} of ${same.length}` : '';
       const xTeam=x.team||teamOfChannel(x.channel);
       const idp='u-ln-'+k+'-'+(lineKeyOf(l)||'').replace(/[^a-z0-9]/gi,'');
       return <div key={lineRoleKey(k,l)} style={{border:'1px solid var(--border)',borderRadius:8,
                                                  padding:'10px 12px',marginBottom:10}}>
-        <div style={{fontWeight:600,fontSize:12.5,marginBottom:6}}>{lineLabel(l)}</div>
+        <div style={{fontWeight:600,fontSize:12.5,marginBottom:6}}>{lineLabel(l)}{copy}</div>
         <div className="f-row">
           <Field id={idp+'-sub'} label="Submitting Position" req
             hint="Who prepares and submits this report for this Department & Function.">
@@ -3588,9 +3602,15 @@ function buildReportTemplatePayload(f0){
         businessUnitId: lv==='bu' ? k : undefined,
         regionId: lv==='region' ? k : undefined,
         specialityId: u.section || undefined,
-        ownerPositionId: u.owner || undefined,
-        submittingPositionId: u.submitter || undefined,
-        channelId: u.channel || undefined,
+        /* Only the mode in use is saved (30 Sep). Per Department & Function,
+           the unit's own Submitter, Owner and Channel are left out -- and
+           cleared if an earlier save stored them; the people go on the lines.
+           One submitter per unit, the lines are saved without people (below). */
+        ...(perLineOn(f)
+          ? {clearPeople:true}
+          : {ownerPositionId: u.owner || undefined,
+             submittingPositionId: u.submitter || undefined,
+             channelId: u.channel || undefined}),
         /* null = "same day as the Setup": dataverse.js then writes the unit's
            schedule columns as null, clearing any day left from before. */
         schedule: perUnit ? scheduleOf(u.schedule) : null,
@@ -3643,16 +3663,16 @@ function buildReportTemplatePayload(f0){
     /* Per Department & Function: one row per unit x line, carrying the unit
        and that line's people; otherwise one row per line, as always. */
     lines: perLineOn(f)
-      ? keys.flatMap(k=>linesOf(f).map(l=>{
+      ? keys.flatMap(k=>linesOf(f).map((l,i)=>{
           const ids=lineIds(l), x=lineRoleOf(f,k,l);
-          return {...ids,
+          return {...ids, seq:i+1, label:lineLabel(l),
             businessUnitId: lv==='bu' ? k : undefined,
             regionId: lv==='region' ? k : undefined,
             submittingPositionId: x.submitter || undefined,
             ownerPositionId: x.owner || undefined,
             channelId: x.channel || undefined};
         })).filter(l=>l.departmentId)
-      : linesOf(f).map(lineIds).filter(l=>l.departmentId),
+      : linesOf(f).map((l,i)=>({...lineIds(l), seq:i+1, label:lineLabel(l)})).filter(l=>l.departmentId),
     kpiIds: (f.kpis||[]).map(name=>KPI_ID_BY_NAME[name]).filter(Boolean),
     processIds: (f.processes||[]).map(name=>PROCESS_ID_BY_NAME[name]).filter(Boolean),
   };
@@ -4019,6 +4039,50 @@ const scheduleFromRow=r=>({
    exactly when any of its unit rows holds a day of its own. */
 const rowHasSchedule=r=>REPORT_SCHEDULE_COLS.some(c=>r[c]!=null && r[c]!=='');
 
+/* A Report Setup's lines and per-line people, rebuilt from its
+   lm_reporttemplatedepartmentfunctions rows (30 Sep).
+   - Rows come in line order (detail.lineRows). A per-line Setup has one row
+     per unit x line; the first unit's rows define the lines, repeated pairs
+     included, and every unit's rows are matched to them by pair and by which
+     copy of the pair it is (1st, 2nd…).
+   - Every Report Setup opens "per Department & Function" (the product owner's
+     default, 30 Sep). A line in a unit with no saved people of its own is
+     pre-filled from that unit's Submitter, Owner and Channel, so a Setup saved
+     the old way opens complete. */
+function reportLinesFromRows(detail, units){
+  const rows=detail.lineRows || detail.lines || [];
+  const unitOf=r=>r._lm_bu_value||r._lm_region_value||GROUP_KEY;
+  const pairOf=r=>`${r._lm_department_value}|${r._lm_function_value||''}`;
+  const groups=new Map();
+  rows.forEach(r=>{ const k=unitOf(r); if(!groups.has(k)) groups.set(k,[]); groups.get(k).push(r); });
+  const first=groups.size ? groups.values().next().value : [];
+  const lines=first.map(r=>({
+    id:uid('ln'),
+    department:nameOf(DEPARTMENTS,r._lm_department_value)||'',
+    function:r._lm_function_value ? (nameOf(FUNCTIONS,r._lm_function_value)||'') : '',
+  }));
+  const linePairs=first.map(pairOf);
+  const roles={};
+  groups.forEach((rs,unitKey)=>{
+    const seen={};
+    rs.forEach(r=>{
+      const pair=pairOf(r), nth=seen[pair]=(seen[pair]||0)+1;
+      let hit=0, at=-1;
+      for(let i=0;i<linePairs.length;i++) if(linePairs[i]===pair && ++hit===nth){ at=i; break; }
+      if(at<0) return;
+      if(r._lm_submittingposition_value||r._lm_ownerposition_value||r._lm_teamchannel_value)
+        roles[`${unitKey}::${lines[at].id}`]={submitter:r._lm_submittingposition_value||null,
+          owner:r._lm_ownerposition_value||null, team:null, channel:r._lm_teamchannel_value||null};
+    });
+  });
+  units.forEach(u=>lines.forEach(l=>{
+    const k=`${u.key}::${l.id}`;
+    if(!roles[k]) roles[k]={submitter:u.submitter||null, owner:u.owner||null,
+                            team:u.team||null, channel:u.channel||null};
+  }));
+  return { lines, perLineSubmit:true, lineRoles:roles };
+}
+
 function dataverseReportToSetup(detail){
   const p=detail.parent;
   const perUnitSchedule=[...(detail.businessUnits||[]), ...(detail.regions||[])].some(rowHasSchedule);
@@ -4138,19 +4202,7 @@ function dataverseReportToSetup(detail){
           dvId:it.id||null,
         })).filter(it=>it.type),
       })),
-    lines:(detail.lines||[]).map(l=>({
-      id:uid('ln'),
-      department:nameOf(DEPARTMENTS,l._lm_department_value)||'',
-      function:l._lm_function_value ? (nameOf(FUNCTIONS,l._lm_function_value)||'') : '',
-    })),
-    /* Submitting per Department & Function: nothing stores the toggle itself
-       -- a Setup reopens in that mode when any line row carries a person or a
-       Channel. Each row's unit is its lm_BU / lm_Region (none = group-wide). */
-    perLineSubmit:(detail.lineRoles||[]).length>0,
-    lineRoles:Object.fromEntries((detail.lineRoles||[]).map(r=>[
-      `${r._lm_bu_value||r._lm_region_value||GROUP_KEY}::${r._lm_department_value}|${r._lm_function_value||''}`,
-      {submitter:r._lm_submittingposition_value||null, owner:r._lm_ownerposition_value||null,
-       team:null, channel:r._lm_teamchannel_value||null}])),
+    ...reportLinesFromRows(detail, [...buUnits,...regionUnits,...groupUnits]),
     kpis:(detail.kpiIds||[]).map(id=>idToName(KPI_ID_BY_NAME,id)).filter(Boolean),
     processes:(detail.processIds||[]).map(id=>idToName(PROCESS_ID_BY_NAME,id)).filter(Boolean),
     /* Read the real Stage off lm_stage. The old inference is kept only as a
