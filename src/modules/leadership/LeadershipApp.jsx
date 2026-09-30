@@ -529,7 +529,7 @@ occs:[
   /* --- Operational Quality Committee ---------------------------------- */
   ...['2026-04-16','2026-05-21','2026-06-18'].map((d,i)=>({
     id:'occ-oqc-'+['apr','may','jun'][i], setup:'ms1', custom:null, bu:'AHJ',
-    date:d, start:'09:00', end:'11:00', tz:'Arabia Standard Time', mode:'Hybrid',
+    date:d, start:'09:00', end:'11:00', tz:'Arab Standard Time', mode:'Hybrid',
     location:'Board Room 2', link:'https://teams.microsoft.com/l/meetup-join/oqc'+i,
     adhoc:null, restricted:false, status:'Held', agendaSent:d.slice(0,8)+String(+d.slice(8)-3).padStart(2,'0'),
     inviteSent:d.slice(0,8)+String(+d.slice(8)-6).padStart(2,'0'),
@@ -544,7 +544,7 @@ occs:[
     ],
   })),
   {id:'occ-oqc-jul', setup:'ms1', custom:null, bu:'AHJ',
-   date:'2026-07-16', start:'09:00', end:'11:00', tz:'Arabia Standard Time', mode:'Hybrid',
+   date:'2026-07-16', start:'09:00', end:'11:00', tz:'Arab Standard Time', mode:'Hybrid',
    location:'Board Room 2', link:'https://teams.microsoft.com/l/meetup-join/oqc-jul',
    adhoc:null, restricted:false, status:'Held', agendaSent:'2026-07-15', inviteSent:'2026-07-12',
    sync:'Synchronized', cancelReason:null, rescheduledFrom:null,
@@ -561,7 +561,7 @@ occs:[
      {id:'ag-j-4', seq:4, title:'Patient complaint trend review', owner:'u5', source:'Standing item', covered:false},
    ]},
   {id:'occ-oqc-aug', setup:'ms1', custom:null, bu:'AHJ',
-   date:'2026-08-20', start:'09:00', end:'11:00', tz:'Arabia Standard Time', mode:'Hybrid',
+   date:'2026-08-20', start:'09:00', end:'11:00', tz:'Arab Standard Time', mode:'Hybrid',
    location:'Board Room 2', link:'https://teams.microsoft.com/l/meetup-join/oqc-aug',
    adhoc:null, restricted:false, status:'Scheduled', agendaSent:null, inviteSent:'2026-08-16',
    sync:'Synchronized', cancelReason:null, rescheduledFrom:null, inputs:[],
@@ -569,7 +569,7 @@ occs:[
    agenda:[{id:'ag-a-1', seq:1, title:'Patient complaint trend review', owner:'u5',
             source:'Carried forward from 16 Jul 2026', covered:null, carriedFrom:'ag-j-4'}]},
   {id:'occ-oqc-adhoc', setup:'ms1', custom:null, bu:'AHJ',
-   date:'2026-07-30', start:'14:00', end:'15:00', tz:'Arabia Standard Time', mode:'Online',
+   date:'2026-07-30', start:'14:00', end:'15:00', tz:'Arab Standard Time', mode:'Online',
    location:null, link:'https://teams.microsoft.com/l/meetup-join/oqc-adhoc',
    adhoc:'Governance', restricted:false, status:'Scheduled', agendaSent:'2026-07-28', inviteSent:'2026-07-26',
    sync:'Synchronized', cancelReason:null, rescheduledFrom:null, inputs:['sub2'],
@@ -578,7 +578,7 @@ occs:[
 
   /* --- Infection Prevention and Control Committee ---------------------- */
   {id:'occ-ipc-jun', setup:'ms2', custom:null, bu:'AHJ',
-   date:'2026-06-25', start:'11:00', end:'12:30', tz:'Arabia Standard Time', mode:'In person',
+   date:'2026-06-25', start:'11:00', end:'12:30', tz:'Arab Standard Time', mode:'In person',
    location:'Meeting Room 4', link:null, adhoc:null, restricted:false, status:'Held',
    agendaSent:'2026-06-22', inviteSent:'2026-06-21', sync:'Synchronized', cancelReason:null, rescheduledFrom:null, inputs:[],
    attend:[{who:'u2',present:true,delegate:null},{who:'u5',present:true,delegate:null},
@@ -589,7 +589,7 @@ occs:[
      {id:'ag-i1-2', seq:2, title:'Isolation compliance audit', owner:'u10', source:'Standing item', covered:true},
    ]},
   {id:'occ-ipc-jul', setup:'ms2', custom:null, bu:'AHJ',
-   date:'2026-07-23', start:'11:00', end:'12:30', tz:'Arabia Standard Time', mode:'In person',
+   date:'2026-07-23', start:'11:00', end:'12:30', tz:'Arab Standard Time', mode:'In person',
    location:'Meeting Room 4', link:null, adhoc:null, restricted:false, status:'Held',
    agendaSent:'2026-07-21', inviteSent:'2026-07-22', sync:'Synchronized', cancelReason:null, rescheduledFrom:null, inputs:[],
    attend:[{who:'u2',present:true,delegate:null},{who:'u5',present:true,delegate:null},
@@ -600,7 +600,7 @@ occs:[
      {id:'ag-i2-2', seq:2, title:'Antimicrobial stewardship report', owner:'u2', source:'Standing item', covered:true},
    ]},
   {id:'occ-ipc-aug', setup:'ms2', custom:null, bu:'AHJ',
-   date:'2026-08-27', start:'11:00', end:'12:30', tz:'Arabia Standard Time', mode:'In person',
+   date:'2026-08-27', start:'11:00', end:'12:30', tz:'Arab Standard Time', mode:'In person',
    location:'Meeting Room 4', link:null, adhoc:null, restricted:false, status:'Scheduled',
    agendaSent:null, inviteSent:'2026-08-23', sync:'Synchronized', cancelReason:null, rescheduledFrom:null, inputs:[],
    attend:MS('ms2').required.concat(MS('ms2').optional).map(w=>({who:w,present:null,delegate:null})),
@@ -608,7 +608,7 @@ occs:[
 
   /* --- Medication Safety Committee ------------------------------------- */
   {id:'occ-msc-jul', setup:'ms3', custom:null, bu:'AHJ',
-   date:'2026-07-09', start:'13:00', end:'14:30', tz:'Arabia Standard Time', mode:'Online',
+   date:'2026-07-09', start:'13:00', end:'14:30', tz:'Arab Standard Time', mode:'Online',
    location:null, link:'https://teams.microsoft.com/l/meetup-join/msc', adhoc:null, restricted:false,
    status:'Held', agendaSent:'2026-07-07', inviteSent:'2026-07-05', sync:'Synchronized', cancelReason:null, rescheduledFrom:null,
    inputs:[],
@@ -619,7 +619,7 @@ occs:[
      {id:'ag-m-2', seq:2, title:'Look-alike sound-alike list refresh', owner:'u14', source:'Standing item', covered:true},
    ]},
   {id:'occ-msc-aug', setup:'ms3', custom:null, bu:'AHJ',
-   date:'2026-08-13', start:'13:00', end:'14:30', tz:'Arabia Standard Time', mode:'Online',
+   date:'2026-08-13', start:'13:00', end:'14:30', tz:'Arab Standard Time', mode:'Online',
    location:null, link:null, adhoc:null, restricted:false, status:'Cancelled', agendaSent:null, inviteSent:'2026-08-09',
    sync:'Cancellation synchronized', cancelReason:'Quarterly cycle moved to September at the Chair’s request.',
    rescheduledFrom:null, inputs:[],
@@ -627,7 +627,7 @@ occs:[
 
   /* --- Business Meetings ------------------------------------------------ */
   {id:'occ-mpr-jul', setup:'ms4', custom:null, bu:'AHJ',
-   date:'2026-07-07', start:'08:00', end:'10:00', tz:'Arabia Standard Time', mode:'Hybrid',
+   date:'2026-07-07', start:'08:00', end:'10:00', tz:'Arab Standard Time', mode:'Hybrid',
    location:'Executive Suite', link:'https://teams.microsoft.com/l/meetup-join/mpr', adhoc:null,
    restricted:false, status:'Held', agendaSent:'2026-07-05', inviteSent:'2026-07-03', sync:'Synchronized',
    cancelReason:null, rescheduledFrom:null, inputs:['sub4'],
@@ -639,7 +639,7 @@ occs:[
      {id:'ag-p-2', seq:2, title:'Occupancy recovery actions', owner:'u7', source:'Standing item', covered:true},
    ]},
   {id:'occ-mpr-aug', setup:'ms4', custom:null, bu:'AHJ',
-   date:'2026-08-04', start:'08:00', end:'10:00', tz:'Arabia Standard Time', mode:'Hybrid',
+   date:'2026-08-04', start:'08:00', end:'10:00', tz:'Arab Standard Time', mode:'Hybrid',
    location:'Executive Suite', link:'https://teams.microsoft.com/l/meetup-join/mpr-aug', adhoc:null,
    restricted:false, status:'Scheduled', agendaSent:null, inviteSent:'2026-07-31', sync:'Synchronized',
    cancelReason:null, rescheduledFrom:null, inputs:['sub6'],
@@ -647,7 +647,7 @@ occs:[
    agenda:[{id:'ag-p2-1', seq:1, title:'July performance against plan', owner:'u11', source:'Report input — Executive Performance Pack', covered:null},
            {id:'ag-p2-2', seq:2, title:'Occupancy recovery — progress', owner:'u7', source:'Carried forward', covered:null}]},
   {id:'occ-dtf-jul', setup:'ms5', custom:null, bu:'AHJ',
-   date:'2026-07-14', start:'15:00', end:'16:30', tz:'Arabia Standard Time', mode:'Online',
+   date:'2026-07-14', start:'15:00', end:'16:30', tz:'Arab Standard Time', mode:'Online',
    location:null, link:'https://teams.microsoft.com/l/meetup-join/dtf', adhoc:null, restricted:false,
    status:'Held', agendaSent:'2026-07-12', inviteSent:'2026-07-10', sync:'Synchronized', cancelReason:null, rescheduledFrom:null,
    inputs:[],
@@ -656,14 +656,14 @@ occs:[
            {who:'u11',present:false,delegate:null}],
    agenda:[{id:'ag-d-1', seq:1, title:'Leadership Practice rollout readiness', owner:'u15', source:'Standing item', covered:true}]},
   {id:'occ-ncr-jul', setup:'ms6', custom:null, bu:'AHJ',
-   date:'2026-07-21', start:'12:00', end:'13:00', tz:'Arabia Standard Time', mode:'In person',
+   date:'2026-07-21', start:'12:00', end:'13:00', tz:'Arab Standard Time', mode:'In person',
    location:'Nursing Education Room', link:null, adhoc:null, restricted:false, status:'Held',
    agendaSent:'2026-07-19', inviteSent:'2026-07-17', sync:'Synchronized', cancelReason:null, rescheduledFrom:null, inputs:['sub3'],
    attend:[{who:'u10',present:true,delegate:null},{who:'u2',present:true,delegate:null},
            {who:'u14',present:true,delegate:null}],
    agenda:[{id:'ag-n-1', seq:1, title:'Specialty nursing competency gaps', owner:'u10', source:'Standing item', covered:true}]},
   {id:'occ-ncr-aug', setup:'ms6', custom:null, bu:'AHJ',
-   date:'2026-08-23', start:'12:00', end:'13:00', tz:'Arabia Standard Time', mode:'In person',
+   date:'2026-08-23', start:'12:00', end:'13:00', tz:'Arab Standard Time', mode:'In person',
    location:'Nursing Education Room', link:null, adhoc:null, restricted:false, status:'Scheduled',
    agendaSent:null, inviteSent:'2026-08-19', sync:'Synchronized', cancelReason:null, rescheduledFrom:'2026-08-21', inputs:[],
    attend:MS('ms6').required.map(w=>({who:w,present:null,delegate:null})),
@@ -673,7 +673,7 @@ occs:[
   {id:'occ-121-jul', setup:null, bu:'AHJ',
    custom:{name:'One-to-one — Hussain Ahmed and Sara Khalil', purpose:'Monthly one-to-one review.',
            noSetupFlag:true, taxonomyState:'Delivered', dept:'Quality', stage:'Business Unit'},
-   date:'2026-07-27', start:'10:00', end:'10:45', tz:'Arabia Standard Time', mode:'Online',
+   date:'2026-07-27', start:'10:00', end:'10:45', tz:'Arab Standard Time', mode:'Online',
    location:null, link:'https://teams.microsoft.com/l/meetup-join/121', adhoc:'Leadership',
    restricted:true, status:'Held', agendaSent:'2026-07-26', inviteSent:'2026-07-23', sync:'Synchronized',
    cancelReason:null, rescheduledFrom:null, inputs:[],
@@ -2128,7 +2128,11 @@ const dvRegion = id => (id && DV_REGION_NAME[id]) || null;
 /* The two time zones the group operates in. lm_timezone is a plain text column,
    so the Windows time-zone id is what gets written. */
 const TIME_ZONES=[
-  {id:'Arabia Standard Time', label:'KSA — (UTC+03:00) Riyadh', match:/saudi|ksa/i},
+  /* The id is saved to lm_timezone and read by flows as a WINDOWS time zone
+     name, so it must be a real one: Riyadh is "Arab Standard Time". It was
+     "Arabia Standard Time" until 30 Sep, which convertFromUtc() rejects --
+     meetings saved before then still carry it; the invite flow maps it. */
+  {id:'Arab Standard Time', label:'KSA — (UTC+03:00) Riyadh', match:/saudi|ksa/i},
   {id:'Egypt Standard Time',  label:'Egypt — (UTC+02:00) Cairo', match:/egypt|egy/i},
 ];
 /* Best time zone for a Region name, so choosing scope pre-selects it. */
@@ -2538,7 +2542,7 @@ function App({onSwitch}){
     n.occs.push({id,setup:f.setup||null,bu:f.bu,
       custom:f.setup?null:{name:f.name,purpose:f.purpose,noSetupFlag:true,taxonomyState:'Queued',
                            dept:f.dept,stage:f.stage},
-      date,start:f.start,end:f.end,tz:'Arabia Standard Time',mode:f.mode,
+      date,start:f.start,end:f.end,tz:'Arab Standard Time',mode:f.mode,
       location:f.location||null,link:f.mode==='In person'?null:'https://teams.microsoft.com/l/meetup-join/'+id,
       adhoc:f.adhoc,restricted:!!f.restricted,status:'Scheduled',agendaSent:null,
       inviteSent:f.inviteSent||TODAY, sync:'Synchronized',
