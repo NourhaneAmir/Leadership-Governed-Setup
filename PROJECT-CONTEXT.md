@@ -7,7 +7,7 @@
 > (covering 09-12 Sep), updated 13 Sep 2026, updated 14 Sep 2026,
 > updated 16 Sep 2026, updated 17 Sep 2026 (three times), against branch `leadership-practice`;
 > since then updated per session through 28 Sep 2026, now on branch `CrossEnv-Leadership`;
-> **status snapshot below refreshed 01 Oct 2026, end of day (code last changed at `409b549`; see §0 "What is live" for which app runs which commit).**
+> **status snapshot below refreshed 01 Oct 2026, end of day (code last changed at `bc7bcd5`; see §0 "What is live" for which app runs which commit).**
 >
 > This file records **decisions, hard-won schema facts and open questions** —
 > the things that are expensive to rediscover. It is not a substitute for the
@@ -38,11 +38,11 @@ still on `d8f06a1`, so every Leadership change after it is test-only; see
 
 | | |
 |---|---|
-| Branch | `CrossEnv-Leadership`. Code last changed at `409b549` (01 Oct). ⚠️ The 01 Oct commits from `84d4c0b` on were **not** `git push`ed to GitHub (`origin`) when written — check `git status -sb` |
+| Branch | `CrossEnv-Leadership`. Code last changed at `bc7bcd5` (01 Oct). ⚠️ The 01 Oct commits from `84d4c0b` on were **not** `git push`ed to GitHub (`origin`) when written — check `git status -sb` |
 | Governance Setup | **Main (IT):** `4912152c-b5c8-4beb-bb74-c9f43550405b`, pushed from `C:\tmp\cad-gov`. **Test (DT New):** `786c1b14-bf09-4dd7-a0a2-5730e87744fe` ("…Governance Setup (2)"), pushed from `C:\tmp\cad-gov-old` with `LP_DATA_ORG` set — see "Test copies on DT New" below. Both Code App Development. |
 | Leadership Execution | **Main (IT):** `83db0ef8-4c62-4eef-84ac-dadab326b704`, pushed from `C:\tmp\cad-exec`. **Test (DT New):** `d61c6237-fec1-45c7-80e0-a9c63dd1e662` ("…Leadership Execution (2)"), pushed from `C:\tmp\cad-exec-test` (created 01 Oct) with `LP_DATA_ORG` set. Both Code App Development. |
 | Data | **IT** (`org2f45e702`) for **both apps** again, every table but `lm_setupactivities` (follows `DATA_ORG`, = IT in Governance). Governance was on DT New for part of 29 Sep, then moved back to IT the same day per an explicit ask, once IT had the five `lm_reporttemplatedepartmentfunction` columns the per Department & Function submitters write (`lm_BU`, `lm_Region`, `lm_SubmittingPosition`, `lm_OwnerPosition`, `lm_TeamChannel` — checked, same targets as DT New). Switch: `__DATA_ORG__` + `__PIN_ORG__` in `apps/governance/vite.config.js` (see `PIN_ORG` in `xenv.js`). ⚠️ Setups saved in Governance **while it was on DT New** stay in DT New — they are not in IT. |
-| What is live (end of 01 Oct) | **Main apps (IT):** Leadership `d8f06a1` **minus `4ca0036`**; Governance **`409b549`** (pushed on the user's explicit ask — the optional agenda owner; the commits between only touched Leadership code it does not call). **Test apps (DT New):** Leadership **`082cd4e` minus `4ca0036`**; Governance **`409b549`**. Every test push: revert steps, bundle checked (no uploader writes, data on DT New, the change present), normal IT `dist` rebuilt after. |
+| What is live (end of 01 Oct) | **Main apps (IT):** Leadership `d8f06a1` **minus `4ca0036`**; Governance **`409b549`** (pushed on the user's explicit ask — the optional agenda owner; the commits between only touched Leadership code it does not call). **Test apps (DT New):** Leadership **`bc7bcd5` minus `4ca0036`**; Governance **`409b549`**. Every test push: revert steps, bundle checked (no uploader writes, data on DT New, the change present), normal IT `dist` rebuilt after. |
 
 ⚠️ **One commit is in git but deliberately NOT deployed: `4ca0036`** — the
 Create Report file uploader and Team Channel → SharePoint destination. It
@@ -8980,6 +8980,20 @@ still `d8f06a1`. Lint baseline stays 57 (`LeadershipApp.jsx` + `dataverse.js`).
   holding the file) — the build then fails on the conflict markers, so nothing
   bad is pushed, but retry the write (the scripts now retry 5× with a pause)
   and re-check the marker count before building.
+- **`bc7bcd5` — wording + one rule (Leadership; test copy only):**
+  - **Mode "In person" → "Physical"** — Dataverse's own label for option 1.
+    `MEETING_OCC_MODE[1]` is now `'Physical'`; `MEETING_OCC_MODE_KEY` still
+    maps `'In person'` too, so nothing that sends the old word breaks.
+  - **"Facilitator" → "Organizer"** on every Leadership screen, the Minutes
+    Word export and the demo data. The Audit Grid state reads **"Pending
+    Organizer Review"** — `GRID_STATE[1]`; `GRID_STATE_KEY` accepts both
+    labels, same stored option. ⚠️ Code names (`facilitatorPositionId`,
+    `isFacilitator`, `dvFacilitatorPositionId`) and Dataverse columns
+    (`lm_meetingorganizerfacilitator`, …) are unchanged — search for those,
+    not for the label. **Governance still says "Facilitator"** (the ask named
+    Leadership Execution only).
+  - **Raise a task: Start date is required** (`NewTaskForm`; still defaults to
+    today; due ≥ start).
 
 ## 6. Schema facts that are expensive to rediscover
 
