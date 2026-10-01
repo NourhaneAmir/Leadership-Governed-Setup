@@ -801,3 +801,12 @@
   background:var(--cs-hover); border-bottom:1px solid var(--cs-border) }
 .cs-mtgd .mtgd-addatt select{ border:1px solid var(--cs-border); border-radius:10px; padding:8px 10px; background:#fff;
   font:400 12px var(--cs-sans); color:var(--cs-text) }
+
+/* SharePoint link per Submission (01 Oct) */
+.cs-mtgd .mtgd-splink{ display:inline-flex; align-items:center; gap:4px; margin-top:3px; color:var(--cs-green);
+  font-weight:500; text-decoration:none }
+.cs-mtgd .mtgd-splink:hover{ text-decoration:underline }
+.cs-mtgd tr.mtgd-spform > td{ padding:0; background:var(--cs-hover) }
+.cs-mtgd tr.mtgd-spform .mtgd-addatt{ align-items:flex-end; border-bottom:0 }
+.cs-mtgd tr.mtgd-spform .mtgd-addatt > :first-child{ flex:1 1 320px; min-width:0; margin:0 }
+.cs-mtgd tr.mtgd-spform input{ width:100% }

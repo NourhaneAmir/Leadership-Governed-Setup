@@ -6,7 +6,7 @@
    (DvMinutesBody) builds the model from what it already holds, including
    which agenda items the signed-in user may read -- a confidential item the
    user cannot read is exported with its title and a "withheld" line, never
-   its note or its decisions. docx is loaded on demand, as for reports.
+   its note, its decisions or its tasks. docx is loaded on demand, as for reports.
    ========================================================================= */
 import { downloadBlob } from './reportExport.js';
 
@@ -29,7 +29,9 @@ const safeFileName = s => String(s || 'minutes')
  * @param {object[]} model.attendees name, position, type, present
  * @param {object[]} model.agenda  seq, title, owner, covered, confidential,
  *                                 withheld, viewers, note,
- *                                 decisions[{name, taken, status}]
+ *                                 decisions[{name, taken, status}],
+ *                                 tasks[{name, code, assignee, due, status, priority}]
+ * @param {object[]} [model.meetingTasks] tasks on the meeting but on no agenda item
  * @param {string} model.generatedAt
  * @param {string} [model.exportedBy]
  * @returns {Promise<Blob>}
@@ -84,6 +86,14 @@ export async function minutesToDocx(model){
 
   const m = model.meeting, mn = model.minutes;
   const kids = [];
+  /* Tasks raised in the meeting (hx_tasks), one table per agenda item. */
+  const taskTable = (tasks, noLabel) => {
+    if(!noLabel) kids.push(p('Tasks', { bold: true, size: 19, before: 80, after: 40 }));
+    kids.push(table(['Task', 'Assignee', 'Due', 'Priority', 'Status'],
+      tasks.map(t => [dsh(t.code ? `${t.name} (${t.code})` : t.name), dsh(t.assignee), dsh(t.due),
+                      dsh(t.priority), dsh(t.status || 'New')]),
+      [38, 22, 14, 12, 14]));
+  };
 
   /* ---- title block ---------------------------------------------------- */
   kids.push(p('MINUTES OF MEETING', { bold: true, size: 17, color: GOLD, after: 40 }));
@@ -165,7 +175,15 @@ export async function minutesToDocx(model){
       kids.push(table(['Decision', 'Decision taken', 'Status'],
         a.decisions.map(d => [dsh(d.name), dsh(d.taken), dsh(d.status)]), [34, 46, 20]));
     }
+
+    if(a.tasks?.length) taskTable(a.tasks);
   });
+
+  /* ---- tasks raised in the meeting but on no agenda item -------------- */
+  if(model.meetingTasks?.length){
+    kids.push(heading('Other tasks from this meeting', 2));
+    taskTable(model.meetingTasks, true);
+  }
 
   /* ---- footer note ---------------------------------------------------- */
   kids.push(spacer());

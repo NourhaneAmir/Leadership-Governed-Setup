@@ -6035,21 +6035,24 @@ function DvEditOccModal({rec,onClose}){
      creates the new occurrence and keeps the link back to this one. Edit
      changes the time, mode and place on the same day, and saves the date
      exactly as it was read. */
-  const [f,setF]=useState({start:rec.start||'', end:rec.end||'',
+  const [f,setF]=useState({date:'', start:rec.start||'', end:rec.end||'',
     mode:rec.mode||'In person', location:rec.location||'', link:rec.link||''});
+  /* An occurrence saved without a date (01 Oct) gets one here -- it is needed
+     before the meeting can be marked Held. A date that exists stays locked. */
+  const noDate = !rec.date;
   const [saving,setSaving]=useState(false);
   const set=(k,v)=>setF(x=>({...x,[k]:v}));
   const badTime = f.start && f.end && f.end<=f.start;
   const needsLink     = f.mode==='Online' || f.mode==='Hybrid';
   const needsLocation = f.mode==='In person' || f.mode==='Hybrid';
   const modeOk = (!needsLink || f.link.trim()) && (!needsLocation || f.location.trim());
-  const ok = !badTime && !!f.start && !!f.end && modeOk;
+  const ok = !badTime && !!f.start && !!f.end && modeOk && (!noDate || !!f.date);
 
   const save = async () => {
     setSaving(true);
     try{
       const {id,errors} = await updateMeetingOccurrence(rec.id, {
-        date:rec.date, start:f.start, end:f.end, mode:f.mode,
+        date:noDate ? f.date : rec.date, start:f.start, end:f.end, mode:f.mode,
         location:needsLocation ? f.location.trim() : '',
         link:needsLink ? f.link.trim() : '',
       });
@@ -6072,10 +6075,13 @@ function DvEditOccModal({rec,onClose}){
     footer={<><Btn onClick={onClose} disabled={saving}>Cancel</Btn>
       <Btn k="pri" disabled={!ok||saving} onClick={save}>{saving?'Saving…':'Save'}</Btn></>}>
     <div className="f-row3">
-      <Field label="Date"
+      {noDate
+        ? <Field label="Date" req hint="This occurrence has no date yet. Once saved, it can only be changed with Reschedule.">
+            <input type="date" value={f.date} onChange={e=>set('date',e.target.value)}/></Field>
+        : <Field label="Date"
         hint={rec.status==='Scheduled' ? 'To move this meeting to another day, use Reschedule.' : null}>
         <input type="text" value={rec.date ? `${dayName(rec.date)}, ${fmtD(rec.date)}` : '—'}
-          readOnly disabled aria-readonly="true" title="The date can only be changed with Reschedule"/></Field>
+          readOnly disabled aria-readonly="true" title="The date can only be changed with Reschedule"/></Field>}
       <Field label="Start" req><input type="time" value={f.start} onChange={e=>set('start',e.target.value)}/></Field>
       <Field label="End" req err={badTime?'The end time must be after the start time.':null}>
         <input type="time" value={f.end} onChange={e=>set('end',e.target.value)}/></Field>
@@ -6101,6 +6107,19 @@ function DvEditOccModal({rec,onClose}){
    never a stale Scheduled row left sitting on the wrong date. The Agenda's
    coverage and any Attendance already recorded stay behind on the original;
    only the content itself (titles, owners, positions) carries forward. */
+/* The rescheduled occurrence's name carries its NEW date (01 Oct). Generated
+   names start with the day/month ("4/10 Digital Transformation ... - test");
+   older ones end with an ISO date ("... - 1 - 2026-09-06"). Whichever is there
+   is replaced in the same format; a name with neither gets the d/M prefix. */
+const rescheduledName = (name, iso) => {
+  const n = String(name||'').trim();
+  if(!iso) return n;
+  const [y,m,d] = iso.split('-');
+  const dm = `${Number(d)}/${Number(m)}`;
+  if(/^\d{1,2}\/\d{1,2}\s+/.test(n)) return n.replace(/^\d{1,2}\/\d{1,2}\s+/, dm+' ');
+  if(/\d{4}-\d{2}-\d{2}$/.test(n))   return n.replace(/\d{4}-\d{2}-\d{2}$/, `${y}-${m}-${d}`);
+  return n ? `${dm} ${n}` : dm;
+};
 function DvRescheduleOccModal({rec,onClose}){
   const {toast,refreshOccurrences,openMeeting}=use();
   const [f,setF]=useState({date:'', start:rec.start||'', end:rec.end||'',
@@ -6121,7 +6140,7 @@ function DvRescheduleOccModal({rec,onClose}){
     setSaving(true);
     try{
       const { id:newId, errors } = await createMeetingOccurrence({
-        name: rec.name,
+        name: rescheduledName(rec.name, f.date),
         templateId: rec.templateId||undefined,
         stage: rec.stage||undefined,
         businessUnitId: rec.businessUnitId||undefined,
@@ -6179,6 +6198,8 @@ function DvRescheduleOccModal({rec,onClose}){
       <Field label="End" req err={badTime?'The end time must be after the start time.':null}>
         <input type="time" value={f.end} onChange={e=>set('end',e.target.value)}/></Field>
     </div>
+    {f.date && !sameDate && <div className="t-sub" style={{margin:'-4px 0 12px'}}>
+      New occurrence name: <b>{rescheduledName(rec.name, f.date)}</b></div>}
     <Field label="Mode" req hint="Online meets in Teams, In person needs a location, Hybrid needs both.">
       <Pills opts={['In person','Online','Hybrid']} val={f.mode} onChange={v=>set('mode',v)}/></Field>
     {needsLocation &&
@@ -6452,6 +6473,14 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
       let decisions = [];
       try{ decisions = await fetchWorkLogDecisions(); }
       catch(e){ console.warn('[minutesExport] decisions could not be read; exporting without them:', e); }
+      /* Tasks raised in this meeting (01 Oct), read fresh like the decisions.
+         null = tasks cannot be linked to a meeting in this environment (IT). */
+      let tasks = null;
+      try{ tasks = await fetchTasksForMeeting(rec.id, rec.agenda.map(a=>a.id)); }
+      catch(e){ console.warn('[minutesExport] tasks could not be read; exporting without them:', e); }
+      const taskRow = t => ({ name:t.name, code:t.code, assignee:t.assigneeName,
+        due: t.due ? fmtDS(t.due) : null, status:t.status, priority:t.priority });
+      const agendaIds = new Set(rec.agenda.map(a=>a.id));
       const userName = id => attendeeUsers.find(u=>u.userId===id)?.name || null;
       const model = {
         meeting: {
@@ -6482,8 +6511,11 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
             decisions: readable
               ? decisions.filter(d=>d.agendaItemId===a.id).map(d=>({ name:d.name, taken:d.decisionTaken, status:d.status }))
               : [],
+            tasks: readable && tasks ? tasks.filter(t=>t.agendaItemId===a.id).map(taskRow) : [],
           };
         }),
+        /* tasks linked to the meeting but to none of its agenda items */
+        meetingTasks: tasks ? tasks.filter(t=>!t.agendaItemId || !agendaIds.has(t.agendaItemId)).map(taskRow) : [],
         generatedAt: fmtISODT(new Date().toISOString()),
         exportedBy: currentUser?.fullName || null,
       };
@@ -7198,7 +7230,10 @@ function DvMeetingDetail({rec,back}){
       return { key:d.id, link:d, occ, tplId:d.reportTemplateId,
         name: occ ? occ.name : d.name,
         status: occ ? occ.status : d.reportOccurrenceId ? 'Not loaded' : 'No occurrence yet',
-        ready: !!occ && (INPUT_RANK[occ.status]||0) >= (needApproved?2:1),
+        /* A SharePoint link on the report (lm_fileurl, 01 Oct) also counts as
+           submitted: the input is there, even if the report is not In Review. */
+        ready: !!occ && ((INPUT_RANK[occ.status]||0) >= (needApproved?2:1) || !!occ.fileUrl),
+        byLink: !!occ?.fileUrl && (INPUT_RANK[occ.status]||0) < (needApproved?2:1),
         required: !!d.reportTemplateId && requiredTplIds.has(d.reportTemplateId) };
     }),
     ...setupInputs.filter(s=>!s.reportTemplateId || !linkedTplIds.has(s.reportTemplateId)).map(s=>({
@@ -7208,6 +7243,35 @@ function DvMeetingDetail({rec,back}){
   ];
   const readyCount = submissions.filter(x=>x.ready).length;
   const notReady = submissions.length - readyCount;
+
+  /* SharePoint link per linked report (01 Oct). Saved on the Report
+     Occurrence's lm_fileurl -- the same column as the report page's
+     "Attach a working copy" -- so it shows wherever that report is open. */
+  const [spFor,setSpFor]=useState(null);       // submission key whose link form is open
+  const [spUrl,setSpUrl]=useState('');
+  const [spSaving,setSpSaving]=useState(false);
+  const spErr = !spUrl.trim() ? null
+    : !/^https:\/\//i.test(spUrl.trim()) ? 'Paste the full link, starting with https://'
+    : spUrl.trim().length>FILE_URL_MAX ? `${spUrl.trim().length} characters — ${FILE_URL_MAX} max.` : null;
+  const saveSpLink = async occ => {
+    const url = spUrl.trim();
+    if(!url || spErr) return;
+    setSpSaving(true);
+    try{
+      const {id,errors} = await updateReportOccurrenceFile(occ.id, url);
+      if(!id){
+        console.warn('[dataverse] updateReportOccurrenceFile() failed:', errors);
+        toast('Not saved','Saving the SharePoint link failed. Check the console for details.','err');
+        return;
+      }
+      toast('Link saved',`${occ.name} now has its SharePoint link and counts as submitted.`,'ok');
+      setSpFor(null); setSpUrl('');
+      await refreshOccurrences();
+    }catch(e){
+      console.warn('[dataverse] updateReportOccurrenceFile() threw unexpectedly:', e);
+      toast('Not saved','Saving the SharePoint link failed. Check the console for details.','err');
+    }finally{ setSpSaving(false); }
+  };
 
   /* Attaching an occurrence to a link that was made against the Template
      alone -- which link is open, and whether its list is scoped. */
@@ -7264,7 +7328,14 @@ function DvMeetingDetail({rec,back}){
     }finally{ setUnlinkingId(null); }
   };
 
+  /* Mark as Held needs the date, the start and the end time (01 Oct) as well
+     as an Agenda item. heldBlock says what is missing; null = ready. */
+  const missingWhen = [!rec.date&&'date', !rec.start&&'start time', !rec.end&&'end time'].filter(Boolean);
+  const heldBlock = missingWhen.length
+    ? `Enter the meeting's ${missingWhen.join(', ').replace(/, ([^,]*)$/,' and $1')} first (Edit)`
+    : !rec.agenda.length ? 'Add at least one Agenda item first' : null;
   const markHeld = async () => {
+    if(heldBlock) return;
     setMarkingHeld(true);
     try{
       const {id,errors} = await updateMeetingOccurrenceStatus(rec.id, 'Held');
@@ -7529,8 +7600,8 @@ function DvMeetingDetail({rec,back}){
           {rec.status==='Scheduled' &&
             <button type="button" className="cs-btn ghost lg" onClick={()=>setEditing(true)}><PenLine size={13}/>Edit</button>}
           {rec.status==='Scheduled' &&
-            <button type="button" className="cs-btn green lg" disabled={markingHeld||!rec.agenda.length} onClick={markHeld}
-              title={rec.agenda.length?'Mark this meeting as held':'Add at least one Agenda item first'}>
+            <button type="button" className="cs-btn green lg" disabled={markingHeld||!!heldBlock} onClick={markHeld}
+              title={heldBlock||'Mark this meeting as held'}>
               <Check size={13}/>{markingHeld?'Marking…':'Mark as Held'}</button>}
         </div>
       </div>
@@ -7552,6 +7623,9 @@ function DvMeetingDetail({rec,back}){
     {rescheduling && <DvRescheduleOccModal rec={rec} onClose={()=>setRescheduling(false)}/>}
     {cancelling && <DvCancelOccModal rec={rec} onClose={()=>setCancelling(false)}/>}
 
+    {rec.status==='Scheduled' && missingWhen.length>0 &&
+      <Note k="warn">This meeting can’t be marked Held until its {missingWhen.join(', ').replace(/, ([^,]*)$/,' and $1')}
+        {missingWhen.length===1?' is':' are'} entered. Use <b>Edit</b> to add {missingWhen.length===1?'it':'them'}.</Note>}
     {rec.status==='Scheduled' && !rec.agenda.length &&
       <Note k="warn">An occurrence needs at least one Agenda item before it can be marked Held.</Note>}
     {rec.restricted && <Note k="lock"><b>Restricted.</b> This occurrence is marked visible only to its
@@ -7631,7 +7705,8 @@ function DvMeetingDetail({rec,back}){
             <span className="cs-icon green" aria-hidden="true"><Check size={15}/></span>
             <h2 id="mtgd-act">Actions</h2>
           </div>
-          <button type="button" className="cs-btn green lg" disabled={markingHeld||!rec.agenda.length} onClick={markHeld}>
+          <button type="button" className="cs-btn green lg" disabled={markingHeld||!!heldBlock} onClick={markHeld}
+            title={heldBlock||'Mark this meeting as held'}>
             <Check size={13}/>{markingHeld?'Marking…':'Mark as Held'}</button>
           <button type="button" className="cs-btn ghost lg" onClick={()=>setRescheduling(true)}>
             <CalendarDays size={13}/>Reschedule</button>
@@ -8024,7 +8099,8 @@ function DvMeetingDetail({rec,back}){
     {tab==='inputs' && <Note k="info">Meeting input readiness minimum (OD-39): every input must reach at
       least <b>{needApproved?'Approved':'In Review (submitted)'}</b> before the meeting.
       {' '}Inputs are the reports linked on the Documents tab{rec.templateId
-        ? ', plus the Input reports this meeting\'s Setup names' : ''}.</Note>}
+        ? ', plus the Input reports this meeting\'s Setup names' : ''}. A report
+      with a <b>SharePoint link</b> also counts as submitted.</Note>}
     {tab==='inputs' && <div className="card flush">
       <div className="card-hd mtgd-hd">
         <span className="cs-icon gold" aria-hidden="true"><Upload size={15}/></span>
@@ -8037,18 +8113,23 @@ function DvMeetingDetail({rec,back}){
         ? <div style={{padding:'8px 17px 17px'}}><Empty>No input is linked, and the Setup names none.</Empty></div>
       : <div className="t-wrap"><table className="data">
           <thead><tr><th>Submission</th><th>Owner</th><th>Report Template</th><th>Period</th><th>Status</th><th></th></tr></thead>
-          <tbody>{submissions.map(x=><tr key={x.key}>
+          <tbody>{submissions.map(x=><React.Fragment key={x.key}><tr>
             <td><div className="t-main">{x.name}</div>
-              <div className="t-sub">{x.required?'Required by the Setup':'Linked to this meeting'}</div></td>
+              <div className="t-sub">{x.required?'Required by the Setup':'Linked to this meeting'}</div>
+              {x.occ?.fileUrl && <a className="t-sub mtgd-splink" href={x.occ.fileUrl} target="_blank"
+                rel="noreferrer" title={x.occ.fileUrl}><Paperclip size={11}/>SharePoint link ↗</a>}</td>
             <td className="dim">{x.occ?.creatorPositionId ? posName(x.occ.creatorPositionId) : '—'}</td>
             <td className="dim">{dvRptTpl(x.tplId)||'—'}</td>
             <td className="dim">{x.occ?fmtP(x.occ.period):'—'}</td>
-            <td>{x.ready ? <Tag c="green">{RPT_STATUS_WORD(x.status)}</Tag>
+            <td>{x.byLink ? <Tag c="green">Submitted · link</Tag>
+              : x.ready ? <Tag c="green">{RPT_STATUS_WORD(x.status)}</Tag>
               : x.occ ? <Tag c={x.occ.status==='Returned'||x.occ.status==='Rejected'?'red':'amber'}>{RPT_STATUS_WORD(x.status)}</Tag>
               : <Tag c="red">{x.status}</Tag>}</td>
             <td style={{textAlign:'right',whiteSpace:'nowrap'}}>
               {x.occ
-                ? <Btn k="sm" onClick={()=>openDvRec('Report',x.occ)}>Open</Btn>
+                ? <>{rec.status!=='Cancelled' && <Btn k="sm" onClick={()=>{ setSpFor(spFor===x.key?null:x.key); setSpUrl(x.occ.fileUrl||''); }}>
+                      {spFor===x.key ? 'Close' : x.occ.fileUrl ? 'Change link' : 'Add SharePoint link'}</Btn>}
+                    {' '}<Btn k="sm" onClick={()=>openDvRec('Report',x.occ)}>Open</Btn></>
                 : x.link
                 ? (x.link.reportTemplateId && !x.link.reportOccurrenceId
                     ? <Btn k="sm" onClick={()=>{ setAttachFor(x.link.id); setAttachAll(false); setTab('docs'); }}>
@@ -8056,7 +8137,18 @@ function DvMeetingDetail({rec,back}){
                 : x.tplId
                 ? <Btn k="sm" onClick={()=>{ setLinkTplId(x.tplId); setShowAll(false); setTab('docs'); }}>Link it</Btn>
                 : null}</td>
-          </tr>)}
+          </tr>
+          {x.occ && spFor===x.key && <tr className="mtgd-spform"><td colSpan={6}>
+            <div className="mtgd-addatt">
+              <Field label="SharePoint link" req err={spErr}
+                hint={`The report file's link in SharePoint or Teams — saved on the report itself. Max ${FILE_URL_MAX} characters.`}>
+                <input type="url" value={spUrl} autoFocus placeholder="https://…sharepoint.com/…"
+                  onChange={e=>setSpUrl(e.target.value)}
+                  onKeyDown={e=>{ if(e.key==='Enter') saveSpLink(x.occ); }}/></Field>
+              <Btn k="pri" disabled={spSaving||!spUrl.trim()||!!spErr||spUrl.trim()===(x.occ.fileUrl||'')}
+                onClick={()=>saveSpLink(x.occ)}>{spSaving?'Saving…':'Save link'}</Btn>
+            </div></td></tr>}
+          </React.Fragment>)}
           </tbody></table></div>}
     </div>}
 
