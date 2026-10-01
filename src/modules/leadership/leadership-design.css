@@ -504,6 +504,29 @@
 .cs-mtgd .mtgd-kv b{ font:600 11.5px var(--cs-sans); color:var(--cs-text); text-align:right; min-width:0; overflow-wrap:anywhere }
 .cs-mtgd .mtgd-all summary{ cursor:pointer; margin:0 }
 .cs-mtgd .mtgd-all[open] summary{ margin-bottom:8px }
+/* tabs (01 Oct): card header, members, quorum panel */
+.cs-mtgd .card.flush{ overflow:hidden }
+.cs-mtgd .card-hd.mtgd-hd{ display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  padding:14px 17px; margin:0 0 4px; border-bottom:1px solid var(--cs-border) }
+.cs-mtgd .card-hd.mtgd-hd h2{ font:600 14px var(--cs-sans); color:var(--cs-text); margin:0; flex:1; min-width:0 }
+.cs-mtgd table.data th{ font:700 9px var(--cs-sans); letter-spacing:.8px; text-transform:uppercase; color:var(--cs-dim) }
+.cs-mtgd table.data td{ vertical-align:middle }
+.cs-mtgd .cs-mono.dim{ color:var(--cs-muted) }
+.cs-mtgd .mtgd-member{ display:flex; align-items:center; gap:9px }
+.cs-mtgd .mtgd-av{ flex:0 0 26px; width:26px; height:26px; border-radius:50%; display:grid; place-items:center;
+  background:var(--cs-grad-gold); color:#fff; font:700 9px var(--cs-sans) }
+.cs-mtgd .mtgd-av.g{ background:var(--cs-grad-green) }
+.cs-mtgd .mtgd-quorum{ border-color:var(--cs-green) }
+.cs-mtgd .mtgd-qbar{ display:flex; align-items:center; gap:10px; margin-top:12px }
+.cs-mtgd .mtgd-qbar .mtgd-bar{ flex:1; width:auto }
+.cs-mtgd .mtgd-qnums{ display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-top:12px }
+.cs-mtgd .mtgd-qnums div{ display:flex; flex-direction:column; align-items:center; gap:2px }
+.cs-mtgd .mtgd-qnums b{ font:700 20px var(--cs-mono); color:var(--cs-text) }
+.cs-mtgd .mtgd-qnums b.muted{ color:var(--cs-dim) }
+.cs-mtgd .mtgd-qnums span{ font:500 10px var(--cs-body-font); color:var(--cs-muted) }
+.cs-mtgd .mtgd-warn{ color:var(--cs-warning)!important }
+.cs-mtgd .mtgd-bad{ color:var(--cs-danger)!important }
+.cs-mtgd .mtgd-side .cs-rule{ margin-top:2px }
 @media (max-width:1100px){ .cs-root .cs-two-col.mtgd-cols{ grid-template-columns:1fr } }
 @media (max-width:560px){ .cs-mtgd .mtgd-tiles{ grid-template-columns:1fr } .cs-mtgd .mtgd-o{ display:none } }
 

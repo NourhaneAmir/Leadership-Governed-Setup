@@ -2550,6 +2550,12 @@ export async function fetchTasks(){
  *  Task whatever its state later becomes.
  *
  *  -> Map(taskId -> task) */
+const TASK_FULL_SELECT = ['hx_tasksid','hx_tasktitle','hx_taskcode','hx_taskdescription','hx_justifications',
+               'hx_status','hx_priority','hx_startdate','hx_duedate',
+               '_hx_assignee_value','_hx_accountable_value','_cr18c_relatedleadershippractice_value',
+               'tms_bu','tms_department','tms_isdelayed','hx_servicelevel','cr18c_progressrollup',
+               'hx_tasktype','hx_recurrencetype','tms_leadershiptasklevel','cr18c_tasksource',
+               'statecode'];
 export async function fetchTasksByIds(ids = []){
   const out = new Map();
   const want = [...new Set(ids.filter(Boolean))];
@@ -2557,16 +2563,17 @@ export async function fetchTasksByIds(ids = []){
     const chunk = want.slice(i, i + 15);
     const res = await Hx_taskesService.getAll({
       filter: chunk.map(id => `hx_tasksid eq ${id}`).join(' or '),
-      select: ['hx_tasksid','hx_tasktitle','hx_taskcode','hx_taskdescription','hx_justifications',
-               'hx_status','hx_priority','hx_startdate','hx_duedate',
-               '_hx_assignee_value','_hx_accountable_value','_cr18c_relatedleadershippractice_value',
-               'tms_bu','tms_department','tms_isdelayed','hx_servicelevel','cr18c_progressrollup',
-               'hx_tasktype','hx_recurrencetype','tms_leadershiptasklevel','cr18c_tasksource',
-               'statecode'],
+      select: TASK_FULL_SELECT,
     });
     assertSuccess(res);
-    for(const r of res.data ?? []){
-      out.set(r.hx_tasksid, {
+    for(const r of res.data ?? []) out.set(r.hx_tasksid, taskFromRow(r));
+  }
+  return out;
+}
+
+/* One hx_tasks row in the shape every task screen uses. */
+function taskFromRow(r){
+  return {
         id: r.hx_tasksid,
         name: r.hx_tasktitle || '(untitled task)',
         code: r.hx_taskcode || null,
@@ -2589,10 +2596,37 @@ export async function fetchTasksByIds(ids = []){
         level: r.tms_leadershiptasklevel || null,
         source: r['cr18c_tasksource' + FV] || null,
         inactive: r.statecode === 1,
+        /* the meeting links -- DT New only for now, see fetchTasksForMeeting */
+        meetingId: r._lm_meetingoccurrence_value || null,
+        agendaItemId: r._lm_meetingoccurrenceagendaitem_value || null,
+  };
+}
+
+/** The Tasks raised in one meeting (01 Oct): linked to the occurrence itself
+ *  (lm_MeetingOccurrence) or to one of its agenda items
+ *  (lm_MeetingOccurrenceAgendaItem). Both lookups exist on hx_tasks in DT New;
+ *  IT has neither yet (requested 29 Sep), and selecting a missing column fails
+ *  the read -- so this returns NULL there, meaning "not available in this
+ *  environment", which the Actions tab says in words. [] means "none". */
+export async function fetchTasksForMeeting(occurrenceId, agendaItemIds = []){
+  if(!occurrenceId) return [];
+  const conds = [`_lm_meetingoccurrence_value eq ${occurrenceId}`,
+                 ...[...new Set(agendaItemIds.filter(Boolean))].map(id => `_lm_meetingoccurrenceagendaitem_value eq ${id}`)];
+  const byId = new Map();
+  try{
+    for(let i = 0; i < conds.length; i += 15){
+      const res = await Hx_taskesService.getAll({
+        filter: conds.slice(i, i + 15).join(' or '),
+        select: [...TASK_FULL_SELECT, '_lm_meetingoccurrence_value', '_lm_meetingoccurrenceagendaitem_value'],
       });
+      if(res?.success === false) return null;
+      for(const r of res?.data ?? []) byId.set(r.hx_tasksid, taskFromRow(r));
     }
+  }catch(e){
+    console.warn('[dataverse] fetchTasksForMeeting(): tasks are not linked to meetings in this environment', e);
+    return null;
   }
-  return out;
+  return [...byId.values()];
 }
 
 /** Raises a Task on hx_tasks.

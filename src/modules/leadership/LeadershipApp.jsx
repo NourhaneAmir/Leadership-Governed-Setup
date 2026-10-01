@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Activity, ArrowUpRight, BarChart3, CalendarDays, CheckSquare, ClipboardCheck, ClipboardList, CircleAlert,
          Download, FileText, Gauge, Layers, LineChart, Lock, Menu, MessageSquare, MessagesSquare, Network, PenLine, Plus, RotateCcw, Shield, Eye,
-         Users, UsersRound, X, Briefcase, Target, Clock, MapPin, Check, CircleX, ListOrdered, UserCheck }
+         Users, UsersRound, X, Briefcase, Target, Clock, MapPin, Check, CircleX, ListOrdered, UserCheck,
+         Upload, Paperclip, ListChecks }
   from 'lucide-react';
 import './leadership-design.css';
 /* Dates, the working calendar and number formatting now live in src/shared so
@@ -19,6 +20,7 @@ import { ScreenBI } from './screens/BusinessIntelligence.jsx';
 import { ScreenStrategyChain } from './screens/StrategyChain.jsx';
 import { ScreenOrgReports } from './screens/OrgReports.jsx';
 import { DecisionPanel } from './screens/DecisionLink.jsx';
+import { OpenRecord } from './recordLinks.jsx';
 import { ScreenHierarchy } from './screens/Hierarchy.jsx';
 import { ScreenComms } from './screens/Communication.jsx';
 import { ScreenBuildReport } from './screens/BuildReport.jsx';
@@ -33,6 +35,7 @@ import { fetchMeetingOccurrences, fetchReportOccurrences, createMeetingOccurrenc
          cancelMeetingOccurrence, recordAgendaDistribution, createMeetingOccurrenceAgendaItem,
          archiveMeetingOccurrenceAgendaItem, updateMeetingOccurrenceAgendaSequence,
          fetchMeetingOccurrenceDepartments, fetchMeetingOccurrenceLinkedReports, fetchMeetingTemplateInputReports,
+         fetchTasksForMeeting,
          linkMeetingOccurrenceReport, unlinkMeetingOccurrenceReport,
          attachReportOccurrenceToLink,
          fetchBusinessUnits, fetchPositions, fetchDepartments, fetchFunctions, fetchRegions,
@@ -6027,26 +6030,26 @@ function ScreenMinutes(){
    on the dead-code EditOccModal above, rebuilt against updateMeetingOccurrence(). */
 function DvEditOccModal({rec,onClose}){
   const {toast,refreshOccurrences}=use();
-  const [f,setF]=useState({date:rec.date||'', start:rec.start||'', end:rec.end||'',
+  /* The date is the occurrence's own and cannot be edited here (01 Oct, per
+     the product owner): moving a meeting to another day is a Reschedule, which
+     creates the new occurrence and keeps the link back to this one. Edit
+     changes the time, mode and place on the same day, and saves the date
+     exactly as it was read. */
+  const [f,setF]=useState({start:rec.start||'', end:rec.end||'',
     mode:rec.mode||'In person', location:rec.location||'', link:rec.link||''});
   const [saving,setSaving]=useState(false);
   const set=(k,v)=>setF(x=>({...x,[k]:v}));
-
-  /* Same rule as creation: a non-working date rolls forward rather than being
-     refused, and only this occurrence moves. */
-  const bookedDate = f.date && isNonWorking(f.date) ? nextWorkingDay(f.date) : f.date;
-  const moved = !!f.date && bookedDate !== f.date;
   const badTime = f.start && f.end && f.end<=f.start;
   const needsLink     = f.mode==='Online' || f.mode==='Hybrid';
   const needsLocation = f.mode==='In person' || f.mode==='Hybrid';
   const modeOk = (!needsLink || f.link.trim()) && (!needsLocation || f.location.trim());
-  const ok = !!f.date && !badTime && !!f.start && !!f.end && modeOk;
+  const ok = !badTime && !!f.start && !!f.end && modeOk;
 
   const save = async () => {
     setSaving(true);
     try{
       const {id,errors} = await updateMeetingOccurrence(rec.id, {
-        date:bookedDate, start:f.start, end:f.end, mode:f.mode,
+        date:rec.date, start:f.start, end:f.end, mode:f.mode,
         location:needsLocation ? f.location.trim() : '',
         link:needsLink ? f.link.trim() : '',
       });
@@ -6069,11 +6072,10 @@ function DvEditOccModal({rec,onClose}){
     footer={<><Btn onClick={onClose} disabled={saving}>Cancel</Btn>
       <Btn k="pri" disabled={!ok||saving} onClick={save}>{saving?'Saving…':'Save'}</Btn></>}>
     <div className="f-row3">
-      <Field label="Date" req
-        hint={moved
-          ? `${dayName(f.date)} is a non-working day. This occurrence will move to ${fmtD(bookedDate)} — the series is unchanged.`
-          : 'The working week is Sunday to Thursday.'}>
-        <input type="date" value={f.date} onChange={e=>set('date',e.target.value)}/></Field>
+      <Field label="Date"
+        hint={rec.status==='Scheduled' ? 'To move this meeting to another day, use Reschedule.' : null}>
+        <input type="text" value={rec.date ? `${dayName(rec.date)}, ${fmtD(rec.date)}` : '—'}
+          readOnly disabled aria-readonly="true" title="The date can only be changed with Reschedule"/></Field>
       <Field label="Start" req><input type="time" value={f.start} onChange={e=>set('start',e.target.value)}/></Field>
       <Field label="End" req err={badTime?'The end time must be after the start time.':null}>
         <input type="time" value={f.end} onChange={e=>set('end',e.target.value)}/></Field>
@@ -7348,6 +7350,58 @@ function DvMeetingDetail({rec,back}){
   const prevOpenDecisions = dvDecisions.filter(d=>d.agendaItemId && prevAgendaIds.has(d.agendaItemId)
                                                && !DECISION_DONE.has(d.status));
   const [carrying,setCarrying]=useState(false);
+
+  /* Actions tab (01 Oct): the Decisions and Tasks this meeting produced, and
+     what is still open from the previous one. Decisions link through their
+     agenda item (wlog_decision.lm_MeetingOccurrenceAgenda). Tasks link through
+     hx_tasks.lm_MeetingOccurrence / lm_MeetingOccurrenceAgendaItem, which exist
+     in DT New only -- fetchTasksForMeeting returns null where they don't. */
+  const [mtgTasks,setMtgTasks]=useState(undefined);      // undefined = reading, null = unavailable
+  const [prevTasks,setPrevTasks]=useState([]);
+  const agendaKey = rec.agenda.map(a=>a.id).join(',');
+  const prevKey = prevOcc ? prevOcc.id+':'+(prevOcc.agenda||[]).map(a=>a.id).join(',') : '';
+  useEffect(()=>{
+    let live=true;
+    setMtgTasks(undefined);
+    fetchTasksForMeeting(rec.id, rec.agenda.map(a=>a.id))
+      .then(t=>{ if(live) setMtgTasks(t); })
+      .catch(()=>{ if(live) setMtgTasks(null); });
+    if(prevOcc) fetchTasksForMeeting(prevOcc.id, (prevOcc.agenda||[]).map(a=>a.id))
+      .then(t=>{ if(live) setPrevTasks(t||[]); }).catch(()=>{});
+    else setPrevTasks([]);
+    return ()=>{ live=false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[rec.id, agendaKey, prevKey]);
+  const DONE_ACTION = new Set(['Completed','Closed','Cancelled','Rejected','Done']);
+  const agendaById = new Map(rec.agenda.map((a,i)=>[a.id,{...a, n:a.seq??i+1}]));
+  const agendaLabel = id => { const a=agendaById.get(id); return a ? `#${a.n} ${a.title||''}`.trim() : null; };
+  const actionState = x => DONE_ACTION.has(x.status) ? 'done'
+    : (x.due && x.due < TODAY) ? 'overdue'
+    : /progress|review|submitted|escalated/i.test(x.status||'') ? 'progress' : 'open';
+  const actions = [
+    ...dvDecisions.filter(d=>d.agendaItemId && agendaById.has(d.agendaItemId)).map(d=>({
+      key:'d'+d.id, kind:'Decision', title:d.name, sub:d.decisionTaken, owner:null,
+      source:agendaLabel(d.agendaItemId), due:null, status:d.status||'Recorded', from:'this'})),
+    ...(mtgTasks||[]).map(t=>({
+      key:'t'+t.id, kind:'Task', id:t.id, title:t.name, sub:[t.code, t.action].filter(Boolean).join(' · '),
+      owner:t.assigneeName, source:agendaLabel(t.agendaItemId)||'This meeting', due:t.due, status:t.status||'New', from:'this'})),
+    ...prevOpenDecisions.map(d=>({
+      key:'pd'+d.id, kind:'Decision', title:d.name, sub:d.decisionTaken, owner:null,
+      source:`Previous meeting · ${fmtD(prevOcc.date)}`, due:null, status:d.status||'Recorded', from:'prev'})),
+    ...prevTasks.filter(t=>!DONE_ACTION.has(t.status)).map(t=>({
+      key:'pt'+t.id, kind:'Task', id:t.id, title:t.name, sub:[t.code, t.action].filter(Boolean).join(' · '),
+      owner:t.assigneeName, source:`Previous meeting · ${fmtD(prevOcc.date)}`, due:t.due, status:t.status||'New', from:'prev'})),
+  ].map(x=>({...x, state:actionState(x)}));
+  const actionCount = k => actions.filter(x=>x.state===k).length;
+
+  /* Attendance tab (01 Oct): the last three held meetings of the same Setup in
+     the same place, measured the same way as quorum (liveAttendance). */
+  const attHistory = rec.templateId ? dvMeetingOccs
+    .filter(o=>o.id!==rec.id && o.templateId===rec.templateId && o.status==='Held'
+      && (o.businessUnitId||null)===(rec.businessUnitId||null) && (o.regionId||null)===(rec.regionId||null)
+      && (o.date||'') < (rec.date||'9999'))
+    .sort((a,b)=>(b.date||'').localeCompare(a.date||'')).slice(0,3)
+    .map(o=>({o, a:liveAttendance(o.attendees, S.delegatedAttend)})) : [];
   const carryIn = async items => {
     setCarrying(true);
     try{
@@ -7417,7 +7471,8 @@ function DvMeetingDetail({rec,back}){
           ['inputs','Submissions',submissions.length?`${readyCount}/${submissions.length}`:null],
           /* Every meeting is scored (product owner, 28 Sep) -- the Grid tab is
              not gated on the Setup Type; `accred` only decides AG-01. */
-          ['grid','Audit Grid',grids.length||null]].map(([k,l,c])=>
+          ['grid','Audit Grid',grids.length||null],
+          ['actions','Actions',mtgTasks===undefined?null:(actions.length||null)]].map(([k,l,c])=>
           <button key={k} type="button" role="tab" aria-selected={tab===k}
             className={'cs-tab'+(tab===k?' on':'')} onClick={()=>setTab(k)}>
             {l}{c!=null ? <span className="cs-tab-badge">{c}</span> : null}</button>)}
@@ -7676,10 +7731,16 @@ function DvMeetingDetail({rec,back}){
       </div>
     </div>}
 
+    {tab==='agenda' && <Note k="info">{rec.agendaSent
+      ? <>Agenda distributed on <b>{fmtD(rec.agendaSent)}</b>{rec.date?<> for the meeting on {fmtD(rec.date)}</>:null}.</>
+      : rec.status==='Scheduled'
+        ? <>The agenda has not been distributed yet. Record it once it is sent, so the agenda lead time (AG-03) can be measured.</>
+        : <>No distribution was recorded for this agenda.</>}</Note>}
     {tab==='agenda' && <div className="card flush">
-      <div className="card-hd" style={{display:'flex',alignItems:'center',gap:12}}>
-        <div className="wa-icon gold">📋</div>
-        <h2 style={{flex:1}}>Agenda</h2>
+      <div className="card-hd mtgd-hd">
+        <span className="cs-icon gold" aria-hidden="true"><ListOrdered size={15}/></span>
+        <h2>Meeting Agenda</h2>
+        <span className="cs-mono mtgd-count">{rec.agenda.length} item{rec.agenda.length===1?'':'s'}{durMin!=null?' · '+durMin+' min total':''}</span>
         {rec.status==='Held' && <Tag c={covered<rec.agenda.length?'amber':'green'}>
           {covered} of {rec.agenda.length} covered</Tag>}
         {rec.status==='Scheduled' && (rec.agendaSent
@@ -7702,17 +7763,18 @@ function DvMeetingDetail({rec,back}){
         ? <div style={{padding:'8px 17px 17px'}}><Empty>
             No Agenda Item on this occurrence. A Meeting cannot proceed without one.</Empty></div>
         : <div className="t-wrap"><table className="data">
-            <thead><tr><th style={{width:50}}>#</th><th>Item</th><th>Owner</th><th>Source</th>
-              <th>Covered</th>{rec.status==='Scheduled' && <th></th>}</tr></thead>
+            <thead><tr><th style={{width:50}}>#</th><th>Topic</th><th>Presenter</th>
+              <th>Status</th>{rec.status==='Scheduled' && <th></th>}</tr></thead>
             <tbody>{rec.agenda.slice().sort((a,b)=>(a.seq||0)-(b.seq||0)).map((a,i,arr)=>
               <tr key={a.id}>
-                <td className="dim">{a.seq??'—'}</td>
+                <td className="cs-mono dim">{a.seq??i+1}</td>
                 <td><div className="t-main">{a.title||'—'}</div>
-                  {a.carriedFromId?<div className="t-sub">carried forward from an earlier occurrence</div>:null}</td>
-                <td className="dim" style={{fontSize:12}}>{posName(a.ownerPositionId)||'—'}</td>
-                <td className="dim">{a.source||'—'}</td>
-                <td><Tag c={a.covered==='Yes'?'green':a.covered==='No'?'red':'grey'}>
-                  {a.covered||'Not Yet Recorded'}</Tag></td>
+                  <div className="t-sub">{a.carriedFromId ? 'Carried forward from the last meeting' : (a.source||'Standing item')}</div></td>
+                <td className="dim">{posName(a.ownerPositionId)||'—'}</td>
+                <td>{rec.status==='Held'
+                  ? <Tag c={a.covered==='Yes'?'green':a.covered==='No'?'red':'grey'}>
+                      {a.covered==='Yes'?'Covered':a.covered==='No'?'Not covered':'Not recorded'}</Tag>
+                  : a.ownerPositionId ? <Tag c="green">Ready</Tag> : <Tag c="amber">Awaiting owner</Tag>}</td>
                 {rec.status==='Scheduled' && <td style={{textAlign:'right',whiteSpace:'nowrap'}}>
                   <Btn k="sm" disabled={agendaBusyId||i===0} onClick={()=>moveAgendaItem(a,-1)}>↑</Btn>
                   <Btn k="sm" disabled={agendaBusyId||i===arr.length-1} onClick={()=>moveAgendaItem(a,1)}>↓</Btn>
@@ -7723,10 +7785,12 @@ function DvMeetingDetail({rec,back}){
             </tbody></table></div>}
     </div>}
 
-    {tab==='att' && <div className="card flush">
-      <div className="card-hd" style={{display:'flex',alignItems:'center',gap:12}}>
-        <div className="wa-icon teal">👥</div>
-        <h2 style={{flex:1}}>Attendance</h2>
+    {tab==='att' && <div className="cs-two-col mtgd-cols">
+    <div className="card flush">
+      <div className="card-hd mtgd-hd">
+        <span className="cs-icon green" aria-hidden="true"><Users size={15}/></span>
+        <h2>Member Attendance</h2>
+        <span className="cs-mono mtgd-count">{rec.attendees.length} member{rec.attendees.length===1?'':'s'}</span>
         {rec.status==='Held' && <Tag c={requiredPresent<required.length?'amber':'green'}>
           {requiredPresent} of {required.length} Required present</Tag>}
         {quorum.state!=='none' && quorum.state!=='pending' &&
@@ -7740,13 +7804,18 @@ function DvMeetingDetail({rec,back}){
       {rec.attendees.length===0
         ? <div style={{padding:'8px 17px 17px'}}><Empty>No Attendee on this occurrence.</Empty></div>
         : <div className="t-wrap"><table className="data">
-            <thead><tr><th>Attendee</th><th>Type</th><th>Delegate</th><th>Attendance</th></tr></thead>
-            <tbody>{rec.attendees.map(a=>
-              <tr key={a.id}>
-                <td><div className="t-main">{dvPos(a.positionId)||a.name||'—'}</div>
-                  {a.positionId&&DV_POS_HOLDER[a.positionId]
-                    ? <div className="t-sub">{DV_POS_HOLDER[a.positionId]}</div> : null}</td>
-                <td><Tag c={(a.type||'Required')==='Optional'?'grey':'teal'}>{a.type||'Required'}</Tag></td>
+            <thead><tr><th>Member</th><th>Role</th><th>Type</th><th>Delegate</th><th>Attendance</th></tr></thead>
+            <tbody>{rec.attendees.map((a,i)=>{
+              const who = (a.positionId && DV_POS_HOLDER[a.positionId]) || a.name || dvPos(a.positionId) || '—';
+              const role = a.positionId===rec.chairPositionId ? 'Chair'
+                : a.positionId===rec.facilitatorPositionId ? 'Facilitator' : (a.type||'Required');
+              return <tr key={a.id}>
+                <td><div className="mtgd-member">
+                  <span className={'mtgd-av'+(i%2?' g':'')} aria-hidden="true">
+                    {String(who).split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase()}</span>
+                  <span className="t-main">{who}</span></div></td>
+                <td className="dim">{dvPos(a.positionId)||'—'}</td>
+                <td><Tag c={role==='Chair'?'amber':role==='Facilitator'?'teal':role==='Optional'?'grey':'blue'}>{role}</Tag></td>
                 <td className="dim" style={{fontSize:12}}>{posName(a.delegatePositionId)||'—'}</td>
                 <td>{rec.status==='Held'
                   ? <div style={{display:'flex',alignItems:'center',gap:6}}>
@@ -7758,11 +7827,40 @@ function DvMeetingDetail({rec,back}){
                         onClick={()=>setAttendance(a.id,'Absent')}>Absent</Btn>
                     </div>
                   : <Tag c={a.present==='Present'?'green':a.present==='Absent'?'red':'grey'}>
-                      {a.present||'Not Yet Recorded'}</Tag>}</td>
-              </tr>)}
+                      {a.present&&a.present!=='Not Yet Recorded'?a.present:'Pending'}</Tag>}</td>
+              </tr>;})}
             </tbody></table></div>}
-      <div style={{padding:'0 17px 15px',fontSize:12,color:'var(--muted)'}}>
+      <div style={{padding:'10px 17px 15px',fontSize:12,color:'var(--muted)'}}>
         Only Required Attendee attendance is measured. Optional attendance is recorded but not counted.</div>
+    </div>
+    <div className="cs-side mtgd-side">
+      <section className="card mtgd-quorum" aria-labelledby="mtgd-qc">
+        <h2 id="mtgd-qc" className="mtgd-h">Quorum Calculation</h2>
+        {quorum.state==='none'
+          ? <p className="t-sub" style={{margin:0}}>This meeting’s Setup sets no quorum threshold.</p>
+          : <div className="cs-rule">✓ Min {quorum.need} of {quorum.total} required members ({quorum.threshold}%)</div>}
+        <div className="mtgd-qbar">
+          <span className="mtgd-bar" aria-hidden="true"><i style={{width:(required.length?requiredPresent/required.length*100:0)+'%'}}/></span>
+          <span className="cs-mono mtgd-count">{requiredPresent}/{required.length}</span>
+        </div>
+        <p className="t-sub" style={{margin:'4px 0 0'}}>{rec.status==='Held'
+          ? (quorum.state!=='none' ? quorumLine(quorum) : `${requiredPresent} of ${required.length} Required present.`)
+          : 'Attendance not yet taken.'}</p>
+        <div className="mtgd-qnums">
+          <div><b>{required.length}</b><span>Required</span></div>
+          <div><b>{rec.attendees.length-required.length}</b><span>Optional</span></div>
+          <div><b className={rec.status==='Held'?'':'muted'}>{present}</b><span>Present</span></div>
+        </div>
+      </section>
+      <section className="card" aria-labelledby="mtgd-hist">
+        <h2 id="mtgd-hist" className="mtgd-h">Attendance History</h2>
+        {attHistory.length===0
+          ? <p className="t-sub" style={{margin:0}}>{rec.templateId ? 'No earlier held meeting of this Setup.' : 'An ad hoc meeting has no history.'}</p>
+          : <div className="mtgd-kv">{attHistory.map(({o,a})=>
+              <div key={o.id}><span>{fmtP((o.date||'').slice(0,7))}</span>
+                <b className={'cs-mono '+(a.pct>=80?'':'mtgd-warn')}>{a.present}/{a.total} ({Math.round(a.pct)}%)</b></div>)}</div>}
+      </section>
+    </div>
     </div>}
 
     {tab==='minutes' && <>
@@ -7788,28 +7886,76 @@ function DvMeetingDetail({rec,back}){
           dvMeetingOccs={dvMeetingOccs} onReload={reloadGovernance}/>}
     </>}
 
-    {tab==='inputs' && <div className="card flush">
-      <div className="card-hd" style={{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
-        <h2 style={{flex:1}}>Pre-Meeting Submissions</h2>
-        <div style={{display:'flex',alignItems:'center',gap:8,minWidth:140}}>
-          <Bar v={submissions.length?readyCount/submissions.length*100:0} c="green"/>
-          <span className="dim" style={{fontSize:11,whiteSpace:'nowrap'}}>{readyCount}/{submissions.length} ready</span>
+    {tab==='actions' && <div className="cs-two-col mtgd-cols">
+      <div className="card flush">
+        <div className="card-hd mtgd-hd">
+          <span className="cs-icon green" aria-hidden="true"><ListChecks size={15}/></span>
+          <h2>Action Items</h2>
+          <span className="cs-mono mtgd-count">{actions.length} item{actions.length===1?'':'s'}
+            {actions.some(x=>x.from==='prev') ? ` · ${actions.filter(x=>x.from==='prev').length} from the previous meeting` : ''}</span>
         </div>
+        {mtgTasks===null &&
+          <div style={{padding:'0 17px'}}><Note k="warn">Tasks can’t be shown in this environment yet: a task has no
+            link to a meeting here (IT is adding <code>lm_MeetingOccurrenceAgenda</code> on tasks). Decisions are shown.</Note></div>}
+        {mtgTasks===undefined
+          ? <div style={{padding:'8px 17px 17px'}}><Empty ic="…">Reading this meeting’s actions…</Empty></div>
+          : actions.length===0
+          ? <div style={{padding:'8px 17px 17px'}}><Empty>No decision or task is linked to this meeting yet. Raise
+              them from the Minutes, per agenda item.</Empty></div>
+          : <div className="t-wrap"><table className="data">
+              <thead><tr><th>Action</th><th>Owner</th><th>Source</th><th>Due</th><th>Status</th><th></th></tr></thead>
+              <tbody>{actions.map(x=><tr key={x.key}>
+                <td><div className="t-main">{x.title}</div>
+                  <div className="t-sub">{x.kind}{x.sub?' · '+(x.sub.length>90?x.sub.slice(0,90)+'…':x.sub):''}</div></td>
+                <td className="dim">{x.owner||'—'}</td>
+                <td className="dim">{x.source||'—'}</td>
+                <td className={'cs-mono '+(x.state==='overdue'?'mtgd-bad':'dim')}>{x.due?fmtDS(x.due):'—'}</td>
+                <td><Tag c={x.state==='done'?'green':x.state==='overdue'?'red':x.state==='progress'?'teal':'grey'}>
+                  {x.state==='overdue'?'Overdue':x.status}</Tag></td>
+                <td style={{textAlign:'right'}}>{x.kind==='Task'
+                  ? <OpenRecord kind="Task" id={x.id} label="Open ↗" asLink/>
+                  : <a role="button" tabIndex={0} className="mtgd-more" style={{margin:0,display:'inline'}}
+                      onClick={()=>setTab('minutes')} onKeyDown={e=>{ if(e.key==='Enter') setTab('minutes'); }}>Minutes</a>}</td>
+              </tr>)}
+              </tbody></table></div>}
       </div>
-      <div style={{padding:'0 17px'}}>
-        <Note k="info">Meeting input readiness minimum <OD id="OD-39"/>: every input must reach at
-          least <b>{needApproved?'Approved':'In Review (submitted)'}</b> before the meeting.
-          {' '}Inputs are the reports linked on the Documents tab{rec.templateId
-            ? ', plus the Input reports this meeting\'s Setup names' : ''}.</Note>
+      <div className="cs-side mtgd-side">
+        <section className="card" aria-labelledby="mtgd-as">
+          <h2 id="mtgd-as" className="mtgd-h">Action Summary</h2>
+          <div className="mtgd-kv">
+            {[['Total actions', actions.length, ''],
+              ['Decisions', actions.filter(x=>x.kind==='Decision').length, ''],
+              ['Tasks', mtgTasks===null ? '—' : actions.filter(x=>x.kind==='Task').length, ''],
+              ['In progress', actionCount('progress'), ''],
+              ['Not started', actionCount('open'), ''],
+              ['Overdue', actionCount('overdue'), actionCount('overdue')?'mtgd-bad':''],
+              ['Done', actionCount('done'), ''],
+             ].map(([k,v,c])=><div key={k}><span>{k}</span><b className={'cs-mono '+c}>{v}</b></div>)}
+          </div>
+        </section>
+      </div>
+    </div>}
+
+    {tab==='inputs' && <Note k="info">Meeting input readiness minimum (OD-39): every input must reach at
+      least <b>{needApproved?'Approved':'In Review (submitted)'}</b> before the meeting.
+      {' '}Inputs are the reports linked on the Documents tab{rec.templateId
+        ? ', plus the Input reports this meeting\'s Setup names' : ''}.</Note>}
+    {tab==='inputs' && <div className="card flush">
+      <div className="card-hd mtgd-hd">
+        <span className="cs-icon gold" aria-hidden="true"><Upload size={15}/></span>
+        <h2>Pre-Meeting Submissions</h2>
+        <span className="mtgd-bar" aria-hidden="true"><i style={{width:(submissions.length?readyCount/submissions.length*100:0)+'%'}}/></span>
+        <span className="cs-mono mtgd-count">{readyCount}/{submissions.length}</span>
       </div>
       {docsLoading ? <div style={{padding:'8px 17px 17px'}}><Empty ic="…">Reading inputs…</Empty></div>
       : submissions.length===0
         ? <div style={{padding:'8px 17px 17px'}}><Empty>No input is linked, and the Setup names none.</Empty></div>
       : <div className="t-wrap"><table className="data">
-          <thead><tr><th>Submission</th><th>Report Template</th><th>Period</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th>Submission</th><th>Owner</th><th>Report Template</th><th>Period</th><th>Status</th><th></th></tr></thead>
           <tbody>{submissions.map(x=><tr key={x.key}>
             <td><div className="t-main">{x.name}</div>
               <div className="t-sub">{x.required?'Required by the Setup':'Linked to this meeting'}</div></td>
+            <td className="dim">{x.occ?.creatorPositionId ? posName(x.occ.creatorPositionId) : '—'}</td>
             <td className="dim">{dvRptTpl(x.tplId)||'—'}</td>
             <td className="dim">{x.occ?fmtP(x.occ.period):'—'}</td>
             <td>{x.ready ? <Tag c="green">{RPT_STATUS_WORD(x.status)}</Tag>
@@ -7830,8 +7976,10 @@ function DvMeetingDetail({rec,back}){
     </div>}
 
     {tab==='docs' && <div className="card flush">
-      <div className="card-hd" style={{display:'flex',alignItems:'center',gap:10}}>
-        <h2 style={{flex:1}}>Documents</h2>
+      <div className="card-hd mtgd-hd">
+        <span className="cs-icon gold" aria-hidden="true"><Paperclip size={15}/></span>
+        <h2>Meeting Documents</h2>
+        <span className="cs-mono mtgd-count">{docs?docs.length:0} linked</span>
       </div>
       <div style={{padding:'8px 17px 17px'}}>
         {docsLoading ? <Empty ic="…">Reading linked documents…</Empty> : <>
