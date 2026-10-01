@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Activity, ArrowUpRight, BarChart3, CalendarDays, CheckSquare, ClipboardCheck, ClipboardList, CircleAlert,
          Download, FileText, Gauge, Layers, LineChart, Lock, Menu, MessageSquare, MessagesSquare, Network, PenLine, Plus, RotateCcw, Shield, Eye,
-         Users, UsersRound, X, Briefcase, Target }
+         Users, UsersRound, X, Briefcase, Target, Clock, MapPin, Check, CircleX, ListOrdered, UserCheck }
   from 'lucide-react';
 import './leadership-design.css';
 /* Dates, the working calendar and number formatting now live in src/shared so
@@ -7379,34 +7379,55 @@ function DvMeetingDetail({rec,back}){
   const Row=({label,value})=> value==null||value===''||value==='—' ? null :
     <div className="kvr"><label>{label}</label><div className="v">{value}</div></div>;
 
-  return <>
-    <div className="crumb"><a onClick={back}>Meetings</a> › <b>Meeting Detail</b></div>
-    <div className="ph ph-row">
-      <div style={{flex:1}}><h1>{rec.restricted&&'🔒 '}{rec.name}</h1>
-        <div className="sub" style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-          <Tag c={rec.status==='Held'?'green':rec.status==='Cancelled'?'red':'teal'}>{rec.status||'—'}</Tag>
-          <span>· {dvTpl(rec.templateId)||(rec.adhocType?'Ad Hoc — '+rec.adhocType:'Ad Hoc')}</span>
-          <span>· {scope}</span>
-          {rec.stage && <span>· {rec.stage.replace(/^Stage (\d) /,'Stage $1 · ')}</span>}
-          {rec.restricted && <Tag c="purple">Restricted</Tag>}
-        </div></div>
-      <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-        <Btn onClick={back}>Back to List</Btn>
-        {rec.status==='Scheduled' && <Btn onClick={()=>setEditing(true)}>✎ Edit</Btn>}
-        {rec.status==='Scheduled' && <Btn onClick={()=>setRescheduling(true)}>🔄 Reschedule</Btn>}
-        {rec.status==='Scheduled' && <Btn k="dgr" onClick={()=>setCancelling(true)}>✕ Cancel</Btn>}
-        {rec.status==='Scheduled' &&
-          <Btn k="grn" disabled={markingHeld||!rec.agenda.length} onClick={markHeld}>
-            {markingHeld?'Marking…':'✓ Mark as Held'}</Btn>}
+  /* Restyled 01 Oct to the approved design (the Meeting Detail screenshot):
+     cs-head, cs-tabs and a new Overview. The page is wrapped in .cs-build as
+     well, which re-skins the shared .card / Btn / Note / Tag / table classes
+     every other tab still uses (same scoping Build a report/plan uses), plus
+     .cs-mtgd for this page's own pieces. Same data and actions as before. */
+  const typeLabel = tplSetupType==='Accreditation Committee' ? 'Accreditation'
+    : tplSetupType || (rec.templateId ? null : (rec.adhocType ? 'Ad Hoc — '+rec.adhocType : 'Ad Hoc'));
+  const badge = rec.status==='Held' ? 'approved' : rec.status==='Cancelled' ? 'returned' : 'scheduled';
+  return <div className="cs-root cs-build cs-mtgd">
+    <div className="cs-head" style={{paddingBottom:0}}>
+      <div className="cs-crumb"><button type="button" onClick={back}>Meetings</button> › <b>Meeting Detail</b></div>
+      <div className="cs-head-top">
+        <div style={{minWidth:0}}>
+          <h1 className="cs-title">{rec.restricted && <Lock size={16} className="cs-lock" aria-label="Restricted"/>}{rec.name}</h1>
+          <div className="mtgd-meta">
+            <span className={'cs-badge '+badge}><i/>{rec.status||'—'}</span>
+            {rec.stage ? <span className="cs-mono muted">{rec.stage.replace(/^Stage (\d) /,'Stage $1 · ')}</span> : null}
+            <span>{[typeLabel, tplCategory || dvTpl(rec.templateId)].filter(Boolean).join(' · ') || '—'}</span>
+            <span className="muted">· {scope}</span>
+            {rec.restricted && <span className="cs-type purple">Restricted</span>}
+          </div>
+        </div>
+        <div className="cs-actions">
+          <button type="button" className="cs-btn ghost lg" onClick={back}>Back to List</button>
+          {rec.status==='Scheduled' &&
+            <button type="button" className="cs-btn ghost lg" onClick={()=>setEditing(true)}><PenLine size={13}/>Edit</button>}
+          {rec.status==='Scheduled' &&
+            <button type="button" className="cs-btn green lg" disabled={markingHeld||!rec.agenda.length} onClick={markHeld}
+              title={rec.agenda.length?'Mark this meeting as held':'Add at least one Agenda item first'}>
+              <Check size={13}/>{markingHeld?'Marking…':'Mark as Held'}</button>}
+        </div>
       </div>
+      <nav className="cs-tabs" role="tablist" aria-label="Meeting sections">
+        {[['detail','Overview',null],['agenda','Agenda',rec.agenda.length],['att','Attendance',rec.attendees.length],
+          ['minutes','Minutes',minutes?minutes.notes.length:null],['docs','Documents',docs&&docs.length?docs.length:null],
+          ['inputs','Submissions',submissions.length?`${readyCount}/${submissions.length}`:null],
+          /* Every meeting is scored (product owner, 28 Sep) -- the Grid tab is
+             not gated on the Setup Type; `accred` only decides AG-01. */
+          ['grid','Audit Grid',grids.length||null]].map(([k,l,c])=>
+          <button key={k} type="button" role="tab" aria-selected={tab===k}
+            className={'cs-tab'+(tab===k?' on':'')} onClick={()=>setTab(k)}>
+            {l}{c!=null ? <span className="cs-tab-badge">{c}</span> : null}</button>)}
+      </nav>
     </div>
+
     {editing && <DvEditOccModal rec={rec} onClose={()=>setEditing(false)}/>}
     {rescheduling && <DvRescheduleOccModal rec={rec} onClose={()=>setRescheduling(false)}/>}
     {cancelling && <DvCancelOccModal rec={rec} onClose={()=>setCancelling(false)}/>}
 
-    <Note k="lock" ic="—">Editing, rescheduling, cancelling, the Agenda, marking Held and recording
-      Attendance all
-      write to Dataverse. The Minutes and Audit Grid tabs read their four tables but write nothing back yet.</Note>
     {rec.status==='Scheduled' && !rec.agenda.length &&
       <Note k="warn">An occurrence needs at least one Agenda item before it can be marked Held.</Note>}
     {rec.restricted && <Note k="lock"><b>Restricted.</b> This occurrence is marked visible only to its
@@ -7420,89 +7441,97 @@ function DvMeetingDetail({rec,back}){
         {' '}Every input should reach at least {needApproved?'Approved':'In Review'} before the meeting.
         {' '}<a onClick={()=>setTab('inputs')} style={{fontWeight:650}}>See Submissions</a></Note>}
 
-    <div className="tabs">
-      <button className={tab==='detail'?'on':''} onClick={()=>setTab('detail')}>Overview</button>
-      <button className={tab==='agenda'?'on':''} onClick={()=>setTab('agenda')}>Agenda
-        <span className="c">{rec.agenda.length}</span></button>
-      <button className={tab==='att'?'on':''} onClick={()=>setTab('att')}>Attendance
-        <span className="c">{rec.attendees.length}</span></button>
-      <button className={tab==='minutes'?'on':''} onClick={()=>setTab('minutes')}>Minutes
-        {minutes && <span className="c">{minutes.notes.length}</span>}</button>
-      <button className={tab==='docs'?'on':''} onClick={()=>setTab('docs')}>Documents
-        {docs && docs.length>0 && <span className="c">{docs.length}</span>}</button>
-      <button className={tab==='inputs'?'on':''} onClick={()=>setTab('inputs')}>Submissions
-        {submissions.length>0 && <span className="c">{readyCount}/{submissions.length}</span>}</button>
-      {/* Every meeting is scored (product owner, 28 Sep) — Committees and
-          Business Meetings alike — so the tab is no longer gated on the Setup
-          Type. `accred` still exists, but now decides only whether AG-01's TOR
-          question APPLIES, not whether a Grid exists at all. */}
-      <button className={tab==='grid'?'on':''} onClick={()=>setTab('grid')}>Audit Grid
-        {grids.length>0 && <span className="c">{grids.length}</span>}</button>
-    </div>
+    {tab==='detail' && <div className="cs-two-col mtgd-cols">
+      <div className="mtgd-main">
+        <section className="card mtgd-tiles" aria-label="When and where">
+          <div className="mtgd-tile">
+            <CalendarDays size={18} aria-hidden="true"/>
+            <b className="cs-mono">{rec.date?fmtDS(rec.date):'—'}</b>
+            <span>{dow||'Date'}</span>
+          </div>
+          <div className="mtgd-tile">
+            <Clock size={18} aria-hidden="true"/>
+            <b className="cs-mono">{[rec.start,rec.end].filter(Boolean).join(' – ')||'—'}</b>
+            <span>{durMin!=null?durMin+' minutes':(rec.timezone||'Time')}</span>
+          </div>
+          <div className="mtgd-tile">
+            <MapPin size={18} aria-hidden="true"/>
+            <b>{rec.location || (rec.link ? 'Online' : rec.mode) || '—'}</b>
+            <span>{rec.location ? (rec.mode||'In person') : (rec.link ? 'Joining link' : 'Mode')}</span>
+          </div>
+        </section>
 
-    {tab==='detail' && <div className="wa-grid">
-      <div>
-        <div className="stats" style={{gridTemplateColumns:'repeat(3,1fr)',marginBottom:16}}>
-          <div className="stat" style={{textAlign:'center'}}>
-            <div style={{fontSize:18}}>📅</div>
-            <div style={{fontWeight:700,fontSize:14,marginTop:4}}>{rec.date?fmtDS(rec.date):'—'}</div>
-            <label style={{display:'block',marginTop:2}}>{dow||'DATE'}</label>
-          </div>
-          <div className="stat" style={{textAlign:'center'}}>
-            <div style={{fontSize:18}}>⏱</div>
-            <div style={{fontWeight:700,fontSize:14,marginTop:4}}>
-              {[rec.start,rec.end].filter(Boolean).join(' – ')||'—'}</div>
-            <label style={{display:'block',marginTop:2}}>
-              {durMin!=null?durMin+' MINUTES':(rec.timezone||'TIME')}</label>
-          </div>
-          <div className="stat" style={{textAlign:'center'}}>
-            <div style={{fontSize:18}}>{rec.mode==='Online'?'💻':rec.mode==='Hybrid'?'🔀':'📍'}</div>
-            <div style={{fontWeight:700,fontSize:14,marginTop:4}}>{rec.mode||'—'}</div>
-            <label style={{display:'block',marginTop:2}}>
-              {rec.location?rec.location.toUpperCase():(rec.link?'ONLINE':'MODE')}</label>
-          </div>
-        </div>
-
-        <div className="card">
-          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:2}}>
-            <div className="wa-icon gold">📋</div><h2 style={{flex:1}}>Agenda Preview</h2>
-            <span className="csub" style={{marginBottom:0}}>{rec.agenda.length} items
+        <section className="card" aria-labelledby="mtgd-agenda">
+          <div className="mtgd-card-top">
+            <span className="cs-icon gold" aria-hidden="true"><ListOrdered size={15}/></span>
+            <h2 id="mtgd-agenda">Agenda Preview</h2>
+            <span className="cs-mono muted mtgd-count">{rec.agenda.length} item{rec.agenda.length===1?'':'s'}
               {durMin!=null?' · '+durMin+' min':''}</span>
           </div>
           {rec.agenda.length===0 ? <Empty ic="📋">No Agenda Items yet.</Empty> : <>
-            {rec.agenda.slice(0,5).map((a,i)=>
-              <div key={a.id} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 0',
-                borderBottom:'1px solid var(--border)'}}>
-                <span style={{color:'var(--teal-d)',fontWeight:700,fontSize:12,width:16}}>{i+1}.</span>
-                <span style={{flex:1,fontSize:12.5}}>{a.title||'—'}</span>
-                <span className="dim" style={{fontSize:11}}>{posName(a.ownerPositionId)||'—'}</span>
-              </div>)}
-            <div style={{textAlign:'center',marginTop:10}}>
-              <a onClick={()=>setTab('agenda')} style={{fontSize:12,color:'var(--teal-d)',fontWeight:650,
-                cursor:'pointer'}}>View full agenda →</a></div>
+            <ol className="mtgd-agenda">
+              {rec.agenda.slice(0,5).map((a,i)=>
+                <li key={a.id}>
+                  <span className="cs-mono mtgd-n">{i+1}.</span>
+                  <span className="mtgd-t">{a.title||'—'}
+                    {a.carriedFromId ? <span className="cs-type adhoc">Carried forward</span> : null}</span>
+                  <span className="mtgd-o">{posName(a.ownerPositionId)||'—'}</span>
+                </li>)}
+            </ol>
+            <button type="button" className="mtgd-more" onClick={()=>setTab('agenda')}>
+              {rec.agenda.length>5 ? `View full agenda (${rec.agenda.length}) →` : 'View full agenda →'}</button>
           </>}
-        </div>
+        </section>
 
-        <div className="card">
-          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:6}}>
-            <div className="wa-icon green">👥</div><h2 style={{flex:1,marginBottom:0}}>Attendance Summary</h2>
-            <Bar v={required.length?requiredPresent/required.length*100:0} c="green"/>
-            <span style={{fontWeight:700,fontSize:13,minWidth:32,textAlign:'right'}}>
-              {requiredPresent}/{required.length}</span>
+        <section className="card" aria-labelledby="mtgd-att">
+          <div className="mtgd-card-top">
+            <span className="cs-icon green" aria-hidden="true"><UserCheck size={15}/></span>
+            <h2 id="mtgd-att">Attendance Summary</h2>
+            <span className="mtgd-bar" aria-hidden="true"><i style={{width:(required.length?requiredPresent/required.length*100:0)+'%'}}/></span>
+            <span className="cs-mono muted mtgd-count">{requiredPresent}/{required.length}</span>
           </div>
-          {quorum.state!=='none' &&
-            <Note k={quorum.state==='met'?'ok':quorum.state==='missed'?'err':quorum.state==='incomplete'?'warn':'info'}>
-              {quorum.state==='pending' ? 'Attendance is recorded after the meeting is held. ' : ''}
-              {quorumLine(quorum)}</Note>}
-          <div style={{textAlign:'center',marginTop:10}}>
-            <a onClick={()=>setTab('att')} style={{fontSize:12,color:'var(--teal-d)',fontWeight:650,
-              cursor:'pointer'}}>View full attendance →</a></div>
-        </div>
+          {quorum.state!=='none'
+            ? <Note k={quorum.state==='met'?'ok':quorum.state==='missed'?'err':quorum.state==='incomplete'?'warn':'info'}>
+                {quorum.state==='pending' ? 'Attendance is recorded after the meeting is held. ' : ''}
+                {quorumLine(quorum)}</Note>
+            : <Note k="info">{rec.status==='Held'
+                ? `${requiredPresent} of ${required.length} Required Attendees present.`
+                : 'Attendance is recorded after the meeting is held.'}</Note>}
+          <button type="button" className="mtgd-more" onClick={()=>setTab('att')}>View full attendance →</button>
+        </section>
       </div>
 
-      <div className="wa-side">
-        <div className="card">
-          <h2>Occurrence</h2>
+      <div className="cs-side mtgd-side">
+        {rec.status==='Scheduled' && <section className="card mtgd-actions" aria-labelledby="mtgd-act">
+          <div className="mtgd-card-top">
+            <span className="cs-icon green" aria-hidden="true"><Check size={15}/></span>
+            <h2 id="mtgd-act">Actions</h2>
+          </div>
+          <button type="button" className="cs-btn green lg" disabled={markingHeld||!rec.agenda.length} onClick={markHeld}>
+            <Check size={13}/>{markingHeld?'Marking…':'Mark as Held'}</button>
+          <button type="button" className="cs-btn ghost lg" onClick={()=>setRescheduling(true)}>
+            <CalendarDays size={13}/>Reschedule</button>
+          <button type="button" className="cs-btn danger lg" onClick={()=>setCancelling(true)}>
+            <CircleX size={13}/>Cancel Meeting</button>
+        </section>}
+
+        <section className="card" aria-labelledby="mtgd-det">
+          <h2 id="mtgd-det" className="mtgd-h">Meeting Details</h2>
+          <div className="mtgd-kv">
+            {[['Setup', dvTpl(rec.templateId)||(rec.templateId?'(not in the loaded list)':'Custom Ad Hoc')],
+              ['Type', typeLabel],
+              ['Category', tplCategory],
+              ['Chair', posName(rec.chairPositionId)],
+              ['Facilitator', posName(rec.facilitatorPositionId)],
+              ['Location', rec.location || rec.link || null],
+              ['Scope', scope],
+              ['Cadence', cadence],
+             ].filter(([,v])=>v).map(([k,v])=><div key={k}><span>{k}</span><b>{v}</b></div>)}
+          </div>
+        </section>
+
+        <details className="card mtgd-all">
+          <summary className="mtgd-h">All details</summary>
           <Row label="Meeting name" value={rec.name}/>
           <Row label="Status" value={rec.status}/>
           <Row label="Stage" value={rec.stage}/>
@@ -7531,7 +7560,7 @@ function DvMeetingDetail({rec,back}){
           <Row label="Agenda Distributed" value={rec.agendaSent?fmtD(rec.agendaSent):'Not recorded'}/>
           <Row label="Outlook and Teams" value={rec.sync}/>
           <Row label="Cancellation reason" value={rec.cancelReason}/>
-        </div>
+        </details>
 
         <div className="card">
           <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:2}}>
@@ -7565,11 +7594,12 @@ function DvMeetingDetail({rec,back}){
         </div>
 
         {quorum.state!=='none' && <div className="card">
-          <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6,flexWrap:'wrap'}}>
-            <h2 style={{flex:1,margin:0}}>Quorum</h2>
+          <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8,flexWrap:'wrap'}}>
+            <h2 style={{flex:1,margin:0}} className="mtgd-h">Quorum Rules</h2>
             <Tag c={QUORUM_TAG[quorum.state][0]}>{QUORUM_TAG[quorum.state][1]}</Tag>
           </div>
-          <div style={{fontSize:12,color:'var(--ink-2)'}}>{quorumLine(quorum)}</div>
+          <div className="cs-rule">✓ Min {quorum.need} of {quorum.total} required ({quorum.threshold}%)</div>
+          <div style={{fontSize:12,color:'var(--ink-2)',marginTop:8}}>{quorumLine(quorum)}</div>
           <div className="csub" style={{marginTop:6,marginBottom:0}}>
             Threshold {quorum.threshold}% of Required Attendees, from the Setup. The same count scores AG-08.
             {S.delegatedAttend==='exclude' ? ' Attendance by a delegate is not counted.'
@@ -7943,7 +7973,7 @@ function DvMeetingDetail({rec,back}){
         </>}
       </div>
     </div>}
-  </>;
+  </div>;
 }
 
 /* Report Submission detail — the full page, read from lm_reportoccurrences.

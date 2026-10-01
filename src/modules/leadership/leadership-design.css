@@ -451,6 +451,62 @@
   padding:7px 10px; border-radius:8px; border:1px solid rgba(73,96,76,.35); background:var(--cs-green-soft);
   font:600 11px var(--cs-sans); color:var(--cs-green);
 }
+/* ---------- Meeting Detail (DvMeetingDetail, 01 Oct) ---------------------
+   Wrapped in .cs-root.cs-build.cs-mtgd: .cs-build re-skins the shared
+   classes every tab uses; these are the page's own pieces. */
+.cs-root .cs-btn.green{ background:var(--cs-grad-green); color:#fff; border-color:transparent; font-weight:700 }
+.cs-root .cs-btn.green:hover:not(:disabled){ filter:brightness(1.05); color:#fff; box-shadow:0 6px 18px rgba(73,96,76,.25) }
+.cs-root .cs-btn.danger{ background:#fff; color:var(--cs-danger); border-color:rgba(178,58,58,.25) }
+.cs-root .cs-btn.danger:hover:not(:disabled){ background:var(--cs-danger-soft); color:var(--cs-danger); border-color:var(--cs-danger) }
+.cs-root .cs-btn:disabled{ opacity:.55; cursor:not-allowed }
+.cs-mtgd{ display:flex; flex-direction:column; gap:14px }
+.cs-mtgd .cs-head{ margin-bottom:0 }
+.cs-mtgd .mtgd-meta{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:6px;
+  font:500 11.5px var(--cs-body-font); color:var(--cs-muted) }
+.cs-mtgd .muted{ color:var(--cs-muted) }
+.cs-mtgd .cs-tabs{ margin-top:14px; border-top:1px solid var(--cs-border); padding-top:2px }
+.cs-root .cs-two-col.mtgd-cols{ grid-template-columns:minmax(0,1fr) 310px }
+.cs-mtgd .mtgd-main, .cs-mtgd .mtgd-side{ display:flex; flex-direction:column; gap:14px; min-width:0 }
+.cs-mtgd .card{ margin:0 }
+.cs-mtgd .mtgd-h{ font:600 14px var(--cs-sans); color:var(--cs-text); margin:0 0 8px }
+/* date / time / place */
+.cs-mtgd .mtgd-tiles{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; padding:12px }
+.cs-mtgd .mtgd-tile{ display:flex; flex-direction:column; align-items:center; gap:4px; padding:14px 8px;
+  border-radius:12px; background:var(--cs-hover); text-align:center; min-width:0 }
+.cs-mtgd .mtgd-tile svg{ color:var(--cs-gold) }
+.cs-mtgd .mtgd-tile b{ font-size:15px; color:var(--cs-text); overflow-wrap:anywhere }
+.cs-mtgd .mtgd-tile b.cs-mono{ font:600 15px var(--cs-mono) }
+.cs-mtgd .mtgd-tile span{ font:700 9px var(--cs-sans); letter-spacing:.9px; text-transform:uppercase; color:var(--cs-dim) }
+/* card header */
+.cs-mtgd .mtgd-card-top{ display:flex; align-items:center; gap:10px; margin-bottom:12px }
+.cs-mtgd .mtgd-card-top h2{ font:600 14px var(--cs-sans); color:var(--cs-text); margin:0; flex:1; min-width:0 }
+.cs-mtgd .mtgd-count{ font:500 11px var(--cs-mono); color:var(--cs-gold) }
+/* agenda preview */
+.cs-mtgd .mtgd-agenda{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:4px }
+.cs-mtgd .mtgd-agenda li{ display:flex; align-items:center; gap:12px; padding:8px 12px; border-radius:10px; background:var(--cs-hover) }
+.cs-mtgd .mtgd-n{ font:500 11px var(--cs-mono); color:var(--cs-dim); min-width:18px }
+.cs-mtgd .mtgd-t{ flex:1; min-width:0; font:500 12.5px var(--cs-sans); color:var(--cs-text); display:flex; gap:6px; align-items:center; flex-wrap:wrap }
+.cs-mtgd .mtgd-o{ font:400 11px var(--cs-body-font); color:var(--cs-muted); text-align:right; max-width:40%; overflow-wrap:anywhere }
+.cs-mtgd .mtgd-more{ display:block; margin:12px auto 0; background:none; border:none; cursor:pointer;
+  font:600 11px var(--cs-sans); color:var(--cs-gold) }
+.cs-mtgd .mtgd-more:hover{ text-decoration:underline }
+.cs-mtgd .mtgd-more:focus-visible{ outline:2px solid var(--cs-gold); outline-offset:2px; border-radius:4px }
+.cs-mtgd .mtgd-bar{ width:110px; height:6px; border-radius:999px; background:var(--cs-track); overflow:hidden }
+.cs-mtgd .mtgd-bar i{ display:block; height:100%; background:var(--cs-grad-green) }
+/* side */
+.cs-mtgd .mtgd-actions{ display:flex; flex-direction:column; gap:8px; border-color:var(--cs-green) }
+.cs-mtgd .mtgd-actions .mtgd-card-top{ margin-bottom:4px }
+.cs-mtgd .mtgd-actions .cs-btn{ justify-content:center; width:100% }
+.cs-mtgd .mtgd-kv{ display:flex; flex-direction:column }
+.cs-mtgd .mtgd-kv > div{ display:flex; justify-content:space-between; gap:12px; padding:9px 0; border-bottom:1px solid var(--cs-border) }
+.cs-mtgd .mtgd-kv > div:last-child{ border-bottom:none }
+.cs-mtgd .mtgd-kv span{ font:400 11.5px var(--cs-body-font); color:var(--cs-muted) }
+.cs-mtgd .mtgd-kv b{ font:600 11.5px var(--cs-sans); color:var(--cs-text); text-align:right; min-width:0; overflow-wrap:anywhere }
+.cs-mtgd .mtgd-all summary{ cursor:pointer; margin:0 }
+.cs-mtgd .mtgd-all[open] summary{ margin-bottom:8px }
+@media (max-width:1100px){ .cs-root .cs-two-col.mtgd-cols{ grid-template-columns:1fr } }
+@media (max-width:560px){ .cs-mtgd .mtgd-tiles{ grid-template-columns:1fr } .cs-mtgd .mtgd-o{ display:none } }
+
 /* Strategy chain (29 Sep): the opened row -- three columns, stacking on narrow screens. */
 .cs-root .cs-chain{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:18px; padding:6px 4px }
 .cs-root .cs-chain-col{ min-width:0 }
