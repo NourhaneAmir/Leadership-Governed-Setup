@@ -134,7 +134,7 @@ Governance (no uploader step needed):
 
 ```bash
 npm run build:governance
-grep -o "org319b4ea9\|org2f45e702" apps/governance/dist/assets/*.js | sort | uniq -c   # DT New only while it is on DT New
+grep -o "org319b4ea9\|org2f45e702" apps/governance/dist/assets/*.js | sort | uniq -c   # main app: IT only (org2f45e702)
 rm -rf /c/tmp/cad-gov/dist && cp -r apps/governance/dist /c/tmp/cad-gov/dist
 (cd /c/tmp/cad-gov && "<repo>/node_modules/.bin/power-apps" push)
 ```
