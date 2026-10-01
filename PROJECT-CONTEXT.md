@@ -7,7 +7,7 @@
 > (covering 09-12 Sep), updated 13 Sep 2026, updated 14 Sep 2026,
 > updated 16 Sep 2026, updated 17 Sep 2026 (three times), against branch `leadership-practice`;
 > since then updated per session through 28 Sep 2026, now on branch `CrossEnv-Leadership`;
-> **status snapshot below refreshed 01 Oct 2026, end of day (code last changed at `9abac49`; see §0 "What is live" for which app runs which commit).**
+> **status snapshot below refreshed 01 Oct 2026, end of day (code last changed at `1aa8cb7`; see §0 "What is live" for which app runs which commit).**
 >
 > This file records **decisions, hard-won schema facts and open questions** —
 > the things that are expensive to rediscover. It is not a substitute for the
@@ -33,19 +33,21 @@ ask "make both of the governance app to be read from the IT") — then rebuild
 the normal IT `dist`. The **main IT apps** (`83db0ef8…`, `4912152c…`)
 are pushed **only when the user explicitly confirms** a change is accepted —
 per app and per change (e.g. 01 Oct: Governance only, for the optional agenda
-owner). Only the app that changed is pushed. End of 01 Oct: main Leadership is
-still on `d8f06a1`, so every Leadership change after it is test-only; see
-"What is live" below.
+owner). Only the app that changed is pushed. ⚠️ Since late 01 Oct the **main
+Leadership app reads DT New too** — build it WITH `LP_DATA_ORG` (+ the revert
+steps), never a plain build; staged in `C:\tmp\cad-exec`. Claude Code's
+auto-mode classifier blocks a main-app push unless the user asks for that push
+explicitly in the same turn. See "What is live" below.
 
 
 | | |
 |---|---|
-| Branch | `CrossEnv-Leadership`. Code last changed at `9abac49` (01 Oct). Most 01 Oct commits reached GitHub (`origin`) later the same day (pushed from elsewhere); the last few may not have — check `git status -sb` |
+| Branch | `CrossEnv-Leadership`. Code last changed at `1aa8cb7` (01 Oct). Most 01 Oct commits reached GitHub (`origin`) later the same day (pushed from elsewhere); the last few may not have — check `git status -sb` |
 | Governance Setup | **Main (IT):** `4912152c-b5c8-4beb-bb74-c9f43550405b`, pushed from `C:\tmp\cad-gov`. **Test:** `786c1b14-bf09-4dd7-a0a2-5730e87744fe` ("…Governance Setup (2)"), pushed from `C:\tmp\cad-gov-old` — **reads IT since end of 01 Oct** (normal IT build, the same bundle as the main app); it read DT New before that. Both Code App Development. |
-| Leadership Execution | **Main (IT):** `83db0ef8-4c62-4eef-84ac-dadab326b704`, pushed from `C:\tmp\cad-exec`. **Test (DT New):** `d61c6237-fec1-45c7-80e0-a9c63dd1e662` ("…Leadership Execution (2)"), pushed from `C:\tmp\cad-exec-test` (created 01 Oct) with `LP_DATA_ORG` set. Both Code App Development. |
-| Data | **IT** (`org2f45e702`) for **both apps** again, every table but `lm_setupactivities` (follows `DATA_ORG`, = IT in Governance). Governance was on DT New for part of 29 Sep, then moved back to IT the same day per an explicit ask, once IT had the five `lm_reporttemplatedepartmentfunction` columns the per Department & Function submitters write (`lm_BU`, `lm_Region`, `lm_SubmittingPosition`, `lm_OwnerPosition`, `lm_TeamChannel` — checked, same targets as DT New). Switch: `__DATA_ORG__` + `__PIN_ORG__` in `apps/governance/vite.config.js` (see `PIN_ORG` in `xenv.js`). ⚠️ Setups saved in Governance **while it was on DT New** stay in DT New — they are not in IT. |
-| What is live (end of 01 Oct) | **Main apps (IT):** Leadership `d8f06a1` **minus `4ca0036`**; Governance **`409b549`** (pushed on the user's explicit ask — the optional agenda owner; the commits between only touched Leadership code it does not call). **Test apps:** Leadership (2) **`9abac49` minus `4ca0036`, reading DT New**; Governance (2) **`9abac49`, reading IT** — byte-identical bundle to the main Governance app (`index-BHXy3KtV.js`; no Governance code changed after `409b549`). Every Leadership test push: revert steps, bundle checked (no uploader writes, data on DT New, the change present), normal IT `dist` rebuilt after. |
-| ⚠️ Test pair is split | Governance (2) reads **IT**, Leadership (2) reads **DT New**: a Setup made in Governance (2) now lands in IT and does **not** show in Leadership (2), and DT New's Setups are no longer editable from either Governance app. Offered to move Leadership (2) to IT too — not asked for yet. |
+| Leadership Execution | **Main:** `83db0ef8-4c62-4eef-84ac-dadab326b704`, pushed from `C:\tmp\cad-exec` — **reads DT New since late 01 Oct** (user: "make the 2 versions of the leadership practice to read from the DT New"), built with `LP_DATA_ORG`. **Test (DT New):** `d61c6237-fec1-45c7-80e0-a9c63dd1e662` ("…Leadership Execution (2)"), pushed from `C:\tmp\cad-exec-test` (created 01 Oct) with `LP_DATA_ORG` set. Both Code App Development. |
+| Data | ⚠️ **Late 01 Oct: Leadership (both copies) = DT New; Governance (both copies) = IT.** Earlier note: **IT** (`org2f45e702`) for **both apps** again, every table but `lm_setupactivities` (follows `DATA_ORG`, = IT in Governance). Governance was on DT New for part of 29 Sep, then moved back to IT the same day per an explicit ask, once IT had the five `lm_reporttemplatedepartmentfunction` columns the per Department & Function submitters write (`lm_BU`, `lm_Region`, `lm_SubmittingPosition`, `lm_OwnerPosition`, `lm_TeamChannel` — checked, same targets as DT New). Switch: `__DATA_ORG__` + `__PIN_ORG__` in `apps/governance/vite.config.js` (see `PIN_ORG` in `xenv.js`). ⚠️ Setups saved in Governance **while it was on DT New** stay in DT New — they are not in IT. |
+| What is live (end of 01 Oct) | **Leadership main** `83db0ef8`: **`2e2dda3` minus `4ca0036`, reading DT New** (pushed on the user's explicit "push the latest code to the main app"; same bundle the test copy had then). **Leadership (2)** `d61c6237`: **`1aa8cb7` minus `4ca0036`, reading DT New.** **Governance main** `4912152c` and **Governance (2)** `786c1b14`: **`409b549`, reading IT** (same bundle; no Governance code changed since). Every Leadership test push: revert steps, bundle checked (no uploader writes, data on DT New, the change present), normal IT `dist` rebuilt after. |
+| ⚠️ Apps are split across environments | **Both Governance apps read IT, both Leadership apps read DT New**: a Setup made in Governance lands in IT and does **not** show in either Leadership app, and DT New's Setups are not editable from either Governance app. Raised with the user; not resolved yet. |
 
 ⚠️ **One commit is in git but deliberately NOT deployed: `4ca0036`** — the
 Create Report file uploader and Team Channel → SharePoint destination. It
@@ -9012,6 +9014,77 @@ still `d8f06a1`. Lint baseline stays 57 (`LeadershipApp.jsx` + `dataverse.js`).
   pushed to `786c1b14` on the user's ask "make both of the governance app to
   be read from the IT". See §0 — the test pair is now split across
   environments.
+
+### 01 Oct, late: main Leadership on DT New, and a run of meeting features
+
+**Deployment.** The user asked for both Leadership apps to read DT New. A first
+attempt rebuilt main at `d8f06a1` (its own code) — the push was **blocked by
+Claude Code's auto-mode classifier** ("Production Deploy"). The user then said
+"push the latest code to the main app": `2e2dda3` (the test copy's bundle,
+byte-identical) went to `83db0ef8` with `LP_DATA_ORG`. Uncommitted work was
+stashed and restored around both builds (diff checked against a backup).
+
+**New columns the user added in DT New (IT has none of them yet):**
+
+| Table | Column | Used for |
+|---|---|---|
+| `lm_meetingoccurrence` | `lm_meetingcategory` (lookup → `lm_meetingcategories`; nav `lm_Meetingcategory`) | Custom Ad Hoc Category |
+| `lm_meetingoccurrencelinkedreports` | `lm_fileurl` (text; length not confirmed — default would be 100) | input / document links |
+| `lm_auditgridinstance` | `lm_submitedat` (Date and Time — **one "t"**) | AG-17 |
+| `lm_auditgridanswer` | `lm_evidence` widened to **4000** (user) | grid evidence notes |
+
+Already in both environments, now used: `lm_meetingoccurrence.lm_momwriteuphours`
+/ `lm_momapprovalhours` / `lm_gridsubmithours`, `lm_torpolicylink`,
+`lm_meetingcochairman`. Reads of the DT-New-only columns fall back (selecting a
+missing column fails the whole read), and the grid submit stamp is a separate,
+non-fatal write — so IT does not break; creating rows WITH them does fail in IT.
+
+**Commits (all test copy only unless said):**
+- `44bfce1` — **Custom Ad Hoc**: Type (`lm_setuptype`), Classification
+  (`lm_meetingclassification`, same codes as the category table's
+  `lm_typeclassification`) and Category (Governance's Stage × Classification
+  cascade; Accreditation = Stage rows with no classification); input reports
+  as **links only** (name + URL → a linked-report row with `lm_fileurl`). Link
+  rows show on Documents / Submissions and count as submitted. Minutes: tasks
+  as decision-style cards. **Coverage bug fixed**: Yes/No saved but only the
+  Minutes were reloaded — coverage lives on `rec.agenda`, so `setCovered` now
+  also calls `refreshOccurrences()` and shows the choice at once (`covSet`).
+- `528440b` — a **Task opens in the TMS canvas app**:
+  `https://apps.powerapps.com/play/e/cf7143ad-49da-ec62-a933-ecdacc501051/app/08de5c1f-d8d1-4d2a-8912-57aadd53db17?hideNavBar=true&taskId=<id>`
+  (`recordLinks.jsx`, `canvas` on the Task target; no app-role check). ⚠️ If
+  TMS reads another environment than DT New, it will not find the ids.
+- `a9be507` — **RULE-MOM-02** (user's choice): a Discussion Note is required
+  only for a covered (Yes / unmarked) item with **no decision and no task**.
+- `0642a3f` — **time limits per meeting**: `meetingLimits(occ,S)` = occurrence
+  → Setup (`fetchMeetingTemplatesList` now reads the three) → global; copied
+  onto Ad-Hoc-from-Setup and rescheduled occurrences. AG-05 and AG-16 use it;
+  **new AG-17** (Grid opened `createdon` → `lm_submitedat`, stamped by
+  `updateAuditGridState(…,'Submitted for Approval')`). Banner, calendar MOM-due,
+  Meetings attention and Minutes overdue use it too. Global defaults are null —
+  scores need the limits set on the Setup. **TOR questions** (AG-01/02) follow
+  the **occurrence's** `lm_torpolicylink`; empty = a **locked** N/A
+  (`r.locked`: `applyManualOverrides` skips it, the row is not clickable, not
+  counted); the Setup's TOR is copied onto new occurrences (existing ones are
+  empty → N/A). **Submissions: submit a document as a link** (new linked-report
+  row for the Template, or `lm_fileurl` on an existing link row —
+  `updateLinkedReportFile()`). **Add an agenda item from the Minutes** card.
+  **Grid evidence** `GRID_EVIDENCE_MAX` 4000, and the box shows the saved note
+  (`r.note`), not the computed explanation (`r.ev`) — that used to pre-fill it.
+- `1aa8cb7` — **Review & Sign** layout while the Minutes are with the Chair
+  (banner from the meeting's MOM approval limit, info tiles, Discussion
+  Summary, Key Decisions, Outputs, Digital Signature card — the signature box
+  enables Sign & Approve; comments are saved only as the **return reason**:
+  `lm_meetingminutes` has no comments column). **My Workspace = my meetings**:
+  a Position I hold is Chair / Co-Chair / Organizer / Attendee (or delegate);
+  `isMyMeeting` / `myMeetingOccs` in the shell feed the work list and the
+  sidebar counts; the Meetings screen and Calendar still list everything.
+  **Artifact sidebar entries "Soon"** (`comingSoon:true` on build / orpt / bi
+  / chain / hier — remove the flag to re-enable; other links into those
+  screens still work). Meetings header: **"Ad Hoc from Setup" removed**.
+
+**Also answered this session:** the occurrence and Setup both carry the three
+time-limit columns (grid *approval* has none anywhere); "Facilitator" is
+"Organizer" in Leadership only.
 
 ## 6. Schema facts that are expensive to rediscover
 
