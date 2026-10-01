@@ -84,9 +84,7 @@ const fmtStamp = iso => (iso ? fmtD(String(iso).slice(0, 10)) : '—');
    it hangs off a SECTION, so this is where a task on a report has to live. */
 function SectionTaskPanel({ mode, list, q, setQ, busy, onPick, onNew, onCancel, subject, toast }){
   if (mode === 'new')
-    return <div style={{ marginTop: 8 }}>
-      <NewTaskForm subject={subject} toast={toast} onCancel={onCancel} onDone={onNew}/>
-    </div>;
+    return <NewTaskForm subject={subject} toast={toast} onCancel={onCancel} onDone={onNew}/>;
 
   const needle = q.trim().toLowerCase();
   const shown = (list || []).filter(t => !needle || (t.name || '').toLowerCase().includes(needle));

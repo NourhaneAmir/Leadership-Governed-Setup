@@ -19,10 +19,11 @@
    and Save draft / Submit at the foot. Nothing is written until Save.
    ========================================================================= */
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { FileText } from 'lucide-react';
 import { use } from '../store.jsx';
 import { OpenRecord, citationRecordId } from '../recordLinks.jsx';
-import { Btn, Tag, Note, Empty, Combo, KVBlock } from '../../../shared/ui.jsx';
+import { Btn, Tag, Note, Empty, Combo, KVBlock, Modal, Field } from '../../../shared/ui.jsx';
 import { fmtP, TODAY } from '../../../shared/format.js';
 import { DiagChip, matchesQuery, processMetaRows, projectMetaRows } from '../domain.jsx';
 import { DecisionPanel } from './DecisionLink.jsx';
@@ -984,7 +985,7 @@ export function NewTaskForm({ subject, onCancel, onDone, toast, link, doneText }
     return () => { live = false; };
   }, []);
 
-  const ready = f.title.trim() && f.assigneeId && f.dueDate;
+  const ready = f.title.trim() && f.assigneeId && f.dueDate && !(f.startDate && f.dueDate < f.startDate);
 
   const submit = async () => {
     if (!ready || saving) return;
@@ -1006,61 +1007,55 @@ export function NewTaskForm({ subject, onCancel, onDone, toast, link, doneText }
              due: f.dueDate, start: f.startDate, assigneeName: who?.name || null });
   };
 
-  const row = (label, req, control) => <div className="ntf-r">
-    <label>{label}{req ? <span className="req"> *</span> : null}</label>
-    {control}
-  </div>;
+  /* A dialog (01 Oct): the form used to open inline, squeezed into whatever
+     panel raised it. It is portalled to <body> so no panel around it (a
+     scroll box, a transformed card) can clip or shift it. Closing it with
+     typing in it asks first. */
+  const dirty = !!(f.title.trim() || f.description.trim() || f.action.trim() || f.assigneeId || f.dueDate);
+  const close = () => {
+    if (saving) return;
+    if (dirty && !window.confirm('Discard this task? What you entered will be lost.')) return;
+    onCancel();
+  };
 
-  return <div className="ntf">
-    <div className="ntf-h">
-      <div>
-        <b>Raise a task</b>
-        {subject ? <span className="ntf-sub">{subject}</span> : null}
-      </div>
-      <button type="button" className="cite-x" title="Close" onClick={onCancel}>×</button>
-    </div>
-
-    {row('Title', true,
-      <input value={f.title} maxLength={200} placeholder="Enter task title…"
-        onChange={e => set({ title: e.target.value })}/>)}
-    {row('Description', false,
-      <textarea value={f.description} rows={3} maxLength={2000}
-        placeholder="Describe the task or action required…"
-        onChange={e => set({ description: e.target.value })}/>)}
-    {row('Action to be taken', false,
-      <input value={f.action} maxLength={850} placeholder="Enter action to be taken…"
-        onChange={e => set({ action: e.target.value })}/>)}
-    {row('Assignee', true,
-      users === null
-        ? <input disabled value="Reading users…"/>
-        /* Searchable (28 Sep): IT's user list is long, so a plain select meant
-           scrolling for a name. Combo matches the name or the email. */
+  return createPortal(<Modal title="Raise a task" wide onClose={close}
+    sub={subject || 'Written as a new Task in one step. Status is left to Dataverse’s own default.'}
+    footer={<>
+      <Btn disabled={saving} onClick={close}>Cancel</Btn>
+      <Btn k="pri" disabled={!ready || saving} onClick={submit}>
+        {saving ? 'Raising…' : 'Raise task'}</Btn></>}>
+    <Field label="Title" req>
+      <input type="text" value={f.title} maxLength={200} autoFocus placeholder="What needs to be done?"
+        onChange={e => set({ title: e.target.value })}/></Field>
+    <Field label="Assignee" req hint="Search by name or email.">
+      {users === null
+        ? <input type="text" disabled value="Reading users…"/>
+        /* Searchable (28 Sep): IT's user list is long. */
         : <Combo value={f.assigneeId} onChange={id => set({ assigneeId: id })}
             opts={users.map(u => ({ id: u.id, name: u.name, sub: u.email || undefined }))}
             all={users.length ? 'Choose a user…' : 'No users loaded'}
-            placeholder="Search by name or email…"/>)}
-    {row('Priority', false,
-      <select value={f.priority} onChange={e => set({ priority: e.target.value })}>
-        <option value="">Select priority…</option>
-        {TASK_PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
-      </select>)}
-    <div className="ntf-2">
-      {row('Start date', false,
-        <input type="date" value={f.startDate} onChange={e => set({ startDate: e.target.value })}/>)}
-      {row('Due date', true,
+            placeholder="Search by name or email…"/>}</Field>
+    <div className="f-row3">
+      <Field label="Priority">
+        <select value={f.priority} onChange={e => set({ priority: e.target.value })}>
+          <option value="">Select…</option>
+          {TASK_PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
+        </select></Field>
+      <Field label="Start date">
+        <input type="date" value={f.startDate} onChange={e => set({ startDate: e.target.value })}/></Field>
+      <Field label="Due date" req
+        err={f.dueDate && f.startDate && f.dueDate < f.startDate ? 'The due date is before the start date.' : null}>
         <input type="date" value={f.dueDate} min={f.startDate || undefined}
-          onChange={e => set({ dueDate: e.target.value })}/>)}
+          onChange={e => set({ dueDate: e.target.value })}/></Field>
     </div>
-
-    <div className="ntf-f">
-      <Btn k="sm" disabled={saving} onClick={onCancel}>Cancel</Btn>
-      <Btn k="sm pri" disabled={!ready || saving} onClick={submit}>
-        {saving ? 'Raising…' : 'Raise task'}</Btn>
-    </div>
-    <div className="holder" style={{ marginTop: 8 }}>
-      Written as a new Task and cited here in one step. Status is left to
-      Dataverse's own default.</div>
-  </div>;
+    <Field label="Description">
+      <textarea value={f.description} rows={4} maxLength={2000}
+        placeholder="Describe the task or the context behind it…"
+        onChange={e => set({ description: e.target.value })}/></Field>
+    <Field label="Action to be taken">
+      <input type="text" value={f.action} maxLength={850} placeholder="The concrete action expected…"
+        onChange={e => set({ action: e.target.value })}/></Field>
+  </Modal>, document.body);
 }
 
 function CitePicker({ picker, setPicker, onCite, catalog, inScope, reports, taken,
@@ -1331,11 +1326,7 @@ function CitePicker({ picker, setPicker, onCite, catalog, inScope, reports, take
   } else if (k === 'Task') {
     const rows = exec.tasks;
     if (!rows) body = <div className="holder">Reading tasks…</div>;
-    else if (picker.newTask) {
-      body = <NewTaskForm subject={rec?.name || null} onCancel={() => set({ newTask: false })}
-        onDone={t => { addTask(t); onCite({ kind: 'Task', taskId: t.id, label: 'Task: ' + t.name }); }}
-        toast={toast}/>;
-    } else {
+    else {
       /* ⚠️ Every one of these is built from the rows themselves, and every one
          was chosen by counting what IT's 44,552 tasks actually hold (see
          fetchTasks). tms_isdelayed is a STRING with three values -- "Delayed",
@@ -1389,6 +1380,11 @@ function CitePicker({ picker, setPicker, onCite, catalog, inScope, reports, take
             : '.'}</div>
         <Btn k="sm pri" style={{ marginTop: 8 }} onClick={() => set({ newTask: true })}>
           + Raise a new task</Btn>
+        {picker.newTask &&
+          <NewTaskForm subject={rec?.name || null} onCancel={() => set({ newTask: false })}
+            onDone={t => { set({ newTask: false }); addTask(t);
+                           onCite({ kind: 'Task', taskId: t.id, label: 'Task: ' + t.name }); }}
+            toast={toast}/>}
       </>;
     }
   } else if (k === 'Project') {

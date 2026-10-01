@@ -6262,7 +6262,7 @@ function AgendaTaskPanel({rec,item,tasks,canAdd,onRaised}){
     <div className="agt-hd">
       <span className="agt-k">Tasks</span>
       <span className="t-sub">{mine.length ? `${mine.length} on this item` : 'None yet'}</span>
-      {canAdd ? <Btn k="sm" onClick={()=>setOpen(v=>!v)}>{open?'Cancel':'+ Raise a task'}</Btn> : null}
+      {canAdd ? <Btn k="sm" onClick={()=>setOpen(true)}>+ Raise a task</Btn> : null}
     </div>
     {mine.map(t=>{
       const late = t.due && !TASK_DONE.has(t.status) && t.due < TODAY;
@@ -6273,14 +6273,12 @@ function AgendaTaskPanel({rec,item,tasks,canAdd,onRaised}){
         <Tag c={TASK_DONE.has(t.status)?'green':late?'red':'grey'}>{late?'Overdue':(t.status||'New')}</Tag>
         <OpenRecord kind="Task" id={t.id} label="Open ↗" asLink/>
       </div>;})}
-    {open && <div className="agt-form">
-      <NewTaskForm subject={`${rec.name} — ${item.title||'agenda item'}`}
+    {open && <NewTaskForm subject={`${rec.name} — ${item.title||'agenda item'}`}
         link={{meetingOccurrenceId:rec.id, agendaItemId:item.id}}
         doneText="Task raised on this agenda item."
         toast={msg=>{ const bad=/could not/i.test(msg); toast(bad?'Not saved':'Task raised', msg, bad?'err':'ok'); }}
         onCancel={()=>setOpen(false)}
-        onDone={()=>{ setOpen(false); if(onRaised) onRaised(); }}/>
-    </div>}
+        onDone={()=>{ setOpen(false); if(onRaised) onRaised(); }}/>}
   </div>;
 }
 

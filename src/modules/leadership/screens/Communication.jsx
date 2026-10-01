@@ -121,10 +121,8 @@ export function ScreenComms(){
     </div>
 
     {raising
-      ? <div className="card">
-          <NewTaskForm subject={null} onCancel={()=>setRaising(false)}
-            onDone={()=>{ setRaising(false); setTick(x=>x+1); }} toast={toast}/>
-        </div>
+      ? <NewTaskForm subject={null} onCancel={()=>setRaising(false)}
+          onDone={()=>{ setRaising(false); setTick(x=>x+1); }} toast={toast}/>
       : null}
 
     {sharing
