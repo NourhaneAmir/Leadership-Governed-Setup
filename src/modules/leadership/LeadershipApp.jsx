@@ -7388,19 +7388,26 @@ function DvMeetingDetail({rec,back}){
     }finally{ setAttSavingId(null); }
   };
 
+  /* Agenda items can be added once the meeting is Held too (01 Oct) -- a
+     topic raised in the room -- until its Minutes are Approved or Closed.
+     Such an item is marked as added in the meeting (lm_source). */
+  const minutesLocked = !!minutes && (minutes.status==='Approved' || minutes.status==='Closed');
+  const canAddAgenda = rec.status==='Scheduled' || (rec.status==='Held' && !minutesLocked);
   const addAgendaItem = async () => {
     const title = newAgendaTitle.trim();
-    if(!title) return;
+    if(!title || !canAddAgenda) return;
     setSavingAgenda(true);
     try{
       const {id,errors} = await createMeetingOccurrenceAgendaItem(rec.id,
-        { title, sequence: rec.agenda.length+1 });
+        { title, sequence: rec.agenda.length+1,
+          ...(rec.status==='Held' ? { source:'Added in meeting' } : {}) });
       if(!id){
         console.warn('[dataverse] createMeetingOccurrenceAgendaItem() failed:', errors);
         toast('Not saved','Adding the Agenda item failed. Check the console for details.','err');
         return;
       }
       setNewAgendaTitle(''); setAddingAgenda(false);
+      if(rec.status==='Held') toast('Agenda item added',`“${title}” is on the agenda and in the Minutes.`,'ok');
       await refreshOccurrences();
     }catch(e){
       console.warn('[dataverse] createMeetingOccurrenceAgendaItem() threw unexpectedly:', e);
@@ -7889,11 +7896,14 @@ function DvMeetingDetail({rec,back}){
           ? <Tag c="green">Distributed {fmtDS(rec.agendaSent)}</Tag>
           : <Btn k="sm" disabled={sendingAgenda||!rec.agenda.length} onClick={sendAgenda}>
               {sendingAgenda?'Recording…':'Record distribution'}</Btn>)}
-        {rec.status==='Scheduled' &&
+        {canAddAgenda &&
           <Btn k="sm" onClick={()=>setAddingAgenda(v=>!v)}>{addingAgenda?'Close':'+ Add item'}</Btn>}
       </div>
 
-      {addingAgenda && <div style={{display:'flex',gap:8,padding:'0 17px 14px'}}>
+      {canAddAgenda && addingAgenda && rec.status==='Held' &&
+        <div className="t-sub" style={{padding:'0 17px 6px'}}>The meeting is Held: the item is added as raised
+          in the meeting, and shows in the Minutes for its notes, decisions and tasks.</div>}
+      {canAddAgenda && addingAgenda && <div style={{display:'flex',gap:8,padding:'0 17px 14px'}}>
         <input type="text" value={newAgendaTitle} onChange={e=>setNewAgendaTitle(e.target.value)}
           placeholder="New Agenda item" style={{flex:1}}
           onKeyDown={e=>{ if(e.key==='Enter') addAgendaItem(); }}/>
