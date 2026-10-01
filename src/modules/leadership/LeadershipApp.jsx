@@ -6355,7 +6355,11 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
   /* RULE-MOM-02: an Agenda Item with no Output needs a Discussion Note. No
      Outputs exist yet (no Task or Decision table), so today that means every
      item needs a note before the Minutes can be submitted. */
-  const missingNotes = rec.agenda.filter(a=>!textFor(a).trim());
+  /* 01 Oct: an item the Organizer marks NOT covered ("No") needs no note --
+     there is nothing to record -- so it no longer blocks submission. Covered
+     or not-yet-marked items still do. */
+  const notCovered   = a => a.covered==='No';
+  const missingNotes = rec.agenda.filter(a=>!notCovered(a) && !textFor(a).trim());
   const tooLong      = rec.agenda.filter(a=>textFor(a).trim().length>MOM_NOTE_MAX);
   const canSubmit    = rec.agenda.length>0 && !missingNotes.length && !tooLong.length;
 
@@ -6617,7 +6621,9 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
                 {editable
                   ? <>
                       <textarea rows={3} value={val} disabled={savingNote===a.id}
-                        placeholder="What was discussed, decided or carried forward…"
+                        placeholder={notCovered(a)
+                          ? 'Not covered — optional: why, or where it moves to…'
+                          : 'What was discussed, decided or carried forward…'}
                         onChange={e=>setDrafts(d=>({...d,[a.id]:e.target.value}))}
                         onBlur={()=>saveNote(a)}
                         style={{width:'100%',resize:'vertical',fontFamily:'inherit',fontSize:13,
@@ -6648,11 +6654,12 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
     <div className="card">
       <h2>Actions</h2>
       {drafting && <>
-        <div className="csub">The MOM Recorder writes the Minutes. Every Agenda Item needs a
-          Discussion Note before they can be submitted, because none of them carries an Output yet.</div>
+        <div className="csub">The MOM Recorder writes the Minutes. Every covered Agenda Item needs a
+          Discussion Note before they can be submitted. An item marked <b>No</b> (not covered) needs none.</div>
         {!!missingNotes.length &&
           <Note k="warn">{missingNotes.length} Agenda Item{missingNotes.length>1?'s have':' has'} no
-            Discussion Note. Submission is blocked until every item records an outcome.</Note>}
+            Discussion Note: {missingNotes.map(a=>a.title||'—').join(', ')}. Add a note, or mark the
+            item <b>No</b> if it was not covered.</Note>}
         <Btn k="pri" disabled={!canSubmit||busy==='submit'} onClick={submit}>
           {busy==='submit'?'Submitting…':'Submit to the Meeting Chair'}</Btn>
       </>}
