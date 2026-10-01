@@ -7,7 +7,7 @@
 > (covering 09-12 Sep), updated 13 Sep 2026, updated 14 Sep 2026,
 > updated 16 Sep 2026, updated 17 Sep 2026 (three times), against branch `leadership-practice`;
 > since then updated per session through 28 Sep 2026, now on branch `CrossEnv-Leadership`;
-> **status snapshot below refreshed 01 Oct 2026 (HEAD = the commit that adds this line, on GitHub; apps deployed from `d39fdf5`).**
+> **status snapshot below refreshed 01 Oct 2026, end of day (code last changed at `409b549`; see §0 "What is live" for which app runs which commit).**
 >
 > This file records **decisions, hard-won schema facts and open questions** —
 > the things that are expensive to rediscover. It is not a substitute for the
@@ -29,17 +29,20 @@ with `LP_DATA_ORG=https://org319b4ea9.crm4.dynamics.com` and push to the DT New
 test apps — Leadership `d61c6237…` (`C:\tmp\cad-exec-test`, still with the
 revert-`4ca0036` steps) and Governance `786c1b14…` (`C:\tmp\cad-gov-old`) — then
 rebuild the normal IT `dist`. The **main IT apps** (`83db0ef8…`, `4912152c…`)
-are pushed **only when the user explicitly confirms** a change is accepted. On
-01 Oct both pairs run `d8f06a1`, so anything after that is test-only until then.
+are pushed **only when the user explicitly confirms** a change is accepted —
+per app and per change (e.g. 01 Oct: Governance only, for the optional agenda
+owner). Only the app that changed is pushed. End of 01 Oct: main Leadership is
+still on `d8f06a1`, so every Leadership change after it is test-only; see
+"What is live" below.
 
 
 | | |
 |---|---|
-| Branch | `CrossEnv-Leadership`, pushed to GitHub (`origin`). Code last changed at `d39fdf5`; later commits are notes only |
+| Branch | `CrossEnv-Leadership`. Code last changed at `409b549` (01 Oct). ⚠️ The 01 Oct commits from `84d4c0b` on were **not** `git push`ed to GitHub (`origin`) when written — check `git status -sb` |
 | Governance Setup | **Main (IT):** `4912152c-b5c8-4beb-bb74-c9f43550405b`, pushed from `C:\tmp\cad-gov`. **Test (DT New):** `786c1b14-bf09-4dd7-a0a2-5730e87744fe` ("…Governance Setup (2)"), pushed from `C:\tmp\cad-gov-old` with `LP_DATA_ORG` set — see "Test copies on DT New" below. Both Code App Development. |
 | Leadership Execution | **Main (IT):** `83db0ef8-4c62-4eef-84ac-dadab326b704`, pushed from `C:\tmp\cad-exec`. **Test (DT New):** `d61c6237-fec1-45c7-80e0-a9c63dd1e662` ("…Leadership Execution (2)"), pushed from `C:\tmp\cad-exec-test` (created 01 Oct) with `LP_DATA_ORG` set. Both Code App Development. |
 | Data | **IT** (`org2f45e702`) for **both apps** again, every table but `lm_setupactivities` (follows `DATA_ORG`, = IT in Governance). Governance was on DT New for part of 29 Sep, then moved back to IT the same day per an explicit ask, once IT had the five `lm_reporttemplatedepartmentfunction` columns the per Department & Function submitters write (`lm_BU`, `lm_Region`, `lm_SubmittingPosition`, `lm_OwnerPosition`, `lm_TeamChannel` — checked, same targets as DT New). Switch: `__DATA_ORG__` + `__PIN_ORG__` in `apps/governance/vite.config.js` (see `PIN_ORG` in `xenv.js`). ⚠️ Setups saved in Governance **while it was on DT New** stay in DT New — they are not in IT. |
-| What is live | **Main apps (IT):** Leadership `ea1a6a4` **minus `4ca0036`**; Governance `ea1a6a4`. They were **not** rebuilt for `d39fdf5` — its only change on IT is a no-op (links follow `PIN_ORG`, which equals IT there). **Test apps (DT New), 01 Oct:** Governance `d39fdf5`; Leadership `d39fdf5` **minus `4ca0036`** (revert steps; bundle checked: no uploader writes, data on DT New). |
+| What is live (end of 01 Oct) | **Main apps (IT):** Leadership `d8f06a1` **minus `4ca0036`**; Governance **`409b549`** (pushed on the user's explicit ask — the optional agenda owner; the commits between only touched Leadership code it does not call). **Test apps (DT New):** Leadership **`082cd4e` minus `4ca0036`**; Governance **`409b549`**. Every test push: revert steps, bundle checked (no uploader writes, data on DT New, the change present), normal IT `dist` rebuilt after. |
 
 ⚠️ **One commit is in git but deliberately NOT deployed: `4ca0036`** — the
 Create Report file uploader and Team Channel → SharePoint destination. It
@@ -448,7 +451,7 @@ The BRD **contradicts itself** in three places, and the code picked a side:
 | **KPI data gaps section** | ✅ **live** (27 Sep) — an explicit button writes a real `lm_reportoccurrencesections` row citing every KPI with no Actual or no Target, and re-running drops the ones whose data has arrived, deleting the section when the last gap is filled. ⚠️ Identified by its **heading**; there is no spare column to mark it with. Never runs on open, and only on a Draft/Returned, unlocked report. |
 | **KPI achievement scope** | ✅ **live** (27 Sep) — `matchAchievement()` disqualifies a row only on a real conflict and reports which dimensions were ambiguous; `reportAchievementScope()` releases Department and Function for an **All Departments** report so it matches on Business Unit and Period alone. Both replaced rules that had been matching **nothing** for common reports. |
 | **Citing in bulk** (Build a report/plan) | ✅ **live** (28 Sep) — multi-select and select-all on KPI, Process, POC, Strategy, Task and Project; each selection becomes its own `lm_reportsectioncitations` row. ⚠️ **Uncapped by explicit decision**, so the writes go ten at a time in `saveReportOccurrenceContent` rather than one at a time. Breakdown is excluded on purpose: it carries a dimension per citation. Task gains BU / delay state / status / priority / department filters, Strategy gains level / status / region. |
-| **Tasks** (`hx_tasks`, IT) | ✅ **raise + cite + read (28 Sep)** — "Raise a task" writes `hx_tasks` with **Task Source = Leadership** (`cr18c_tasksource` 989230002) and a **searchable Assignee**; a cited Task shows its full record in Reports / Plans (`fetchTasksByIds`). **29 Sep:** each task opens in TMS App (access-checked). No Tasks screen of its own; ⚠️ **no link to a meeting exists in IT** — `hx_tasks` has no lookup to a meeting, agenda item or Minutes (checked 29 Sep), so the meeting Actions tab waits on IT. |
+| **Tasks** (`hx_tasks`, IT) | ✅ **raise + cite + read (28 Sep)** — "Raise a task" writes `hx_tasks` with **Task Source = Leadership** (`cr18c_tasksource` 989230002) and a **searchable Assignee**; a cited Task shows its full record in Reports / Plans (`fetchTasksByIds`). **29 Sep:** each task opens in TMS App (access-checked). No Tasks screen of its own; ⚠️ **no link to a meeting exists in IT** — `hx_tasks` has no lookup to a meeting, agenda item or Minutes (checked 29 Sep), so in IT the meeting Actions tab shows decisions only. **01 Oct:** DT New's `hx_tasks` has `lm_MeetingOccurrence` + `lm_MeetingOccurrenceAgendaItem`, so the test copy links tasks to meetings and agenda items (see §5 "01 Oct, later"). |
 | **Quorum** | ✅ **live (29 Sep)** — `liveQuorum()` in `LeadershipApp.jsx`: Pending / Met / Not yet met / Missed against the Setup's `lm_quorumthreshold` (a %); head count derived. Reported only — blocks nothing, and does not decide whether a meeting is settled. |
 | **Cited records open in their IT app** (`recordLinks.jsx`) | ✅ **live (29 Sep)** — KPI/Breakdown/Strategy → Strategy Formulation, Process → Process Hub, Project → Project Module, Task → TMS App, POC → no app (default form); app ids read from `appmodulecomponent`. `checkRecordAccess()` (dataverse.js) checks the record and the app's roles first. Decisions not linked: `wlog_decision` sits only in the admin app. |
 | Comments, Governance Settings (persisted values) | ❌ **seeded demo data only** |
@@ -8770,7 +8773,7 @@ below and was not republished.
   `S.inputReadiness`; Returned/Rejected are not ready. Warns, does not block
   Mark as Held (the prototype didn't either). No due date: a Report Occurrence
   has a period, not a due date.
-- **Actions tab (PRO-02) — NOT built, waiting on IT.** `hx_tasks`' relationships
+- **Actions tab (PRO-02) — superseded 01 Oct: BUILT** (`e6dc023`), reading tasks where the columns exist (DT New) and decisions everywhere; see §5 "01 Oct, later". Original note: **NOT built, waiting on IT.** `hx_tasks`' relationships
   were read with `pac modelbuilder` (with the meeting tables in the filter so
   navigation properties generate): no lookup to any meeting table, and none of
   them points at a task. Decisions do link (`lm_MeetingOccurrenceAgenda`). The
@@ -8903,13 +8906,80 @@ only: same data, same actions, same order on screen.
     HTML sits inside the event's JSON body);
   - picking a list field into a later step wraps it in **Apply to each** —
     that is what sent the invite once per agenda item.
-- **Tasks per agenda item: still blocked.** Re-checked 01 Oct: `hx_tasks` has
+- **Tasks per agenda item — superseded later the same day: BUILT for DT New** (`2f821e4`; DT New's `hx_tasks` has the two meeting lookups — IT still has neither). The earlier finding, about IT: `hx_tasks` has
   no lookup to any meeting table (its lookups: projects, milestones, parent
   task, people, `hx_sources`). Needs IT's `lm_MeetingOccurrenceAgenda` on
   `hx_tasks` (spec in §0 Waiting table), or a link table.
 - **Committees readiness page republished** (version 2): interim invite flow
   section, CG-22 (cloud mailbox), CG-23 (app saves Synchronized and no Team
   Channel on a new meeting).
+
+### 01 Oct, later: meeting detail features (test copies), one Governance change (both)
+
+All Leadership work below is in **`DvMeetingDetail`** / its modals in
+`LeadershipApp.jsx` and went to the **test copy only**; main Leadership is
+still `d8f06a1`. Lint baseline stays 57 (`LeadershipApp.jsx` + `dataverse.js`).
+
+- **`e6dc023` — tabs restyled + Actions tab + date locked on Edit.** Agenda,
+  Attendance (Quorum Calculation, Attendance History), Documents and
+  Submissions restyled to the prototype (`.cs-mtgd` / `mtgd-*` in
+  `leadership-design.css`). New **Actions** tab: this meeting's decisions plus
+  its tasks (`fetchTasksForMeeting(occId, agendaIds)` — returns **`null`**
+  where `hx_tasks` lacks the meeting lookups, i.e. IT, and the tab says so)
+  and the previous occurrence's open ones. `DvEditOccModal` shows the date
+  read-only — a new day is a Reschedule.
+- **`2f821e4` — raise a task per agenda item in the Minutes**
+  (`AgendaTaskPanel`): lists and raises tasks bound to
+  `lm_MeetingOccurrence` + `lm_MeetingOccurrenceAgendaItem` (`createTask`
+  binds them only when given). DT New only; in IT the panel says tasks can't
+  be linked to a meeting yet.
+- **`84d4c0b` — add an attendee before Held.** Attendance tab, Scheduled only:
+  Position picker (minus current attendees), Required / Optional →
+  `addMeetingOccurrenceAttendee()` (same row as scheduling writes; presence
+  "Not Yet Recorded"). Required ones count towards quorum.
+- **`e5b15ad` — four changes:**
+  - **Minutes Word export** (`minutesExport.js`) adds a Tasks table per agenda
+    item (task, assignee, due, priority, status) and "Other tasks from this
+    meeting"; read fresh at export; withheld items export no tasks.
+  - **Mark as Held** is disabled (header + Actions card, with a note saying
+    what's missing) until **date, start and end time** exist, as well as ≥1
+    agenda item. `DvEditOccModal` takes a date **only when the occurrence has
+    none**; an existing date stays locked.
+  - **Reschedule names the new occurrence with the new date**
+    (`rescheduledName`): a `d/M ` prefix (the generated-name convention, e.g.
+    `4/10 Digital Transformation Planning Meeting - test`) or a trailing
+    `yyyy-mm-dd` is replaced; otherwise `d/M ` is prefixed. Previewed in the
+    modal.
+  - **Submissions: a SharePoint link per linked report.** Saved to the
+    **Report Occurrence's `lm_fileurl`** via `updateReportOccurrenceFile()`
+    (https only, ≤ `FILE_URL_MAX` 300) — the same column as the report
+    page's "Attach a working copy", so it is shared by every meeting linking
+    that report. `lm_fileurl` does **not** exist on
+    `lm_meetingoccurrencelinkedreports` in either environment (checked 01
+    Oct) — needed if the user ever wants a per-meeting link. **A report with
+    a link counts as submitted** (user's decision) — tag "Submitted · link".
+    Rows with no occurrence can't take one.
+- **`1ee3eaa` — Raise a task is a dialog.** `NewTaskForm` (BuildReport.jsx)
+  renders a `Modal` portalled to `<body>` (Title, Assignee, Priority / Start /
+  Due, Description, Action; confirm before discarding input; due < start
+  refused). Every caller changed with it: Minutes, Communication, report
+  sections (`OrgReports.jsx`), Create Report's cite picker (list stays behind
+  the dialog). ⚠️ `theme.css` styles `.f input[type=text]` — an `<input>`
+  without `type` renders unstyled inside a `Field`.
+- **`082cd4e` — add agenda items after Held**, until the Minutes are Approved
+  or Closed; saved with `lm_source` "Added in meeting" (text column, both
+  environments); shows in the Minutes for notes, decisions and tasks.
+- **`409b549` — Governance: a standing agenda item's owner is optional.**
+  Validation rule removed; picker reads "Owner (optional)…". Leadership already
+  falls back to Facilitator / Chair (`ScreenNewMeeting`). ⚠️ The user's Power
+  Automate invite / generator flows must tolerate a blank owner. **Pushed to
+  BOTH Governance apps** (explicit ask) — the first main-app push since the
+  test-first rule.
+- **Push gotcha:** the uploader-revert step once failed with
+  `OSError: [Errno 22] Invalid argument` writing `LeadershipApp.jsx` (OneDrive
+  holding the file) — the build then fails on the conflict markers, so nothing
+  bad is pushed, but retry the write (the scripts now retry 5× with a pause)
+  and re-check the marker count before building.
 
 ## 6. Schema facts that are expensive to rediscover
 
