@@ -965,7 +965,9 @@ const valuesOf = (rows, key) =>
    rather than only marked. */
 /* Exported: Communication & execution raises tasks with the same form, so the
    field set and the required-before-enabled rule stay in one place. */
-export function NewTaskForm({ subject, onCancel, onDone, toast }){
+/* `link` (01 Oct) is merged into the create -- e.g. {meetingOccurrenceId,
+   agendaItemId} from the Minutes; `doneText` replaces the default toast. */
+export function NewTaskForm({ subject, onCancel, onDone, toast, link, doneText }){
   const [f, setF] = useState({
     title: '', description: '', action: '', assigneeId: '',
     priority: '', startDate: TODAY, dueDate: '',
@@ -991,6 +993,7 @@ export function NewTaskForm({ subject, onCancel, onDone, toast }){
       title: f.title.trim(), description: f.description.trim() || null,
       action: f.action.trim() || null, assigneeId: f.assigneeId,
       priority: f.priority || null, startDate: f.startDate || null, dueDate: f.dueDate,
+      ...(link || {}),
     });
     setSaving(false);
     if (!id) {
@@ -998,7 +1001,7 @@ export function NewTaskForm({ subject, onCancel, onDone, toast }){
       return;
     }
     const who = (users || []).find(u => u.id === f.assigneeId);
-    toast?.('Task raised and cited.');
+    toast?.(doneText || 'Task raised and cited.');
     onDone({ id, name: f.title.trim(), status: null, priority: f.priority || null,
              due: f.dueDate, start: f.startDate, assigneeName: who?.name || null });
   };

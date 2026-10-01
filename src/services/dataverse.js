@@ -2657,6 +2657,11 @@ export async function createTask(t){
     hx_duedate: t.dueDate || null,
   };
   if(t.assigneeId) row['hx_Assignee@odata.bind'] = `/systemusers(${t.assigneeId})`;
+  /* Raised from a meeting's Minutes (01 Oct): the meeting and the agenda item.
+     Both lookups exist on hx_tasks in DT New only; IT lacks them, so they are
+     bound only when given -- a task raised anywhere else saves as before. */
+  if(t.meetingOccurrenceId) row['lm_MeetingOccurrence@odata.bind'] = `/lm_meetingoccurrences(${t.meetingOccurrenceId})`;
+  if(t.agendaItemId)        row['lm_MeetingOccurrenceAgendaItem@odata.bind'] = `/lm_meetingoccurrenceagendas(${t.agendaItemId})`;
   try{
     const created = await Hx_taskesService.create(row);
     /* idOrThrow() (top of file) surfaces created.error.message when the

@@ -783,3 +783,15 @@
 
 /* Visually hidden, still announced -- the action column's header. */
 .cs-root .sr-only{ position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0 }
+
+/* Tasks per agenda item in the Minutes (AgendaTaskPanel, 01 Oct). Plain
+   (unscoped) classes: the Minutes render inside and outside the restyled page. */
+.agt{ margin-top:10px; padding-top:8px; border-top:1px dashed var(--border, #E8E0D3) }
+.agt-hd{ display:flex; align-items:center; gap:8px; flex-wrap:wrap }
+.agt-k{ font-size:10px; font-weight:700; letter-spacing:.8px; text-transform:uppercase; color:#8A6A42;
+  background:rgba(165,132,91,.12); border-radius:999px; padding:2px 8px }
+.agt-hd .t-sub{ flex:1; min-width:0 }
+.agt-row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:6px 0; font-size:12.5px }
+.agt-t{ flex:1 1 220px; min-width:0; font-weight:600 }
+.agt-late{ color:#B23A3A }
+.agt-form{ margin-top:8px }

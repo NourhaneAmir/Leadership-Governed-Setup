@@ -23,7 +23,7 @@ import { DecisionPanel } from './screens/DecisionLink.jsx';
 import { OpenRecord } from './recordLinks.jsx';
 import { ScreenHierarchy } from './screens/Hierarchy.jsx';
 import { ScreenComms } from './screens/Communication.jsx';
-import { ScreenBuildReport } from './screens/BuildReport.jsx';
+import { ScreenBuildReport, NewTaskForm } from './screens/BuildReport.jsx';
 import { PEOPLE, P, RPT_SETUPS, RS, DIAG, DiagChip, PROC_REG, PR, BI_REPORTS, BIR, KPI_CAT, KPIC, findKpi, bdDims, achFor, achPct, achCls, CITE_KINDS, citeKind, citeId, citeCls, canSeeReport, rptCfg, rptTagC, matchesQuery, CiteCard,
   STRAT, ST, PM_ENTRIES, PME, ISSUES, ISS, rptName } from './domain.jsx';
 import { Tag, Btn, Note, OD, Bar, Field, Empty, Stat, KVBlock, Rail,
@@ -6220,7 +6220,50 @@ const fmtISODT = s => { if(!s) return '—';
  * There is no 'Returned' value on lm_status, so a returned MOM is Draft with a
  * return reason standing. That reason is therefore what distinguishes the two
  * Draft states from each other, and submitting clears it. */
-function DvMinutesBody({rec,minutes,accred,grids,posName,onReload}){
+/* Tasks per agenda item in the Minutes (01 Oct). Lists the tasks linked to
+   the item and raises new ones with the shared NewTaskForm, linked to the
+   meeting AND the item (createTask's meetingOccurrenceId / agendaItemId).
+   `tasks` comes from the meeting page (fetchTasksForMeeting): undefined while
+   reading, null where tasks cannot be linked to a meeting (IT until its
+   column exists) -- then the panel says so instead of offering a button that
+   would fail. */
+const TASK_DONE = new Set(['Closed','Completed','Cancelled','Rejected']);
+function AgendaTaskPanel({rec,item,tasks,canAdd,onRaised}){
+  const {toast}=use();
+  const [open,setOpen]=useState(false);
+  if(tasks===undefined) return null;
+  const mine=(tasks||[]).filter(t=>t.agendaItemId===item.id);
+  if(tasks===null) return canAdd
+    ? <div className="t-sub" style={{marginTop:8}}>Tasks can’t be raised per agenda item in this environment yet:
+        a task has no link to a meeting here.</div>
+    : null;
+  return <div className="agt">
+    <div className="agt-hd">
+      <span className="agt-k">Tasks</span>
+      <span className="t-sub">{mine.length ? `${mine.length} on this item` : 'None yet'}</span>
+      {canAdd ? <Btn k="sm" onClick={()=>setOpen(v=>!v)}>{open?'Cancel':'+ Raise a task'}</Btn> : null}
+    </div>
+    {mine.map(t=>{
+      const late = t.due && !TASK_DONE.has(t.status) && t.due < TODAY;
+      return <div key={t.id} className="agt-row">
+        <span className="agt-t">{t.name}{t.code?<span className="t-sub"> · {t.code}</span>:null}</span>
+        <span className="t-sub">{t.assigneeName||'Unassigned'}</span>
+        <span className={'t-sub'+(late?' agt-late':'')}>{t.due?'Due '+fmtDS(t.due):'No due date'}</span>
+        <Tag c={TASK_DONE.has(t.status)?'green':late?'red':'grey'}>{late?'Overdue':(t.status||'New')}</Tag>
+        <OpenRecord kind="Task" id={t.id} label="Open ↗" asLink/>
+      </div>;})}
+    {open && <div className="agt-form">
+      <NewTaskForm subject={`${rec.name} — ${item.title||'agenda item'}`}
+        link={{meetingOccurrenceId:rec.id, agendaItemId:item.id}}
+        doneText="Task raised on this agenda item."
+        toast={msg=>{ const bad=/could not/i.test(msg); toast(bad?'Not saved':'Task raised', msg, bad?'err':'ok'); }}
+        onCancel={()=>setOpen(false)}
+        onDone={()=>{ setOpen(false); if(onRaised) onRaised(); }}/>
+    </div>}
+  </div>;
+}
+
+function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksChanged}){
   const {toast,dvLookup,currentUser}=use();
   const [drafts,setDrafts]=useState({});        // agendaItemId -> unsaved text
   const [savingNote,setSavingNote]=useState(null);
@@ -6564,6 +6607,10 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload}){
                     lm_MeetingOccurrenceAgenda (DecisionLink.jsx). New ones only
                     while the Minutes can still be edited. */}
                 <DecisionPanel target={{kind:'agenda', id:a.id, label:a.title}} canAdd={editable}/>
+                {/* Tasks raised on this agenda item -- hx_tasks.lm_MeetingOccurrenceAgendaItem
+                    (01 Oct, DT New only so far). */}
+                <AgendaTaskPanel rec={rec} item={a} tasks={tasks} canAdd={editable}
+                  onRaised={onTasksChanged}/>
               </div>;})}
           </div>}
     </div>
@@ -7358,6 +7405,7 @@ function DvMeetingDetail({rec,back}){
      in DT New only -- fetchTasksForMeeting returns null where they don't. */
   const [mtgTasks,setMtgTasks]=useState(undefined);      // undefined = reading, null = unavailable
   const [prevTasks,setPrevTasks]=useState([]);
+  const [tasksTick,setTasksTick]=useState(0);             // bumped after a task is raised in the Minutes
   const agendaKey = rec.agenda.map(a=>a.id).join(',');
   const prevKey = prevOcc ? prevOcc.id+':'+(prevOcc.agenda||[]).map(a=>a.id).join(',') : '';
   useEffect(()=>{
@@ -7371,7 +7419,7 @@ function DvMeetingDetail({rec,back}){
     else setPrevTasks([]);
     return ()=>{ live=false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[rec.id, agendaKey, prevKey]);
+  },[rec.id, agendaKey, prevKey, tasksTick]);
   const DONE_ACTION = new Set(['Completed','Closed','Cancelled','Rejected','Done']);
   const agendaById = new Map(rec.agenda.map((a,i)=>[a.id,{...a, n:a.seq??i+1}]));
   const agendaLabel = id => { const a=agendaById.get(id); return a ? `#${a.n} ${a.title||''}`.trim() : null; };
@@ -7871,7 +7919,8 @@ function DvMeetingDetail({rec,back}){
             Minutes are opened automatically when the Meeting is marked Held.</div></div>}
       {!govLoading && minutes &&
         <DvMinutesBody rec={rec} minutes={minutes} accred={accred} grids={grids}
-          posName={posName} onReload={reloadGovernance}/>}
+          posName={posName} onReload={reloadGovernance}
+          tasks={mtgTasks} onTasksChanged={()=>setTasksTick(t=>t+1)}/>}
     </>}
 
     {tab==='grid' && <>
