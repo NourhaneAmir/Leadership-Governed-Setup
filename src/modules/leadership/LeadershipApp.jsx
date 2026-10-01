@@ -36,7 +36,7 @@ import { fetchMeetingOccurrences, fetchReportOccurrences, createMeetingOccurrenc
          archiveMeetingOccurrenceAgendaItem, updateMeetingOccurrenceAgendaSequence,
          fetchMeetingOccurrenceDepartments, fetchMeetingOccurrenceLinkedReports, fetchMeetingTemplateInputReports,
          fetchTasksForMeeting, addMeetingOccurrenceAttendee,
-         linkMeetingOccurrenceReport, unlinkMeetingOccurrenceReport,
+         linkMeetingOccurrenceReport, unlinkMeetingOccurrenceReport, fetchMeetingCategories, MEETING_OCC_STAGE_KEY,
          attachReportOccurrenceToLink,
          fetchBusinessUnits, fetchPositions, fetchDepartments, fetchFunctions, fetchRegions,
          fetchMeetingTemplatesList, fetchMeetingTemplateDetail,
@@ -6258,21 +6258,28 @@ function AgendaTaskPanel({rec,item,tasks,canAdd,onRaised}){
     ? <div className="t-sub" style={{marginTop:8}}>Tasks can’t be raised per agenda item in this environment yet:
         a task has no link to a meeting here.</div>
     : null;
-  return <div className="agt">
-    <div className="agt-hd">
-      <span className="agt-k">Tasks</span>
-      <span className="t-sub">{mine.length ? `${mine.length} on this item` : 'None yet'}</span>
-      {canAdd ? <Btn k="sm" onClick={()=>setOpen(true)}>+ Raise a task</Btn> : null}
-    </div>
-    {mine.map(t=>{
-      const late = t.due && !TASK_DONE.has(t.status) && t.due < TODAY;
-      return <div key={t.id} className="agt-row">
-        <span className="agt-t">{t.name}{t.code?<span className="t-sub"> · {t.code}</span>:null}</span>
-        <span className="t-sub">{t.assigneeName||'Unassigned'}</span>
-        <span className={'t-sub'+(late?' agt-late':'')}>{t.due?'Due '+fmtDS(t.due):'No due date'}</span>
-        <Tag c={TASK_DONE.has(t.status)?'green':late?'red':'grey'}>{late?'Overdue':(t.status||'New')}</Tag>
-        <OpenRecord kind="Task" id={t.id} label="Open ↗" asLink/>
-      </div>;})}
+  /* Styled as the decision cards above it (01 Oct): the same .dec-item card,
+     a "Task" badge, the title with its status, then a muted detail line. */
+  return <div className="dec-link agt">
+    {mine.length>0 && <div className="dec-list">
+      {mine.map(t=>{
+        const late = t.due && !TASK_DONE.has(t.status) && t.due < TODAY;
+        return <div key={t.id} className="dec-item">
+          <div style={{display:'flex',gap:8,alignItems:'baseline',flexWrap:'wrap'}}>
+            <span className="cref dec">Task</span>
+            <b style={{fontSize:12.5,flex:'1 1 160px'}}>{t.name}{t.code?<span className="t-sub" style={{fontWeight:400}}> · {t.code}</span>:null}</b>
+            <Tag c={TASK_DONE.has(t.status)?'green':late?'red':'grey'}>{late?'Overdue':(t.status||'New')}</Tag>
+          </div>
+          <div className="holder" style={{fontSize:12,marginTop:3}}>
+            Assigned to {t.assigneeName||'nobody yet'}
+            {' · '}<span className={late?'agt-late':''}>{t.due?'Due '+fmtDS(t.due):'No due date'}</span>
+            {t.priority ? ' · '+t.priority+' priority' : ''}</div>
+          <div className="holder" style={{fontSize:11.5,marginTop:2}}>
+            <OpenRecord kind="Task" id={t.id} label="Open in TMS ↗" asLink/></div>
+        </div>;})}
+    </div>}
+    {canAdd && <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:mine.length?8:0}}>
+      <Btn k="sm" onClick={()=>setOpen(true)}>+ Raise a task</Btn></div>}
     {open && <NewTaskForm subject={`${rec.name} — ${item.title||'agenda item'}`}
         link={{meetingOccurrenceId:rec.id, agendaItemId:item.id}}
         doneText="Task raised on this agenda item."
@@ -6284,7 +6291,13 @@ function AgendaTaskPanel({rec,item,tasks,canAdd,onRaised}){
 
 function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksChanged,
                         decisions=[],quorum,writeupHours,setupName}){
-  const {toast,dvLookup,currentUser}=use();
+  const {toast,dvLookup,currentUser,refreshOccurrences}=use();
+  /* Coverage lives on the agenda rows (rec.agenda), not on the Minutes, so a
+     Yes/No click must re-read the occurrences -- reloading the Minutes alone
+     left the old value on screen and kept Submit blocked (fixed 01 Oct). The
+     choice shows at once from `covSet` while that re-read runs. */
+  const [covSet,setCovSet]=useState({});           // agendaItemId -> 'Yes' | 'No' | 'Not Yet Recorded'
+  const covOf = a => covSet[a.id] ?? a.covered;
   const [drafts,setDrafts]=useState({});        // agendaItemId -> unsaved text
   const [savingNote,setSavingNote]=useState(null);
   const [busy,setBusy]=useState(null);
@@ -6359,7 +6372,7 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
   /* 01 Oct: an item the Organizer marks NOT covered ("No") needs no note --
      there is nothing to record -- so it no longer blocks submission. Covered
      or not-yet-marked items still do. */
-  const notCovered   = a => a.covered==='No';
+  const notCovered   = a => covOf(a)==='No';
   const missingNotes = rec.agenda.filter(a=>!notCovered(a) && !textFor(a).trim());
   const tooLong      = rec.agenda.filter(a=>textFor(a).trim().length>MOM_NOTE_MAX);
   const canSubmit    = rec.agenda.length>0 && !missingNotes.length && !tooLong.length;
@@ -6381,12 +6394,15 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
   };
 
   const setCovered = async (a,v) => {
+    const prev = covOf(a);
+    setCovSet(x=>({...x,[a.id]:v}));                // show it now
     setSavingNote(a.id);
     try{
       const {id,errors} = await updateAgendaCovered(a.id, v);
       if(!id){ console.warn('[dataverse] updateAgendaCovered() failed:', errors);
+               setCovSet(x=>({...x,[a.id]:prev}));
                toast('Not saved','The coverage flag could not be saved.','err'); return; }
-      await onReload();
+      await Promise.all([refreshOccurrences(), onReload()]);
     }finally{ setSavingNote(null); }
   };
 
@@ -6503,7 +6519,7 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
           const readable = canRead(a), conf = isConf(a);
           return {
             seq: a.seq ?? i+1, title: a.title, owner: posName(a.ownerPositionId) || null,
-            covered: a.covered, confidential: conf, withheld: !readable,
+            covered: covOf(a), confidential: conf, withheld: !readable,
             viewers: conf && readable ? (noteFor[a.id]?.viewers||[]).map(v=>userName(v.userId)).filter(Boolean) : [],
             note: readable ? textFor(a).trim() : null,
             decisions: readable
@@ -6649,10 +6665,10 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
                   <b className="mom-t">{a.title||'—'}</b>
                   {conf && <Tag c="red">🔒 Confidential</Tag>}
                   {editable
-                    ? <Pills opts={['Yes','No']} val={a.covered==='Yes'?'Yes':a.covered==='No'?'No':null}
+                    ? <Pills opts={['Yes','No']} val={covOf(a)==='Yes'?'Yes':covOf(a)==='No'?'No':null}
                         onChange={v=>setCovered(a, v||'Not Yet Recorded')}/>
-                    : <Tag c={a.covered==='Yes'?'green':a.covered==='No'?'red':'grey'}>
-                        {a.covered||'Not Yet Recorded'}</Tag>}
+                    : <Tag c={covOf(a)==='Yes'?'green':covOf(a)==='No'?'red':'grey'}>
+                        {covOf(a)||'Not Yet Recorded'}</Tag>}
                 </div>
                 {stage4 && isFacilitator && editable
                   ? <div style={{margin:'2px 0 8px',padding:'8px 10px',border:'1px solid var(--border)',
@@ -7333,12 +7349,15 @@ function DvMeetingDetail({rec,back}){
   const submissions = [
     ...(docs||[]).map(d=>{
       const occ = d.reportOccurrenceId ? dvReportOccs.find(r=>r.id===d.reportOccurrenceId) : null;
-      return { key:d.id, link:d, occ, tplId:d.reportTemplateId,
+      /* A link-only input (lm_fileurl on the link row, 01 Oct): a pasted file
+         link with no report behind it -- counts as submitted. */
+      const linkOnly = !occ && !d.reportOccurrenceId && !!d.fileUrl;
+      return { key:d.id, link:d, occ, tplId:d.reportTemplateId, linkOnly,
         name: occ ? occ.name : d.name,
-        status: occ ? occ.status : d.reportOccurrenceId ? 'Not loaded' : 'No occurrence yet',
+        status: occ ? occ.status : d.reportOccurrenceId ? 'Not loaded' : linkOnly ? 'Linked file' : 'No occurrence yet',
         /* A SharePoint link on the report (lm_fileurl, 01 Oct) also counts as
            submitted: the input is there, even if the report is not In Review. */
-        ready: !!occ && ((INPUT_RANK[occ.status]||0) >= (needApproved?2:1) || !!occ.fileUrl),
+        ready: linkOnly || (!!occ && ((INPUT_RANK[occ.status]||0) >= (needApproved?2:1) || !!occ.fileUrl)),
         byLink: !!occ?.fileUrl && (INPUT_RANK[occ.status]||0) < (needApproved?2:1),
         required: !!d.reportTemplateId && requiredTplIds.has(d.reportTemplateId) };
     }),
@@ -8234,12 +8253,14 @@ function DvMeetingDetail({rec,back}){
           <tbody>{submissions.map(x=><React.Fragment key={x.key}><tr>
             <td><div className="t-main">{x.name}</div>
               <div className="t-sub">{x.required?'Required by the Setup':'Linked to this meeting'}</div>
+              {x.linkOnly && <a className="t-sub mtgd-splink" href={x.link.fileUrl} target="_blank"
+                rel="noreferrer" title={x.link.fileUrl}><Paperclip size={11}/>Open the file ↗</a>}
               {x.occ?.fileUrl && <a className="t-sub mtgd-splink" href={x.occ.fileUrl} target="_blank"
                 rel="noreferrer" title={x.occ.fileUrl}><Paperclip size={11}/>SharePoint link ↗</a>}</td>
             <td className="dim">{x.occ?.creatorPositionId ? posName(x.occ.creatorPositionId) : '—'}</td>
             <td className="dim">{dvRptTpl(x.tplId)||'—'}</td>
             <td className="dim">{x.occ?fmtP(x.occ.period):'—'}</td>
-            <td>{x.byLink ? <Tag c="green">Submitted · link</Tag>
+            <td>{x.byLink || x.linkOnly ? <Tag c="green">Submitted · link</Tag>
               : x.ready ? <Tag c="green">{RPT_STATUS_WORD(x.status)}</Tag>
               : x.occ ? <Tag c={x.occ.status==='Returned'||x.occ.status==='Rejected'?'red':'amber'}>{RPT_STATUS_WORD(x.status)}</Tag>
               : <Tag c="red">{x.status}</Tag>}</td>
@@ -8297,12 +8318,15 @@ function DvMeetingDetail({rec,back}){
                       - occsForTemplate(d.reportTemplateId,true).length : 0;
                   return <React.Fragment key={d.id}>
                     <tr>
-                    <td><div className="t-main">{d.name}</div></td>
+                    <td><div className="t-main">{d.name}</div>
+                      {d.fileUrl && <a className="t-sub mtgd-splink" href={d.fileUrl} target="_blank"
+                        rel="noreferrer" title={d.fileUrl}><Paperclip size={11}/>Open the file ↗</a>}</td>
                     <td>{occ
                       ? <a onClick={()=>openDvRec('Report',occ)}>{occ.name} · {fmtP(occ.period)}</a>
                       : d.reportOccurrenceId
                       ? <><div className="t-main">{d.name}</div>
                           <div className="t-sub">Linked, but this occurrence is not in the loaded set.</div></>
+                      : d.fileUrl ? <span className="dim">Link only</span>
                       : <span className="dim">— no occurrence linked —</span>}</td>
                     <td className="dim">{dvRptTpl(d.reportTemplateId)||'—'}</td>
                     <td className="dim">{d.created?fmtD(d.created.slice(0,10)):'—'}</td>
@@ -9564,6 +9588,18 @@ function ScreenNewMeeting(){
      Draft and Custom included; see ReportLinkPicker. */
   const [linkReports,setLinkReports]=useState([]);
   const {dvReportOccs=[]}=use();
+  /* Custom Ad Hoc (01 Oct): its own Type / Classification / Category, and its
+     input reports as pasted links only (name + URL, lm_fileurl). */
+  const [cls,setCls]=useState({type:'Business Meeting', classification:'', categoryId:''});
+  const [inLinks,setInLinks]=useState([]);            // [{name, url}]
+  const [newLink,setNewLink]=useState({name:'', url:''});
+  const [categories,setCategories]=useState(null);    // null = reading
+  useEffect(()=>{
+    let live=true;
+    fetchMeetingCategories().then(c=>{ if(live) setCategories(c||[]); })
+      .catch(e=>{ console.warn('[dataverse] fetchMeetingCategories() failed:', e); if(live) setCategories([]); });
+    return ()=>{ live=false; };
+  },[]);
   const onClose=()=>go('mtg');
   const [setupQ,setSetupQ]=useState('');
   const [f,setF]=useState({setup:'', tplUnitKey:'', name:'', purpose:'', bu:'AHJ',
@@ -9757,10 +9793,27 @@ function ScreenNewMeeting(){
     regionId: stageRegion ? (f.dvRegionId||null) : null,
     date: bookedDate,
   }, dvMeetingOccs);
+  /* Category cascade -- the same rule as Governance's meetingCategoryOpts:
+     a Business Meeting's Categories match its Stage AND Classification; an
+     Accreditation Committee's are the Stage's rows with no Classification. */
+  const accredCustom = cls.type==='Accreditation Committee';
+  const stageCode = MEETING_OCC_STAGE_KEY[f.stage] || null;
+  const categoryOpts = (categories||[]).filter(c => c.stageCode===stageCode
+    && (accredCustom ? !c.typeCode : (!!cls.classification && MEETING_CATEGORY[c.typeCode]===cls.classification)));
+  const classOk = !custom || (cls.type && (accredCustom || cls.classification)
+    && (categoryOpts.length===0 || !!cls.categoryId));
+  const linkErr = !newLink.url.trim() ? null
+    : !/^https:\/\//i.test(newLink.url.trim()) ? 'Paste the full link, starting with https://'
+    : newLink.url.trim().length>850 ? 'At most 850 characters.' : null;
+  const addInLink = () => {
+    const url=newLink.url.trim(); if(!url || linkErr) return;
+    setInLinks(x=>[...x,{name:newLink.name.trim()||url, url}]); setNewLink({name:'', url:''});
+  };
   const carryAll = carryCandidates(carryPrev, dvMeetingOccs);
   const carryNow = carryAll.filter(a=>!skipCarry.has(a.id));
   const ok = !!f.date && (agenda.length+carryNow.length)>0 && f.dvAttend.length>0 && scopeOk
     && f.dvChairPositionId && f.dvFacilitatorPositionId && f.tz && modeOk
+    && classOk
     && (custom
       ? f.name.trim() && f.purpose.trim()
       : !!f.setup && !tplLoading && (tplUnits.length<=1 || !!f.tplUnitKey));
@@ -9792,6 +9845,9 @@ function ScreenNewMeeting(){
         location:needsLocation ? (f.location.trim()||null) : null,
         link:needsLink ? (f.link.trim()||null) : null,
         adhocType:f.adhoc, restricted:!!f.restricted, inviteSent:TODAY,
+        ...(custom ? { setupType:cls.type,
+                       classification: accredCustom ? undefined : (cls.classification||undefined),
+                       meetingCategoryId: cls.categoryId||undefined } : {}),
         /* Carried-forward items first, each linked to the item it continues
            (lm_CarriedFromAgendaItem), then the ones typed here. */
         agenda:[
@@ -9812,9 +9868,14 @@ function ScreenNewMeeting(){
       }
       /* The chosen reports, linked now the meeting has an id. A failure here is
          reported with the rest; the meeting itself is already saved. */
-      for(const r of linkReports){
+      for(const r of (custom ? [] : linkReports)){
         const res = await linkMeetingOccurrenceReport({ meetingOccurrenceId:id, reportOccurrenceId:r.id,
           reportTemplateId:r.templateId||undefined, name:r.name });
+        if(!res.id) errors.push(...res.errors);
+      }
+      /* A Custom meeting's input reports are links only (01 Oct). */
+      for(const l of (custom ? inLinks : [])){
+        const res = await linkMeetingOccurrenceReport({ meetingOccurrenceId:id, name:l.name, fileUrl:l.url });
         if(!res.id) errors.push(...res.errors);
       }
       if(errors.length){
@@ -9870,6 +9931,8 @@ function ScreenNewMeeting(){
     !custom && !f.setup ? 'choose a Setup' : null,
     custom && !f.name.trim() ? 'a meeting name' : null,
     custom && !f.purpose.trim() ? 'a purpose' : null,
+    custom && !accredCustom && !cls.classification ? 'a Classification' : null,
+    custom && categoryOpts.length>0 && !cls.categoryId ? 'a Category' : null,
     !custom && f.setup && tplUnits.length>1 && !f.tplUnitKey ? 'the Business Unit / Region' : null,
     !scopeOk ? 'the scope' : null,
     !f.dvChairPositionId ? 'a Chair' : null,
@@ -10027,6 +10090,28 @@ function ScreenNewMeeting(){
                       <input type="text" value="Group-wide" disabled/></Field>}
             </div>}
 
+            {custom && <div className="f-row3">
+              <Field label="Type" req>
+                <select value={cls.type} onChange={e=>setCls({type:e.target.value, classification:'', categoryId:''})}>
+                  {['Business Meeting','Accreditation Committee'].map(t=><option key={t}>{t}</option>)}</select></Field>
+              {accredCustom
+                ? <Field label="Classification" hint="An Accreditation Committee has no Classification.">
+                    <input type="text" value="—" disabled/></Field>
+                : <Field label="Classification" req hint="Narrows the Category list.">
+                    <select value={cls.classification} onChange={e=>setCls(x=>({...x, classification:e.target.value, categoryId:''}))}>
+                      <option value="">Select…</option>
+                      {Object.values(MEETING_CATEGORY).map(c=><option key={c}>{c}</option>)}</select></Field>}
+              <Field label="Category" req={categoryOpts.length>0}
+                hint={categories===null ? 'Reading Categories…'
+                  : !accredCustom && !cls.classification ? 'Choose a Classification first.'
+                  : categoryOpts.length ? `Categories for ${f.stage} · ${accredCustom?'Accreditation Committee':cls.classification}.`
+                  : 'No Category is defined for this Stage and Classification.'}>
+                <select value={cls.categoryId} disabled={!categoryOpts.length}
+                  onChange={e=>setCls(x=>({...x, categoryId:e.target.value}))}>
+                  <option value="">{categoryOpts.length?'Select…':'—'}</option>
+                  {categoryOpts.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
+            </div>}
+
             <div className="f-row3">
               <Field label="Date" req
                 hint={moved
@@ -10157,6 +10242,31 @@ function ScreenNewMeeting(){
               <h2 className="cs-card-title" id="nm-reports">Reports for this meeting</h2>
               <span className="cs-type adhoc">Optional</span>
             </div>
+            {custom ? <>
+            <p className="cs-card-note" style={{marginBottom:10}}>Input reports as <b>links</b> for now — paste the
+              SharePoint or Teams link of each file. They appear on the meeting’s Documents and Submissions tabs,
+              and a linked file counts as submitted.</p>
+            {inLinks.length>0 &&
+              <div className="cs-members" style={{marginBottom:10}}>
+                {inLinks.map((l,k)=><div key={k} className="cs-member">
+                  <span className="cs-member-t"><b>{l.name}</b>
+                    <span><a href={l.url} target="_blank" rel="noreferrer">{l.url}</a></span></span>
+                  <button type="button" className="cs-btn" aria-label={'Remove '+l.name}
+                    onClick={()=>setInLinks(x=>x.filter((_,j)=>j!==k))}><X size={12}/></button>
+                </div>)}
+              </div>}
+            <div className="f-row">
+              <Field label="Report name" hint="Optional — the link is used if left blank.">
+                <input type="text" value={newLink.name} maxLength={850} placeholder="e.g. Monthly Quality Report — Sep"
+                  onChange={e=>setNewLink(x=>({...x,name:e.target.value}))}/></Field>
+              <Field label="Link" err={linkErr}>
+                <input type="text" value={newLink.url} placeholder="https://…sharepoint.com/…"
+                  onChange={e=>setNewLink(x=>({...x,url:e.target.value}))}
+                  onKeyDown={e=>{ if(e.key==='Enter') addInLink(); }}/></Field>
+            </div>
+            <button type="button" className="cs-btn" disabled={!newLink.url.trim()||!!linkErr} onClick={addInLink}>
+              <Plus size={12}/>Add input report link</button>
+            </> : <>
             <p className="cs-card-note" style={{marginBottom:10}}>Link any report or plan — a Draft included, and
               Custom reports. They appear on the meeting’s Submissions tab and count as submitted once their
               author submits them for review.</p>
@@ -10176,6 +10286,7 @@ function ScreenNewMeeting(){
                       regionId: stageRegion ? f.dvRegionId : null,
                       departmentId: f.dvDepartmentId || null}}
               onPick={r=>setLinkReports(x=>[...x,r])}/>
+            </>}
           </section>
         </>}
       </div>
@@ -10186,8 +10297,10 @@ function ScreenNewMeeting(){
           <h2 className="cs-card-title" id="nm-summary" style={{marginBottom:6}}>Meeting Summary</h2>
           <div className="cs-sum">
             {[['Setup', custom ? 'Custom — no Setup' : (dvTpl(f.setup)||'—')],
-              ['Type', custom ? 'Ad Hoc' : (setupType||'—')],
-              ['Category', custom ? '—' : (setupCategory||'—')],
+              ['Type', custom ? cls.type : (setupType||'—')],
+              ['Category', custom ? ([accredCustom ? null : cls.classification,
+                (categories||[]).find(c=>c.id===cls.categoryId)?.name].filter(Boolean).join(' · ')||'—')
+                : (setupCategory||'—')],
               ['Cadence', custom ? 'One-off' : (setupCadence||'—'), true],
               ['Scope', scopeLabel||'—'],
               ['Date', bookedDate ? fmtD(bookedDate) : '—', true],

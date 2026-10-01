@@ -4786,6 +4786,14 @@ export async function createMeetingOccurrence(payload){
     lm_syncstatus: MEETING_OCC_SYNC_KEY.Synchronized,
     lm_meetingstage: payload.stage ? (MEETING_OCC_STAGE_KEY[payload.stage] ?? null) : null,
   };
+  /* A Custom Ad Hoc Meeting's own Type / Classification / Category (01 Oct) --
+     a Setup-based one inherits them from its Setup. Written only when given.
+     ⚠️ lm_Meetingcategory exists on lm_meetingoccurrence in DT New only
+     (added 01 Oct); IT needs it before a Custom meeting with a Category can
+     be saved there. */
+  if(payload.setupType)      parent.lm_setuptype = MEETING_SETUP_TYPE_KEY[payload.setupType] ?? null;
+  if(payload.classification) parent.lm_meetingclassification = MEETING_CATEGORY_KEY[payload.classification] ?? null;
+  if(payload.meetingCategoryId) parent['lm_Meetingcategory@odata.bind'] = `/lm_meetingcategories(${payload.meetingCategoryId})`;
   if(payload.templateId)        parent['lm_MeetingTemplate@odata.bind']   = `/lm_meetingtemplates(${payload.templateId})`;
   if(payload.businessUnitId)    parent['lm_BusinessUnit@odata.bind']      = `/businessunits(${payload.businessUnitId})`;
   if(payload.regionId)          parent['lm_Region@odata.bind']            = `/crd04_regionses(${payload.regionId})`;
@@ -5683,17 +5691,25 @@ export async function fetchMeetingOccurrenceDepartments(occurrenceId){
    Documents tab's own linking flow finds a matching occurrence by Template +
    Business Unit + Department and lets the user pick one instead of guessing). */
 export async function fetchMeetingOccurrenceLinkedReports(occurrenceId){
-  const res = await Lm_meetingoccurrencelinkedreportsesService.getAll({
-    select: ['lm_meetingoccurrencelinkedreportsid', 'lm_reportname',
-             '_lm_reportoccurrence_value', '_lm_reporttemplate_value', 'createdon'],
-    filter: `_lm_meetingoccurrence_value eq ${occurrenceId}`,
-  });
+  const base = ['lm_meetingoccurrencelinkedreportsid', 'lm_reportname',
+                '_lm_reportoccurrence_value', '_lm_reporttemplate_value', 'createdon'];
+  const filter = `_lm_meetingoccurrence_value eq ${occurrenceId}`;
+  /* lm_fileurl (a link-only input, 01 Oct) exists in DT New only; selecting a
+     missing column fails the whole read, so IT falls back to the base set. */
+  let res;
+  try{
+    res = await Lm_meetingoccurrencelinkedreportsesService.getAll({ select:[...base, 'lm_fileurl'], filter });
+    if(res?.success === false) throw new Error('lm_fileurl not readable');
+  }catch{
+    res = await Lm_meetingoccurrencelinkedreportsesService.getAll({ select:base, filter });
+  }
   const rows = res?.data ?? [];
   return rows.map(r => ({
     id: r.lm_meetingoccurrencelinkedreportsid,
     name: r.lm_reportname || '(untitled document)',
     reportOccurrenceId: r._lm_reportoccurrence_value || null,
     reportTemplateId: r._lm_reporttemplate_value || null,
+    fileUrl: r.lm_fileurl || null,
     created: r.createdon || null,
   }));
 }
@@ -5719,12 +5735,15 @@ export async function fetchMeetingTemplateInputReports(templateId){
 /** Links one document to a Meeting Occurrence -- a Report Occurrence, a
  *  Report Template (when no occurrence exists for it yet), or both, per the
  *  Documents tab's own linking flow. */
-export async function linkMeetingOccurrenceReport({ meetingOccurrenceId, name, reportOccurrenceId, reportTemplateId }){
+export async function linkMeetingOccurrenceReport({ meetingOccurrenceId, name, reportOccurrenceId, reportTemplateId, fileUrl }){
   try{
     const row = {
       'lm_MeetingOccurrence@odata.bind': `/lm_meetingoccurrences(${meetingOccurrenceId})`,
       lm_reportname: (name || 'Linked document').trim().slice(0, 850),
     };
+    /* A link-only input (01 Oct): a pasted SharePoint / Teams link with no
+       Report Occurrence behind it. lm_fileurl is DT New only so far. */
+    if(fileUrl) row.lm_fileurl = fileUrl.trim();
     if(reportOccurrenceId) row['lm_ReportOccurrence@odata.bind'] = `/lm_reportoccurrences(${reportOccurrenceId})`;
     if(reportTemplateId)   row['lm_ReportTemplate@odata.bind']   = `/lm_report_templates(${reportTemplateId})`;
     const created = await Lm_meetingoccurrencelinkedreportsesService.create(row);

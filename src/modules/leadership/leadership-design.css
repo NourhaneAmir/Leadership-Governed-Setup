@@ -786,7 +786,7 @@
 
 /* Tasks per agenda item in the Minutes (AgendaTaskPanel, 01 Oct). Plain
    (unscoped) classes: the Minutes render inside and outside the restyled page. */
-.agt{ margin-top:10px; padding-top:8px; border-top:1px dashed var(--border, #E8E0D3) }
+.agt{ margin-top:10px }
 .agt-hd{ display:flex; align-items:center; gap:8px; flex-wrap:wrap }
 .agt-k{ font-size:10px; font-weight:700; letter-spacing:.8px; text-transform:uppercase; color:#8A6A42;
   background:rgba(165,132,91,.12); border-radius:999px; padding:2px 8px }
