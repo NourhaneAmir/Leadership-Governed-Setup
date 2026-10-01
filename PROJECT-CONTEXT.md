@@ -26,8 +26,8 @@ Everything below was checked against the repo and IT when written.
 ⚠️ **RULE since 01 Oct 2026 (the user's instruction): deploy to the TEST
 copies only.** "Build and push" means: commit, `git push`, then build both apps
 with `LP_DATA_ORG=https://org319b4ea9.crm4.dynamics.com` and push to the DT New
-test apps — Leadership `d61c6237…` (`C:	mp\cad-exec-test`, still with the
-revert-`4ca0036` steps) and Governance `786c1b14…` (`C:	mp\cad-gov-old`) — then
+test apps — Leadership `d61c6237…` (`C:\tmp\cad-exec-test`, still with the
+revert-`4ca0036` steps) and Governance `786c1b14…` (`C:\tmp\cad-gov-old`) — then
 rebuild the normal IT `dist`. The **main IT apps** (`83db0ef8…`, `4912152c…`)
 are pushed **only when the user explicitly confirms** a change is accepted. On
 01 Oct both pairs run `d8f06a1`, so anything after that is test-only until then.
