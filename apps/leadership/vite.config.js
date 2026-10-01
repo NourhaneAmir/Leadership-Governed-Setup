@@ -31,8 +31,17 @@ export default defineConfig({
      the IT environment (https://org2f45e702.crm4.dynamics.com) and leaves
      Leadership on DT New. While DATA_ORG was a single shared constant that
      was impossible. Change this line in ONE app to move ONE app. */
+  /* LP_DATA_ORG (1 Oct): build a copy that reads ANOTHER environment for
+     testing, without touching the default. Set, it points both the pinned
+     tables (__PIN_ORG__) and lm_setupactivities (__DATA_ORG__) at it -- the
+     whole app, so people / units / positions resolve in the same place as the
+     meetings. Unset, the build is exactly as before: pinned tables on IT.
+       LP_DATA_ORG=https://org319b4ea9.crm4.dynamics.com npm run build:leadership
+     That DT New build is pushed to the TEST app d61c6237 (C:/tmp/cad-exec-test),
+     never to the main app 83db0ef8. */
   define: {
-    __DATA_ORG__: JSON.stringify('https://org319b4ea9.crm4.dynamics.com'),
+    __DATA_ORG__: JSON.stringify(process.env.LP_DATA_ORG || 'https://org319b4ea9.crm4.dynamics.com'),
+    ...(process.env.LP_DATA_ORG ? { __PIN_ORG__: JSON.stringify(process.env.LP_DATA_ORG) } : {}),
   },
   root: here,
   base: './', // required for Power Apps Code Apps: assets are hosted under a

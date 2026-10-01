@@ -24,7 +24,10 @@
 import React, { useState } from 'react';
 import { use } from './store.jsx';
 import { Btn } from '../../shared/ui.jsx';
-import { IT_ORG } from '../../services/xenv.js';
+import { IT_ORG, PIN_ORG } from '../../services/xenv.js';
+/* The app ids below are IT's. A test copy built for another environment
+   (LP_DATA_ORG, 1 Oct) opens records there, without an app id. */
+const ON_IT = PIN_ORG === IT_ORG;
 import { checkRecordAccess } from '../../services/dataverse.js';
 
 const APP = {
@@ -60,8 +63,8 @@ export function recordUrl(kind, id){
   const t = TARGET[kind];
   if(!t || !id) return null;
   const q = new URLSearchParams({ pagetype: 'entityrecord', etn: t.etn, id });
-  if(t.appId) q.set('appid', t.appId);
-  return { url: `${IT_ORG}/main.aspx?${q.toString()}`, app: t.app };
+  if(t.appId && ON_IT) q.set('appid', t.appId);
+  return { url: `${PIN_ORG}/main.aspx?${q.toString()}`, app: ON_IT ? t.app : 'Dataverse' };
 }
 
 const noun = kind => kind === 'Breakdown' ? 'KPI' : kind;
@@ -100,7 +103,7 @@ export function OpenRecord({ kind, id, label, asLink = false, style }){
     }catch{ /* a cross-origin blank can refuse this; harmless */ }
     setBusy(true);
     let res;
-    try{ res = await checkRecordAccess({ entitySet: t.set, pkField: t.pk, id, appId: t.appId }); }
+    try{ res = await checkRecordAccess({ entitySet: t.set, pkField: t.pk, id, appId: ON_IT ? t.appId : null }); }
     catch(e){ console.warn('[recordLinks] access check failed, opening anyway:', e); res = { state: 'unknown' }; }
     finally{ setBusy(false); }
 

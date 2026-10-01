@@ -38,9 +38,11 @@ export default defineConfig({
      the lm_reporttemplatedepartmentfunction columns (lm_BU, lm_Region,
      lm_SubmittingPosition, lm_OwnerPosition, lm_TeamChannel) the per
      Department & Function submitters write. To move again, change both. */
+  /* LP_DATA_ORG (1 Oct): set it to build a test copy on another environment
+     (pushed to the TEST app 786c1b14 from C:/tmp/cad-gov-old); unset, IT. */
   define: {
-    __DATA_ORG__: JSON.stringify('https://org2f45e702.crm4.dynamics.com'),
-    __PIN_ORG__:  JSON.stringify('https://org2f45e702.crm4.dynamics.com'),
+    __DATA_ORG__: JSON.stringify(process.env.LP_DATA_ORG || 'https://org2f45e702.crm4.dynamics.com'),
+    __PIN_ORG__:  JSON.stringify(process.env.LP_DATA_ORG || 'https://org2f45e702.crm4.dynamics.com'),
   },
   root: here,
   base: './', // required for Power Apps Code Apps: assets are hosted under a

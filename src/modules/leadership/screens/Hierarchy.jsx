@@ -44,7 +44,7 @@ import { fetchReportOccurrenceContent, fetchReportTemplateHierarchyContent,
    told IT explicitly here; downloadFileColumn() otherwise defaults to
    DATA_ORG and 404s on an id that only exists in IT (found live 23 Sep --
    see PROJECT-CONTEXT.md). */
-import { IT_ORG } from '../../../services/xenv.js';
+import { PIN_ORG } from '../../../services/xenv.js';
 
 /* DiagChip is keyed by the class, not the label, and a Section's angle comes
    back from Dataverse as the label. Same map Build a report/plan keeps. */
@@ -661,7 +661,7 @@ export function ScreenHierarchy(){
                   <button type="button" className="fv-link" onClick={()=>setTplFileView({
                     entitySet:'lm_report_templates', recordId:tplDet.id,
                     field:'lm_attachementfile', name:tplDet.fileStoredName||'Template file',
-                    org: IT_ORG})}>
+                    org: PIN_ORG})}>
                     {canPreview(tplDet.fileStoredName) ? 'View' : 'Download'}</button>
                 </span>
               </Note>
@@ -688,7 +688,7 @@ export function ScreenHierarchy(){
                             <button type="button" className="fv-link" onClick={()=>setTplFileView({
                               entitySet:'lm_reporttemplatesectionitemses', recordId:it.id,
                               field:'lm_attachementfile', name:it.fileStoredName||it.label||'File',
-                              org: IT_ORG})}>
+                              org: PIN_ORG})}>
                               {canPreview(it.fileStoredName) ? 'View' : 'Download'}</button>
                           </span>)}
                       </div>
