@@ -3747,8 +3747,9 @@ export async function shareReportOccurrence({ reportOccurrenceId, userId, name }
 
 export const MEETING_OCC_STATUS = { 1:'Scheduled', 2:'Held', 3:'Cancelled' };
 export const MEETING_OCC_STATUS_KEY = { 'Scheduled':1, 'Held':2, 'Cancelled':3 };
-// The app says "In person / Online / Hybrid"; Dataverse says "Physical / Online / Hybrid".
-export const MEETING_OCC_MODE = { 1:'In person', 2:'Online', 3:'Hybrid' };
+// Dataverse says "Physical / Online / Hybrid", and since 01 Oct so does the app
+// (it said "In person" before; the key map still accepts that).
+export const MEETING_OCC_MODE = { 1:'Physical', 2:'Online', 3:'Hybrid' };
 export const MEETING_OCC_MODE_KEY = { 'In person':1, 'Physical':1, 'Online':2, 'Hybrid':3 };
 export const MEETING_OCC_SYNC = { 1:'Synchronized', 2:'Pending', 3:'Failed' };
 export const MEETING_OCC_SYNC_KEY = { 'Synchronized':1, 'Pending':2, 'Failed':3 };
@@ -4753,7 +4754,7 @@ export async function fetchReportOccurrencesByTemplate(templateId){
  * @param {string} [payload.start] 'HH:mm'
  * @param {string} [payload.end] 'HH:mm'
  * @param {string} [payload.timezone]
- * @param {string} [payload.mode] 'In person'|'Online'|'Hybrid'
+ * @param {string} [payload.mode] 'Physical'|'Online'|'Hybrid'
  * @param {string} [payload.status] defaults to 'Scheduled'
  * @param {string} [payload.location]
  * @param {string} [payload.link]
@@ -5208,9 +5209,11 @@ export async function updateReportOccurrenceFile(id, fileUrl){
    wording is the one that reaches the UI. */
 export const MOM_STATUS      = { 1:'Draft', 2:'Approved', 3:'Closed' };
 export const MOM_STATUS_KEY  = { 'Draft':1, 'Approved':2, 'Closed':3 };
-export const GRID_STATE      = { 1:'Pending Facilitator Review', 2:'Submitted for Approval',
+/* "Organizer" replaced "Facilitator" on screen (01 Oct); the stored option is
+   unchanged and the key map accepts both labels. */
+export const GRID_STATE      = { 1:'Pending Organizer Review', 2:'Submitted for Approval',
                                  3:'Approved', 4:'Returned for Revision', 5:'Void' };
-export const GRID_STATE_KEY  = { 'Pending Facilitator Review':1, 'Submitted for Approval':2,
+export const GRID_STATE_KEY  = { 'Pending Organizer Review':1, 'Pending Facilitator Review':1, 'Submitted for Approval':2,
                                  'Approved':3, 'Returned for Revision':4, 'Void':5 };
 
 /* Dataverse rejects an over-long value with a 400 rather than truncating, so
@@ -5861,7 +5864,7 @@ export async function createAuditGridInstance(payload){
   try{
     const row = {
       lm_name: payload.name || 'Audit Grid Instance',
-      lm_state: GRID_STATE_KEY['Pending Facilitator Review'],
+      lm_state: GRID_STATE_KEY['Pending Organizer Review'],
       lm_templateversion: payload.templateVersion || null,
       lm_total: payload.total ?? null,
       lm_version: payload.version ?? 1,

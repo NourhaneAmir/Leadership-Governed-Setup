@@ -985,7 +985,7 @@ export function NewTaskForm({ subject, onCancel, onDone, toast, link, doneText }
     return () => { live = false; };
   }, []);
 
-  const ready = f.title.trim() && f.assigneeId && f.dueDate && !(f.startDate && f.dueDate < f.startDate);
+  const ready = f.title.trim() && f.assigneeId && f.startDate && f.dueDate && f.dueDate >= f.startDate;
 
   const submit = async () => {
     if (!ready || saving) return;
@@ -993,7 +993,7 @@ export function NewTaskForm({ subject, onCancel, onDone, toast, link, doneText }
     const { id, errors } = await createTask({
       title: f.title.trim(), description: f.description.trim() || null,
       action: f.action.trim() || null, assigneeId: f.assigneeId,
-      priority: f.priority || null, startDate: f.startDate || null, dueDate: f.dueDate,
+      priority: f.priority || null, startDate: f.startDate, dueDate: f.dueDate,
       ...(link || {}),
     });
     setSaving(false);
@@ -1041,7 +1041,7 @@ export function NewTaskForm({ subject, onCancel, onDone, toast, link, doneText }
           <option value="">Select…</option>
           {TASK_PRIORITIES.map(p => <option key={p} value={p}>{p}</option>)}
         </select></Field>
-      <Field label="Start date">
+      <Field label="Start date" req>
         <input type="date" value={f.startDate} onChange={e => set({ startDate: e.target.value })}/></Field>
       <Field label="Due date" req
         err={f.dueDate && f.startDate && f.dueDate < f.startDate ? 'The due date is before the start date.' : null}>

@@ -93,7 +93,7 @@ const FAMILIES = {
               does:'Prepares and submits Reports, attends Meetings, raises Decisions.'},
   approver : {label:'Reviewer / Approver / Meeting Chair',
               does:'Reviews and approves Reports, chairs Meetings, approves Minutes, the Audit Grid and Decisions.'},
-  organizer: {label:'Organizer / Facilitator',
+  organizer: {label:'Organizer',
               does:'Schedules Meetings, manages the Agenda and inputs, records Minutes, completes the Audit Grid.'},
   observer : {label:'Observer — read only',
               does:'Reads execution records, audit history and approved Audit Grids. Never approves.'},
@@ -331,7 +331,7 @@ const AG_QUESTIONS = [
   {id:'AG-15', cat:'Governance Framework', src:'Auto', w:1, owner:'Meeting Organizer',
    q:'The Meeting invitation was sent at or before the required lead time.',
    rule:'Sent at or before the lead time scores 5; sent late scores 2; not recorded scores 0. Separate from AG-03, which measures the Agenda rather than the invitation.'},
-  {id:'AG-16', cat:'MOM Quality', src:'Auto', w:1, owner:'Facilitator',
+  {id:'AG-16', cat:'MOM Quality', src:'Auto', w:1, owner:'Organizer',
    q:'The MOM was written up and submitted within the write-up period.',
    rule:'Measured from the end of the Meeting to MOM submission. On time scores 5; late scores 2; never submitted scores 0. Held separately from AG-05 because a different person is accountable.'},
 ];
@@ -340,7 +340,7 @@ const AGQ = id => AG_QUESTIONS.find(q=>q.id===id);
 
 /* ---- Governance settings: the values the BRD refuses to approve -------- */
 const DEFAULT_SETTINGS = {
-  momWriteupHours  : null,      // OD-09a  Meeting end → MOM submitted   (Facilitator)
+  momWriteupHours  : null,      // OD-09a  Meeting end → MOM submitted   (Organizer)
   momApprovalHours : null,      // OD-09b  MOM submitted → Chair approval (Meeting Chair)
   agendaLeadDays   : null,      // OD-08
   inviteLeadDays   : 2,         // OD-07 — confirmed at two days
@@ -357,8 +357,8 @@ const DEFAULT_SETTINGS = {
 };
 const OD_NOTES = {
   momWriteupHours:{od:'OD-09a', label:'MOM write-up period',
-    q:'How long the Facilitator has to write up the Minutes and submit them, measured from the end of the Meeting.',
-    owner:'SMO', accountable:'Facilitator · PMO or SMO',
+    q:'How long the Organizer has to write up the Minutes and submit them, measured from the end of the Meeting.',
+    owner:'SMO', accountable:'Organizer · PMO or SMO',
     effect:'AG-16 cannot be scored while this is unset, so it is excluded from the Overall Score and reduces Coverage.'},
   momApprovalHours:{od:'OD-09b', label:'MOM approval period',
     q:'How long the Meeting Chair has to approve the Minutes, measured from submission — not from the Meeting.',
@@ -379,8 +379,8 @@ const OD_NOTES = {
     q:'Whether a delegated attendance counts as present for the Required Attendee attendance rate.', owner:'SMO',
     effect:'Changes AG-09 materially. Half weight and exclusion give different scores for the same Meeting.'},
   gridSubmitHours:{od:null, label:'Audit Grid completion / submission period',
-    q:'How long the Facilitator has to complete the required Grid questions and submit the Grid for Chair approval, measured from the moment the Grid is created.',
-    owner:'SMO', accountable:'Facilitator',
+    q:'How long the Organizer has to complete the required Grid questions and submit the Grid for Chair approval, measured from the moment the Grid is created.',
+    owner:'SMO', accountable:'Organizer',
     effect:'No submission deadline is enforced on an open Grid while this is unset.'},
   momClosure:{od:'OD-38', label:'MOM closure',
     q:'Is MOM closure automatic on approval and Output activation, or an explicit act?', owner:'SMO',
@@ -581,7 +581,7 @@ occs:[
 
   /* --- Infection Prevention and Control Committee ---------------------- */
   {id:'occ-ipc-jun', setup:'ms2', custom:null, bu:'AHJ',
-   date:'2026-06-25', start:'11:00', end:'12:30', tz:'Arab Standard Time', mode:'In person',
+   date:'2026-06-25', start:'11:00', end:'12:30', tz:'Arab Standard Time', mode:'Physical',
    location:'Meeting Room 4', link:null, adhoc:null, restricted:false, status:'Held',
    agendaSent:'2026-06-22', inviteSent:'2026-06-21', sync:'Synchronized', cancelReason:null, rescheduledFrom:null, inputs:[],
    attend:[{who:'u2',present:true,delegate:null},{who:'u5',present:true,delegate:null},
@@ -592,7 +592,7 @@ occs:[
      {id:'ag-i1-2', seq:2, title:'Isolation compliance audit', owner:'u10', source:'Standing item', covered:true},
    ]},
   {id:'occ-ipc-jul', setup:'ms2', custom:null, bu:'AHJ',
-   date:'2026-07-23', start:'11:00', end:'12:30', tz:'Arab Standard Time', mode:'In person',
+   date:'2026-07-23', start:'11:00', end:'12:30', tz:'Arab Standard Time', mode:'Physical',
    location:'Meeting Room 4', link:null, adhoc:null, restricted:false, status:'Held',
    agendaSent:'2026-07-21', inviteSent:'2026-07-22', sync:'Synchronized', cancelReason:null, rescheduledFrom:null, inputs:[],
    attend:[{who:'u2',present:true,delegate:null},{who:'u5',present:true,delegate:null},
@@ -603,7 +603,7 @@ occs:[
      {id:'ag-i2-2', seq:2, title:'Antimicrobial stewardship report', owner:'u2', source:'Standing item', covered:true},
    ]},
   {id:'occ-ipc-aug', setup:'ms2', custom:null, bu:'AHJ',
-   date:'2026-08-27', start:'11:00', end:'12:30', tz:'Arab Standard Time', mode:'In person',
+   date:'2026-08-27', start:'11:00', end:'12:30', tz:'Arab Standard Time', mode:'Physical',
    location:'Meeting Room 4', link:null, adhoc:null, restricted:false, status:'Scheduled',
    agendaSent:null, inviteSent:'2026-08-23', sync:'Synchronized', cancelReason:null, rescheduledFrom:null, inputs:[],
    attend:MS('ms2').required.concat(MS('ms2').optional).map(w=>({who:w,present:null,delegate:null})),
@@ -659,14 +659,14 @@ occs:[
            {who:'u11',present:false,delegate:null}],
    agenda:[{id:'ag-d-1', seq:1, title:'Leadership Practice rollout readiness', owner:'u15', source:'Standing item', covered:true}]},
   {id:'occ-ncr-jul', setup:'ms6', custom:null, bu:'AHJ',
-   date:'2026-07-21', start:'12:00', end:'13:00', tz:'Arab Standard Time', mode:'In person',
+   date:'2026-07-21', start:'12:00', end:'13:00', tz:'Arab Standard Time', mode:'Physical',
    location:'Nursing Education Room', link:null, adhoc:null, restricted:false, status:'Held',
    agendaSent:'2026-07-19', inviteSent:'2026-07-17', sync:'Synchronized', cancelReason:null, rescheduledFrom:null, inputs:['sub3'],
    attend:[{who:'u10',present:true,delegate:null},{who:'u2',present:true,delegate:null},
            {who:'u14',present:true,delegate:null}],
    agenda:[{id:'ag-n-1', seq:1, title:'Specialty nursing competency gaps', owner:'u10', source:'Standing item', covered:true}]},
   {id:'occ-ncr-aug', setup:'ms6', custom:null, bu:'AHJ',
-   date:'2026-08-23', start:'12:00', end:'13:00', tz:'Arab Standard Time', mode:'In person',
+   date:'2026-08-23', start:'12:00', end:'13:00', tz:'Arab Standard Time', mode:'Physical',
    location:'Nursing Education Room', link:null, adhoc:null, restricted:false, status:'Scheduled',
    agendaSent:null, inviteSent:'2026-08-19', sync:'Synchronized', cancelReason:null, rescheduledFrom:'2026-08-21', inputs:[],
    attend:MS('ms6').required.map(w=>({who:w,present:null,delegate:null})),
@@ -944,12 +944,12 @@ grids:[
    history:[{at:'2026-06-26 15:25', who:null, act:'Instance created on MOM closure — auto-scoring complete'},
             {at:'2026-06-28 09:00', who:'u14', act:'Submitted for approval'},
             {at:'2026-06-29 13:00', who:'u2', act:'Approved — Overall Score and Coverage published'}]},
-  {id:'agi-msc-jul', occ:'occ-msc-jul', state:'Pending Facilitator Review', tv:'AGT v1.2', locked:false,
+  {id:'agi-msc-jul', occ:'occ-msc-jul', state:'Pending Organizer Review', tv:'AGT v1.2', locked:false,
    score:null, coverage:null, total:13, facilitator:'u14', chair:'u7',
    approvedAt:null, returnReason:null, frozen:false, version:1,
    manual:{}, evidence:{},
    history:[{at:'2026-07-12 14:05', who:null, act:'Instance created on MOM closure — auto-scoring complete'},
-            {at:'2026-07-12 14:05', who:null, act:'Pending Facilitator Review — 1 question awaiting a manual score'}]},
+            {at:'2026-07-12 14:05', who:null, act:'Pending Organizer Review — 1 question awaiting a manual score'}]},
 ],
 
 /* ---------------- misc -------------------------------------------------- */
@@ -1168,7 +1168,7 @@ function scoreGrid(grid, db, S){
         : `No invitation date recorded; required on or before ${fmtD(need)} → 0.`);
   }
 
-  /* AG-16 — the Facilitator's clock: Meeting end → submission. */
+  /* AG-16 — the Organizer's clock: Meeting end → submission. */
   if(S.momWriteupHours==null)
     push('AG-16','na',null,null,'The MOM write-up period is not configured, so write-up timeliness cannot be measured.');
   else if(!mom.submittedAt)
@@ -1726,7 +1726,7 @@ function DvOccurrenceModal({item,onClose}){
       <Row label="Region" value={dvRegion(r.regionId)}/>
       <Row label="Department" value={dvDept(r.departmentId)}/>
       <Row label="Chair" value={pos(r.chairPositionId)}/>
-      <Row label="Facilitator" value={pos(r.facilitatorPositionId)}/>
+      <Row label="Organizer" value={pos(r.facilitatorPositionId)}/>
       <Row label="Restricted" value={r.restricted?'Yes':null}/>
       <Row label="Invite sent" value={r.inviteSent?fmtD(r.inviteSent):null}/>
       <Row label="Agenda sent" value={r.agendaSent?fmtD(r.agendaSent):null}/>
@@ -1813,7 +1813,7 @@ function ScreenCalendar(){
   const mine = useMemo(()=>new Set(dvLookup?.myPositionIds || []), [dvLookup]);
 
   /* A Meeting shows only when the user is its Chairman, Co-Chairman,
-     Organizer/Facilitator, or a named Attendee -- an occurrence with none
+     Organizer, or a named Attendee -- an occurrence with none
      of those matching this user's Positions is left out entirely, per an
      explicit ask, rather than shown dimmed or unfiltered. Attendee match is
      against a Position directly on the row; a Microsoft-Group Attendee
@@ -1907,7 +1907,7 @@ function ScreenCalendar(){
     <div className="ph ph-row">
       <div style={{flex:1}}><h1>Calendar</h1>
         <div className="sub">Meetings and reports you hold a role on — Chairman, Co-Chairman,
-          Organizer/Facilitator or Attendee for a Meeting; Submitter, Owner, or a Reviewer once it's
+          Organizer or Attendee for a Meeting; Submitter, Owner, or a Reviewer once it's
           been submitted, for a Report.</div></div>
       <div className="seg seg-gold">
         {['month','week','list'].map(v=>
@@ -2040,7 +2040,7 @@ function Toasts(){
 /* =========================================================================
    ACCESS + WORK QUEUE
    ========================================================================= */
-/* An Ad Hoc Meeting names no MOM Recorder. Where none is held, the Facilitator writes up
+/* An Ad Hoc Meeting names no MOM Recorder. Where none is held, the Organizer writes up
    the Minutes — the same person the write-up period (AG-16) is measured against. */
 const occRoles = occ => {
   const facilitator = occ.facilitatorOverride || (occ.setup ? MS(occ.setup).facilitator : null);
@@ -2058,7 +2058,7 @@ const occCls  = occ => occ.setup ? (MS(occ.setup).subCls || MS(occ.setup).cls) :
 const isCommittee = occ => occType(occ)==='Committee';
 
 /* One signed-in user holding every role. Records keep their real accountable owner — every action
-   still names the Chair, Reviewer or Facilitator it belongs to — but this user may act for them. */
+   still names the Chair, Reviewer or Organizer it belongs to — but this user may act for them. */
 const ME = 'u0';
 const acting = () => true;
 
@@ -2546,12 +2546,12 @@ function App({onSwitch}){
       custom:f.setup?null:{name:f.name,purpose:f.purpose,noSetupFlag:true,taxonomyState:'Queued',
                            dept:f.dept,stage:f.stage},
       date,start:f.start,end:f.end,tz:'Arab Standard Time',mode:f.mode,
-      location:f.location||null,link:f.mode==='In person'?null:'https://teams.microsoft.com/l/meetup-join/'+id,
+      location:f.location||null,link:f.mode==='Physical'?null:'https://teams.microsoft.com/l/meetup-join/'+id,
       adhoc:f.adhoc,restricted:!!f.restricted,status:'Scheduled',agendaSent:null,
       inviteSent:f.inviteSent||TODAY, sync:'Synchronized',
       cancelReason:null,rescheduledFrom:resched,inputs:f.inputs||[],
       chairOverride:f.setup?null:f.chair, facilitatorOverride:f.setup?null:f.facilitator,
-      recorderOverride:null,   /* an Ad Hoc Meeting names no Recorder — the Facilitator writes it up */
+      recorderOverride:null,   /* an Ad Hoc Meeting names no Recorder — the Organizer writes it up */
       attend:f.attend.map(a=>({who:a.who,present:null,delegate:null,
                                extraRequired:a.type==='Required'})),
       agenda:f.agenda.map((t,i)=>({id:uid('ag'),seq:i+1,title:t,
@@ -2589,7 +2589,7 @@ function App({onSwitch}){
   editOcc:(occId,f)=>mut(n=>{ const o=n.occs.find(x=>x.id===occId);
     const moved = o.date!==f.date || o.start!==f.start || o.end!==f.end;
     Object.assign(o,{date:f.date,start:f.start,end:f.end,mode:f.mode,
-      location:f.mode==='Online'?null:f.location, link:f.mode==='In person'?null:f.link});
+      location:f.mode==='Online'?null:f.location, link:f.mode==='Physical'?null:f.link});
     if(isNonWorking(f.date)){
       const moveTo = nextWorkingDay(f.date);
       o.rescheduledFrom = f.date; o.date = moveTo;
@@ -2705,9 +2705,9 @@ function App({onSwitch}){
     g.state='Returned for Revision'; g.returnReason=reason;
     g.history.push({at:nowStamp(),who:me,act:'Returned for revision',note:reason});
     logIt(n,gid,'Audit Grid returned');
-    toast('Returned to the Facilitator','The reason is recorded and all prior history is retained.','warn'); }),
+    toast('Returned to the Organizer','The reason is recorded and all prior history is retained.','warn'); }),
   gridNewVersion:(gid,reason)=>mut(n=>{ const g=n.grids.find(x=>x.id===gid);
-    const nw={...JSON.parse(JSON.stringify(g)),id:uid('agi'),state:'Pending Facilitator Review',
+    const nw={...JSON.parse(JSON.stringify(g)),id:uid('agi'),state:'Pending Organizer Review',
       locked:false,frozen:false,score:null,approvedAt:null,returnReason:null,
       version:(g.version||1)+1,correctionReason:reason,
       history:[...g.history,{at:nowStamp(),who:me,act:'New Grid version '+((g.version||1)+1)+' opened for correction',note:reason}]};
@@ -2821,7 +2821,7 @@ function App({onSwitch}){
     m.history.push({at:nowStamp(),who:null,act:'Outputs activated and MOM set to Closed'});
     if(isCommittee(occ) && !n.grids.some(g=>g.occ===occ.id)){
       const r=occRoles(occ);
-      n.grids.push({id:uid('agi'),occ:occ.id,state:'Pending Facilitator Review',tv:AG_TEMPLATE_VERSION,
+      n.grids.push({id:uid('agi'),occ:occ.id,state:'Pending Organizer Review',tv:AG_TEMPLATE_VERSION,
         locked:false,score:null,coverage:null,total:AG_ACTIVE.length,
         facilitator:r.facilitator,chair:r.chair,approvedAt:null,returnReason:null,frozen:false,
         version:1,manual:{},evidence:{},
@@ -4616,7 +4616,7 @@ const fmtFileSize = b => b<1024?b+' B' : b<1048576?(b/1024).toFixed(1)+' KB' : (
 
    A Report Occurrence carries no reviewer list of its own -- the review chain
    lives on the Template, resolved per Business Unit/Region (same as a
-   Meeting's per-unit Chair/Facilitator), so this form only ever *previews*
+   Meeting's per-unit Chair/Organizer), so this form only ever *previews*
    it. A Custom/No-Setup Report has no Template and therefore no configured
    review chain at all, matching what DvReportDetail already shows. */
 /* Proof of concept: read an uploaded workbook entirely in the browser and log
@@ -5579,7 +5579,7 @@ function ScreenMeetings(){
   const tabDef = TABS.find(t=>t.id===tab)||TABS[0];
   const exportCsv = () => {
     const out = [['Meeting','Setup','Setup type','Department','Scope','Stage','Date','Start','End','Mode',
-      'Agenda items','Agenda covered','Attendees','Present','Chair','Facilitator','Status']];
+      'Agenda items','Agenda covered','Attendees','Present','Chair','Organizer','Status']];
     rows.forEach(o=>out.push([o.name, dvTpl(o.templateId)||(o.adhocType?'Ad Hoc — '+o.adhocType:'Ad Hoc'),
       setupTypeOf(o)||'', dvDept(o.departmentId)||'', dvBu(o.businessUnitId)||dvRegion(o.regionId)||'Group-wide',
       o.stage||'', o.date||'', o.start||'', o.end||'', o.mode||'',
@@ -5686,7 +5686,7 @@ function ScreenMeetings(){
                       <td><div className="cs-name">{o.restricted&&<Lock size={11} className="cs-lock" aria-label="Restricted"/>}{o.name}</div>
                         <div className="cs-name-sub">Chair: {dvPos(o.chairPositionId)||'—'}</div>
                         {o.facilitatorPositionId
-                          ? <div className="cs-name-sub">Facilitator: {dvPos(o.facilitatorPositionId)}</div> : null}</td>
+                          ? <div className="cs-name-sub">Organizer: {dvPos(o.facilitatorPositionId)}</div> : null}</td>
                       <td><span className={'cs-type'+(type?'':' adhoc')}>{type||'Ad Hoc'}</span>
                         <div className="cs-name-sub">{[dvTpl(o.templateId)||o.adhocType, dvDept(o.departmentId)]
                           .filter(Boolean).join(' · ')||'—'}</div></td>
@@ -5981,7 +5981,7 @@ function ScreenMinutes(){
               return <tr key={m.id} className="cs-row" tabIndex={0} onClick={open}
                   onKeyDown={e=>{ if(e.key==='Enter'){ e.preventDefault(); open(); } }}>
                 <td><div className="cs-name">{m.occ_.name||'(untitled meeting)'} — {fmtDS(m.occ_.date)}</div>
-                  <div className="cs-name-sub">{momCode(m)} · Facilitator: {dvPos(m.occ_.facilitatorPositionId)||'—'}</div></td>
+                  <div className="cs-name-sub">{momCode(m)} · Organizer: {dvPos(m.occ_.facilitatorPositionId)||'—'}</div></td>
                 <td>{dvTpl(m.occ_.templateId)||(m.occ_.adhocType?'Ad Hoc — '+m.occ_.adhocType:'Ad Hoc')}</td>
                 <td><span className={'cs-badge '+bc}><i/>{bl}</span></td>
                 <td><span className={'cs-mono'+(overdue.includes(m)?' c-red':'')}>{fmtDS(m.occ_.date)}</span></td>
@@ -6036,7 +6036,7 @@ function DvEditOccModal({rec,onClose}){
      changes the time, mode and place on the same day, and saves the date
      exactly as it was read. */
   const [f,setF]=useState({date:'', start:rec.start||'', end:rec.end||'',
-    mode:rec.mode||'In person', location:rec.location||'', link:rec.link||''});
+    mode:rec.mode||'Physical', location:rec.location||'', link:rec.link||''});
   /* An occurrence saved without a date (01 Oct) gets one here -- it is needed
      before the meeting can be marked Held. A date that exists stays locked. */
   const noDate = !rec.date;
@@ -6044,7 +6044,7 @@ function DvEditOccModal({rec,onClose}){
   const set=(k,v)=>setF(x=>({...x,[k]:v}));
   const badTime = f.start && f.end && f.end<=f.start;
   const needsLink     = f.mode==='Online' || f.mode==='Hybrid';
-  const needsLocation = f.mode==='In person' || f.mode==='Hybrid';
+  const needsLocation = f.mode==='Physical' || f.mode==='Hybrid';
   const modeOk = (!needsLink || f.link.trim()) && (!needsLocation || f.location.trim());
   const ok = !badTime && !!f.start && !!f.end && modeOk && (!noDate || !!f.date);
 
@@ -6086,10 +6086,10 @@ function DvEditOccModal({rec,onClose}){
       <Field label="End" req err={badTime?'The end time must be after the start time.':null}>
         <input type="time" value={f.end} onChange={e=>set('end',e.target.value)}/></Field>
     </div>
-    <Field label="Mode" req hint="Online meets in Teams, In person needs a location, Hybrid needs both.">
-      <Pills opts={['In person','Online','Hybrid']} val={f.mode} onChange={v=>set('mode',v)}/></Field>
+    <Field label="Mode" req hint="Online meets in Teams, Physical needs a location, Hybrid needs both.">
+      <Pills opts={['Physical','Online','Hybrid']} val={f.mode} onChange={v=>set('mode',v)}/></Field>
     {needsLocation &&
-      <Field label="Location" req err={!f.location.trim()?'A location is required for an in-person or hybrid Meeting.':null}>
+      <Field label="Location" req err={!f.location.trim()?'A location is required for an physical or hybrid Meeting.':null}>
         <input type="text" value={f.location} onChange={e=>set('location',e.target.value)}
           placeholder="e.g. Board Room, Level 3"/></Field>}
     {needsLink &&
@@ -6102,7 +6102,7 @@ function DvEditOccModal({rec,onClose}){
 /* Reschedules a live Meeting Occurrence to a new date/time. Unlike Edit
    (which patches the same row), this is deliberately a new row: it creates
    a fresh lm_meetingoccurrences record carrying the same Setup, scope,
-   Chair/Facilitator, Agenda and Attendees across, with lm_RescheduledFrom
+   Chair/Organizer, Agenda and Attendees across, with lm_RescheduledFrom
    pointing back at the original -- then cancels the original, so there is
    never a stale Scheduled row left sitting on the wrong date. The Agenda's
    coverage and any Attendance already recorded stay behind on the original;
@@ -6123,7 +6123,7 @@ const rescheduledName = (name, iso) => {
 function DvRescheduleOccModal({rec,onClose}){
   const {toast,refreshOccurrences,openMeeting}=use();
   const [f,setF]=useState({date:'', start:rec.start||'', end:rec.end||'',
-    mode:rec.mode||'In person', location:rec.location||'', link:rec.link||''});
+    mode:rec.mode||'Physical', location:rec.location||'', link:rec.link||''});
   const [saving,setSaving]=useState(false);
   const set=(k,v)=>setF(x=>({...x,[k]:v}));
 
@@ -6132,7 +6132,7 @@ function DvRescheduleOccModal({rec,onClose}){
   const badTime = f.start && f.end && f.end<=f.start;
   const sameDate = f.date && f.date===rec.date;
   const needsLink     = f.mode==='Online' || f.mode==='Hybrid';
-  const needsLocation = f.mode==='In person' || f.mode==='Hybrid';
+  const needsLocation = f.mode==='Physical' || f.mode==='Hybrid';
   const modeOk = (!needsLink || f.link.trim()) && (!needsLocation || f.location.trim());
   const ok = !!f.date && !weekend && !sameDate && !badTime && !!f.start && !!f.end && modeOk;
 
@@ -6200,10 +6200,10 @@ function DvRescheduleOccModal({rec,onClose}){
     </div>
     {f.date && !sameDate && <div className="t-sub" style={{margin:'-4px 0 12px'}}>
       New occurrence name: <b>{rescheduledName(rec.name, f.date)}</b></div>}
-    <Field label="Mode" req hint="Online meets in Teams, In person needs a location, Hybrid needs both.">
-      <Pills opts={['In person','Online','Hybrid']} val={f.mode} onChange={v=>set('mode',v)}/></Field>
+    <Field label="Mode" req hint="Online meets in Teams, Physical needs a location, Hybrid needs both.">
+      <Pills opts={['Physical','Online','Hybrid']} val={f.mode} onChange={v=>set('mode',v)}/></Field>
     {needsLocation &&
-      <Field label="Location" req err={!f.location.trim()?'A location is required for an in-person or hybrid Meeting.':null}>
+      <Field label="Location" req err={!f.location.trim()?'A location is required for an physical or hybrid Meeting.':null}>
         <input type="text" value={f.location} onChange={e=>set('location',e.target.value)}
           placeholder="e.g. Board Room, Level 3"/></Field>}
     {needsLink &&
@@ -6292,11 +6292,11 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
   const noteIdFor = {}, noteFor = {};
   minutes.notes.forEach(n=>{ if(n.agendaItemId){ noteIdFor[n.agendaItemId]=n.id; noteFor[n.agendaItemId]=n; } });
 
-  /* Confidential agenda items -- Stage 4 meetings only. The Facilitator marks
+  /* Confidential agenda items -- Stage 4 meetings only. The Organizer marks
      an item confidential and picks, from this meeting's attendees, who may read
      its note (lm_momnotes.lm_confidential + lm_meetingminutesreviewerlists).
      Everyone else sees the item's title but not its note or its decisions.
-     The Facilitator and the Chair always read every item: one writes the
+     The Organizer and the Chair always read every item: one writes the
      Minutes, the other approves them. ⚠️ App-side only -- see dataverse.js. */
   const stage4 = /^Stage 4/.test(rec.stage||'');
   const mine = new Set(dvLookup?.myPositionIds||[]);
@@ -6569,7 +6569,7 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
                   <Tag c="red">🔒 Confidential</Tag>
                 </div>
                 <div style={{fontSize:12.5,color:'var(--muted)'}}>
-                  This item is confidential. Only the people the Facilitator chose can read its notes and decisions.</div>
+                  This item is confidential. Only the people the Organizer chose can read its notes and decisions.</div>
               </div>;
               return <div key={a.id} style={{borderTop:i?'1px solid var(--border)':'none',paddingTop:i?13:4}}>
                 <div style={{display:'flex',alignItems:'baseline',gap:9,flexWrap:'wrap',marginBottom:6}}>
@@ -6589,7 +6589,7 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
                         <input type="checkbox" id={'conf-'+a.id} checked={conf} disabled={savingNote===a.id}
                           onChange={e=>setConfidential(a, e.target.checked)}/>
                         <b>Confidential</b>
-                        <span className="dim">Only the people ticked below, the Facilitator and the Chair can read this item.</span>
+                        <span className="dim">Only the people ticked below, the Organizer and the Chair can read this item.</span>
                       </label>
                       {conf && <div style={{marginTop:8}}>
                         <div style={{fontSize:11.5,color:'var(--muted)',marginBottom:5}}>
@@ -6612,7 +6612,7 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
                   : conf && isFacilitator
                     ? <div className="dim" style={{fontSize:11.5,margin:'0 0 6px'}}>
                         Visible to {attendeeUsers.filter(u=>u.userId && viewerIds.has(u.userId)).map(u=>u.name).join(', ')
-                          || 'nobody besides the Facilitator and the Chair'}.</div>
+                          || 'nobody besides the Organizer and the Chair'}.</div>
                     : null}
                 {editable
                   ? <>
@@ -6734,7 +6734,7 @@ function DvGridCorrectionModal({onClose,onSave}){
   const [reason,setReason]=useState('');
   const tooLong = reason.trim().length>GRID_REASON_MAX;
   return <Modal title="Open a correction version" onClose={onClose}
-    sub="Creates a new Grid Instance in Pending Facilitator Review. The approved Instance and its published score are left untouched."
+    sub="Creates a new Grid Instance in Pending Organizer Review. The approved Instance and its published score are left untouched."
     footer={<><Btn onClick={onClose}>Cancel</Btn>
       <Btn k="pri" disabled={!reason.trim()||tooLong} onClick={()=>onSave(reason.trim())}>Open correction version</Btn></>}>
     <Field label="Reason" req hint={`Max ${GRID_REASON_MAX} characters.`}
@@ -6790,7 +6790,7 @@ function DvGridQuestion({r,editable,savingId,onScore,onEvidence,onClear}){
                 err={evTooLong?`${draft.trim().length} characters — ${GRID_EVIDENCE_MAX} max.`:null}>
                 <textarea value={draft} onChange={e=>setDraft(e.target.value)} disabled={busy}
                   onBlur={()=>{ if(draft!==evVal && !evTooLong) onEvidence(r.id,draft); }}/></Field>
-            : evVal ? <div style={{fontSize:12,marginTop:6}}><b>Facilitator note:</b> {evVal}</div> : null}
+            : evVal ? <div style={{fontSize:12,marginTop:6}}><b>Organizer note:</b> {evVal}</div> : null}
         </>}
         {/* ⚠️ Keyed on the STATE, not on q.src: an Auto question the system
             could not compute is answerable too, which is the whole point. */}
@@ -6842,7 +6842,7 @@ function DvGridBody({rec,grid,olderVersions,minutes,quorumPct,torLink,accred,S,p
         applicable:grid.coverage, total:grid.total }
     : { score:live.score, coverage:live.coverage, applicable:live.applicable, total:live.total };
 
-  const editable = grid.state==='Pending Facilitator Review' || grid.state==='Returned for Revision';
+  const editable = grid.state==='Pending Organizer Review' || grid.state==='Returned for Revision';
   const blanks = rows.filter(r=>r.state==='blank');
   /* ⚠️ Was hard-coded to AG-02, the only Manual question at the time. Any
      question can now carry a manual score, so every one of them needs its
@@ -6926,7 +6926,7 @@ function DvGridBody({rec,grid,olderVersions,minutes,quorumPct,torLink,accred,S,p
       const {id,errors} = await updateAuditGridState(grid.id, 'Returned for Revision', reason);
       if(!id){ console.warn('[dataverse] updateAuditGridState() failed:', errors);
         toast('Not saved','Returning the Grid failed. Check the console for details.','err'); return; }
-      toast('Returned to the Facilitator','The reason is recorded.','warn');
+      toast('Returned to the Organizer','The reason is recorded.','warn');
       await onReload();
     }catch(e){ console.warn('[dataverse] updateAuditGridState() threw unexpectedly:', e);
       toast('Not saved','Returning the Grid failed. Check the console for details.','err'); }
@@ -6942,7 +6942,7 @@ function DvGridBody({rec,grid,olderVersions,minutes,quorumPct,torLink,accred,S,p
       });
       if(!id){ console.warn('[dataverse] createAuditGridInstance() (correction) failed:', errors);
         toast('Not saved','Opening a correction version failed. Check the console for details.','err'); return; }
-      toast('New Grid version opened','Pending Facilitator Review. The approved Instance is unchanged.','ok');
+      toast('New Grid version opened','Pending Organizer Review. The approved Instance is unchanged.','ok');
       await onReload();
     }catch(e){ console.warn('[dataverse] createAuditGridInstance() (correction) threw unexpectedly:', e);
       toast('Not saved','Opening a correction version failed. Check the console for details.','err'); }
@@ -6962,7 +6962,7 @@ function DvGridBody({rec,grid,olderVersions,minutes,quorumPct,torLink,accred,S,p
 
       <div className="sep"/>
       <KVBlock items={[
-        ['Facilitator', posName(grid.facilitatorPositionId)||'—'],
+        ['Organizer', posName(grid.facilitatorPositionId)||'—'],
         ['Meeting Chair', posName(grid.chairPositionId)||'—'],
         ['Approved at', fmtISODT(grid.approvedAt)],
       ]}/>
@@ -7013,7 +7013,7 @@ function DvGridBody({rec,grid,olderVersions,minutes,quorumPct,torLink,accred,S,p
       <Note k="warn" style={{marginTop:10}}>No independent line review exists for this score yet <OD id="OD-23"/>.</Note>
     </div>
 
-    {returning && <ReturnModal title="Return the Grid to the Facilitator" onClose={()=>setReturning(false)}
+    {returning && <ReturnModal title="Return the Grid to the Organizer" onClose={()=>setReturning(false)}
       onSave={returnForRevision}/>}
     {openingVersion && <DvGridCorrectionModal onClose={()=>setOpeningVersion(false)} onSave={openCorrectionVersion}/>}
 
@@ -7660,7 +7660,7 @@ function DvMeetingDetail({rec,back}){
           <div className="mtgd-tile">
             <MapPin size={18} aria-hidden="true"/>
             <b>{rec.location || (rec.link ? 'Online' : rec.mode) || '—'}</b>
-            <span>{rec.location ? (rec.mode||'In person') : (rec.link ? 'Joining link' : 'Mode')}</span>
+            <span>{rec.location ? (rec.mode||'Physical') : (rec.link ? 'Joining link' : 'Mode')}</span>
           </div>
         </section>
 
@@ -7726,7 +7726,7 @@ function DvMeetingDetail({rec,back}){
               ['Type', typeLabel],
               ['Category', tplCategory],
               ['Chair', posName(rec.chairPositionId)],
-              ['Facilitator', posName(rec.facilitatorPositionId)],
+              ['Organizer', posName(rec.facilitatorPositionId)],
               ['Location', rec.location || rec.link || null],
               ['Scope', scope],
               ['Cadence', cadence],
@@ -7771,10 +7771,10 @@ function DvMeetingDetail({rec,back}){
             <div className="wa-icon gold">👤</div><h2 style={{flex:1}}>Who runs it</h2>
           </div>
           <Row label="Meeting Chair" value={posName(rec.chairPositionId)}/>
-          <Row label="Facilitator" value={posName(rec.facilitatorPositionId)}/>
+          <Row label="Organizer" value={posName(rec.facilitatorPositionId)}/>
           <Row label="MoM Recorder" value="Not tracked at the occurrence level"/>
           <div style={{fontSize:12,color:'var(--muted)',marginTop:8}}>
-            The Facilitator owns the agenda items and writes up the Minutes.</div>
+            The Organizer owns the agenda items and writes up the Minutes.</div>
         </div>
 
         <div className="card">
@@ -7975,14 +7975,14 @@ function DvMeetingDetail({rec,back}){
             <tbody>{rec.attendees.map((a,i)=>{
               const who = (a.positionId && DV_POS_HOLDER[a.positionId]) || a.name || dvPos(a.positionId) || '—';
               const role = a.positionId===rec.chairPositionId ? 'Chair'
-                : a.positionId===rec.facilitatorPositionId ? 'Facilitator' : (a.type||'Required');
+                : a.positionId===rec.facilitatorPositionId ? 'Organizer' : (a.type||'Required');
               return <tr key={a.id}>
                 <td><div className="mtgd-member">
                   <span className={'mtgd-av'+(i%2?' g':'')} aria-hidden="true">
                     {String(who).split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase()}</span>
                   <span className="t-main">{who}</span></div></td>
                 <td className="dim">{dvPos(a.positionId)||'—'}</td>
-                <td><Tag c={role==='Chair'?'amber':role==='Facilitator'?'teal':role==='Optional'?'grey':'blue'}>{role}</Tag></td>
+                <td><Tag c={role==='Chair'?'amber':role==='Organizer'?'teal':role==='Optional'?'grey':'blue'}>{role}</Tag></td>
                 <td className="dim" style={{fontSize:12}}>{posName(a.delegatePositionId)||'—'}</td>
                 <td>{rec.status==='Held'
                   ? <div style={{display:'flex',alignItems:'center',gap:6}}>
@@ -8312,7 +8312,7 @@ function DvMeetingDetail({rec,back}){
 /* Report Submission detail — the full page, read from lm_reportoccurrences.
    Modelled on DvMeetingDetail above: read-only, and the review chain (which
    step approves next) is read from the linked Report Template's per-unit
-   row, the same way a Meeting Template's Chairman/Facilitator are. */
+   row, the same way a Meeting Template's Chairman/Organizer are. */
 function DvReportDetail({rec,back}){
   const {toast,refreshOccurrences}=use();
   const pos = id => { const n=dvPos(id); if(!n) return null;
@@ -8824,7 +8824,7 @@ function MeetingDetail({rec,back}){
               {rec.bu}{(BUS.find(b=>b.id===rec.bu)||{}).region?' · '+BUS.find(b=>b.id===rec.bu).region:''}</span></div>
           <div className="wa-mo-r txt"><label>Meeting Chair</label>
             <span className="v">{P(r.chair).name}</span></div>
-          <div className="wa-mo-r txt"><label>Facilitator</label>
+          <div className="wa-mo-r txt"><label>Organizer</label>
             <span className="v">{P(r.facilitator).name}</span></div>
           <div className="wa-mo-r txt"><label>MoM Recorder</label>
             <span className="v">{P(r.recorder).name}</span></div>
@@ -9188,7 +9188,7 @@ function EditOccModal({occ,onClose}){
   const moved = !!f.date && bookedDate !== f.date;
   const badTime = f.end<=f.start;
   const needLoc = f.mode!=='Online' && !f.location.trim();
-  const needLink= f.mode!=='In person' && !f.link.trim();
+  const needLink= f.mode!=='Physical' && !f.link.trim();
   const ok = f.date && !badTime && !needLoc && !needLink;
   return <Modal title="Edit this occurrence" wide onClose={onClose}
     sub="Execution-level information only. The approved Setup, its controlled name and its classification are owned by Taxonomy."
@@ -9205,13 +9205,13 @@ function EditOccModal({occ,onClose}){
       <Field label="End" req err={badTime?'The end time must be after the start time.':null}>
         <input type="time" value={f.end} onChange={e=>set('end',e.target.value)}/></Field>
     </div>
-    <Field label="Mode" req hint="Online meets in Teams, In person needs a location, Hybrid needs both.">
-      <Pills opts={['Online','In person','Hybrid']} val={f.mode} onChange={v=>set('mode',v)}/></Field>
+    <Field label="Mode" req hint="Online meets in Teams, Physical needs a location, Hybrid needs both.">
+      <Pills opts={['Online','Physical','Hybrid']} val={f.mode} onChange={v=>set('mode',v)}/></Field>
     {f.mode!=='Online' &&
-      <Field label="Location" req err={needLoc?'A location is required for an in-person or hybrid Meeting.':null}>
+      <Field label="Location" req err={needLoc?'A location is required for an physical or hybrid Meeting.':null}>
         <input type="text" value={f.location} onChange={e=>set('location',e.target.value)}
           placeholder="e.g. Board Room, Level 3"/></Field>}
-    {f.mode!=='In person' &&
+    {f.mode!=='Physical' &&
       <Field label="Online link" req err={needLink?'An online link is required for an online or hybrid Meeting.':null}>
         <input type="text" value={f.link} onChange={e=>set('link',e.target.value)}
           placeholder="https://teams.microsoft.com/l/meetup-join/…"/></Field>}
@@ -9505,7 +9505,7 @@ function ScreenNewMeeting(){
     : stageRegion&&!f.dvRegionId ? 'Choose a Region first' : 'Search a Position…';
 
   /* Every Business Unit / Region the selected Setup is actually approved to
-     run in, each carrying that unit's own Chairman, Co-Chairman, Facilitator
+     run in, each carrying that unit's own Chairman, Co-Chairman, Organizer
      and core Attendees -- read straight from lm_meetingtemplatebusinessunitses
      / lm_meetingtemplateregionses via fetchMeetingTemplateDetail(). A Group or
      ExCom Setup owns no such child rows at all, so this comes back empty for
@@ -9537,12 +9537,12 @@ function ScreenNewMeeting(){
   const tplGroupStage = TPL_STAGE_LABEL[tplDetail?.parent?.lm_stages] || 'Group';
 
   /* Applies one of the Setup's approved units (or, for a Group / ExCom Setup,
-     none at all) to the form: its Chairman and Facilitator pre-fill the
+     none at all) to the form: its Chairman and Organizer pre-fill the
      Position pickers below and its core Attendees pre-fill the Attendee list
      -- every one of them still adjustable for this occurrence only.
 
      A Group/ExCom Setup has no per-unit row to carry these, so its Chairman
-     and Facilitator live on the Setup's own parent row instead -- read here
+     and Organizer live on the Setup's own parent row instead -- read here
      as the fallback when there's no unit at all. */
   const applyUnit = unit => {
     const region = unit && unit.kind==='bu'
@@ -9635,7 +9635,7 @@ function ScreenNewMeeting(){
 
   /* Mode decides which of the two destination fields apply. */
   const needsLink     = f.mode==='Online' || f.mode==='Hybrid';
-  const needsLocation = f.mode==='In person' || f.mode==='Hybrid';
+  const needsLocation = f.mode==='Physical' || f.mode==='Hybrid';
   const modeOk = (!needsLink || f.link.trim()) && (!needsLocation || f.location.trim());
 
   /* What this new meeting would carry from the previous one -- see
@@ -9752,7 +9752,7 @@ function ScreenNewMeeting(){
   const initials = t => String(t||'?').split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase();
   const members = [
     ...(f.dvChairPositionId ? [{id:f.dvChairPositionId, role:'Chair'}] : []),
-    ...(f.dvFacilitatorPositionId ? [{id:f.dvFacilitatorPositionId, role:'Facilitator'}] : []),
+    ...(f.dvFacilitatorPositionId ? [{id:f.dvFacilitatorPositionId, role:'Organizer'}] : []),
     ...f.dvAttend.map(a=>({id:a.positionId, role:a.type||'Required'})),
   ];
   const MEMBERS_SHOWN = 5;
@@ -9763,7 +9763,7 @@ function ScreenNewMeeting(){
     !custom && f.setup && tplUnits.length>1 && !f.tplUnitKey ? 'the Business Unit / Region' : null,
     !scopeOk ? 'the scope' : null,
     !f.dvChairPositionId ? 'a Chair' : null,
-    !f.dvFacilitatorPositionId ? 'a Facilitator' : null,
+    !f.dvFacilitatorPositionId ? 'an Organizer' : null,
     !f.tz ? 'a time zone' : null,
     !f.dvAttend.length ? 'at least one attendee' : null,
     !(agenda.length+carryNow.length) ? 'at least one agenda item' : null,
@@ -9843,7 +9843,7 @@ function ScreenNewMeeting(){
           </div>
           {!custom && f.setup && tplLoading &&
             <div className="cs-info" style={{marginTop:12}}><Users size={13} aria-hidden="true"/>
-              <span>Reading this Setup’s placement, Chair, Facilitator, Attendees and Agenda from Dataverse…</span></div>}
+              <span>Reading this Setup’s placement, Chair, Organizer, Attendees and Agenda from Dataverse…</span></div>}
         </section>
 
         {showForm && <>
@@ -9929,10 +9929,10 @@ function ScreenNewMeeting(){
                 onChange={e=>set('end',e.target.value)}/></Field>
             </div>
             {/* Mode decides what a Meeting needs to be reachable: Online needs a
-                joining link, In person needs a room, Hybrid needs both. */}
+                joining link, Physical needs a room, Hybrid needs both. */}
             <div className="f-row">
               <Field label="Mode"><select value={f.mode} onChange={e=>set('mode',e.target.value)}>
-                {['Online','In person','Hybrid'].map(m=><option key={m}>{m}</option>)}</select></Field>
+                {['Online','Physical','Hybrid'].map(m=><option key={m}>{m}</option>)}</select></Field>
               {needsLocation
                 ? <Field label="Location" req hint="The room this Meeting is held in.">
                     <input type="text" value={f.location} onChange={e=>set('location',e.target.value)}
@@ -9975,8 +9975,8 @@ function ScreenNewMeeting(){
                 <PositionSelect value={f.dvChairPositionId} onChange={v=>set('dvChairPositionId',v)}
                   opts={chairOpts} disabled={!scopeChosen}
                   placeholder={scopePlaceholder} emptyText="No Positions in this scope"/></Field>
-              <Field label="Facilitator" req
-                hint="The Facilitator owns the agenda items and writes up the Minutes.">
+              <Field label="Organizer" req
+                hint="The Organizer owns the agenda items and writes up the Minutes.">
                 <PositionSelect value={f.dvFacilitatorPositionId} onChange={v=>set('dvFacilitatorPositionId',v)}
                   opts={chairOpts} disabled={!scopeChosen}
                   placeholder={scopePlaceholder} emptyText="No Positions in this scope"/></Field>
@@ -10093,7 +10093,7 @@ function ScreenNewMeeting(){
             {!custom && f.setup ? <span className="cs-type adhoc">From Setup</span> : null}
           </div>
           {members.length===0
-            ? <p className="cs-card-note">{showForm ? 'No Chair, Facilitator or Attendee chosen yet.'
+            ? <p className="cs-card-note">{showForm ? 'No Chair, Organizer or Attendee chosen yet.'
                 : 'Choose a Setup to see who it brings.'}</p>
             : <div className="cs-members">
                 {members.slice(0,MEMBERS_SHOWN).map((m,i)=>{
@@ -10101,7 +10101,7 @@ function ScreenNewMeeting(){
                   return <div key={m.id+'-'+i} className="cs-member">
                     <span className={'cs-avatar'+(i%2?' g':'')} aria-hidden="true">{initials(holder||pos)}</span>
                     <span className="cs-member-t"><b>{holder||pos}</b>{holder?<span>{pos}</span>:null}</span>
-                    <span className={'cs-type '+(m.role==='Chair'?'':m.role==='Facilitator'?'green':'adhoc')}>{m.role}</span>
+                    <span className={'cs-type '+(m.role==='Chair'?'':m.role==='Organizer'?'green':'adhoc')}>{m.role}</span>
                   </div>; })}
                 {members.length>MEMBERS_SHOWN
                   ? <p className="cs-card-note">+{members.length-MEMBERS_SHOWN} more — see People.</p> : null}
@@ -10664,7 +10664,7 @@ function ExportModal({mom,occ,outs,onClose}){
 /* =========================================================================
    6 · GOVERNANCE AUDIT GRID
    ========================================================================= */
-const GRID_STATES=['Auto-Scored','Pending Facilitator Review','Submitted for Approval','Approved'];
+const GRID_STATES=['Auto-Scored','Pending Organizer Review','Submitted for Approval','Approved'];
 
 /* Committee Scores, restyled 28 Sep to the approved design
    (`leadership-practice (2).html`, #v-audit). Same data and behaviour as
@@ -10675,13 +10675,13 @@ const GRID_STATES=['Auto-Scored','Pending Facilitator Review','Submitted for App
    Export (CSV of the rows the current tab shows). The "Awaiting Chair" stat
    card was dropped to match the design's four; its count is on its tab. */
 const CS_TABS = [
-  {id:'scoring',  label:'Awaiting Scoring', test:g=>g.state==='Pending Facilitator Review'||g.state==='Returned for Revision'},
+  {id:'scoring',  label:'Awaiting Scoring', test:g=>g.state==='Pending Organizer Review'||g.state==='Returned for Revision'},
   {id:'chair',    label:'Awaiting Chair',   test:g=>g.state==='Submitted for Approval'},
   {id:'approved', label:'Approved',         test:g=>g.state==='Approved'},
   {id:'all',      label:'All Grids',        test:()=>true, noCount:true},
 ];
 const CS_BADGE = {
-  'Pending Facilitator Review':['pending','Pending Facilitator'],
+  'Pending Organizer Review':['pending','Pending Organizer'],
   'Returned for Revision':['returned','Returned'],
   'Submitted for Approval':['chair','Awaiting Chair'],
   'Approved':['approved','Approved'],
@@ -10797,7 +10797,7 @@ function ScreenGrid(){
         <div className="cs-stat-val">{approved.length}</div><div className="cs-stat-meta">published</div></div>
       <div className="cs-stat acc-gold"><div className="cs-stat-lbl">Average score</div>
         <div className="cs-stat-val">{avg!=null?avg+'%':'—'}</div><div className="cs-stat-meta">approved Grids only</div></div>
-      <div className="cs-stat acc-amber"><div className="cs-stat-lbl">Awaiting Facilitator</div>
+      <div className="cs-stat acc-amber"><div className="cs-stat-lbl">Awaiting Organizer</div>
         <div className="cs-stat-val">{awaitingFac}</div><div className="cs-stat-meta">questions to score</div></div>
       <div className="cs-stat acc-alert"><div className="cs-stat-lbl">Questions</div>
         <div className="cs-stat-val">{AG_ACTIVE.length}</div>
@@ -10933,7 +10933,7 @@ function GridBody({rec,occ}){
   const [ret,setRet]=useState(false);
   const [ver,setVer]=useState(false);
   const isFac = acting(rec.facilitator), isChair = acting(rec.chair);
-  const editable = isFac && (rec.state==='Pending Facilitator Review'||rec.state==='Returned for Revision');
+  const editable = isFac && (rec.state==='Pending Organizer Review'||rec.state==='Returned for Revision');
   /* Keyed on the STATE, matching the live grid: any question a person scored
      by hand needs its evidence note, not only the ones declared Manual in the
      template. The two paths disagreeing about the rules is what §7's open
@@ -10951,7 +10951,7 @@ function GridBody({rec,occ}){
     <div style={{display:'flex',alignItems:'center',gap:9,marginBottom:12,flexWrap:'wrap'}}>
       <Tag c={rec.state==='Approved'?'green':rec.state==='Void'?'grey':'amber'}>{rec.state}</Tag>
       <Tag>Template {rec.tv}{rec.version>1?' · version '+rec.version:''}</Tag>
-      <Tag>Facilitator {P(rec.facilitator).name}</Tag>
+      <Tag>Organizer {P(rec.facilitator).name}</Tag>
       <Tag>Meeting Chair {P(rec.chair).name}</Tag>
       {rec.locked && <Tag c="grey">🔒 Locked</Tag>}
       <div style={{flex:1}}/>
@@ -10959,9 +10959,9 @@ function GridBody({rec,occ}){
     </div>
 
     <Rail steps={GRID_STATES}
-      now={rec.state==='Returned for Revision'?'Pending Facilitator Review':rec.state}
+      now={rec.state==='Returned for Revision'?'Pending Organizer Review':rec.state}
       done={GRID_STATES.slice(0,Math.max(0,GRID_STATES.indexOf(
-        rec.state==='Returned for Revision'?'Pending Facilitator Review':rec.state)))}/>
+        rec.state==='Returned for Revision'?'Pending Organizer Review':rec.state)))}/>
 
     {rec.state==='Returned for Revision' && <Note k="err"><b>Returned by the Meeting Chair.</b>
       {' '}{rec.returnReason} All prior history is retained.</Note>}
@@ -11000,7 +11000,7 @@ function GridBody({rec,occ}){
       <div className="card">
         <h2>Actions</h2>
         {editable && <>
-          <div className="csub">You are the Facilitator. Auto-scored values cannot be changed by anyone —
+          <div className="csub">You are the Organizer. Auto-scored values cannot be changed by anyone —
             you may attach an evidence note to one, but not alter it.</div>
           {!canSubmit && <Note k="warn">
             {blanks.length>0 && <div>{blanks.length} question{blanks.length>1?'s remain':' remains'} blank.</div>}
@@ -11019,14 +11019,14 @@ function GridBody({rec,occ}){
         {rec.state==='Submitted for Approval' && !isChair &&
           <Note k="info">Waiting on <b>{P(rec.chair).name}</b> as Meeting Chair. Switch persona in the top
             bar to approve.</Note>}
-        {(rec.state==='Pending Facilitator Review'||rec.state==='Returned for Revision') && !isFac &&
-          <Note k="info">Waiting on <b>{P(rec.facilitator).name}</b> as Facilitator. Switch persona in the
+        {(rec.state==='Pending Organizer Review'||rec.state==='Returned for Revision') && !isFac &&
+          <Note k="info">Waiting on <b>{P(rec.facilitator).name}</b> as Organizer. Switch persona in the
             top bar to score the remaining questions.</Note>}
         {rec.state==='Approved' && <Note k="ok">Approved on {fmtDT(rec.approvedAt)}. The Overall Score and
           Coverage are published and the Instance is locked.</Note>}
 
         <div className="sep"/>
-        <Note k="warn" ic="▲"><b>No independent line reviews this score.</b> The Facilitator and the
+        <Note k="warn" ic="▲"><b>No independent line reviews this score.</b> The Organizer and the
           Meeting Chair both sit inside the Committee being scored. A Governance or Audit Reviewer has read
           access to every approved Grid and the right to re-audit a sample, but the principle is unresolved
           and remains an exposure for Accreditation Committees. <OD id="OD-23"/></Note>
@@ -11040,7 +11040,7 @@ function GridBody({rec,occ}){
           ['Template version applied', rec.tv],
           ['Grid version', 'Version '+(rec.version||1)],
           ['Minutes closed', mom&&mom.closedAt?fmtDT(mom.closedAt):'—'],
-          ['Facilitator', P(rec.facilitator).name],
+          ['Organizer', P(rec.facilitator).name],
           ['Meeting Chair', P(rec.chair).name],
         ]}/>
       </div>
@@ -11126,7 +11126,7 @@ function Question({r,grid,editable}){
         </div>}
         {r.q.src==='Auto' && !editable && ev && <div style={{marginTop:9}}>
           <div style={{fontSize:11,letterSpacing:'.07em',textTransform:'uppercase',color:'var(--faint)',
-            fontWeight:700,marginBottom:4}}>Facilitator note</div>
+            fontWeight:700,marginBottom:4}}>Organizer note</div>
           <div style={{fontSize:12}}>{ev}</div></div>}
       </>}
     </div>}

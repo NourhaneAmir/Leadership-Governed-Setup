@@ -111,7 +111,7 @@ export async function minutesToDocx(model){
     ['Stage', dsh(m.stage)],
     ['Meeting status', dsh(m.status)],
     ['Chair', dsh(m.chair)],
-    ['Facilitator', dsh(m.facilitator)],
+    ['Organizer', dsh(m.facilitator)],
   ], [30, 70]));
 
   kids.push(heading('Minutes status', 2));
@@ -159,7 +159,7 @@ export async function minutesToDocx(model){
       return;
     }
     if(a.confidential)
-      kids.push(meta('Restricted to: ' + (a.viewers?.length ? a.viewers.join(', ') : 'the Facilitator and the Chair')
+      kids.push(meta('Restricted to: ' + (a.viewers?.length ? a.viewers.join(', ') : 'the Organizer and the Chair')
         + '. Handle this document accordingly.'));
 
     kids.push(p('Discussion', { bold: true, size: 19, before: 80, after: 40 }));

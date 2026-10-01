@@ -22,12 +22,12 @@ import { fmtD, fmtDS, fmtP, pct, TODAY } from '../../shared/format.js';
 
 export const PEOPLE = [
   /* The demo signs in as one person holding every role, so the whole cycle can be walked in one sitting.
-     Records still carry their real accountable owner — the Chair, Reviewer and Facilitator are named on
+     Records still carry their real accountable owner — the Chair, Reviewer and Organizer are named on
      every action — but this user is permitted to act for any of them. */
   {id:'u0', name:'Demo User',       position:'Full access — every role',        dept:'Business Transformation', bu:'AHJ', mgr:'u7', lvl:6, scope:'all', fam:'admin'},
   {id:'u1', name:'Hussain Ahmed',   position:'Quality Section Head',            dept:'Quality',   bu:'AHJ', mgr:'u5', lvl:1, scope:'bu',  fam:'employee'},
   {id:'u2', name:'Dr. Ahmed Farouk', position:'Medical Director',               dept:'Medical Affairs', bu:'AHJ', mgr:'u7', lvl:3, scope:'bu',  fam:'approver'},
-  {id:'u3', name:'Reem Al-Otaibi',  position:'Governance Facilitator',          dept:'Quality',   bu:'AHJ', mgr:'u2', lvl:1, scope:'bu',  fam:'organizer'},
+  {id:'u3', name:'Reem Al-Otaibi',  position:'Governance Organizer',          dept:'Quality',   bu:'AHJ', mgr:'u2', lvl:1, scope:'bu',  fam:'organizer'},
   {id:'u4', name:'Omar Nasser',     position:'Quality Coordinator',             dept:'Quality',   bu:'AHJ', mgr:'u1', lvl:0, scope:'own', fam:'organizer'},
   {id:'u5', name:'Sara Khalil',     position:'Head of Quality',                 dept:'Quality',   bu:'AHJ', mgr:'u7', lvl:2, scope:'bu',  fam:'approver'},
   {id:'u6', name:'Khalid Sultan',   position:'Biomedical Engineering Section Head', dept:'Facilities', bu:'AHJ', mgr:'u7', lvl:1, scope:'own', fam:'employee'},
