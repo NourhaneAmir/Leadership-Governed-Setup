@@ -6373,7 +6373,12 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
      there is nothing to record -- so it no longer blocks submission. Covered
      or not-yet-marked items still do. */
   const notCovered   = a => covOf(a)==='No';
-  const missingNotes = rec.agenda.filter(a=>!notCovered(a) && !textFor(a).trim());
+  /* RULE-MOM-02 (user's choice, 01 Oct): a covered item needs a note only
+     when it has NO output -- no decision and no task raised on it. */
+  const hasOutput    = a => decisions.some(d=>d.agendaItemId===a.id)
+                          || (tasks||[]).some(t=>t.agendaItemId===a.id);
+  const noteOptional = a => notCovered(a) || hasOutput(a);
+  const missingNotes = rec.agenda.filter(a=>!noteOptional(a) && !textFor(a).trim());
   const tooLong      = rec.agenda.filter(a=>textFor(a).trim().length>MOM_NOTE_MAX);
   const canSubmit    = rec.agenda.length>0 && !missingNotes.length && !tooLong.length;
 
@@ -6607,8 +6612,8 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
 
     {drafting && !!missingNotes.length &&
       <Note k="warn">{missingNotes.length} Agenda Item{missingNotes.length>1?'s have':' has'} no
-        Discussion Note: {missingNotes.map(a=>a.title||'—').join(', ')}. Add a note, or mark the
-        item <b>No</b> if it was not covered.</Note>}
+        Discussion Note: {missingNotes.map(a=>a.title||'—').join(', ')}. Add a note, raise a decision or task
+        on it, or mark it <b>No</b> if it was not covered.</Note>}
     {returned && <Note k="err"><b>Returned by the Meeting Chair.</b> {minutes.returnReason}</Note>}
     {closed && <Note k="lock"><b>Closed and locked.</b> A correction must be made as a new version
       or an addendum, never by editing this record.</Note>}
@@ -6639,7 +6644,7 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
             <span className="cs-mono mtgd-count">{rec.agenda.length} item{rec.agenda.length===1?'':'s'}</span>
           </div>
           <div className="mom-hint">One note per agenda item and whether it was covered.
-            {editable ? ' Notes save when you click away from the box. An item marked No needs no note.'
+            {editable ? ' Notes save when you click away from the box. An item marked No, or with a decision or task, needs no note.'
                       : ' Read-only in this state.'}</div>
           {rec.agenda.length===0
             ? <Empty>No Agenda Item on this occurrence.</Empty>
@@ -6702,7 +6707,7 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
                         Visible to {attendeeUsers.filter(u=>u.userId && viewerIds.has(u.userId)).map(u=>u.name).join(', ')
                           || 'nobody besides the Organizer and the Chair'}.</div>
                     : null}
-                <label className="mom-lbl">Discussion note{notCovered(a) ? ' (optional — not covered)' : ' *'}</label>
+                <label className="mom-lbl">Discussion note{notCovered(a) ? ' (optional — not covered)' : hasOutput(a) ? ' (optional — has outputs)' : ' *'}</label>
                 {editable
                   ? <>
                       <textarea rows={3} value={val} disabled={savingNote===a.id}
