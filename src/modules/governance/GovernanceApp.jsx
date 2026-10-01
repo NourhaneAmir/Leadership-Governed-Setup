@@ -1229,8 +1229,8 @@ function validateMeeting(s){
   const ag=s.agenda||[];
   if(!ag.filter(a=>(a.text||'').trim()).length)
     r.push({field:'f-agenda', step:5, msg:'At least one standing Agenda Item is required.'});
-  if(ag.some(a=>(a.text||'').trim() && !a.owner))
-    r.push({field:'f-agenda', step:5, msg:'Every standing Agenda Item needs an owner.'});
+  /* An item's owner is optional (01 Oct, product owner): an item without one
+     is owned by the Facilitator when the meeting is scheduled. */
   return r;
 }
 
@@ -3084,7 +3084,7 @@ function MeetingWizard({rec,onClose}){
             onChange={e=>set({torLink:e.target.value})}
             placeholder="https://taxonomy.andalusia.local/tor/…"/></Field>
         <Field id="f-agenda" label="Standing Agenda Items" req
-          hint="Owner is picked from the Chairman, Co-Chairman, Facilitator and Attendees named on this Setup's units.">
+          hint="Owner is optional, picked from the Chairman, Co-Chairman, Facilitator and Attendees named on this Setup's units.">
           <RowEditor id="f-agenda" rows={s.agenda||[]} onChange={v=>set({agenda:v})} reorder
             addLabel="Add agenda item" empty="No standing agenda items yet."
             onAdd={()=>set({agenda:[...(s.agenda||[]),
@@ -3092,7 +3092,7 @@ function MeetingWizard({rec,onClose}){
             render={(r,i)=><div className="f-row3">
               <input type="text" value={r.text} placeholder="Item"
                 onChange={e=>set({agenda:s.agenda.map((x,j)=>j===i?{...x,text:e.target.value}:x)})}/>
-              <PosSel val={r.owner} placeholder="Owner…" opts={agendaOwnerOptions(s)}
+              <PosSel val={r.owner} placeholder="Owner (optional)…" opts={agendaOwnerOptions(s)}
                 onChange={v=>set({agenda:s.agenda.map((x,j)=>j===i?{...x,owner:v}:x)})}/>
               <span className="agenda-src" title="Set automatically; not editable">
                 <Tag c={r.source==='Added'?'teal':'grey'}>{r.source}</Tag></span>
