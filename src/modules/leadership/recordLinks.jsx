@@ -10,7 +10,9 @@
      strategy_kpis, strategy_strategy -> Strategy Formulation
      strategy_process                 -> Process Hub
      cr603_projects                   -> Project Module
-     hx_tasks                         -> TMS App
+     hx_tasks                         -> the TMS canvas app (01 Oct): its own
+                                         play link with ?taskId=<id>, not a
+                                         model-driven form
      stf_strategypoc                  -> in no app; opened without an appid,
                                          so Dataverse picks the default form
 
@@ -34,8 +36,13 @@ const APP = {
   strategy: 'fab3af08-40ba-4780-8cf8-6fee1f0aa9ef',   // Strategy Formulation
   process:  'f78ba984-5691-4bbc-b9bb-d2c581396425',   // Process Hub
   project:  '444e23d3-757b-4b59-876a-6ad20588b411',   // Project Module
-  tms:      '6dbdb1b3-d3d0-4482-9f32-0eb6f3a37391',   // TMS App
+  tms:      '6dbdb1b3-d3d0-4482-9f32-0eb6f3a37391',   // TMS App (model-driven; no longer used for links)
 };
+/* A Task opens in the TMS CANVAS app (user's link, 01 Oct), which reads
+   `taskId` and opens that task. It is a canvas app, so model-driven app
+   roles say nothing about access to it -- only the record check applies. */
+const TMS_CANVAS = 'https://apps.powerapps.com/play/e/cf7143ad-49da-ec62-a933-ecdacc501051'
+  + '/app/08de5c1f-d8d1-4d2a-8912-57aadd53db17';
 
 /* citation kind -> table logical name, entity set, primary key, app id or null, app name */
 const TARGET = {
@@ -44,7 +51,7 @@ const TARGET = {
   Strategy:  { etn:'strategy_strategy', set:'strategy_strategies', pk:'strategy_strategyid', appId:APP.strategy, app:'Strategy Formulation' },
   Process:   { etn:'strategy_process',  set:'strategy_processes',  pk:'strategy_processid',  appId:APP.process,  app:'Process Hub' },
   Project:   { etn:'cr603_projects',    set:'cr603_projectses',    pk:'cr603_projectsid',    appId:APP.project,  app:'Project Module' },
-  Task:      { etn:'hx_tasks',          set:'hx_taskses',          pk:'hx_tasksid',          appId:APP.tms,      app:'TMS App' },
+  Task:      { etn:'hx_tasks',          set:'hx_taskses',          pk:'hx_tasksid',          appId:null,         app:'TMS', canvas:TMS_CANVAS },
   POC:       { etn:'stf_strategypoc',   set:'stf_strategypocs',    pk:'stf_strategypocid',   appId:null,         app:'Dataverse' },
 };
 
@@ -62,6 +69,10 @@ export const citationRecordId = c =>
 export function recordUrl(kind, id){
   const t = TARGET[kind];
   if(!t || !id) return null;
+  if(t.canvas){
+    const q = new URLSearchParams({ hideNavBar: 'true', taskId: id });
+    return { url: `${t.canvas}?${q.toString()}`, app: t.app };
+  }
   const q = new URLSearchParams({ pagetype: 'entityrecord', etn: t.etn, id });
   if(t.appId && ON_IT) q.set('appid', t.appId);
   return { url: `${PIN_ORG}/main.aspx?${q.toString()}`, app: ON_IT ? t.app : 'Dataverse' };
