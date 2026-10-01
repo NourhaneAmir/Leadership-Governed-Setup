@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { Activity, ArrowUpRight, BarChart3, CalendarDays, CheckSquare, ClipboardCheck, ClipboardList, CircleAlert,
          Download, FileText, Gauge, Layers, LineChart, Lock, Menu, MessageSquare, MessagesSquare, Network, PenLine, Plus, RotateCcw, Shield, Eye,
          Users, UsersRound, X, Briefcase, Target, Clock, MapPin, Check, CircleX, ListOrdered, UserCheck,
-         Upload, Paperclip, ListChecks }
+         Upload, Paperclip, ListChecks, Send }
   from 'lucide-react';
 import './leadership-design.css';
 /* Dates, the working calendar and number formatting now live in src/shared so
@@ -6282,7 +6282,8 @@ function AgendaTaskPanel({rec,item,tasks,canAdd,onRaised}){
   </div>;
 }
 
-function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksChanged}){
+function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksChanged,
+                        decisions=[],quorum,writeupHours,setupName}){
   const {toast,dvLookup,currentUser}=use();
   const [drafts,setDrafts]=useState({});        // agendaItemId -> unsaved text
   const [savingNote,setSavingNote]=useState(null);
@@ -6454,11 +6455,6 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
     await onReload();
   };
 
-  const stateTag = closed ? <Tag c="green">Closed</Tag>
-    : approved ? <Tag c="teal">Approved</Tag>
-    : awaitingChair ? <Tag c="amber">Submitted — with the Chair</Tag>
-    : returned ? <Tag c="red">Returned for revision</Tag>
-    : <Tag c="grey">Draft</Tag>;
   const stateLabel = closed ? 'Closed' : approved ? 'Approved' : awaitingChair ? 'Submitted — with the Chair'
     : returned ? 'Returned for revision' : 'Draft';
 
@@ -6529,56 +6525,128 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
     }finally{ setExporting(false); }
   };
 
+  /* Layout (01 Oct, the prototype's MOM editor): write-up banner and an
+     action bar on top; Meeting Context, Minutes Content (one note per agenda
+     item, with its decisions and tasks) and Outputs on the left; MOM Details,
+     Approval Flow, Outputs Summary and Attendees Present on the right. */
+  const organizerName = holderOr(rec.facilitatorPositionId);
+  const chairName = holderOr(rec.chairPositionId);
+  const presentList = rec.attendees.filter(a=>a.present==='Present');
+  const presentName = a => (a.positionId && DV_POS_HOLDER[a.positionId]) || a.name || posName(a.positionId) || 'Attendee';
+  const pendingWrite = drafting && !minutes.submittedAt;
+  const due = writeupHours!=null && rec.date && rec.end ? addHours(rec.date+' '+rec.end, writeupHours) : null;
+  const late = !!due && pendingWrite && due < nowStamp();
+  const daysLate = late ? Math.max(1, Math.ceil((Date.now()-new Date(due.replace(' ','T')).getTime())/864e5)) : 0;
+  const DONE_OUT = new Set(['Completed','Closed','Cancelled','Rejected','Done','Approved','Implemented']);
+  const outTasks = tasks || [];
+  const outputs = [
+    ...outTasks.map(t=>({key:'t'+t.id, kind:'Task', id:t.id, title:t.name, agendaId:t.agendaItemId,
+      who:t.assigneeName, due:t.due, status:t.status||'New'})),
+    ...decisions.map(d=>({key:'d'+d.id, kind:'Decision', id:d.id, title:d.name, agendaId:d.agendaItemId,
+      who:null, due:null, sub:d.decisionTaken, status:d.status||'Recorded'})),
+  ];
+  const outDone = outputs.filter(o=>DONE_OUT.has(o.status)).length;
+  const agendaRef = id => { const k=rec.agenda.findIndex(x=>x.id===id); return k<0 ? null : `#${rec.agenda[k].seq??k+1} ${rec.agenda[k].title||''}`.trim(); };
+  const badge = closed ? ['approved','Closed'] : approved ? ['approved','Approved']
+    : awaitingChair ? ['chair','With the Chair'] : returned ? ['returned','Returned'] : ['draft','Draft'];
+  const step = (n, name, who, st) => <div className="mom-step" key={n}>
+    <span className={'mom-step-n '+st}>{st==='done' ? <Check size={10}/> : n}</span>
+    <div className="mom-step-t"><b>{name}</b><span>{who||'—'}</span></div>
+    <span className={'mom-step-tag '+st}>{{done:'Done',cur:'Current',wait:'Waiting',ret:'Returned'}[st]}</span>
+  </div>;
+
   return <>
-    <div className="card">
-      <div style={{display:'flex',alignItems:'center',gap:9,marginBottom:12,flexWrap:'wrap'}}>
-        {stateTag}
-        {minutes.signedName && <Tag c="grey">🖊 Signed</Tag>}
-        {closed && <Tag c="grey">🔒 Locked</Tag>}
-        <div style={{flex:1}}/>
-        <Btn k="sm" disabled={exporting} onClick={exportWord}>
-          {exporting ? 'Exporting…' : 'Export to Word'}</Btn>
+    {pendingWrite && due && <div className={'mom-te'+(late?' late':'')}>
+      <span className="mom-te-ic"><Clock size={15}/></span>
+      <div className="mom-te-t">
+        <b>{late ? 'MOM Write-Up Period Exceeded' : 'MOM write-up period'}</b>
+        <span>AG-16 / OD-09a: the Minutes must be submitted within <strong>{writeupHours} hours</strong> of
+          the meeting ending. Meeting held {fmtD(rec.date)} — deadline {late?'was':'is'} {fmtDT(due)}.</span>
       </div>
-      <KVBlock items={[
-        ['Submitted', fmtISODT(minutes.submittedAt)],
-        ['Approved',  fmtISODT(minutes.approvedAt)],
-        ['Closed',    fmtISODT(minutes.closedAt)],
-        ['Signed by', posName(minutes.signedByPositionId)||minutes.signedName||'—'],
-        ['Signed on', minutes.signedDate
-          ? fmtD(minutes.signedDate)+(minutes.signedTime?' · '+minutes.signedTime:'') : '—'],
-      ]}/>
-      {returned && <Note k="err"><b>Returned by the Meeting Chair.</b> {minutes.returnReason}</Note>}
-      {closed && <Note k="lock"><b>Closed and locked.</b> A correction must be made as a new version
-        or an addendum, never by editing this record.</Note>}
+      <span className="mom-te-c">{late ? `+${daysLate} day${daysLate===1?'':'s'}` : 'On time'}</span>
+    </div>}
+
+    <div className="card mom-bar">
+      <span className={'cs-badge '+badge[0]}><i/>{badge[1]}</span>
+      <span className="cs-mono mom-code">{momCode(minutes)}</span>
+      <span className="muted">· Meeting held {rec.date ? fmtD(rec.date) : '—'}</span>
+      {minutes.signedName && <span className="cs-badge chair"><i/>Signed</span>}
+      {closed && <span className="cs-badge void"><Lock size={10}/>Locked</span>}
+      <div style={{flex:1}}/>
+      <button type="button" className="cs-btn ghost lg" disabled={exporting} onClick={exportWord}>
+        <Download size={13}/>{exporting ? 'Exporting…' : 'Export to Word'}</button>
+      {drafting &&
+        <button type="button" className="cs-btn primary lg" disabled={!canSubmit||busy==='submit'} onClick={submit}
+          title={canSubmit ? 'Send the Minutes to the Meeting Chair' : 'Every covered agenda item needs a note first'}>
+          <Send size={13}/>{busy==='submit'?'Submitting…':'Submit for Approval'}</button>}
+      {awaitingChair && <>
+        <button type="button" className="cs-btn danger lg" disabled={!!busy} onClick={()=>setReturning(true)}>
+          <RotateCcw size={13}/>Return for revision</button>
+        <button type="button" className="cs-btn green lg" disabled={busy==='approve'} onClick={approve}>
+          <Check size={13}/>{busy==='approve'?'Approving…':'Approve and sign'}</button></>}
+      {approved &&
+        <button type="button" className="cs-btn primary lg" disabled={busy==='close'} onClick={close}>
+          <Lock size={13}/>{busy==='close'?'Closing…':'Close the Minutes'}</button>}
     </div>
 
-    <div className="card flush">
-      <div className="card-hd"><h2>Discussion Notes</h2>
-        <div className="csub">One note per Agenda Item, and a coverage flag.
-          {editable ? ' Notes save when you click away from the box.'
-                    : ' Read-only in this state.'}</div></div>
-      {rec.agenda.length===0
-        ? <div style={{padding:'8px 17px 17px'}}><Empty>No Agenda Item on this occurrence.</Empty></div>
-        : <div style={{padding:'4px 17px 17px',display:'flex',flexDirection:'column',gap:14}}>
+    {drafting && !!missingNotes.length &&
+      <Note k="warn">{missingNotes.length} Agenda Item{missingNotes.length>1?'s have':' has'} no
+        Discussion Note: {missingNotes.map(a=>a.title||'—').join(', ')}. Add a note, or mark the
+        item <b>No</b> if it was not covered.</Note>}
+    {returned && <Note k="err"><b>Returned by the Meeting Chair.</b> {minutes.returnReason}</Note>}
+    {closed && <Note k="lock"><b>Closed and locked.</b> A correction must be made as a new version
+      or an addendum, never by editing this record.</Note>}
+
+    <div className="cs-two-col mtgd-cols">
+      <div className="mtgd-main">
+        <section className="card mom-ctx">
+          <div className="mtgd-card-top">
+            <span className="cs-icon green" aria-hidden="true"><Users size={15}/></span>
+            <h2>Meeting Context</h2>
+          </div>
+          <div className="mom-ctx-grid">
+            <div><label>Setup</label><b>{setupName || (rec.adhocType ? 'Ad hoc — '+rec.adhocType : rec.name)}</b></div>
+            <div><label>Chair</label><b>{chairName||'—'}</b></div>
+            <div><label>Date held</label><b className="cs-mono">{rec.date ? fmtD(rec.date) : '—'}{rec.start ? ' · '+rec.start : ''}</b></div>
+            <div><label>Attendance</label><b>
+              {presentList.length} of {rec.attendees.length}
+              {quorum?.state==='met' ? <span className="mom-ok"> (Quorum met)</span>
+                : quorum?.state==='missed' ? <span className="mom-bad"> (Quorum not met)</span>
+                : quorum?.state==='incomplete' ? <span className="mom-warn"> (Attendance incomplete)</span> : null}</b></div>
+          </div>
+        </section>
+
+        <section className="card mom-content">
+          <div className="mtgd-card-top">
+            <span className="cs-icon gold" aria-hidden="true"><FileText size={15}/></span>
+            <h2>Minutes Content</h2>
+            <span className="cs-mono mtgd-count">{rec.agenda.length} item{rec.agenda.length===1?'':'s'}</span>
+          </div>
+          <div className="mom-hint">One note per agenda item and whether it was covered.
+            {editable ? ' Notes save when you click away from the box. An item marked No needs no note.'
+                      : ' Read-only in this state.'}</div>
+          {rec.agenda.length===0
+            ? <Empty>No Agenda Item on this occurrence.</Empty>
+            : <div className="mom-items">
             {rec.agenda.map((a,i)=>{
               const val = textFor(a);
               const over = val.trim().length>MOM_NOTE_MAX;
               const conf = isConf(a);
               const note = noteFor[a.id];
               const viewerIds = new Set((note?.viewers||[]).map(v=>v.userId));
-              if(!canRead(a)) return <div key={a.id} style={{borderTop:i?'1px solid var(--border)':'none',paddingTop:i?13:4}}>
-                <div style={{display:'flex',alignItems:'baseline',gap:9,flexWrap:'wrap',marginBottom:6}}>
-                  <span className="dim" style={{fontSize:12}}>{a.seq??i+1}</span>
-                  <b style={{fontSize:13.5,flex:'1 1 220px'}}>{a.title||'—'}</b>
+              if(!canRead(a)) return <div key={a.id} className={'mom-item'+(notCovered(a)?' off':'')}>
+                <div className="mom-item-hd">
+                  <span className="mom-n">{a.seq??i+1}</span>
+                  <b className="mom-t">{a.title||'—'}</b>
                   <Tag c="red">🔒 Confidential</Tag>
                 </div>
                 <div style={{fontSize:12.5,color:'var(--muted)'}}>
                   This item is confidential. Only the people the Organizer chose can read its notes and decisions.</div>
               </div>;
-              return <div key={a.id} style={{borderTop:i?'1px solid var(--border)':'none',paddingTop:i?13:4}}>
-                <div style={{display:'flex',alignItems:'baseline',gap:9,flexWrap:'wrap',marginBottom:6}}>
-                  <span className="dim" style={{fontSize:12}}>{a.seq??i+1}</span>
-                  <b style={{fontSize:13.5,flex:'1 1 220px'}}>{a.title||'—'}</b>
+              return <div key={a.id} className={'mom-item'+(notCovered(a)?' off':'')}>
+                <div className="mom-item-hd">
+                  <span className="mom-n">{a.seq??i+1}</span>
+                  <b className="mom-t">{a.title||'—'}</b>
                   {conf && <Tag c="red">🔒 Confidential</Tag>}
                   {editable
                     ? <Pills opts={['Yes','No']} val={a.covered==='Yes'?'Yes':a.covered==='No'?'No':null}
@@ -6618,6 +6686,7 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
                         Visible to {attendeeUsers.filter(u=>u.userId && viewerIds.has(u.userId)).map(u=>u.name).join(', ')
                           || 'nobody besides the Organizer and the Chair'}.</div>
                     : null}
+                <label className="mom-lbl">Discussion note{notCovered(a) ? ' (optional — not covered)' : ' *'}</label>
                 {editable
                   ? <>
                       <textarea rows={3} value={val} disabled={savingNote===a.id}
@@ -6626,10 +6695,7 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
                           : 'What was discussed, decided or carried forward…'}
                         onChange={e=>setDrafts(d=>({...d,[a.id]:e.target.value}))}
                         onBlur={()=>saveNote(a)}
-                        style={{width:'100%',resize:'vertical',fontFamily:'inherit',fontSize:13,
-                                padding:'8px 10px',borderRadius:3,
-                                border:'1px solid var(--'+(over?'red':'border-d')+')',
-                                background:'var(--panel)',color:'var(--ink)'}}/>
+                        className={'mom-input'+(over?' bad':'')}/>
                       <div style={{display:'flex',justifyContent:'space-between',fontSize:11,marginTop:3}}>
                         <span style={{color:over?'var(--red)':'var(--muted)'}}>
                           {over ? `${val.trim().length} characters — ${MOM_NOTE_MAX} max.`
@@ -6637,8 +6703,7 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
                         <span className="dim">{val.trim().length} / {MOM_NOTE_MAX}</span>
                       </div>
                     </>
-                  : <div style={{fontSize:12.5,color:val?'var(--ink-2)':'var(--muted)',whiteSpace:'pre-wrap'}}>
-                      {val||'No note recorded'}</div>}
+                  : <div className={'mom-read'+(val?'':' none')}>{val||'No note recorded'}</div>}
                 {/* Decisions taken on this agenda item -- wlog_decision's
                     lm_MeetingOccurrenceAgenda (DecisionLink.jsx). New ones only
                     while the Minutes can still be edited. */}
@@ -6648,46 +6713,82 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
                 <AgendaTaskPanel rec={rec} item={a} tasks={tasks} canAdd={editable}
                   onRaised={onTasksChanged}/>
               </div>;})}
-          </div>}
-    </div>
+              </div>}
+        </section>
 
-    <div className="card">
-      <h2>Actions</h2>
-      {drafting && <>
-        <div className="csub">The MOM Recorder writes the Minutes. Every covered Agenda Item needs a
-          Discussion Note before they can be submitted. An item marked <b>No</b> (not covered) needs none.</div>
-        {!!missingNotes.length &&
-          <Note k="warn">{missingNotes.length} Agenda Item{missingNotes.length>1?'s have':' has'} no
-            Discussion Note: {missingNotes.map(a=>a.title||'—').join(', ')}. Add a note, or mark the
-            item <b>No</b> if it was not covered.</Note>}
-        <Btn k="pri" disabled={!canSubmit||busy==='submit'} onClick={submit}>
-          {busy==='submit'?'Submitting…':'Submit to the Meeting Chair'}</Btn>
-      </>}
+        <section className="card mom-outputs">
+          <div className="mtgd-card-top">
+            <span className="cs-icon gold" aria-hidden="true"><CheckSquare size={15}/></span>
+            <h2>Outputs (Tasks &amp; Decisions)</h2>
+            <span className="cs-mono mtgd-count">{outputs.length}</span>
+          </div>
+          <div className="mom-hint">Raised on each agenda item above{editable ? ' — use “+ Raise a task” and the decision panel there' : ''}.
+            {tasks===null ? ' Tasks can’t be linked to a meeting in this environment yet, so only decisions are listed.' : ''}</div>
+          {outputs.length===0
+            ? <Empty>No task or decision raised in this meeting yet.</Empty>
+            : <div className="mom-outs">{outputs.map(o=>
+                <div key={o.key} className={'mom-out '+(o.kind==='Task'?'task':'dec')}>
+                  <div className="mom-out-hd">
+                    <span className="mom-out-ic">{o.kind==='Task' ? <CheckSquare size={10}/> : <Clock size={10}/>}</span>
+                    <b>{o.kind}: {o.title}</b>
+                    <span className={'cs-badge '+(DONE_OUT.has(o.status)?'approved':'pending')}><i/>{o.status}</span>
+                  </div>
+                  <div className="mom-out-m">
+                    {[agendaRef(o.agendaId), o.who && 'Assigned to '+o.who, o.due && 'Due '+fmtDS(o.due), o.sub]
+                      .filter(Boolean).join(' · ') || '—'}
+                    {o.kind==='Task' && <> · <OpenRecord kind="Task" id={o.id} label="Open ↗" asLink/></>}
+                  </div>
+                </div>)}</div>}
+        </section>
+      </div>
 
-      {awaitingChair && <>
-        <div className="csub">Waiting on <b>{posName(rec.chairPositionId)||'the Meeting Chair'}</b>.
-          Approving captures the signature — there is no separate signing step.</div>
-        <div className="btn-row">
-          <Btn k="pri" disabled={busy==='approve'} onClick={approve}>
-            {busy==='approve'?'Approving…':'✓ Approve and sign'}</Btn>
-          <Btn k="wrn" disabled={!!busy} onClick={()=>setReturning(true)}>Return for revision</Btn>
-        </div>
-      </>}
+      <aside className="mtgd-side">
+        <section className="card">
+          <h2 className="mtgd-h">MOM Details</h2>
+          <div className="mtgd-kv">
+            <div><span>ID</span><b className="cs-mono">{momCode(minutes)}</b></div>
+            <div><span>Meeting</span><b>{rec.name}</b></div>
+            <div><span>Date held</span><b className="cs-mono">{rec.date ? fmtD(rec.date) : '—'}</b></div>
+            <div><span>Recorder</span><b>{organizerName||'—'}</b></div>
+            <div><span>Chair</span><b>{chairName||'—'}</b></div>
+            <div><span>Status</span><b><span className={'cs-badge '+badge[0]}><i/>{stateLabel}</span></b></div>
+            {minutes.submittedAt && <div><span>Submitted</span><b className="cs-mono">{fmtISODT(minutes.submittedAt)}</b></div>}
+            {minutes.signedDate && <div><span>Signed</span><b>{posName(minutes.signedByPositionId)||minutes.signedName||'—'} · {fmtD(minutes.signedDate)}{minutes.signedTime?' '+minutes.signedTime:''}</b></div>}
+            {minutes.closedAt && <div><span>Closed</span><b className="cs-mono">{fmtISODT(minutes.closedAt)}</b></div>}
+          </div>
+        </section>
 
-      {approved && <>
-        <div className="csub">Approved and signed. Closing finalises the record
-          and releases the Meeting Governance Audit Grid.</div>
-        <Btn k="pri" disabled={busy==='close'} onClick={close}>
-          {busy==='close'?'Closing…':'Close the Minutes'}</Btn>
-      </>}
+        <section className="card mom-flow">
+          <h2 className="mtgd-h">Approval Flow</h2>
+          <div className="mom-hint">The Chair's approval is the signature.</div>
+          {step(1, 'Organizer submits MOM', organizerName, returned ? 'ret' : drafting ? 'cur' : 'done')}
+          {step(2, 'Chair reviews & signs', chairName, awaitingChair ? 'cur' : (approved||closed) ? 'done' : 'wait')}
+          {step(3, 'Close & release the Audit Grid', 'Organizer', approved ? 'cur' : closed ? 'done' : 'wait')}
+        </section>
 
-      {closed && <Note k="ok">Closed on {fmtISODT(minutes.closedAt)}. These Minutes can now be used
-        as an input to a later Meeting.</Note>}
+        <section className="card">
+          <h2 className="mtgd-h">Outputs Summary</h2>
+          <div className="mom-sum">
+            <div><span>Tasks</span><b>{tasks===null ? '—' : outTasks.length}</b></div>
+            <div><span>Decisions</span><b>{decisions.length}</b></div>
+          </div>
+          <div className="mtgd-qbar">
+            <span className="mtgd-bar"><i style={{width:(outputs.length?outDone/outputs.length*100:0)+'%'}}/></span>
+            <span className="cs-mono mtgd-count">{outDone}/{outputs.length}</span>
+          </div>
+          <div className="mom-hint" style={{marginTop:4}}>{outDone} of {outputs.length} output{outputs.length===1?'':'s'} completed</div>
+        </section>
 
-      <div className="sep"/>
-      <Note k="info" ic="—">Approving would also activate any draft TMS Tasks and Decision Requests
-        raised from this Meeting. Neither table exists yet, so there is nothing to activate — this
-        becomes correct on its own once they are built.</Note>
+        <section className="card">
+          <h2 className="mtgd-h">Attendees Present</h2>
+          {presentList.length===0
+            ? <div className="mom-hint">{rec.status==='Held' ? 'No attendance recorded yet — see the Attendance tab.' : 'Recorded once the meeting is held.'}</div>
+            : <div className="mom-chips">
+                {presentList.slice(0,8).map(a=><span key={a.id} className="mom-chip"><i/>{presentName(a)}</span>)}
+                {presentList.length>8 && <span className="mom-chip"><i/>+{presentList.length-8} more</span>}
+              </div>}
+        </section>
+      </aside>
     </div>
 
     {returning && <ReturnModal title="Return the Minutes to the Recorder"
@@ -8046,7 +8147,9 @@ function DvMeetingDetail({rec,back}){
       {!govLoading && minutes &&
         <DvMinutesBody rec={rec} minutes={minutes} accred={accred} grids={grids}
           posName={posName} onReload={reloadGovernance}
-          tasks={mtgTasks} onTasksChanged={()=>setTasksTick(t=>t+1)}/>}
+          tasks={mtgTasks} onTasksChanged={()=>setTasksTick(t=>t+1)}
+          decisions={dvDecisions.filter(d=>d.agendaItemId && agendaById.has(d.agendaItemId))}
+          quorum={quorum} writeupHours={S.momWriteupHours} setupName={dvTpl(rec.templateId)}/>}
     </>}
 
     {tab==='grid' && <>

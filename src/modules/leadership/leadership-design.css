@@ -810,3 +810,81 @@
 .cs-mtgd tr.mtgd-spform .mtgd-addatt{ align-items:flex-end; border-bottom:0 }
 .cs-mtgd tr.mtgd-spform .mtgd-addatt > :first-child{ flex:1 1 320px; min-width:0; margin:0 }
 .cs-mtgd tr.mtgd-spform input{ width:100% }
+
+/* ---------- Minutes tab (01 Oct): the prototype's MOM editor ------------- */
+.cs-mtgd .mom-te{ display:flex; align-items:center; gap:12px; padding:12px 16px; border-radius:14px;
+  border:1px solid var(--cs-border); background:var(--cs-warn-soft) }
+.cs-mtgd .mom-te.late{ background:var(--cs-danger-soft); border-color:rgba(178,58,58,.25) }
+.cs-mtgd .mom-te-ic{ flex:0 0 30px; width:30px; height:30px; border-radius:50%; display:grid; place-items:center;
+  background:#fff; color:var(--cs-warning) }
+.cs-mtgd .mom-te.late .mom-te-ic{ color:var(--cs-danger) }
+.cs-mtgd .mom-te-t{ flex:1; min-width:0; display:flex; flex-direction:column; gap:2px }
+.cs-mtgd .mom-te-t b{ font:700 12px var(--cs-sans); color:var(--cs-text) }
+.cs-mtgd .mom-te-t span{ font:400 10.5px var(--cs-body-font); color:var(--cs-muted) }
+.cs-mtgd .mom-te-c{ font:600 16px var(--cs-mono); color:var(--cs-warning); white-space:nowrap }
+.cs-mtgd .mom-te.late .mom-te-c{ color:var(--cs-danger) }
+
+.cs-mtgd .mom-bar{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:12px 16px }
+.cs-mtgd .mom-code{ font:500 11px var(--cs-mono); color:var(--cs-muted) }
+.cs-mtgd .mom-bar .muted{ font:400 11px var(--cs-body-font) }
+.cs-mtgd .mom-bar .cs-btn:disabled{ opacity:.55; cursor:not-allowed; filter:none }
+
+.cs-mtgd .mom-hint{ font:400 11px var(--cs-body-font); color:var(--cs-muted); margin:-4px 0 12px }
+.cs-mtgd .mom-ctx-grid{ display:grid; grid-template-columns:1fr 1fr; gap:4px 18px }
+.cs-mtgd .mom-ctx-grid > div{ display:flex; flex-direction:column; gap:3px; padding:7px 0; border-bottom:1px solid var(--cs-border); min-width:0 }
+.cs-mtgd .mom-ctx-grid label, .cs-mtgd .mom-lbl{ font:700 9px var(--cs-sans); letter-spacing:.9px; text-transform:uppercase; color:var(--cs-dim) }
+.cs-mtgd .mom-ctx-grid b{ font:500 12.5px var(--cs-sans); color:var(--cs-text); overflow-wrap:anywhere }
+.cs-mtgd .mom-ctx-grid b.cs-mono{ font:500 12px var(--cs-mono) }
+.cs-mtgd .mom-ok{ color:var(--cs-green) } .cs-mtgd .mom-bad{ color:var(--cs-danger) } .cs-mtgd .mom-warn{ color:var(--cs-warning) }
+
+.cs-mtgd .mom-items{ display:flex; flex-direction:column; gap:12px }
+.cs-mtgd .mom-item{ border:1px solid var(--cs-border); border-radius:12px; padding:12px 14px; background:#fff }
+.cs-mtgd .mom-item.off{ background:var(--cs-hover) }
+.cs-mtgd .mom-item-hd{ display:flex; align-items:center; gap:9px; flex-wrap:wrap; margin-bottom:8px }
+.cs-mtgd .mom-n{ font:600 11px var(--cs-mono); color:var(--cs-gold); min-width:16px }
+.cs-mtgd .mom-t{ font:600 13px var(--cs-sans); color:var(--cs-text); flex:1 1 220px; min-width:0 }
+.cs-mtgd .mom-lbl{ display:block; margin:2px 0 5px }
+.cs-mtgd .mom-input{ width:100%; resize:vertical; min-height:74px; padding:10px 12px; border-radius:10px;
+  border:1px solid var(--cs-border); background:#fff; font:400 12.5px/1.5 var(--cs-body-font); color:var(--cs-text);
+  transition:border-color .2s var(--cs-ease), box-shadow .2s var(--cs-ease) }
+.cs-mtgd .mom-input:focus{ outline:none; border-color:var(--cs-gold); box-shadow:0 0 0 3px var(--cs-gold-soft) }
+.cs-mtgd .mom-input.bad{ border-color:var(--cs-danger) }
+.cs-mtgd .mom-read{ font:400 12.5px/1.55 var(--cs-body-font); color:var(--cs-text); white-space:pre-wrap;
+  padding:9px 12px; border-radius:10px; background:var(--cs-hover) }
+.cs-mtgd .mom-read.none{ color:var(--cs-dim); font-style:italic }
+
+.cs-mtgd .mom-outs{ display:flex; flex-direction:column; gap:8px }
+.cs-mtgd .mom-out{ border:1px solid var(--cs-border); border-radius:10px; padding:9px 12px; background:var(--cs-hover) }
+.cs-mtgd .mom-out.dec{ background:var(--cs-warn-soft); border-color:rgba(201,138,30,.3) }
+.cs-mtgd .mom-out-hd{ display:flex; align-items:center; gap:7px }
+.cs-mtgd .mom-out-hd b{ flex:1; min-width:0; font:700 11.5px var(--cs-sans); color:var(--cs-text); overflow-wrap:anywhere }
+.cs-mtgd .mom-out-ic{ flex:0 0 20px; width:20px; height:20px; border-radius:6px; display:grid; place-items:center;
+  color:#fff; background:var(--cs-grad-green) }
+.cs-mtgd .mom-out.dec .mom-out-ic{ background:var(--cs-grad-gold) }
+.cs-mtgd .mom-out-m{ font:400 10.5px var(--cs-body-font); color:var(--cs-muted); margin:4px 0 0 27px }
+
+.cs-mtgd .mom-flow .mom-step{ display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--cs-border) }
+.cs-mtgd .mom-flow .mom-step:last-child{ border-bottom:none }
+.cs-mtgd .mom-step-n{ flex:0 0 22px; width:22px; height:22px; border-radius:50%; display:grid; place-items:center;
+  font:600 9px var(--cs-mono); background:var(--cs-hover); color:var(--cs-dim); border:1px solid var(--cs-border) }
+.cs-mtgd .mom-step-n.cur{ background:var(--cs-gold-soft); color:var(--cs-gold); border-color:var(--cs-gold) }
+.cs-mtgd .mom-step-n.done{ background:var(--cs-grad-green); color:#fff; border-color:transparent }
+.cs-mtgd .mom-step-n.ret{ background:var(--cs-danger-soft); color:var(--cs-danger); border-color:var(--cs-danger) }
+.cs-mtgd .mom-step-t{ flex:1; min-width:0; display:flex; flex-direction:column }
+.cs-mtgd .mom-step-t b{ font:600 11px var(--cs-sans); color:var(--cs-text) }
+.cs-mtgd .mom-step-t span{ font:400 10px var(--cs-body-font); color:var(--cs-muted) }
+.cs-mtgd .mom-step-tag{ font:600 9px var(--cs-sans); padding:2px 8px; border-radius:999px; background:var(--cs-hover); color:var(--cs-dim) }
+.cs-mtgd .mom-step-tag.cur{ background:var(--cs-gold-soft); color:var(--cs-gold) }
+.cs-mtgd .mom-step-tag.done{ background:var(--cs-green-soft); color:var(--cs-green) }
+.cs-mtgd .mom-step-tag.ret{ background:var(--cs-danger-soft); color:var(--cs-danger) }
+
+.cs-mtgd .mom-sum{ display:flex; flex-direction:column; gap:6px }
+.cs-mtgd .mom-sum > div{ display:flex; justify-content:space-between; align-items:center; padding:6px 10px;
+  border-radius:8px; background:var(--cs-hover) }
+.cs-mtgd .mom-sum span{ font:500 11px var(--cs-sans); color:var(--cs-text) }
+.cs-mtgd .mom-sum b{ font:700 13px var(--cs-mono); color:var(--cs-text) }
+.cs-mtgd .mom-chips{ display:flex; flex-wrap:wrap; gap:5px }
+.cs-mtgd .mom-chip{ display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:999px;
+  background:var(--cs-green-soft); font:500 10px var(--cs-sans); color:var(--cs-green) }
+.cs-mtgd .mom-chip i{ width:5px; height:5px; border-radius:50%; background:var(--cs-green) }
+@media (max-width:560px){ .cs-mtgd .mom-ctx-grid{ grid-template-columns:1fr } .cs-mtgd .mom-te{ flex-wrap:wrap } }
