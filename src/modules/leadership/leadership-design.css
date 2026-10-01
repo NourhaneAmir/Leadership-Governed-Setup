@@ -795,3 +795,9 @@
 .agt-t{ flex:1 1 220px; min-width:0; font-weight:600 }
 .agt-late{ color:#B23A3A }
 .agt-form{ margin-top:8px }
+
+/* Add an attendee before the meeting is held (01 Oct). */
+.cs-mtgd .mtgd-addatt{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:10px 17px 12px;
+  background:var(--cs-hover); border-bottom:1px solid var(--cs-border) }
+.cs-mtgd .mtgd-addatt select{ border:1px solid var(--cs-border); border-radius:10px; padding:8px 10px; background:#fff;
+  font:400 12px var(--cs-sans); color:var(--cs-text) }

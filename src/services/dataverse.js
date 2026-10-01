@@ -4855,6 +4855,27 @@ export async function updateMeetingOccurrenceStatus(id, status){
 }
 
 /** Patches ONLY lm_present on one lm_meetingoccurrenceattendeeses row. */
+/** Adds one Attendee to an existing occurrence (01 Oct) -- the same row
+ *  createMeetingOccurrence() writes per attendee: the Position, a name, the
+ *  type (Required / Optional) and attendance "Not Yet Recorded". Meant for a
+ *  Scheduled meeting; attendance is recorded once it is Held. */
+export async function addMeetingOccurrenceAttendee(occurrenceId, { positionId, name, type }){
+  if(!occurrenceId || !positionId)
+    return { id:null, errors:[{ table:'lm_meetingoccurrenceattendeeses', error:new Error('a meeting and a Position are required') }] };
+  try{
+    const created = await Lm_meetingoccurrenceattendeesesService.create({
+      'lm_MeetingOccurrence@odata.bind': `/lm_meetingoccurrences(${occurrenceId})`,
+      'lm_AttendeePosition@odata.bind': `/cr603_organizationstructures(${positionId})`,
+      lm_name: name || undefined,
+      lm_present: ATTENDEE_PRESENT_KEY['Not Yet Recorded'],
+      lm_type: ATTENDEE_TYPE_KEY[type] ?? ATTENDEE_TYPE_KEY.Required,
+    });
+    return { id: idOrThrow(created, 'lm_meetingoccurrenceattendeesid'), errors: [] };
+  }catch(e){
+    return { id:null, errors:[{ table:'lm_meetingoccurrenceattendeeses', error:e }] };
+  }
+}
+
 export async function updateMeetingOccurrenceAttendance(attendeeId, present){
   try{
     const result = await Lm_meetingoccurrenceattendeesesService.update(attendeeId, {

@@ -35,7 +35,7 @@ import { fetchMeetingOccurrences, fetchReportOccurrences, createMeetingOccurrenc
          cancelMeetingOccurrence, recordAgendaDistribution, createMeetingOccurrenceAgendaItem,
          archiveMeetingOccurrenceAgendaItem, updateMeetingOccurrenceAgendaSequence,
          fetchMeetingOccurrenceDepartments, fetchMeetingOccurrenceLinkedReports, fetchMeetingTemplateInputReports,
-         fetchTasksForMeeting,
+         fetchTasksForMeeting, addMeetingOccurrenceAttendee,
          linkMeetingOccurrenceReport, unlinkMeetingOccurrenceReport,
          attachReportOccurrenceToLink,
          fetchBusinessUnits, fetchPositions, fetchDepartments, fetchFunctions, fetchRegions,
@@ -7056,6 +7056,27 @@ function DvMeetingDetail({rec,back}){
   const setTab = t=>setSel(v=>({...v,mtgTab:t}));
   const [markingHeld,setMarkingHeld]=useState(false);
   const [attSavingId,setAttSavingId]=useState(null);
+  /* Add an attendee before the meeting is held (01 Oct). */
+  const [addingAtt,setAddingAtt]=useState(false);
+  const [newAtt,setNewAtt]=useState({positionId:'', type:'Required'});
+  const [savingAtt,setSavingAtt]=useState(false);
+  const addAttendee = async () => {
+    if(!newAtt.positionId) return;
+    setSavingAtt(true);
+    try{
+      const {id,errors} = await addMeetingOccurrenceAttendee(rec.id, {
+        positionId:newAtt.positionId, type:newAtt.type,
+        name: DV_POS_HOLDER[newAtt.positionId] || dvPos(newAtt.positionId) || undefined });
+      if(!id){
+        console.warn('[dataverse] addMeetingOccurrenceAttendee() failed:', errors);
+        toast('Not added','Adding this attendee failed. Check the console for details.','err');
+        return;
+      }
+      toast('Attendee added', `${DV_POS_HOLDER[newAtt.positionId] || dvPos(newAtt.positionId)} is on this meeting as ${newAtt.type}.`,'ok');
+      setNewAtt({positionId:'', type:'Required'}); setAddingAtt(false);
+      await refreshOccurrences();
+    }finally{ setSavingAtt(false); }
+  };
   const [editing,setEditing]=useState(false);
   const [cancelling,setCancelling]=useState(false);
   const [rescheduling,setRescheduling]=useState(false);
@@ -7843,7 +7864,22 @@ function DvMeetingDetail({rec,back}){
           {requiredPresent} of {required.length} Required present</Tag>}
         {quorum.state!=='none' && quorum.state!=='pending' &&
           <Tag c={QUORUM_TAG[quorum.state][0]}>{QUORUM_TAG[quorum.state][1]}</Tag>}
+        {rec.status==='Scheduled' &&
+          <Btn k="sm" onClick={()=>setAddingAtt(v=>!v)}>{addingAtt?'Close':'+ Add attendee'}</Btn>}
       </div>
+      {rec.status==='Scheduled' && addingAtt && <div className="mtgd-addatt">
+        <div style={{flex:'1 1 260px',minWidth:0}}>
+          <PositionSelect value={newAtt.positionId} onChange={v=>setNewAtt(x=>({...x,positionId:v}))}
+            opts={DV_POS_LIST.filter(p=>!rec.attendees.some(a=>a.positionId===p.id))}
+            placeholder="Search a Position or a person…" emptyText="No Position found"/>
+        </div>
+        <select value={newAtt.type} onChange={e=>setNewAtt(x=>({...x,type:e.target.value}))} aria-label="Attendee type">
+          <option>Required</option><option>Optional</option></select>
+        <Btn k="pri" disabled={!newAtt.positionId||savingAtt} onClick={addAttendee}>
+          {savingAtt?'Adding…':'Add to this meeting'}</Btn>
+        <div className="t-sub" style={{flexBasis:'100%'}}>Only Required attendees count towards quorum. Attendance
+          is recorded once the meeting is held.</div>
+      </div>}
       {quorum.state!=='none' &&
         <div style={{padding:'0 17px 10px',fontSize:12,color:'var(--muted)'}}>{quorumLine(quorum)}</div>}
       {rec.status!=='Held' &&
