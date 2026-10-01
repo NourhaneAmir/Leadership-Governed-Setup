@@ -3824,6 +3824,7 @@ export async function fetchMeetingOccurrences(){
                'lm_torpolicylink',
                '_lm_meetingtemplate_value','_lm_businessunit_value','_lm_chairmanposition_value',
                '_lm_region_value','_lm_department_value','_lm_facilitatorposition_value',
+               '_lm_meetingcochairman_value',
                '_lm_rescheduledfrom_value','modifiedon','createdon'],
     }),
     Lm_meetingoccurrenceagendasService.getAll({
@@ -3883,6 +3884,7 @@ export async function fetchMeetingOccurrences(){
       /* The occurrence's OWN TOR / Policy link -- AG-01 and AG-02 read this
          (01 Oct); empty = those questions are Not Applicable. */
       torLink: o.lm_torpolicylink || null,
+      coChairPositionId: o._lm_meetingcochairman_value || null,
       templateId: o._lm_meetingtemplate_value || null,
       businessUnitId: o._lm_businessunit_value || null,
       regionId: o._lm_region_value || null,

@@ -1541,22 +1541,22 @@ const SCREENS = [
   {id:'dec',  group:'Governance',    label:'Decisions',              Icon:CheckSquare,  wide:true,
    Screen:ScreenDecisions,
    hint:'The Decision register: every Decision and Decision Request whatever raised it.'},
-  {id:'build', group:'Artifact',     label:'Build a report/plan',    Icon:PenLine,        wide:true,
+  {id:'build', group:'Artifact',     label:'Build a report/plan', comingSoon:true,    Icon:PenLine,        wide:true,
    Screen:ScreenBuildReport,
    hint:'Write a Draft or Returned report — sections, angles, citations — and submit it for review.'},
-  {id:'orpt', group:'Artifact',      label:'Reports / Plans',        Icon:Layers,         wide:true,
+  {id:'orpt', group:'Artifact',      label:'Reports / Plans', comingSoon:true,        Icon:Layers,         wide:true,
    Screen:ScreenOrgReports,
    hint:'Organizational reports and plans, in and out, with their authors and citations.'},
-  {id:'bi',   group:'Artifact',      label:'Business intelligence',  Icon:LineChart,      wide:true,
+  {id:'bi',   group:'Artifact',      label:'Business intelligence', comingSoon:true,  Icon:LineChart,      wide:true,
    Screen:ScreenBI,
    hint:'The BI report behind each measure — find it by Process, owning department or report.'},
-  {id:'chain', group:'Artifact',     label:'Strategy chain',         Icon:Target,         wide:true,
+  {id:'chain', group:'Artifact',     label:'Strategy chain', comingSoon:true,         Icon:Target,         wide:true,
    Screen:ScreenStrategyChain,
    hint:'Each Strategy from its KPI to execution and actuals, its Projects and POCs, and what reports say about them.'},
   {id:'comms', group:'Exchange',     label:'Communication & execution', Icon:MessagesSquare, wide:true,
    Screen:ScreenComms,
    hint:'Reports sent to you and by you, and the tasks you are accountable for.'},
-  {id:'hier', group:'Artifact',      label:'Reporting hierarchy',    Icon:Network,        wide:true,
+  {id:'hier', group:'Artifact',      label:'Reporting hierarchy', comingSoon:true,    Icon:Network,        wide:true,
    Screen:ScreenHierarchy,
    hint:'Every report/plan and every child it references, as one tree.'},
   /* Hidden from the sidebar on purpose -- NOT dead code. `go('rpt', id)` is
@@ -1584,6 +1584,9 @@ const SCREENS = [
 ];
 
 /* everything below is derived — nothing else in the file lists screens */
+/* comingSoon (01 Oct, user's instruction): the Artifact entries stay listed
+   but cannot be opened from the sidebar for now. Their screens, routes and
+   code are untouched -- delete the flag to switch one back on. */
 const VISIBLE_SCREENS = SCREENS.filter(s=>!s.hidden);
 const NAV = [...new Set(VISIBLE_SCREENS.map(s=>s.group))].map(g=>({
   g, items: VISIBLE_SCREENS.filter(s=>s.group===g),
@@ -1596,8 +1599,13 @@ function Side(){
   return <nav className="side lp-side" id="lp-side-nav" aria-label="Sections" aria-hidden={!navOpen}>
     {NAV.map(g=><div key={g.g}>
       <div className="side-grp">{g.g}</div>
-      {g.items.map(i=>
-        <button key={i.id} type="button" aria-current={screen===i.id?'page':undefined}
+      {g.items.map(i=> i.comingSoon
+        ? <div key={i.id} className="nav-i lp-soon" aria-disabled="true" role="link"
+            title={i.label+' — coming soon'} aria-label={i.label+' — coming soon'}>
+            <span className="nav-n"><i.Icon size={16} strokeWidth={2.25}/></span><span className="lp-nav-label">{i.label}</span>
+            <span className="lp-soon-tag">Soon</span>
+          </div>
+        : <button key={i.id} type="button" aria-current={screen===i.id?'page':undefined}
           aria-label={i.label+(counts[i.id]>0?' — '+counts[i.id]+' open activities':'')}
           title={navOpen?undefined:i.label}
           className={'nav-i'+(screen===i.id?' on':'')} onClick={()=>go(i.id)}>
@@ -2955,10 +2963,31 @@ function App({onSwitch}){
      and Decisions screens still read seeded state directly and are unchanged.
      dvTick is a dependency because the GUID->name maps the live items read from
      are plain objects, not state. */
+  const myPositionIdsById = currentUser?.systemUserId
+    ? DV_POS_LIST.filter(p => p.holderUserId && p.holderUserId === currentUser.systemUserId).map(p => p.id)
+    : [];
+  const myPositionIdsByName = (!myPositionIdsById.length && currentUser?.fullName)
+    ? DV_POS_LIST.filter(p => p.holder && p.holder.toLowerCase() === currentUser.fullName.toLowerCase()).map(p => p.id)
+    : [];
+  const myPositionIds = myPositionIdsById.length ? myPositionIdsById : myPositionIdsByName;
+  /* My meetings (01 Oct, user's rule): the ones where a Position I hold is
+     the Chair, the Co-Chair, the Organizer or an Attendee (or an attendee's
+     delegate). My Workspace -- its list, upcoming, this week and activity --
+     and the sidebar counts read only these. The Meetings screen still lists
+     every meeting. Positions are matched by id (see above). */
+  const myPosKey = myPositionIds.join(',');
+  const isMyMeeting = useCallback(o=>{
+    if(!o) return false;
+    const mine = new Set(myPosKey ? myPosKey.split(',') : []);
+    if(!mine.size) return false;
+    return mine.has(o.chairPositionId) || mine.has(o.coChairPositionId) || mine.has(o.facilitatorPositionId)
+      || (o.attendees||[]).some(a=>mine.has(a.positionId) || mine.has(a.delegatePositionId));
+  },[myPosKey]);
+  const myMeetingOccs = useMemo(()=>dvMeetingOccs.filter(isMyMeeting),[dvMeetingOccs,isMyMeeting]);
   const work = useMemo(()=>{
-    const {due,review,finish}=dvWorkItems(dvMeetingOccs,dvReportOccs);
+    const {due,review,finish}=dvWorkItems(myMeetingOccs,dvReportOccs);
     return {due,review,finish,all:[...due,...review,...finish]};
-  },[dvMeetingOccs,dvReportOccs,dvTick]);
+  },[myMeetingOccs,dvReportOccs,dvTick]);
   /* The calendar reads the occurrence tables, plus one derived kind: a MOM
      Due deadline for every Held Meeting whose write-up genuinely still owes
      (no Minutes row, or one that was never submitted) -- the same test
@@ -3007,18 +3036,14 @@ function App({onSwitch}){
      when the id match finds nothing, covering a Position whose holder
      chain doesn't resolve to a systemuser for some reason (hr_User blank,
      or an Organization Structure row Current Employee never filled in). */
-  const myPositionIdsById = currentUser?.systemUserId
-    ? DV_POS_LIST.filter(p => p.holderUserId && p.holderUserId === currentUser.systemUserId).map(p => p.id)
-    : [];
-  const myPositionIdsByName = (!myPositionIdsById.length && currentUser?.fullName)
-    ? DV_POS_LIST.filter(p => p.holder && p.holder.toLowerCase() === currentUser.fullName.toLowerCase()).map(p => p.id)
-    : [];
-  const myPositionIds = myPositionIdsById.length ? myPositionIdsById : myPositionIdsByName;
+  /* myPositionIdsById / ByName / myPositionIds are computed above the
+     work list (moved 01 Oct) -- see the comment there. */
   const dvLookup = { bu:dvBu, region:dvRegion, pos:dvPos, dept:dvDept, func:dvFunc, rptTpl:dvRptTpl, myPositionIds,
                      deptList:DV_DEPT_LIST, funcList:DV_FUNC_LIST };
   const ctx = {db,setDb,mut,me,bu,setBu,businessUnits,navOpen,setNavOpen,currentUser,screen,go,openMeeting,openWork,sel,setSel,
                toast,toasts,reset,S,A,work,cal,counts,onSwitch,
                dvMeetingOccs,dvReportOccs,dvMinutes,dvGridInstances,dvDecisions,dvLoading,dvError,refreshOccurrences,
+               myMeetingOccs,isMyMeeting,
                /* bumped when the module-level name/Setup maps (DV_TPL_DETAIL…) load --
                   a screen memoising anything read through dvTplDetail() depends on it */
                dvTick,
@@ -3088,7 +3113,13 @@ function Bucket({dot,title,sub,rows,dateLabel,empty}){
 }
 
 function ScreenWorkspace(){
-  const {work,cal,go,openMeeting,openDvRec,dvMeetingOccs,dvReportOccs,openNewReport} = use();
+  const {work,cal:calAll,go,openMeeting,openDvRec,myMeetingOccs:dvMeetingOccs,isMyMeeting,dvReportOccs,openNewReport,
+         dvLookup} = use();
+  /* Only my meetings (01 Oct): calendar meeting / MOM-due items whose meeting
+     is mine. `dvMeetingOccs` here IS the "my meetings" list (renamed on
+     destructure) so the activity figures below count mine too. */
+  const cal = calAll.filter(i=>(i.kind!=='Meeting' && i.kind!=='MOM') || isMyMeeting(i._rec));
+  const noPositions = !(dvLookup?.myPositionIds||[]).length;
   const [tab,setTab]     = useState('All');
   const [quick,setQuick] = useState('all');
   const overdue = work.all.filter(w=>w.date && w.date<TODAY);
@@ -3165,7 +3196,10 @@ function ScreenWorkspace(){
     <div className="cs-head">
       <div className="cs-head-top">
         <div><h1 className="cs-title">My Workspace</h1>
-          <p className="cs-sub">Your pending tasks, upcoming meetings, and action items across all modules.</p></div>
+          <p className="cs-sub">Your pending tasks, upcoming meetings, and action items across all modules.
+            Meetings are the ones you chair, co-chair, organize or attend.</p>
+          {noPositions && <p className="cs-sub" style={{color:'var(--cs-warning)'}}>No Position is linked to your
+            account, so no meeting can be matched to you yet.</p>}</div>
         <div className="cs-actions">
           {/* Opens the Create Report page, the same as Reports / Plans' own button. */}
           <button type="button" className="cs-btn ghost lg" onClick={openNewReport}>
@@ -5642,8 +5676,8 @@ function ScreenMeetings(){
         <div><h1 className="cs-title">Meetings</h1>
           <p className="cs-sub">Every Meeting Occurrence in Dataverse — scheduled, held and cancelled.</p></div>
         <div className="cs-actions">
-          <button type="button" className="cs-btn ghost lg" onClick={()=>go('newmtg','adhoc')}>
-            <CalendarDays size={13}/>Ad Hoc from Setup</button>
+          {/* "Ad Hoc from Setup" removed from here (01 Oct, user's ask). The
+              Schedule Meeting page and its 'adhoc' mode are unchanged. */}
           <button type="button" className="cs-btn primary lg" onClick={()=>go('newmtg','custom')}>
             <Plus size={13}/>New Meeting</button>
         </div>
@@ -6333,13 +6367,15 @@ function AgendaTaskPanel({rec,item,tasks,canAdd,onRaised}){
 }
 
 function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksChanged,
-                        decisions=[],quorum,writeupHours,setupName}){
+                        decisions=[],quorum,writeupHours,approvalHours,setupName}){
   const {toast,dvLookup,currentUser,refreshOccurrences}=use();
   /* Coverage lives on the agenda rows (rec.agenda), not on the Minutes, so a
      Yes/No click must re-read the occurrences -- reloading the Minutes alone
      left the old value on screen and kept Submit blocked (fixed 01 Oct). The
      choice shows at once from `covSet` while that re-read runs. */
-  const [covSet,setCovSet]=useState({});           // agendaItemId -> 'Yes' | 'No' | 'Not Yet Recorded'
+  const [covSet,setCovSet]=useState({});
+  const [chairNote,setChairNote]=useState('');      // Review & Sign: the return reason
+  const [sigReady,setSigReady]=useState(false);     // Review & Sign: signature box clicked           // agendaItemId -> 'Yes' | 'No' | 'Not Yet Recorded'
   const covOf = a => covSet[a.id] ?? a.covered;
   /* Add an agenda item from the Minutes (01 Oct): written to the meeting's
      agenda (lm_meetingoccurrenceagendas) at the end, as "Added in meeting" --
@@ -6643,6 +6679,192 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
     <span className={'mom-step-tag '+st}>{{done:'Done',cur:'Current',wait:'Waiting',ret:'Returned'}[st]}</span>
   </div>;
 
+  const outputsCard = (
+        <section className="card mom-outputs">
+          <div className="mtgd-card-top">
+            <span className="cs-icon gold" aria-hidden="true"><CheckSquare size={15}/></span>
+            <h2>Outputs (Tasks &amp; Decisions)</h2>
+            <span className="cs-mono mtgd-count">{outputs.length}</span>
+          </div>
+          <div className="mom-hint">Raised on each agenda item above{editable ? ' — use “+ Raise a task” and the decision panel there' : ''}.
+            {tasks===null ? ' Tasks can’t be linked to a meeting in this environment yet, so only decisions are listed.' : ''}</div>
+          {outputs.length===0
+            ? <Empty>No task or decision raised in this meeting yet.</Empty>
+            : <div className="mom-outs">{outputs.map(o=>
+                <div key={o.key} className={'mom-out '+(o.kind==='Task'?'task':'dec')}>
+                  <div className="mom-out-hd">
+                    <span className="mom-out-ic">{o.kind==='Task' ? <CheckSquare size={10}/> : <Clock size={10}/>}</span>
+                    <b>{o.kind}: {o.title}</b>
+                    <span className={'cs-badge '+(DONE_OUT.has(o.status)?'approved':'pending')}><i/>{o.status}</span>
+                  </div>
+                  <div className="mom-out-m">
+                    {[agendaRef(o.agendaId), o.who && 'Assigned to '+o.who, o.due && 'Due '+fmtDS(o.due), o.sub]
+                      .filter(Boolean).join(' · ') || '—'}
+                    {o.kind==='Task' && <> · <OpenRecord kind="Task" id={o.id} label="Open ↗" asLink/></>}
+                  </div>
+                </div>)}</div>}
+        </section>
+  );
+
+  /* ---- Review & Sign (01 Oct, the prototype's "Review & Sign" page) -------
+     While the Minutes are with the Chair the tab becomes a read-only review:
+     approval-period banner, Meeting Information, Discussion Summary (each
+     agenda item's note), Key Decisions, Outputs; and on the right the Digital
+     Signature card, MOM Details, Approval Progress and Attendees.
+     ⚠️ lm_meetingminutes has no comments column: the comment box is what
+     "Return with Comments" saves (lm_returnreason); it is not stored on an
+     approval, and the card says so. */
+  if(awaitingChair){
+    const apDue = approvalHours!=null && minutes.submittedAt ? addHours(minutes.submittedAt, approvalHours) : null;
+    const apLeftH = apDue ? hoursBetween(nowStamp(), apDue) : null;
+    const apLate = apLeftH!=null && apLeftH < 0;
+    const apLabel = apLeftH==null ? null
+      : apLate ? `+${Math.abs(apLeftH)>=24 ? Math.ceil(Math.abs(apLeftH)/24)+' day'+(Math.ceil(Math.abs(apLeftH)/24)===1?'':'s') : Math.abs(apLeftH)+'h'} overdue`
+      : apLeftH>=24 ? `${Math.floor(apLeftH/24)} day${Math.floor(apLeftH/24)===1?'':'s'} left` : `${apLeftH}h left`;
+    const durMin = rec.start && rec.end ? (()=>{ const [a,c]=rec.start.split(':').map(Number), [d,f]=rec.end.split(':').map(Number);
+      return (d*60+f)-(a*60+c); })() : null;
+    const submitter = organizerName;
+    const absent = rec.attendees.filter(a=>a.present==='Absent').length;
+    const readable = rec.agenda.filter(a=>canRead(a));
+    const chairPos = posName(rec.chairPositionId);
+    return <>
+      <Note k="info" ic="i">{isChair
+        ? <>You are the <b>Meeting Chair</b>. Review the minutes and sign digitally to approve. You can also return them with comments.</>
+        : <>Waiting on <b>{chairName||'the Meeting Chair'}</b> to review and sign these minutes.</>}</Note>
+
+      {apDue && <div className={'mom-te'+(apLate?' late':'')}>
+        <span className="mom-te-ic"><Clock size={15}/></span>
+        <div className="mom-te-t">
+          <b>{apLate ? 'MOM Approval Period Exceeded' : 'MOM Approval Period Active'}</b>
+          <span>AG-05 / OD-09b: the Chair must sign within <strong>{approvalHours} hours</strong> of submission.
+            Submitted {fmtISODT(minutes.submittedAt)} — deadline {apLate?'was':'is'} {fmtDT(apDue)}.</span>
+        </div>
+        <span className="mom-te-c">{apLabel}</span>
+      </div>}
+
+      <div className="card mom-bar">
+        <span className="cs-badge chair"><i/>Pending signature</span>
+        <span className="cs-mono mom-code">{momCode(minutes)}</span>
+        <span className="muted">· Submitted by {submitter||'the Organizer'} on {fmtISODT(minutes.submittedAt)}</span>
+        <div style={{flex:1}}/>
+        <button type="button" className="cs-btn ghost lg" disabled={exporting} onClick={exportWord}>
+          <Download size={13}/>{exporting ? 'Exporting…' : 'Export to Word'}</button>
+      </div>
+
+      <div className="cs-two-col mtgd-cols">
+        <div className="mtgd-main">
+          <section className="card">
+            <h2 className="mtgd-h">Meeting Information</h2>
+            <div className="mom-rv-tiles">
+              <div><b className="cs-mono">{rec.date ? fmtDS(rec.date) : '—'}</b><span>Date held</span></div>
+              <div><b className="cs-mono">{rec.start||'—'}</b><span>{durMin!=null && durMin>0 ? durMin+' minutes' : 'Start'}</span></div>
+              <div className={quorum?.state==='met'?'ok':quorum?.state==='missed'?'bad':''}>
+                <b className="cs-mono">{presentList.length}/{rec.attendees.length}</b>
+                <span>{quorum?.state==='met' ? 'Quorum met' : quorum?.state==='missed' ? 'Quorum not met'
+                  : quorum?.state==='incomplete' ? 'Attendance incomplete' : 'Attendance'}</span></div>
+            </div>
+          </section>
+
+          <section className="card">
+            <h2 className="mtgd-h">Discussion Summary</h2>
+            {rec.agenda.length===0 ? <Empty>No agenda item on this occurrence.</Empty>
+              : <div className="mom-rv-sum">{rec.agenda.map((a,i)=>{
+                  const ok = canRead(a), cv = covOf(a), txt = ok ? textFor(a).trim() : '';
+                  return <div key={a.id} className="mom-rv-item">
+                    <div className="mom-rv-item-hd">
+                      <span className="mom-n">{a.seq??i+1}</span><b>{a.title||'—'}</b>
+                      {isConf(a) && <span className="cs-badge returned"><i/>Confidential</span>}
+                      <span className={'cs-badge '+(cv==='Yes'?'approved':cv==='No'?'returned':'void')}><i/>
+                        {cv==='Yes'?'Covered':cv==='No'?'Not covered':'Not recorded'}</span>
+                    </div>
+                    <p className={txt?'':'none'}>{!ok ? 'Confidential — you are not among those allowed to read this item.'
+                      : txt || 'No discussion note recorded.'}</p>
+                  </div>; })}</div>}
+          </section>
+
+          <section className="card">
+            <h2 className="mtgd-h">Key Decisions Made</h2>
+            {decisions.filter(d=>readable.some(a=>a.id===d.agendaItemId)).length===0
+              ? <div className="mom-hint" style={{margin:0}}>No decision was recorded in these minutes.</div>
+              : <ol className="mom-rv-dec">{decisions.filter(d=>readable.some(a=>a.id===d.agendaItemId)).map((d,k)=>
+                  <li key={d.id}><span>{k+1}</span><div><b>{d.name}</b>{d.decisionTaken ? <p>{d.decisionTaken}</p> : null}</div></li>)}</ol>}
+          </section>
+
+          {outputsCard}
+        </div>
+
+        <aside className="mtgd-side">
+          <section className="card mom-sign">
+            <div className="mtgd-card-top">
+              <span className="cs-icon gold" aria-hidden="true"><PenLine size={15}/></span>
+              <h2>Digital Signature</h2>
+            </div>
+            <div className="mom-hint">By signing, you confirm that the minutes accurately reflect the meeting proceedings and decisions.</div>
+            <label className="mom-lbl">Chair comments <span style={{textTransform:'none',letterSpacing:0,fontWeight:400}}>(needed to return)</span></label>
+            <textarea className="mom-input" rows={3} value={chairNote} maxLength={GRID_REASON_MAX}
+              placeholder="Add comments before signing, or the reason for returning…"
+              onChange={e=>setChairNote(e.target.value)}/>
+            <div className="mom-hint" style={{margin:'4px 0 10px'}}>Saved only when you return the minutes — an approval does not store a comment.</div>
+            <button type="button" className={'mom-sigbox'+(sigReady?' on':'')} onClick={()=>setSigReady(v=>!v)}
+              aria-pressed={sigReady}>
+              <PenLine size={15}/>
+              <b>{chairName||'Meeting Chair'}</b>
+              <span>{chairPos ? chairPos+' — Chair' : 'Chair'}</span>
+              <i>{sigReady ? (chairName||'Signed') : 'Click to sign digitally'}</i>
+            </button>
+            <button type="button" className="cs-btn green lg mom-sign-btn" disabled={!sigReady||busy==='approve'} onClick={approve}
+              title={sigReady ? 'Approve and sign these minutes' : 'Click the signature box first'}>
+              <PenLine size={13}/>{busy==='approve'?'Signing…':'Sign & Approve'}</button>
+            <button type="button" className="cs-btn ghost lg mom-sign-btn" disabled={!!busy}
+              onClick={async()=>{ const r=chairNote.trim();
+                if(!r){ setReturning(true); return; }
+                await run('return', ()=>returnMeetingMinutes(minutes.id, r),
+                  'Returned to the Recorder','The reason is recorded and every Output stays Draft.'); }}>
+              <RotateCcw size={13}/>{busy==='return'?'Returning…':'Return with Comments'}</button>
+          </section>
+
+          <section className="card">
+            <h2 className="mtgd-h">MOM Details</h2>
+            <div className="mtgd-kv">
+              <div><span>ID</span><b className="cs-mono">{momCode(minutes)}</b></div>
+              <div><span>Meeting</span><b>{rec.name}</b></div>
+              <div><span>Date held</span><b className="cs-mono">{rec.date ? fmtD(rec.date) : '—'}</b></div>
+              <div><span>Recorder</span><b>{organizerName||'—'}</b></div>
+              <div><span>Submitted</span><b className="cs-mono">{fmtISODT(minutes.submittedAt)}</b></div>
+              <div><span>Type</span><b>{accred ? 'Accreditation' : 'Business Meeting'}</b></div>
+            </div>
+          </section>
+
+          <section className="card mom-flow">
+            <h2 className="mtgd-h">Approval Progress</h2>
+            {step(1, 'Organizer submitted', `${organizerName||'—'} · ${fmtISODT(minutes.submittedAt)}`, 'done')}
+            {step(2, 'Chair review & signature', chairName, 'cur')}
+            {step(3, 'Close & release the Audit Grid', `${outputs.length} output${outputs.length===1?'':'s'} recorded`, 'wait')}
+          </section>
+
+          <section className="card">
+            <h2 className="mtgd-h">Attendees</h2>
+            {rec.attendees.length===0 ? <div className="mom-hint" style={{margin:0}}>No attendees on this meeting.</div>
+              : <div className="mom-chips">
+                  {presentList.slice(0,6).map(a=><span key={a.id} className="mom-chip"><i/>{presentName(a)}</span>)}
+                  {presentList.length>6 && <span className="mom-chip"><i/>+{presentList.length-6} more</span>}
+                  {absent>0 && <span className="mom-chip absent"><i/>{absent} absent</span>}
+                  {presentList.length===0 && <span className="mom-hint" style={{margin:0}}>No attendance recorded.</span>}
+                </div>}
+          </section>
+        </aside>
+      </div>
+
+      {returning && <ReturnModal title="Return the Minutes to the Recorder"
+        onClose={()=>setReturning(false)}
+        onSave={async reason=>{
+          setReturning(false);
+          await run('return', ()=>returnMeetingMinutes(minutes.id, reason),
+            'Returned to the Recorder','The reason is recorded and every Output stays Draft.');
+        }}/>}
+    </>;
+  }
+
   return <>
     {pendingWrite && due && <div className={'mom-te'+(late?' late':'')}>
       <span className="mom-te-ic"><Clock size={15}/></span>
@@ -6816,30 +7038,7 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
                 <Plus size={13}/>Add agenda item</button>)}
         </section>
 
-        <section className="card mom-outputs">
-          <div className="mtgd-card-top">
-            <span className="cs-icon gold" aria-hidden="true"><CheckSquare size={15}/></span>
-            <h2>Outputs (Tasks &amp; Decisions)</h2>
-            <span className="cs-mono mtgd-count">{outputs.length}</span>
-          </div>
-          <div className="mom-hint">Raised on each agenda item above{editable ? ' — use “+ Raise a task” and the decision panel there' : ''}.
-            {tasks===null ? ' Tasks can’t be linked to a meeting in this environment yet, so only decisions are listed.' : ''}</div>
-          {outputs.length===0
-            ? <Empty>No task or decision raised in this meeting yet.</Empty>
-            : <div className="mom-outs">{outputs.map(o=>
-                <div key={o.key} className={'mom-out '+(o.kind==='Task'?'task':'dec')}>
-                  <div className="mom-out-hd">
-                    <span className="mom-out-ic">{o.kind==='Task' ? <CheckSquare size={10}/> : <Clock size={10}/>}</span>
-                    <b>{o.kind}: {o.title}</b>
-                    <span className={'cs-badge '+(DONE_OUT.has(o.status)?'approved':'pending')}><i/>{o.status}</span>
-                  </div>
-                  <div className="mom-out-m">
-                    {[agendaRef(o.agendaId), o.who && 'Assigned to '+o.who, o.due && 'Due '+fmtDS(o.due), o.sub]
-                      .filter(Boolean).join(' · ') || '—'}
-                    {o.kind==='Task' && <> · <OpenRecord kind="Task" id={o.id} label="Open ↗" asLink/></>}
-                  </div>
-                </div>)}</div>}
-        </section>
+        {outputsCard}
       </div>
 
       <aside className="mtgd-side">
@@ -8283,7 +8482,8 @@ function DvMeetingDetail({rec,back}){
           posName={posName} onReload={reloadGovernance}
           tasks={mtgTasks} onTasksChanged={()=>setTasksTick(t=>t+1)}
           decisions={dvDecisions.filter(d=>d.agendaItemId && agendaById.has(d.agendaItemId))}
-          quorum={quorum} writeupHours={meetingLimits(rec, S).momWriteupHours} setupName={dvTpl(rec.templateId)}/>}
+          quorum={quorum} writeupHours={meetingLimits(rec, S).momWriteupHours}
+          approvalHours={meetingLimits(rec, S).momApprovalHours} setupName={dvTpl(rec.templateId)}/>}
     </>}
 
     {tab==='grid' && <>
