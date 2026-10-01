@@ -7,7 +7,7 @@
 > (covering 09-12 Sep), updated 13 Sep 2026, updated 14 Sep 2026,
 > updated 16 Sep 2026, updated 17 Sep 2026 (three times), against branch `leadership-practice`;
 > since then updated per session through 28 Sep 2026, now on branch `CrossEnv-Leadership`;
-> **status snapshot below refreshed 29 Sep 2026 (end of day, HEAD `3180e59`).**
+> **status snapshot below refreshed 01 Oct 2026 (HEAD = the commit that adds this line, on GitHub; apps deployed from `d39fdf5`).**
 >
 > This file records **decisions, hard-won schema facts and open questions** —
 > the things that are expensive to rediscover. It is not a substitute for the
@@ -16,7 +16,7 @@
 
 ---
 
-## 0. Current status — read this first (29 Sep 2026)
+## 0. Current status — read this first (01 Oct 2026)
 
 The dated entries in §5 are the history; this section is where things stand.
 Everything below was checked against the repo and IT when written.
@@ -25,11 +25,11 @@ Everything below was checked against the repo and IT when written.
 
 | | |
 |---|---|
-| Branch | `CrossEnv-Leadership`, pushed to GitHub (`origin`), HEAD `2fbccef` |
-| Governance Setup (live) | `4912152c-b5c8-4beb-bb74-c9f43550405b`, Code App Development, pushed from `C:\tmp\cad-gov` |
-| Leadership Execution (live) | `83db0ef8-4c62-4eef-84ac-dadab326b704`, Code App Development, pushed from `C:\tmp\cad-exec` |
+| Branch | `CrossEnv-Leadership`, pushed to GitHub (`origin`). Code last changed at `d39fdf5`; later commits are notes only |
+| Governance Setup | **Main (IT):** `4912152c-b5c8-4beb-bb74-c9f43550405b`, pushed from `C:\tmp\cad-gov`. **Test (DT New):** `786c1b14-bf09-4dd7-a0a2-5730e87744fe` ("…Governance Setup (2)"), pushed from `C:\tmp\cad-gov-old` with `LP_DATA_ORG` set — see "Test copies on DT New" below. Both Code App Development. |
+| Leadership Execution | **Main (IT):** `83db0ef8-4c62-4eef-84ac-dadab326b704`, pushed from `C:\tmp\cad-exec`. **Test (DT New):** `d61c6237-fec1-45c7-80e0-a9c63dd1e662` ("…Leadership Execution (2)"), pushed from `C:\tmp\cad-exec-test` (created 01 Oct) with `LP_DATA_ORG` set. Both Code App Development. |
 | Data | **IT** (`org2f45e702`) for **both apps** again, every table but `lm_setupactivities` (follows `DATA_ORG`, = IT in Governance). Governance was on DT New for part of 29 Sep, then moved back to IT the same day per an explicit ask, once IT had the five `lm_reporttemplatedepartmentfunction` columns the per Department & Function submitters write (`lm_BU`, `lm_Region`, `lm_SubmittingPosition`, `lm_OwnerPosition`, `lm_TeamChannel` — checked, same targets as DT New). Switch: `__DATA_ORG__` + `__PIN_ORG__` in `apps/governance/vite.config.js` (see `PIN_ORG` in `xenv.js`). ⚠️ Setups saved in Governance **while it was on DT New** stay in DT New — they are not in IT. |
-| What is live | **Leadership: `2d19687` minus `4ca0036`** (pushed 30 Sep; carries everything up to and including the Build a report/plan restyle). **Governance: `afc3b5a`** (pushed 29 Sep, later, from HEAD with a clean tree; bundle checked DT New only), *with* `4ca0036`'s code — harmless there (Governance never creates a Report Occurrence), see below. ⚠️ `afc3b5a` is **not on GitHub yet** (the push was refused by a permission check), and Leadership has **not** had `6b79978`/`65cca22`/`afc3b5a` pushed. |
+| What is live | **Main apps (IT):** Leadership `ea1a6a4` **minus `4ca0036`**; Governance `ea1a6a4`. They were **not** rebuilt for `d39fdf5` — its only change on IT is a no-op (links follow `PIN_ORG`, which equals IT there). **Test apps (DT New), 01 Oct:** Governance `d39fdf5`; Leadership `d39fdf5` **minus `4ca0036`** (revert steps; bundle checked: no uploader writes, data on DT New). |
 
 ⚠️ **One commit is in git but deliberately NOT deployed: `4ca0036`** — the
 Create Report file uploader and Team Channel → SharePoint destination. It
@@ -87,6 +87,49 @@ If a later commit adds new conflicts in step 1, resolve them the same way:
 keep whatever the current HEAD needs **except** the uploader's code, and let
 step 2's `grep` be the judge. If in doubt, stop — do not push.
 
+### Test copies on DT New (01 Oct) — for user testing of the committees part
+
+Per an explicit ask: testers use a **separate pair** that reads **DT New**
+for **every** table, while the main apps stay on IT. The whole app moves, not
+only the meeting screens: people / Positions / units / departments are
+different records with different ids in each environment, so a split would
+leave every name and picker blank.
+
+- **Switch:** `LP_DATA_ORG` (environment variable, build time) in both
+  `apps/*/vite.config.js`. Set → `__DATA_ORG__` and `__PIN_ORG__` both point at
+  it. Unset → exactly the normal IT build (checked: Governance IT only;
+  Leadership IT + its one vestigial DT New `lm_setupactivities` read).
+- **Build + push the test pair** (bash):
+  ```bash
+  export LP_DATA_ORG=https://org319b4ea9.crm4.dynamics.com
+  # Governance -> 786c1b14
+  rm -rf apps/governance/dist && npm run build:governance
+  grep -o "org319b4ea9\|org2f45e702" apps/governance/dist/assets/*.js | sort | uniq -c   # DT New only
+  rm -rf /c/tmp/cad-gov-old/dist && cp -r apps/governance/dist /c/tmp/cad-gov-old/dist
+  (cd /c/tmp/cad-gov-old && "<repo>/node_modules/.bin/power-apps" push)
+  # Leadership -> d61c6237: SAME revert steps as the main app (above), with
+  # LP_DATA_ORG still exported, staged into /c/tmp/cad-exec-test instead.
+  # One org2f45e702 in the bundle is expected: the IT_ORG constant that
+  # recordLinks compares against.
+  unset LP_DATA_ORG
+  rm -rf apps/governance/dist apps/leadership/dist && npm run build   # leave IT builds behind
+  ```
+  ⚠️ **Always rebuild the normal IT `dist` afterwards** (last line). A DT New
+  `dist` left in `apps/*/dist` would otherwise be pushed to a MAIN app by the
+  next routine push.
+- In a test copy, "Open in <app>" opens the record in DT New **without** an
+  app id (IT's model-driven app ids don't exist there), the access check skips
+  the app-role step, and the Reporting hierarchy's template-file download reads
+  DT New (`PIN_ORG`).
+- **DT New on 01 Oct:** 25 Meeting Setups (11 Active / Approved), 157
+  occurrences, 10 Minutes, 0 Grids, 26 decisions, 307 Positions;
+  `wlog_decision` has the agenda-item lookup there too.
+- ⚠️ **Access for testers:** in DT New only System Administrator, System
+  Customizer and Service roles hold `prvWritelm_MeetingMinutes`. Testers need
+  one of them, or a test role, **and** both "(2)" apps shared with them.
+- Anything testers create stays in DT New. A Power Automate flow used with the
+  test copy must read DT New, not IT.
+
 Governance (no uploader step needed):
 
 ```bash
@@ -109,6 +152,37 @@ pac env fetch --environment https://org2f45e702.crm4.dynamics.com --xml "<fetch 
 ⚠️ **The staging folders lost their `node_modules` (29 Sep).** Run the
 project's own CLI from inside each staging folder:
 `"<repo>/node_modules/.bin/power-apps" push`.
+
+### Built and live on 30 Sep (details in §5, dated 30 Sep)
+
+- **Governance back on IT** (`fc7efd0`), per an explicit ask, once IT had the
+  five `lm_reporttemplatedepartmentfunction` columns. See the Data row.
+- **Link any report to an ad hoc meeting** (`64f9c70`): `ReportLinkPicker` —
+  every Report Occurrence (not Rejected), Drafts and Custom reports included —
+  on an ad hoc meeting's Documents tab ("Link a report directly") and on the
+  Schedule Meeting page ("Reports for this meeting"). The Submissions tab words
+  status as "Draft — not submitted yet" / "Submitted — in review".
+- **Build a report/plan restyled** (`2d19687`, another session) — presentation
+  only, scoped under `.cs-build`.
+- **KSA time zone saved as `Arab Standard Time`** (`b59ce9a`). It was
+  `Arabia Standard Time`, which is not a Windows id, so a flow's
+  `convertFromUtc()` failed. 2 older meetings in IT still carry the old name;
+  the invite flow maps it with `replace(…)`.
+- **Report Setup, Department & Function** (`ea1a6a4`):
+  - the same pair can be listed more than once (Report Setups only), each copy
+    with its own Submitter / Accountable / Team Channel ("copy 1 of 2");
+  - line people are keyed by the LINE (`lineRoleKey(unit, line.id)`), and each
+    `lm_reporttemplatedepartmentfunctions` row's `lm_newcolumn` stores the
+    line's number (`"2. Nursing › Quality"`) so copies reopen in order —
+    `readReportTemplateLines()` sorts `lineRows` by it, then `createdon`;
+    `reportLinesFromRows()` rebuilds lines + roles;
+  - **every Report Setup opens "per Department & Function"**; lines with no
+    saved people are pre-filled from their unit;
+  - **only the selected mode is saved**: per-line clears the unit's (or the
+    group-wide Setup row's) own Submitter / Owner / Channel by binding them to
+    `null`; per-unit saves the lines without people.
+  - ⚠️ **Leadership does not read the per-line people yet** — a Setup saved
+    per-line has no unit submitter / owner there (`fetchReportUnitRoles()`).
 
 ### Built and live on 29 Sep (details in §5, dated 29 Sep)
 
@@ -178,10 +252,11 @@ published as a private Artifact: https://claude.ai/artifact/QgJAm1RF3tGqkzugS8CA
 | `lm_attachmentfile`, `lm_TeamChannel`, `lm_destinationsharepointlink` on `lm_reportoccurrence` | IT to add | deploying `4ca0036` |
 | **Append To** on `strategy_strategy` and `stf_strategypoc` (Organization level) | IT security role | citing a POC or Strategy (the save fails with `0x80040220`) |
 | **50 of 53** Report Template destinations saved with the doubled folder | a decision: repair in one pass, or let each fix itself on its next save | nothing — cosmetic until the SharePoint save exists |
-| `cr18c_month` on `lm_meetingtemplate` | confirm it is the Annual-meeting month | wiring Annual meetings (§9) |
+| ~~`cr18c_month` on `lm_meetingtemplate`~~ | ✅ settled 29 Sep — it is the Annual month (pm_month 1–12), wired both apps (`6b79978`) | — |
 | The Meeting Occurrence **generator flow** (planned, not built) | must take the group-wide branch for Stage 4 — their BU / Region rows are scope only | correct Stage 4 occurrences once the flow exists |
 | **Lookup on `hx_tasks` → `lm_meetingoccurrenceagenda`** (schema name `lm_MeetingOccurrenceAgenda`, optional, delete = remove link; Create/Read/Write + Append on `hx_tasks`, Append To on the agenda table) | IT to add — **requested 29 Sep**, the user chose to wait for it | the meeting **Actions** tab (PRO-02), tasks raised from Minutes, carried-forward tasks, AG-10–14's task questions |
 | A lookup from `lm_reportsectioncitations` to a single **section** | optional, IT | a response (EXT-06) pointing at the exact section it answers, not only the report |
+| **A user security role** for the meeting tables (only `Leadership Practice - Admin`, 8 users, and platform roles hold them) | IT | any non-admin using Meetings / Minutes / Committee Scores — see the committees readiness page |
 
 ### First checks in the live apps (none yet done)
 
@@ -209,6 +284,15 @@ published as a private Artifact: https://claude.ai/artifact/QgJAm1RF3tGqkzugS8CA
     in your own report, citing the answered one.
 11. **(29 Sep)** Business intelligence → pick a KPI → the related reports list,
     and Open lands on that report in Reports / Plans.
+12. **(30 Sep)** Open an existing Report Setup saved "one submitter per unit": it
+    opens per Department & Function, pre-filled; save; check in IT that the
+    unit rows' Owner / Submitting Position / Team Channel are now **empty** —
+    the first time the app clears a lookup (`@odata.bind: null`).
+13. **(30 Sep)** Add the same Department & Function twice with different
+    submitters; save; reopen — each copy keeps its own people.
+14. **(30 Sep)** Link a Draft report to an ad hoc meeting; submit it for review;
+    Submissions shows "Submitted — in review".
+15. **(30 Sep)** Schedule a KSA meeting — `lm_timezone` = `Arab Standard Time`.
 
 ### Traps worth knowing before touching anything
 
@@ -227,6 +311,17 @@ published as a private Artifact: https://claude.ai/artifact/QgJAm1RF3tGqkzugS8CA
 - A failed step in a `&&` chain skips the build silently, and `dist/` still
   holds the LAST build — copying it anyway is how the uploader reached
   Leadership on 29 Sep. Run the steps one by one, or check the bundle first.
+- **`lm_timezone` must be a Windows time zone id** (`Arab Standard Time`,
+  `Egypt Standard Time`) — flows pass it to `convertFromUtc()`.
+- **Clearing a lookup** is `'<Nav>@odata.bind': null` in an update (first used
+  30 Sep, `reconcileReportUnits` / the Report Setup parent row). The adapter
+  keeps nulls; unverified live until check 12 above.
+- **`pac env fetch` crashed ("Stack overflow") on a 500-row sample** of
+  `hr_employee` (30 Sep). Use aggregate counts with `like` filters instead.
+- **Employee email for invites is `hr_useremail`, not `hr_email`** (30 Sep, IT):
+  `hr_useremail` is the sign-in account (6,077 of 6,089 `@andalusiagroup.net`,
+  same rows as `hr_user`); `hr_email` is mixed and **474 are personal
+  Gmail / Hotmail / Yahoo**. Of 8,891 Position holders, 4,669 have `hr_useremail`.
 - **Two sessions may edit the same files at once** (it happened 29 Sep). Check
   `git status` before committing and say whose changes a commit carries.
 - **Shell heredocs mangle long Python edit scripts** (quotes/backticks) — write
@@ -8740,6 +8835,71 @@ only: same data, same actions, same order on screen.
 - **Governance was NOT pushed** on 30 Sep. It was built from HEAD (bundle: IT
   only), then the push was stopped on request. Its live version is still
   `afc3b5a`.
+
+### 30 Sep: Governance back on IT, ad hoc report links, two readiness pages, Report Setup lines, time zone
+
+- **Governance → IT again** (`fc7efd0`): both `__DATA_ORG__` / `__PIN_ORG__`
+  in `apps/governance/vite.config.js`. Checked first: IT had gained the five
+  `lm_reporttemplatedepartmentfunction` columns (`lm_BU` → businessunit,
+  `lm_Region` → crd04_regions, both positions, `lm_TeamChannel`).
+- **Old Governance app `786c1b14…` updated** on the user's ask, from a new
+  staging folder `C:\tmp\cad-gov-old` (copy of `cad-gov`, appId changed,
+  display name "Andalusia Pulse - Governance Setup (2)"). It is no longer
+  "gone": every Governance push now goes to both.
+- **Ad hoc report links** (`64f9c70`) — see §0.
+- **Gap register republished** (version 2, same link) with a progress layer:
+  7 of 26 live, 1 built, 1 waiting on IT at that time. It lags the 30 Sep work
+  (Strategy chain now live, PRO-13 partly, PRO-16 built by another session).
+- **Committees go-live readiness page** (new, private):
+  https://claude.ai/artifact/Kre2kA1zd9jF5YdPoMyfsN — 21 gaps (5 blockers).
+  Found while building it, all checked in IT / code on 30 Sep:
+  - only `Leadership Practice - Admin` (8 users) + platform roles hold
+    `prvReadlm_MeetingOccurrence`, `prvWritelm_MeetingMinutes`,
+    `prvCreatelm_AuditGridInstance`, `prvCreatelm_MOMNotes` — no user role;
+  - **no role check on any live meeting / Minutes / Grid action**; approving
+    Minutes signs as the Chair whoever pressed it;
+  - IT holds 3 Meeting Setups (1 approved, all Business Meetings), 4
+    occurrences, 3 Minutes, 2 Grids, 0 decisions linked to agenda items;
+  - Minutes close is a manual button (`momClosure: 'auto'` not applied live);
+    the Grid is created on close only.
+- **Invite flow help (Power Automate, user-built):** attendee objects for
+  Graph; `hr_useremail` not `hr_email` (§0 traps); a Select in key/value mode
+  makes `emailAddress` a string — use text mode; `convertFromUtc(date, tz,
+  'yyyy-MM-dd')` takes the format as its THIRD argument.
+- **Time zone** (`b59ce9a`) and **Report Setup lines** (`ea1a6a4`) — see §0.
+- Deploys on 30 Sep: Governance to both apps at `fc7efd0`, `64f9c70`,
+  `ea1a6a4`; Leadership at `fc7efd0`, `64f9c70`, `ea1a6a4` with the revert
+  steps (same two conflicts each time, resolved as documented, bundle checked).
+
+### 01 Oct: a DT New test pair for the committees part, and the invite flow
+
+- **Test pair** (`d39fdf5`) — see §0 "Test copies on DT New". The user chose
+  separate test copies over switching the main apps, and the whole app over
+  only the committees screens (asked; both recommended options).
+- **Invite flow (Power Automate, user-built) — findings:**
+  - the **Mail** connector ("Send an email notification (V3)") is **disabled
+    for new tenants** ("currently restricted for new tenants") — not usable;
+  - the flow owner's Office 365 Outlook connection later **worked** (a Graph
+    `PATCH` reached Exchange Online): real invites are possible from that
+    account, so CG-22 on the readiness page may be solved for it;
+  - create vs update: `PATCH …/me/events/{id}` only with an id from "Find
+    invite"; with none, `POST …/me/events` (a `PATCH` on the collection is
+    405 "The OData request is not supported");
+  - `dateTime` must be `yyyy-MM-ddTHH:mm:ss` — the flow pads the hour with
+    `formatNumber(int(…), '00')`; `timeZone` from the mapped Time zone step;
+  - the agenda table in the invite: List rows on `lm_meetingoccurrenceagendas`
+    (expand `lm_OwnerPosition($select=cr603_name,hr_fullnameofcurrentemployee)`)
+    → Select → Create HTML table → inline styles with **single** quotes (the
+    HTML sits inside the event's JSON body);
+  - picking a list field into a later step wraps it in **Apply to each** —
+    that is what sent the invite once per agenda item.
+- **Tasks per agenda item: still blocked.** Re-checked 01 Oct: `hx_tasks` has
+  no lookup to any meeting table (its lookups: projects, milestones, parent
+  task, people, `hx_sources`). Needs IT's `lm_MeetingOccurrenceAgenda` on
+  `hx_tasks` (spec in §0 Waiting table), or a link table.
+- **Committees readiness page republished** (version 2): interim invite flow
+  section, CG-22 (cloud mailbox), CG-23 (app saves Synchronized and no Team
+  Channel on a new meeting).
 
 ## 6. Schema facts that are expensive to rediscover
 
