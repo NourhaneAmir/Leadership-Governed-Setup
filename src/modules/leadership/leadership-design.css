@@ -888,3 +888,11 @@
   background:var(--cs-green-soft); font:500 10px var(--cs-sans); color:var(--cs-green) }
 .cs-mtgd .mom-chip i{ width:5px; height:5px; border-radius:50%; background:var(--cs-green) }
 @media (max-width:560px){ .cs-mtgd .mom-ctx-grid{ grid-template-columns:1fr } .cs-mtgd .mom-te{ flex-wrap:wrap } }
+
+/* Add an agenda item from the Minutes (01 Oct) */
+.cs-mtgd .mom-addag-btn{ margin-top:12px }
+.cs-mtgd .mom-addag{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:12px; padding:10px 12px;
+  border:1px dashed var(--cs-border-hover); border-radius:12px; background:var(--cs-hover) }
+.cs-mtgd .mom-addag input{ flex:1 1 260px; min-width:0; padding:8px 12px; border-radius:10px; border:1px solid var(--cs-border);
+  background:#fff; font:400 12.5px var(--cs-body-font); color:var(--cs-text) }
+.cs-mtgd .mom-addag input:focus{ outline:none; border-color:var(--cs-gold); box-shadow:0 0 0 3px var(--cs-gold-soft) }

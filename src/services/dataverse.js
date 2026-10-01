@@ -3377,7 +3377,8 @@ export async function fetchReportTemplatesList(){
 
 export async function fetchMeetingTemplatesList(){
   const res = await Lm_meetingtemplatesService.getAll({
-    select: ['lm_meetingtemplateid','lm_meetingtemplatename','lm_setuptype','lm_typeclassification','lm_stages','lm_frequency','lm_daysoftheweek','lm_quorumthreshold','lm_torpolicylink','lm_meetingstatus','lm_version','modifiedon','createdon'],
+    select: ['lm_meetingtemplateid','lm_meetingtemplatename','lm_setuptype','lm_typeclassification','lm_stages','lm_frequency','lm_daysoftheweek','lm_quorumthreshold','lm_torpolicylink','lm_meetingstatus','lm_version','modifiedon','createdon',
+             'lm_momwriteuphours','lm_momapprovalhours','lm_gridsubmithours'],
   });
   const rows = res?.data ?? [];
   return Promise.all(rows.map(async r => {
@@ -3396,6 +3397,10 @@ export async function fetchMeetingTemplatesList(){
       dayOfWeekCode: r.lm_daysoftheweek ?? null,
       quorumPct: r.lm_quorumthreshold ?? null,
       torLink: r.lm_torpolicylink || null,
+      /* The Setup's time limits (hours) -- see meetingLimits() in LeadershipApp. */
+      momWriteupHours: r.lm_momwriteuphours ?? null,
+      momApprovalHours: r.lm_momapprovalhours ?? null,
+      gridSubmitHours: r.lm_gridsubmithours ?? null,
       statusCode: r.lm_meetingstatus ?? null,
       version: r.lm_version ?? null,
       businessUnitIds: (buRes?.data ?? []).map(x=>x._lm_businessunit_value).filter(Boolean),
@@ -3815,7 +3820,8 @@ export async function fetchMeetingOccurrences(){
       select: ['lm_meetingoccurrenceid','lm_name','lm_date','lm_starttime','lm_endtime','lm_timezone',
                'lm_mode','lm_meetingstatus','lm_meetinglocation','lm_meetinglink','lm_adhoctype',
                'lm_restricted','lm_agendasentdate','lm_invitesentdate','lm_cancelreason','lm_syncstatus',
-               'lm_meetingstage',
+               'lm_meetingstage','lm_momwriteuphours','lm_momapprovalhours','lm_gridsubmithours',
+               'lm_torpolicylink',
                '_lm_meetingtemplate_value','_lm_businessunit_value','_lm_chairmanposition_value',
                '_lm_region_value','_lm_department_value','_lm_facilitatorposition_value',
                '_lm_rescheduledfrom_value','modifiedon','createdon'],
@@ -3870,6 +3876,13 @@ export async function fetchMeetingOccurrences(){
       cancelReason: o.lm_cancelreason || null,
       sync: MEETING_OCC_SYNC[o.lm_syncstatus] || null,
       stage: MEETING_OCC_STAGE[o.lm_meetingstage] || null,
+      /* This occurrence's own time limits (hours), null = use the Setup's. */
+      momWriteupHours: o.lm_momwriteuphours ?? null,
+      momApprovalHours: o.lm_momapprovalhours ?? null,
+      gridSubmitHours: o.lm_gridsubmithours ?? null,
+      /* The occurrence's OWN TOR / Policy link -- AG-01 and AG-02 read this
+         (01 Oct); empty = those questions are Not Applicable. */
+      torLink: o.lm_torpolicylink || null,
       templateId: o._lm_meetingtemplate_value || null,
       businessUnitId: o._lm_businessunit_value || null,
       regionId: o._lm_region_value || null,
@@ -4791,6 +4804,12 @@ export async function createMeetingOccurrence(payload){
      ⚠️ lm_Meetingcategory exists on lm_meetingoccurrence in DT New only
      (added 01 Oct); IT needs it before a Custom meeting with a Category can
      be saved there. */
+  /* The Setup's TOR / Policy link travels with the occurrence (01 Oct). */
+  if(payload.torLink) parent.lm_torpolicylink = String(payload.torLink).trim();
+  /* Time limits copied from the Setup (or the meeting being rescheduled). */
+  for(const [k, col] of [['momWriteupHours','lm_momwriteuphours'],['momApprovalHours','lm_momapprovalhours'],
+                         ['gridSubmitHours','lm_gridsubmithours']])
+    if(typeof payload[k] === 'number') parent[col] = payload[k];
   if(payload.setupType)      parent.lm_setuptype = MEETING_SETUP_TYPE_KEY[payload.setupType] ?? null;
   if(payload.classification) parent.lm_meetingclassification = MEETING_CATEGORY_KEY[payload.classification] ?? null;
   if(payload.meetingCategoryId) parent['lm_Meetingcategory@odata.bind'] = `/lm_meetingcategories(${payload.meetingCategoryId})`;
@@ -5235,7 +5254,7 @@ export const GRID_STATE_KEY  = { 'Pending Organizer Review':1, 'Pending Facilita
    schema; they are not preferences, they are what the columns actually accept. */
 export const MOM_NOTE_MAX      = 4000;  // lm_momnoteses.lm_notes            (widened)
 export const MOM_REASON_MAX    = 2000;  // lm_meetingminuteses.lm_returnreason (widened)
-export const GRID_EVIDENCE_MAX = 100;   // lm_auditgridanswers.lm_evidence   (still narrow)
+export const GRID_EVIDENCE_MAX = 4000;  // lm_auditgridanswers.lm_evidence   (widened to 4000, 01 Oct)
 export const GRID_REASON_MAX   = 100;   // grid lm_returnreason / lm_correctionreason
 
 function capped(value, max, column){
@@ -5762,6 +5781,17 @@ export async function linkMeetingOccurrenceReport({ meetingOccurrenceId, name, r
  *  The name is rewritten at the same time: a Template-only link was named
  *  after the Template, and once it points at an occurrence the occurrence's
  *  own name is the truthful one. */
+/** Sets (or replaces) the file link on an existing linked-report row --
+ *  lm_fileurl, DT New only so far (01 Oct). */
+export async function updateLinkedReportFile(linkId, fileUrl){
+  try{
+    assertSuccess(await Lm_meetingoccurrencelinkedreportsesService.update(linkId, { lm_fileurl: (fileUrl || '').trim() || null }));
+    return { id: linkId, errors: [] };
+  }catch(e){
+    return { id: null, errors: [{ table:'lm_meetingoccurrencelinkedreportses', error:e }] };
+  }
+}
+
 export async function attachReportOccurrenceToLink({ linkId, reportOccurrenceId, name }){
   try{
     const row = { 'lm_ReportOccurrence@odata.bind': `/lm_reportoccurrences(${reportOccurrenceId})` };
@@ -5825,14 +5855,29 @@ function shapeGrid(g, answerRows){
     facilitatorPositionId: g._lm_facilitatorposition_value || null,
     chairPositionId: g._lm_chairposition_value || null,
     updated: g.modifiedon || g.createdon || null,
+    created: g.createdon || null,              // the Grid opens when the MOM closes
+    submittedAt: g.lm_submitedat || null,      // DT New only so far
     answers, manual, evidence,
   };
+}
+
+/* lm_submitedat (the Organizer's submission time, AG-17, 01 Oct) exists in
+   DT New only so far. Selecting a missing column fails the whole read, so a
+   read that cannot have it falls back to GRID_SELECT alone. */
+async function getGrids(opts){
+  try{
+    const res = await Lm_auditgridinstancesService.getAll({ ...opts, select:[...GRID_SELECT, 'lm_submitedat'] });
+    if(res?.success === false) throw new Error('lm_submitedat not readable');
+    return res;
+  }catch{
+    return Lm_auditgridinstancesService.getAll({ ...opts, select: GRID_SELECT });
+  }
 }
 
 /** Every Audit Grid Instance with its Answers attached. */
 export async function fetchAuditGridInstances(){
   const [gridRes, ansRes] = await Promise.all([
-    Lm_auditgridinstancesService.getAll({ select: GRID_SELECT }),
+    getGrids({}),
     Lm_auditgridanswersService.getAll({ select: ANSWER_SELECT, filter: 'statecode eq 0' })
       .catch(e=>{ console.warn('[dataverse] Audit Grid answers fetch failed:', e); return null; }),
   ]);
@@ -5844,10 +5889,7 @@ export async function fetchAuditGridInstances(){
  *  normal: a correction opens a new version rather than editing the approved
  *  Instance, so the history is a list, not a row. */
 export async function fetchAuditGridInstancesByOccurrence(occurrenceId){
-  const res = await Lm_auditgridinstancesService.getAll({
-    filter: `_lm_meetingoccurrence_value eq ${occurrenceId}`,
-    select: GRID_SELECT,
-  });
+  const res = await getGrids({ filter: `_lm_meetingoccurrence_value eq ${occurrenceId}` });
   const rows = res?.data ?? [];
   if(!rows.length) return [];
   const ansRes = await Lm_auditgridanswersService.getAll({ select: ANSWER_SELECT, filter: 'statecode eq 0' })
@@ -5971,6 +6013,12 @@ export async function updateAuditGridState(id, state, reason){
       row.lm_returnreason = capped(reason, GRID_REASON_MAX, 'lm_returnreason');
     const result = await Lm_auditgridinstancesService.update(id, row);
     assertSuccess(result);
+    /* Stamp the submission time for AG-17 -- separately, so an environment
+       without lm_submitedat (IT, so far) still submits. */
+    if(state === 'Submitted for Approval'){
+      try{ assertSuccess(await Lm_auditgridinstancesService.update(id, { lm_submitedat: new Date().toISOString() })); }
+      catch(e){ console.warn('[dataverse] lm_submitedat not stamped (column missing here?):', e); }
+    }
     return { id, errors: [] };
   }catch(e){
     return { id: null, errors: [{ table:'lm_auditgridinstances', error:e }] };

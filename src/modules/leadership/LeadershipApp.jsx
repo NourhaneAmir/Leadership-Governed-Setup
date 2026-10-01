@@ -37,6 +37,7 @@ import { fetchMeetingOccurrences, fetchReportOccurrences, createMeetingOccurrenc
          fetchMeetingOccurrenceDepartments, fetchMeetingOccurrenceLinkedReports, fetchMeetingTemplateInputReports,
          fetchTasksForMeeting, addMeetingOccurrenceAttendee,
          linkMeetingOccurrenceReport, unlinkMeetingOccurrenceReport, fetchMeetingCategories, MEETING_OCC_STAGE_KEY,
+         updateLinkedReportFile,
          attachReportOccurrenceToLink,
          fetchBusinessUnits, fetchPositions, fetchDepartments, fetchFunctions, fetchRegions,
          fetchMeetingTemplatesList, fetchMeetingTemplateDetail,
@@ -334,6 +335,9 @@ const AG_QUESTIONS = [
   {id:'AG-16', cat:'MOM Quality', src:'Auto', w:1, owner:'Organizer',
    q:'The MOM was written up and submitted within the write-up period.',
    rule:'Measured from the end of the Meeting to MOM submission. On time scores 5; late scores 2; never submitted scores 0. Held separately from AG-05 because a different person is accountable.'},
+  {id:'AG-17', cat:'Governance Framework', src:'Auto', w:1, owner:'Organizer',
+   q:'The Audit Grid was completed and submitted within the Audit Grid submission period.',
+   rule:'Measured from the Grid opening (when the MOM closes) to its submission for Chair approval. On time scores 5; late (up to twice the period) scores 2; later scores 0.'},
 ];
 const AG_ACTIVE = AG_QUESTIONS.filter(q=>!q.retired);
 const AGQ = id => AG_QUESTIONS.find(q=>q.id===id);
@@ -1017,7 +1021,7 @@ function attendance(occ, setup, mode){
    override it. A question the system DID compute ('auto') is never touched:
    an auto-scored value still cannot be overridden by anyone. */
 const applyManualOverrides = (rows, manual, evid) => rows.map(r =>
-  (r.state === 'na' || r.state === 'blank') && manual[r.id] != null
+  !r.locked && (r.state === 'na' || r.state === 'blank') && manual[r.id] != null
     ? { ...r, state: 'manual', score: manual[r.id], ev: evid[r.id] || null,
         /* the original reason is kept, so the grid can still say what the
            system thought before a person overrode it */
@@ -1297,20 +1301,36 @@ function quorumLine(qr){
      - AG-13 / AG-14 stay Not Applicable until PRO-02 links Tasks to meetings.
    Each Not Applicable reason says exactly that, and a person can still
    answer them manually (applyManualOverrides). */
+/* The three time limits for ONE meeting (01 Oct): the occurrence's own value,
+   else its Setup's, else Governance Settings' global default. Hours. */
+function meetingLimits(occ, S){
+  const tpl = occ?.templateId ? dvTplDetail(occ.templateId) : null;
+  const pick = k => occ?.[k] ?? tpl?.[k] ?? S?.[k] ?? null;
+  return { momWriteupHours: pick('momWriteupHours'), momApprovalHours: pick('momApprovalHours'),
+           gridSubmitHours: pick('gridSubmitHours') };
+}
+
 function liveScoreGrid(occ, minutes, quorumPct, torLink, accred, S, grid, allOccs, decisions){
+  const LIM = meetingLimits(occ, S);
   const agendaIds = new Set(occ.agenda.map(a=>a.id));
   const meetingDecisions = (decisions||[]).filter(d=>d.agendaItemId && agendaIds.has(d.agendaItemId));
   const R = [];
   const manual = grid?.manual||{}, evid = grid?.evidence||{};
   const push = (id,state,score,ev,na) => R.push({id, q:AG_QUESTIONS.find(x=>x.id===id), state, score, ev, na});
 
-  if(!accred) push('AG-01','na',null,null,'A TOR or Policy reference is not mandatory for this Committee classification.');
-  else if(!torLink) push('AG-01','auto',0,'No TOR or Policy reference is held on the approved Setup.');
-  else push('AG-01','auto',5,'A TOR or Policy reference is held on the approved Setup.');
-
-  if(!torLink) push('AG-02','na',null,null,'No TOR or Policy reference exists for this Committee.');
-  else if(manual['AG-02']!=null) push('AG-02','manual', manual['AG-02'], evid['AG-02']||null);
-  else push('AG-02','blank',null,null);
+  /* TOR questions (01 Oct, user's rule): they follow THIS OCCURRENCE's own
+     TOR / Policy link. With none, every TOR question is a LOCKED Not
+     Applicable -- no manual score, not clickable, outside the calculation. */
+  const occTor = occ.torLink || null;
+  const torNA = 'No TOR or Policy reference is set on this meeting occurrence, so this question does not apply.';
+  const pushLockedNA = id => { push(id,'na',null,null,torNA); R[R.length-1].locked = true; };
+  if(!occTor){ pushLockedNA('AG-01'); pushLockedNA('AG-02'); }
+  else{
+    if(!accred) push('AG-01','na',null,null,'A TOR or Policy reference is not mandatory for this Committee classification.');
+    else push('AG-01','auto',5,'A TOR or Policy reference is set on this meeting occurrence.');
+    if(manual['AG-02']!=null) push('AG-02','manual', manual['AG-02'], evid['AG-02']||null);
+    else push('AG-02','blank',null,null);
+  }
 
   const hasItems = occ.agenda.length>0;
   if(S.agendaLeadDays==null){
@@ -1331,13 +1351,13 @@ function liveScoreGrid(occ, minutes, quorumPct, torLink, accred, S, grid, allOcc
       : carried ? `${unc.length} uncovered item(s), all carried forward to a later occurrence.`
       : `${unc.length} uncovered item(s); not all are carried forward.`);
 
-  if(S.momApprovalHours==null) push('AG-05','na',null,null,'The MOM approval period is not configured, so approval timeliness cannot be measured.');
+  if(LIM.momApprovalHours==null) push('AG-05','na',null,null,'No MOM approval period is set on this meeting, its Setup or Governance Settings, so approval timeliness cannot be measured.');
   else if(!minutes?.submittedAt) push('AG-05','na',null,null,'The MOM was never submitted, so the Chair’s approval clock never started. Measured by AG-16 instead.');
   else if(!minutes?.approvedAt) push('AG-05','na',null,null,'The MOM has not been approved yet.');
   else{
     const h = hoursBetween(minutes.submittedAt, minutes.approvedAt);
-    push('AG-05','auto', h<=S.momApprovalHours?5 : h<=S.momApprovalHours*2?2:0,
-      `Approved ${h} hour${h===1?'':'s'} after submission (limit ${S.momApprovalHours}h).`);
+    push('AG-05','auto', h<=LIM.momApprovalHours?5 : h<=LIM.momApprovalHours*2?2:0,
+      `Approved ${h} hour${h===1?'':'s'} after submission (limit ${LIM.momApprovalHours}h).`);
   }
 
   const withOutcome = occ.agenda.filter(a=>(minutes?.notesByAgenda?.[a.id]||'').trim()
@@ -1387,16 +1407,34 @@ function liveScoreGrid(occ, minutes, quorumPct, torLink, accred, S, grid, allOcc
     push('AG-15','auto', score, occ.inviteSent?`Invitation sent ${occ.inviteSent}, needed by ${need}.`:'No invitation date recorded.');
   }
 
-  if(S.momWriteupHours==null) push('AG-16','na',null,null,'No MOM write-up period is configured.');
+  if(LIM.momWriteupHours==null) push('AG-16','na',null,null,'No MOM write-up period is set on this meeting, its Setup or Governance Settings.');
   else if(!occ.end) push('AG-16','na',null,null,'No end time is recorded on this occurrence, so the write-up clock cannot start.');
   else if(!minutes?.submittedAt) push('AG-16','auto',0,'The MOM was never submitted.');
   else{
     const h = hoursBetween(occ.date+' '+occ.end, minutes.submittedAt);
-    push('AG-16','auto', h<=S.momWriteupHours?5 : h<=S.momWriteupHours*2?2:0,
-      `Submitted ${h} hour${h===1?'':'s'} after the Meeting ended (limit ${S.momWriteupHours}h).`);
+    push('AG-16','auto', h<=LIM.momWriteupHours?5 : h<=LIM.momWriteupHours*2?2:0,
+      `Submitted ${h} hour${h===1?'':'s'} after the Meeting ended (limit ${LIM.momWriteupHours}h).`);
   }
 
-  return applyManualOverrides(R, manual, evid).sort((a,b)=>a.id.localeCompare(b.id));
+  /* AG-17 (01 Oct): Grid opened (createdon -- it is created when the MOM
+     closes) -> submitted for Chair approval (lm_submitedat, DT New only). */
+  if(LIM.gridSubmitHours==null) push('AG-17','na',null,null,'No Audit Grid submission period is set on this meeting, its Setup or Governance Settings.');
+  else if(!grid) push('AG-17','na',null,null,'No Audit Grid exists for this meeting yet.');
+  else if(!grid.submittedAt) push('AG-17','na',null,null,
+    grid.state==='Pending Organizer Review' || grid.state==='Returned for Revision'
+      ? 'The Grid has not been submitted yet — it is measured once it is.'
+      : 'This Grid’s submission time was not recorded (submitted before it was tracked, or where lm_submitedat does not exist).');
+  else if(!grid.created) push('AG-17','na',null,null,'The Grid’s opening time is not available.');
+  else{
+    const h = hoursBetween(grid.created, grid.submittedAt);
+    push('AG-17','auto', h<=LIM.gridSubmitHours?5 : h<=LIM.gridSubmitHours*2?2:0,
+      `Submitted ${h} hour${h===1?'':'s'} after the Grid opened (limit ${LIM.gridSubmitHours}h).`);
+  }
+
+  /* `note` = the Organizer's saved evidence note, kept apart from `ev` (what
+     the score was computed from) so the evidence box never shows the latter. */
+  return applyManualOverrides(R, manual, evid).map(r=>({...r, note: evid[r.id] ?? null}))
+    .sort((a,b)=>a.id.localeCompare(b.id));
 }
 
 /* Outputs of one MOM, resolved to their target records */
@@ -2933,19 +2971,19 @@ function App({onSwitch}){
      are plain objects, not state -- without it the first render after they load
      would keep the earlier, name-less labels. */
   const cal  = useMemo(()=>{
-    const momDue = S.momWriteupHours==null ? [] : dvMeetingOccs
-      .filter(o=>o.status==='Held' && o.end)
+    const momDue = dvMeetingOccs
+      .filter(o=>o.status==='Held' && o.end && meetingLimits(o, S).momWriteupHours!=null)
       .filter(o=>{
         const m = dvMinutes.find(x=>x.occurrenceId===o.id);
         return !(m && m.submittedAt);
       })
-      .map(o=>dvMomDueCalItem(o, S.momWriteupHours));
+      .map(o=>dvMomDueCalItem(o, meetingLimits(o, S).momWriteupHours));
     return [
       ...dvMeetingOccs.filter(o=>o.date).map(dvMeetingCalItem),
       ...dvReportOccs.filter(r=>r.period).map(dvReportCalItem),
       ...momDue,
     ];
-  },[dvMeetingOccs,dvReportOccs,dvMinutes,S.momWriteupHours,dvTick]);
+  },[dvMeetingOccs,dvReportOccs,dvMinutes,S,dvTick]);
   const counts = useMemo(()=>{
     const c={work:work.due.length+work.finish.length};
     work.all.forEach(w=>{ c[w.screen]=(c[w.screen]||0)+1; });
@@ -5563,11 +5601,12 @@ function ScreenMeetings(){
      see PROJECT-CONTEXT §9, so this reads the same global default the Audit
      Grid does). A held meeting with no Minutes row at all counts too. */
   const momOverdue = openAfter.filter(o=>{
-    if(S.momWriteupHours==null || !o.end) return false;
+    const lim = meetingLimits(o, S).momWriteupHours;
+    if(lim==null || !o.end) return false;
     const m = dvMinutes.find(x=>x.occurrenceId===o.id);
     if(m && m.status!=='Draft') return false;
     if(m && m.submittedAt) return false;
-    return addHours(o.date+' '+o.end, S.momWriteupHours) < nowStamp();
+    return addHours(o.date+' '+o.end, lim) < nowStamp();
   });
   const attention = [
     ...momOverdue.map(o=>({id:o.id,k:'red',t:<>MOM overdue for <b>{o.name}</b></>,
@@ -5893,8 +5932,8 @@ function ScreenMinutes(){
   const approved = list.filter(m=>m.status==='Approved');
   const closed   = list.filter(m=>m.status==='Closed');
 
-  const overdue = draft.filter(m=>S.momWriteupHours!=null && m.occ_.end &&
-    addHours(m.occ_.date+' '+m.occ_.end, S.momWriteupHours) < nowStamp());
+  const overdue = draft.filter(m=>{ const lim = meetingLimits(m.occ_, S).momWriteupHours;
+    return lim!=null && m.occ_.end && addHours(m.occ_.date+' '+m.occ_.end, lim) < nowStamp(); });
 
   const TABS=[
     {id:'draft',    label:'Draft',            rows:draft},
@@ -6157,6 +6196,10 @@ function DvRescheduleOccModal({rec,onClose}){
         restricted: !!rec.restricted,
         inviteSent: TODAY,
         rescheduledFromId: rec.id,
+        momWriteupHours: rec.momWriteupHours ?? undefined,
+        momApprovalHours: rec.momApprovalHours ?? undefined,
+        gridSubmitHours: rec.gridSubmitHours ?? undefined,
+        torLink: rec.torLink || undefined,
         agenda: rec.agenda.map(a=>({title:a.title, source:'Rescheduled', ownerPositionId:a.ownerPositionId||undefined})),
         attendees: rec.attendees.filter(a=>a.positionId)
           .map(a=>({positionId:a.positionId, name:a.name||undefined, type:a.type||'Required'})),
@@ -6298,6 +6341,30 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
      choice shows at once from `covSet` while that re-read runs. */
   const [covSet,setCovSet]=useState({});           // agendaItemId -> 'Yes' | 'No' | 'Not Yet Recorded'
   const covOf = a => covSet[a.id] ?? a.covered;
+  /* Add an agenda item from the Minutes (01 Oct): written to the meeting's
+     agenda (lm_meetingoccurrenceagendas) at the end, as "Added in meeting" --
+     the same row the Agenda tab's "+ Add item" writes on a Held meeting. */
+  const [agOpen,setAgOpen]=useState(false);
+  const [agTitle,setAgTitle]=useState('');
+  const [agSaving,setAgSaving]=useState(false);
+  const addAgendaHere = async () => {
+    const title = agTitle.trim();
+    if(!title || agSaving) return;
+    setAgSaving(true);
+    try{
+      const seq = Math.max(0, ...rec.agenda.map((a,i)=>a.seq ?? i+1)) + 1;
+      const {id,errors} = await createMeetingOccurrenceAgendaItem(rec.id,
+        { title, sequence: seq, source: rec.status==='Held' ? 'Added in meeting' : 'Ad Hoc' });
+      if(!id){ console.warn('[dataverse] createMeetingOccurrenceAgendaItem() failed:', errors);
+               toast('Not saved','Adding the agenda item failed. Check the console for details.','err'); return; }
+      toast('Agenda item added',`“${title}” is on the agenda — write its note below.`,'ok');
+      setAgTitle(''); setAgOpen(false);
+      await refreshOccurrences();
+    }catch(err){
+      console.warn('[dataverse] createMeetingOccurrenceAgendaItem() threw:', err);
+      toast('Not saved','Adding the agenda item failed. Check the console for details.','err');
+    }finally{ setAgSaving(false); }
+  };
   const [drafts,setDrafts]=useState({});        // agendaItemId -> unsaved text
   const [savingNote,setSavingNote]=useState(null);
   const [busy,setBusy]=useState(null);
@@ -6735,6 +6802,18 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
                   onRaised={onTasksChanged}/>
               </div>;})}
               </div>}
+          {editable && (agOpen
+            ? <div className="mom-addag">
+                <input type="text" value={agTitle} autoFocus maxLength={850} placeholder="New agenda item…"
+                  onChange={e=>setAgTitle(e.target.value)}
+                  onKeyDown={e=>{ if(e.key==='Enter') addAgendaHere(); if(e.key==='Escape'){ setAgOpen(false); setAgTitle(''); } }}/>
+                <button type="button" className="cs-btn primary lg" disabled={!agTitle.trim()||agSaving} onClick={addAgendaHere}>
+                  <Plus size={13}/>{agSaving?'Adding…':'Add to agenda'}</button>
+                <button type="button" className="cs-btn ghost lg" disabled={agSaving}
+                  onClick={()=>{ setAgOpen(false); setAgTitle(''); }}>Cancel</button>
+              </div>
+            : <button type="button" className="cs-btn ghost lg mom-addag-btn" onClick={()=>setAgOpen(true)}>
+                <Plus size={13}/>Add agenda item</button>)}
         </section>
 
         <section className="card mom-outputs">
@@ -6877,7 +6956,10 @@ function DvGridCorrectionModal({onClose,onSave}){
    driven by a liveScoreGrid() row instead of scoreGrid()'s. */
 function DvGridQuestion({r,editable,savingId,onScore,onEvidence,onClear}){
   const [open,setOpen]=useState(false);
-  const evVal = r.ev ?? '';
+  /* The person's own evidence note (lm_evidence). NOT r.ev: on an Automatic
+     row r.ev is the system's explanation, which used to pre-fill this box
+     and could be saved back as if the Organizer had written it (fixed 01 Oct). */
+  const evVal = r.note ?? '';
   const [draft,setDraft]=useState(evVal);
   useEffect(()=>{ setDraft(evVal); },[evVal]);
   const busy = savingId===r.id;
@@ -6892,6 +6974,16 @@ function DvGridQuestion({r,editable,savingId,onScore,onEvidence,onClear}){
     : r.state==='na' ? 'N/A'
     : r.state==='blank' ? <span style={{color:'var(--amber)'}}>—</span>
     : <span style={{color:`var(--${scoreColour(r.score)})`}}>{r.score}/5</span>;
+
+  /* A locked N/A (a TOR question with no TOR on the occurrence) opens nothing. */
+  if(r.locked) return <div style={{borderBottom:'1px solid var(--border)'}} title={r.na||''}>
+    <div style={{display:'flex',alignItems:'center',gap:10,padding:'10px 0',cursor:'default',opacity:.6}}>
+      <span style={{fontWeight:700,fontSize:12,width:48,flex:'none'}}>{r.id}</span>
+      <span style={{flex:1,fontSize:13}}>{r.q.q}</span>
+      <Tag c="grey">🔒 Not Applicable</Tag>
+      <span style={{width:40,textAlign:'right',fontSize:13,fontWeight:700}}>N/A</span>
+    </div>
+  </div>;
 
   return <div style={{borderBottom:'1px solid var(--border)'}}>
     <div style={{display:'flex',alignItems:'center',gap:10,padding:'10px 0',cursor:'pointer'}}
@@ -7380,28 +7472,48 @@ function DvMeetingDetail({rec,back}){
   const [spFor,setSpFor]=useState(null);       // submission key whose link form is open
   const [spUrl,setSpUrl]=useState('');
   const [spSaving,setSpSaving]=useState(false);
+  /* Which row's form is open: a report occurrence's link is capped by
+     FILE_URL_MAX (lm_fileurl on lm_reportoccurrence); a link-row's length is
+     whatever lm_fileurl on the linked-report table allows -- Dataverse says
+     so if a link is too long, and the message is shown. */
+  const spRow = submissions.find(x=>x.key===spFor) || null;
   const spErr = !spUrl.trim() ? null
     : !/^https:\/\//i.test(spUrl.trim()) ? 'Paste the full link, starting with https://'
-    : spUrl.trim().length>FILE_URL_MAX ? `${spUrl.trim().length} characters — ${FILE_URL_MAX} max.` : null;
-  const saveSpLink = async occ => {
+    : spRow?.occ && spUrl.trim().length>FILE_URL_MAX ? `${spUrl.trim().length} characters — ${FILE_URL_MAX} max.` : null;
+  const spCurrent = x => x.occ ? (x.occ.fileUrl||'') : (x.link?.fileUrl||'');
+  /* Submit a document as a link (01 Oct), whichever kind of row it is:
+     - a report occurrence  -> its own lm_fileurl (shared with the report page);
+     - a linked-report row  -> that row's lm_fileurl;
+     - a Setup input not linked yet -> a NEW linked-report row for that Report
+       Template, carrying the link. Either of the last two counts as submitted. */
+  const saveSpLink = async x => {
     const url = spUrl.trim();
     if(!url || spErr) return;
     setSpSaving(true);
     try{
-      const {id,errors} = await updateReportOccurrenceFile(occ.id, url);
-      if(!id){
-        console.warn('[dataverse] updateReportOccurrenceFile() failed:', errors);
-        toast('Not saved','Saving the SharePoint link failed. Check the console for details.','err');
+      const res = x.occ ? await updateReportOccurrenceFile(x.occ.id, url)
+        : x.link ? await updateLinkedReportFile(x.link.id, url)
+        : await linkMeetingOccurrenceReport({ meetingOccurrenceId: rec.id, reportTemplateId: x.tplId || undefined,
+                                              name: x.name, fileUrl: url });
+      if(!res.id){
+        console.warn('[dataverse] saving the submission link failed:', res.errors);
+        const why = res.errors?.[0]?.error?.message || '';
+        toast('Not saved', /length|too long|exceed/i.test(why)
+          ? 'This link is longer than the column allows — ask IT to widen lm_fileurl, or use a shorter link.'
+          : 'Saving the link failed. Check the console for details.', 'err');
         return;
       }
-      toast('Link saved',`${occ.name} now has its SharePoint link and counts as submitted.`,'ok');
+      toast('Link saved',`${x.name} counts as submitted.`,'ok');
       setSpFor(null); setSpUrl('');
-      await refreshOccurrences();
+      await (x.occ ? refreshOccurrences() : reloadDocs());
     }catch(e){
-      console.warn('[dataverse] updateReportOccurrenceFile() threw unexpectedly:', e);
-      toast('Not saved','Saving the SharePoint link failed. Check the console for details.','err');
+      console.warn('[dataverse] saving the submission link threw unexpectedly:', e);
+      toast('Not saved','Saving the link failed. Check the console for details.','err');
     }finally{ setSpSaving(false); }
   };
+  const linkBtn = x => rec.status!=='Cancelled' &&
+    <Btn k={x.occ||x.link?'sm':'sm pri'} onClick={()=>{ setSpFor(spFor===x.key?null:x.key); setSpUrl(spCurrent(x)); }}>
+      {spFor===x.key ? 'Close' : spCurrent(x) ? 'Change link' : x.occ ? 'Add SharePoint link' : 'Submit a link'}</Btn>;
 
   /* Attaching an occurrence to a link that was made against the Template
      alone -- which link is open, and whether its list is scoped. */
@@ -7879,9 +7991,9 @@ function DvMeetingDetail({rec,back}){
           <Row label="Setup Type" value={tplSetupType||(rec.templateId?null:'Ad Hoc')}/>
           <Row label="Classification" value={tplCategory}/>
           <Row label="Cadence" value={cadence}/>
-          <Row label="TOR or Policy Reference" value={tpl&&tpl.torLink
-            ? tpl.torLink
-            : rec.templateId ? (accred?'Required — none held':'Optional — none held') : null}/>
+          <Row label="TOR or Policy Reference" value={rec.torLink
+            ? rec.torLink
+            : 'None on this occurrence — TOR questions are Not Applicable'}/>
           <Row label="Quorum Threshold" value={tpl
             ? (tpl.quorumPct!=null?tpl.quorumPct+'%':'Not configured')
             : null}/>
@@ -7980,11 +8092,9 @@ function DvMeetingDetail({rec,back}){
           <div style={{display:'flex',alignItems:'center',gap:9,padding:'8px 10px',borderRadius:8,
                        background:'var(--grey-bg)',border:'1px solid var(--border)'}}>
             <span aria-hidden="true">🔒</span>
-            <span>{tpl&&tpl.torLink
-              ? tpl.torLink
-              : rec.templateId
-                ? (accred ? 'Required for this Setup Type, and none is held.' : 'Optional for this Setup Type, and none is held.')
-                : 'No Terms of Reference or Policy is linked to this occurrence.'}</span>
+            <span>{rec.torLink
+              ? rec.torLink
+              : 'No Terms of Reference or Policy is set on this occurrence, so the Audit Grid’s TOR questions are Not Applicable.'}</span>
           </div>
         </div>
 
@@ -8173,7 +8283,7 @@ function DvMeetingDetail({rec,back}){
           posName={posName} onReload={reloadGovernance}
           tasks={mtgTasks} onTasksChanged={()=>setTasksTick(t=>t+1)}
           decisions={dvDecisions.filter(d=>d.agendaItemId && agendaById.has(d.agendaItemId))}
-          quorum={quorum} writeupHours={S.momWriteupHours} setupName={dvTpl(rec.templateId)}/>}
+          quorum={quorum} writeupHours={meetingLimits(rec, S).momWriteupHours} setupName={dvTpl(rec.templateId)}/>}
     </>}
 
     {tab==='grid' && <>
@@ -8271,26 +8381,29 @@ function DvMeetingDetail({rec,back}){
               : <Tag c="red">{x.status}</Tag>}</td>
             <td style={{textAlign:'right',whiteSpace:'nowrap'}}>
               {x.occ
-                ? <>{rec.status!=='Cancelled' && <Btn k="sm" onClick={()=>{ setSpFor(spFor===x.key?null:x.key); setSpUrl(x.occ.fileUrl||''); }}>
-                      {spFor===x.key ? 'Close' : x.occ.fileUrl ? 'Change link' : 'Add SharePoint link'}</Btn>}
+                ? <>{linkBtn(x)}
                     {' '}<Btn k="sm" onClick={()=>openDvRec('Report',x.occ)}>Open</Btn></>
                 : x.link
-                ? (x.link.reportTemplateId && !x.link.reportOccurrenceId
-                    ? <Btn k="sm" onClick={()=>{ setAttachFor(x.link.id); setAttachAll(false); setTab('docs'); }}>
-                        Attach an occurrence</Btn> : null)
+                ? <>{linkBtn(x)}
+                    {x.link.reportTemplateId && !x.link.reportOccurrenceId && !x.link.fileUrl
+                      ? <>{' '}<Btn k="sm" onClick={()=>{ setAttachFor(x.link.id); setAttachAll(false); setTab('docs'); }}>
+                          Attach an occurrence</Btn></> : null}</>
                 : x.tplId
-                ? <Btn k="sm" onClick={()=>{ setLinkTplId(x.tplId); setShowAll(false); setTab('docs'); }}>Link it</Btn>
+                ? <>{linkBtn(x)}
+                    {' '}<Btn k="sm" onClick={()=>{ setLinkTplId(x.tplId); setShowAll(false); setTab('docs'); }}>Link a report</Btn></>
                 : null}</td>
           </tr>
-          {x.occ && spFor===x.key && <tr className="mtgd-spform"><td colSpan={6}>
+          {spFor===x.key && <tr className="mtgd-spform"><td colSpan={6}>
             <div className="mtgd-addatt">
-              <Field label="SharePoint link" req err={spErr}
-                hint={`The report file's link in SharePoint or Teams — saved on the report itself. Max ${FILE_URL_MAX} characters.`}>
+              <Field label={x.occ ? 'SharePoint link' : 'Document link'} req err={spErr}
+                hint={x.occ
+                  ? `The report file's link in SharePoint or Teams — saved on the report itself. Max ${FILE_URL_MAX} characters.`
+                  : 'The document’s link in SharePoint or Teams. It counts as submitted for this meeting.'}>
                 <input type="url" value={spUrl} autoFocus placeholder="https://…sharepoint.com/…"
                   onChange={e=>setSpUrl(e.target.value)}
-                  onKeyDown={e=>{ if(e.key==='Enter') saveSpLink(x.occ); }}/></Field>
-              <Btn k="pri" disabled={spSaving||!spUrl.trim()||!!spErr||spUrl.trim()===(x.occ.fileUrl||'')}
-                onClick={()=>saveSpLink(x.occ)}>{spSaving?'Saving…':'Save link'}</Btn>
+                  onKeyDown={e=>{ if(e.key==='Enter') saveSpLink(x); }}/></Field>
+              <Btn k="pri" disabled={spSaving||!spUrl.trim()||!!spErr||spUrl.trim()===spCurrent(x)}
+                onClick={()=>saveSpLink(x)}>{spSaving?'Saving…':'Save link'}</Btn>
             </div></td></tr>}
           </React.Fragment>)}
           </tbody></table></div>}
@@ -9850,6 +9963,12 @@ function ScreenNewMeeting(){
         location:needsLocation ? (f.location.trim()||null) : null,
         link:needsLink ? (f.link.trim()||null) : null,
         adhocType:f.adhoc, restricted:!!f.restricted, inviteSent:TODAY,
+        /* The Setup's time limits travel with the occurrence (01 Oct). */
+        ...(!custom && tplDetail?.parent ? {
+          momWriteupHours: tplDetail.parent.lm_momwriteuphours ?? undefined,
+          momApprovalHours: tplDetail.parent.lm_momapprovalhours ?? undefined,
+          gridSubmitHours: tplDetail.parent.lm_gridsubmithours ?? undefined,
+          torLink: tplDetail.parent.lm_torpolicylink || undefined } : {}),
         ...(custom ? { setupType:cls.type,
                        classification: accredCustom ? undefined : (cls.classification||undefined),
                        meetingCategoryId: cls.categoryId||undefined } : {}),
