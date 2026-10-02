@@ -89,8 +89,11 @@ grep -c "^<<<<<<<\|^>>>>>>>" src/modules/leadership/LeadershipApp.jsx src/servic
 # 2. Build Leadership ONLY, and prove the uploader is gone from the bundle.
 npm run build:leadership
 grep -o "lm_attachmentfile\|lm_TeamChannel@odata.bind" apps/leadership/dist/assets/*.js | sort | uniq -c
-#    -> must print NOTHING. One lm_destinationsharepointlink is expected: it is
-#       the Report TEMPLATE's own column, always there.
+#    -> must print exactly "1 lm_TeamChannel@odata.bind" and NO lm_attachmentfile.
+#       ⚠️ Changed 03 Oct: a Custom meeting now writes its own lm_TeamChannel
+#       (createMeetingOccurrence), so ONE bind is legitimate; the uploader's is
+#       the second (a normal HEAD build shows 2). One lm_destinationsharepointlink
+#       is expected too: it is the Report TEMPLATE's own column, always there.
 
 # 3. Stage and push (replace the dist SUBFOLDER only).
 rm -rf /c/tmp/cad-exec/dist && cp -r apps/leadership/dist /c/tmp/cad-exec/dist
@@ -276,7 +279,7 @@ published as a private Artifact: https://claude.ai/artifact/QgJAm1RF3tGqkzugS8CA
 | **Append To** on `strategy_strategy` and `stf_strategypoc` (Organization level) | IT security role | citing a POC or Strategy (the save fails with `0x80040220`) |
 | **50 of 53** Report Template destinations saved with the doubled folder | a decision: repair in one pass, or let each fix itself on its next save | nothing — cosmetic until the SharePoint save exists |
 | ~~`cr18c_month` on `lm_meetingtemplate`~~ | ✅ settled 29 Sep — it is the Annual month (pm_month 1–12), wired both apps (`6b79978`) | — |
-| The Meeting Occurrence **generator flow** (planned, not built) | must take the group-wide branch for Stage 4 — their BU / Region rows are scope only | correct Stage 4 occurrences once the flow exists |
+| The Meeting Occurrence **generator flow** (BUILT in DT New, `653ebc28…` — fix list 02 Oct: https://claude.ai/artifact/GW1moijWAzsgwsTiG7VCyn) | must take the group-wide branch for Stage 4 — their BU / Region rows are scope only | correct Stage 4 occurrences once the flow exists |
 | **Lookup on `hx_tasks` → `lm_meetingoccurrenceagenda`** (schema name `lm_MeetingOccurrenceAgenda`, optional, delete = remove link; Create/Read/Write + Append on `hx_tasks`, Append To on the agenda table) | IT to add — **requested 29 Sep**, the user chose to wait for it | the meeting **Actions** tab (PRO-02), tasks raised from Minutes, carried-forward tasks, AG-10–14's task questions |
 | A lookup from `lm_reportsectioncitations` to a single **section** | optional, IT | a response (EXT-06) pointing at the exact section it answers, not only the report |
 | **A user security role** for the meeting tables (only `Leadership Practice - Admin`, 8 users, and platform roles hold them) | IT | any non-admin using Meetings / Minutes / Committee Scores — see the committees readiness page |
@@ -9085,6 +9088,128 @@ non-fatal write — so IT does not break; creating rows WITH them does fail in I
 **Also answered this session:** the occurrence and Setup both carry the three
 time-limit columns (grid *approval* has none anywhere); "Facilitator" is
 "Organizer" in Leadership only.
+
+### 02 Oct: the Meeting Occurrence generator is BUILT (DT New) — fix list published
+
+Asked for "the edits needed to make the meeting occurrences generator flow
+work". **The flow already exists and runs:** "Leadership Practice - Next Week
+Meeting Occurrences Creation", DT New, workflow `653ebc28-92ab-f111-aaac-00224882d001`,
+active, last edited 15 Sep. The §10 plan (v6, 13 Sep) is history where they
+differ. Fix list, with paste-ready one-line expressions:
+**https://claude.ai/artifact/GW1moijWAzsgwsTiG7VCyn** (private).
+
+Read-only checks behind it: the flow's `clientdata`, its `flowrun` history,
+the meetings it created, and IT + DT New schema (`stringmap`, column existence,
+`pac modelbuilder` on the occurrence tables). Nothing was changed.
+
+- **Runs:** 10–14 Sep failed (4 runs, before the current version); 17 Sep,
+  24 Sep and 1 Oct succeeded. The 1 Oct run made 33 meetings (23 BU, 4 Region,
+  6 group-wide) with no duplicates. Every generated row has empty
+  `lm_syncstatus`, `lm_timezone`, `lm_starttime` and `lm_endtime`.
+- **Must fix (9):**
+  - every lookup is bound unconditionally. 8 of 11 approved DT New Setups have
+    no parent Co-Chairman, some unit rows have no roles, and one agenda item
+    has no owner, so an empty bind will 400;
+  - the group-wide branch never reads `Existing_3`, so re-runs duplicate;
+  - `List_Attendees_3` filters on the Setup id as a Region row id, so
+    group-wide meetings get 0 attendees (all 6 on 1 Oct);
+  - the unit loops also run for Stage 4 scope rows;
+  - Saturday is `989230001` on `lm_daysoftheweek` and `6` on
+    `lm_seconddayoftheweek`, so the old arithmetic never fires or fires on
+    Friday;
+  - Output linked reports are copied and then count as inputs on Submissions;
+  - Microsoft Group attendee rows have no Position;
+  - `lm_dayofweeks` (Multiple days) is not tested;
+  - Annual is not tested (`cr18c_month`).
+- **New schema facts (both environments, identical):**
+  - the meeting unit tables carry their own schedule columns (1-based,
+    unused for meetings);
+  - the occurrence has `lm_MeetingCoChairman` (→ positions) and
+    `lm_TeamChannel` (→ `and_teamschannellink`);
+  - occurrence attendees cannot hold a Microsoft Group;
+  - the Setup still has no time columns.
+- The other DT New flow, "When a row is added, modified or deleted in
+  Meeting", watches `ms_meetingrequest`. It is unrelated.
+- Open: Setup start/end time columns (Mark as Held needs times since 1 Oct),
+  carry-forward placement, Custom rule, and the IT/DT New split (Setups from
+  Governance land in IT, the flow reads DT New).
+
+### 03 Oct: Stage 4 confidential agenda items — the flag moves onto the agenda item (Leadership only)
+
+Per an explicit ask, with these choices from the user: keep marking in the
+Minutes tab; readers who aren't allowed see the title only; **the Organizer
+OR the Chair** may mark and choose readers (was the Organizer only); the user
+added the two columns in **DT New** (both confirmed live, names read with
+`pac modelbuilder build`):
+
+| Table | Column | Type |
+|---|---|---|
+| `lm_meetingoccurrenceagenda` | `lm_confidential` (`lm_Confidential`) | Yes/No |
+| `lm_meetingminutesreviewerlist` | `lm_meetingoccurrenceagenda` (nav `lm_MeetingOccurrenceAgenda`) | lookup → agenda item |
+
+IT has neither column yet.
+
+- **Read** (`dataverse.js`): `fetchMeetingOccurrences()` reads `lm_confidential`
+  through `fetchOccurrenceAgendaRows()`. That falls back to the old column set
+  when the select fails, which is what happens in IT. Each agenda item now
+  carries `confidential` and `viewers` (reviewer-list rows linked to the item,
+  read by the new `fetchViewersBy(key, ids)`; `fetchNoteViewers` now wraps it).
+- **Write:** `setAgendaItemConfidential()` replaces `setMomNoteConfidential()`.
+  Switching an item off also clears an old note flag.
+  `saveAgendaItemViewers()` replaces `saveMomNoteViewers()`: each new reader
+  row binds the agenda item AND its MOM Note, creating an empty note first if
+  there is none, so the row is valid whether or not `lm_MOMNotes` is required.
+- **The rule, one place** (`LeadershipApp.jsx`, beside `previousOccurrence`):
+  `isStage4`, `confidentialItem` (item flag OR the pre-03 Oct note flag, so
+  nothing marked earlier becomes visible), `agendaReaders` (item rows plus
+  note-only rows, de-duplicated by row id), and `canReadAgendaItem`.
+- **Where it applies:**
+  - the Minutes tab (marking, readers, Review & Sign, Word export);
+  - **new: the meeting's Actions tab.** A decision or task on an item the
+    user can't read keeps its kind, source and status, but shows
+    "Confidential item — content withheld", with no owner, due date or link.
+  - Both saves call `refreshOccurrences()` too, since the flag now lives on
+    `rec.agenda`.
+- ⚠️ **Not covered:** the Decisions register, Calendar and Workspace still
+  show a confidential item's decisions in full. Hiding is app-side only, as
+  before.
+- Governance untouched: it calls none of the changed functions.
+- Checks: both apps build; lint 56 before and after on the two files; the rule
+  run against sample data in Node (9 cases: new flag, old note flag, reader,
+  Chair, Organizer, non-Stage 4). **Not browser-checked** (no Dataverse
+  locally). **Not committed, not pushed.**
+
+### 03 Oct: a Teams channel on a Custom Ad Hoc meeting (Leadership only)
+
+Per an explicit ask. On the Schedule Meeting page, a **Custom** meeting gets an
+optional **Team → Channel** pick, the same two-step pick a Custom report uses,
+placed under Type / Classification / Category.
+
+- The Channel hint links to the channel in Teams, and the Summary gains a
+  "Teams channel" line.
+- **Saved** to `lm_meetingoccurrence.lm_TeamChannel` → `and_teamschannellinks`
+  (`createMeetingOccurrence`'s new optional `teamChannelId`). The column
+  already existed in both IT and DT New, so no schema change was needed.
+- **Read back**: `fetchMeetingOccurrences()` now selects
+  `_lm_teamchannel_value` (`rec.teamChannelId`). The meeting page shows
+  "Teams channel: Team › Channel ↗" in its details when one is set.
+- Channels are read once per session through `loadTeamsChannels()` (a shared
+  promise; a failed read is not cached).
+- Setup-based meetings are unchanged; they don't set a channel. The generator
+  flow fix list's H4 covers copying one from the Setup.
+- ⚠️ **The §0 push check changed**: after the uploader revert the bundle
+  must show exactly ONE `lm_TeamChannel@odata.bind` (this one).
+- Checks: both apps build; lint 56, unchanged. Seen in the dev server: the two
+  fields and the Summary line render on a Custom meeting. Team stays on
+  "Reading teams…" there, as every Dataverse read does locally. **Not saved
+  against Dataverse yet. Not committed, not pushed.**
+
+### 03 Oct: "New Report" removed from My Workspace (Leadership only)
+
+Per an explicit ask: the header of My Workspace (`ScreenWorkspace`) now has
+only **New Meeting**. Reports / Plans keeps its own "+ New Report", and
+`openNewReport()` still serves every other caller. Leadership builds; lint 56,
+unchanged; seen in the dev server. Not committed, not pushed.
 
 ## 6. Schema facts that are expensive to rediscover
 
