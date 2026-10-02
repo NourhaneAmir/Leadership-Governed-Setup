@@ -3808,6 +3808,22 @@ export const REPORT_STAGE_KEY = {
  *  would shift the day across time zones). */
 const isoDay = v => (typeof v === 'string' && v.length >= 10) ? v.slice(0,10) : null;
 
+/* Every live occurrence agenda item. lm_confidential (a Stage 4 confidential
+   item, 03 Oct) exists in DT New only; selecting a missing column fails the
+   whole read, so IT falls back to the base set and no item is confidential. */
+const OCC_AGENDA_SELECT = ['lm_meetingoccurrenceagendaid','lm_title','lm_sequence','lm_source','lm_covered',
+  '_lm_meetingoccurrence_value','_lm_ownerposition_value','_lm_carriedfromagendaitem_value'];
+async function fetchOccurrenceAgendaRows(){
+  const filter = 'statecode eq 0';
+  try{
+    const res = await Lm_meetingoccurrenceagendasService.getAll({ filter, select:[...OCC_AGENDA_SELECT, 'lm_confidential'] });
+    if(res?.success === false) throw new Error('lm_confidential not readable');
+    return res;
+  }catch{
+    return Lm_meetingoccurrenceagendasService.getAll({ filter, select:OCC_AGENDA_SELECT });
+  }
+}
+
 /** Every Meeting Occurrence, with its agenda and attendee list attached.
  *  Three requests total, not one per occurrence: the two child tables are
  *  fetched whole and grouped client-side, which is far cheaper than a
@@ -3824,14 +3840,11 @@ export async function fetchMeetingOccurrences(){
                'lm_torpolicylink',
                '_lm_meetingtemplate_value','_lm_businessunit_value','_lm_chairmanposition_value',
                '_lm_region_value','_lm_department_value','_lm_facilitatorposition_value',
-               '_lm_meetingcochairman_value',
+               '_lm_meetingcochairman_value','_lm_teamchannel_value',
                '_lm_rescheduledfrom_value','modifiedon','createdon'],
     }),
-    Lm_meetingoccurrenceagendasService.getAll({
-      filter: 'statecode eq 0',
-      select: ['lm_meetingoccurrenceagendaid','lm_title','lm_sequence','lm_source','lm_covered',
-               '_lm_meetingoccurrence_value','_lm_ownerposition_value','_lm_carriedfromagendaitem_value'],
-    }).catch(e=>{ console.warn('[dataverse] occurrence agenda fetch failed:', e); return null; }),
+    fetchOccurrenceAgendaRows()
+      .catch(e=>{ console.warn('[dataverse] occurrence agenda fetch failed:', e); return null; }),
     Lm_meetingoccurrenceattendeesesService.getAll({
       select: ['lm_meetingoccurrenceattendeesid','lm_name','lm_present','lm_type',
                '_lm_meetingoccurrence_value','_lm_attendeeposition_value','_lm_delegateposition_value'],
@@ -3849,6 +3862,9 @@ export async function fetchMeetingOccurrences(){
   };
   const agendaBy = byOcc(agendaRes?.data, '_lm_meetingoccurrence_value');
   const attBy    = byOcc(attRes?.data,    '_lm_meetingoccurrence_value');
+  /* Who may read each confidential agenda item, read only for those items. */
+  const agendaViewers = await fetchViewersBy('_lm_meetingoccurrenceagenda_value',
+    (agendaRes?.data ?? []).filter(a => a.lm_confidential).map(a => a.lm_meetingoccurrenceagendaid));
 
   return (occRes?.data ?? []).map(o => {
     const id = o.lm_meetingoccurrenceid;
@@ -3885,6 +3901,8 @@ export async function fetchMeetingOccurrences(){
          (01 Oct); empty = those questions are Not Applicable. */
       torLink: o.lm_torpolicylink || null,
       coChairPositionId: o._lm_meetingcochairman_value || null,
+      /* The meeting's Teams channel (and_teamschannellink), 03 Oct. */
+      teamChannelId: o._lm_teamchannel_value || null,
       templateId: o._lm_meetingtemplate_value || null,
       businessUnitId: o._lm_businessunit_value || null,
       regionId: o._lm_region_value || null,
@@ -3898,7 +3916,9 @@ export async function fetchMeetingOccurrences(){
         .map(a=>({ id:a.lm_meetingoccurrenceagendaid, title:a.lm_title||'', seq:a.lm_sequence??null,
                    source:a.lm_source||null, covered:AGENDA_COVERED[a.lm_covered]||null,
                    ownerPositionId:a._lm_ownerposition_value||null,
-                   carriedFromId:a._lm_carriedfromagendaitem_value||null })),
+                   carriedFromId:a._lm_carriedfromagendaitem_value||null,
+                   confidential:!!a.lm_confidential,
+                   viewers:agendaViewers.get(a.lm_meetingoccurrenceagendaid) || [] })),
       attendees: (attBy.get(id) || [])
         .map(a=>({ id:a.lm_meetingoccurrenceattendeesid, name:a.lm_name||null,
                    present:ATTENDEE_PRESENT[a.lm_present]||null,
@@ -4777,6 +4797,7 @@ export async function fetchReportOccurrencesByTemplate(templateId){
  * @param {boolean} [payload.restricted]
  * @param {string} [payload.inviteSent] 'YYYY-MM-DD'
  * @param {string} [payload.rescheduledFromId]
+ * @param {string} [payload.teamChannelId] and_teamschannellinks id
  * @param {{title:string, ownerPositionId?:string, source?:string}[]} [payload.agenda]
  * @param {{positionId:string, name?:string, type?:string}[]} [payload.attendees] `type` is
  *        'Required' or 'Optional', written to lm_type; defaults to Required.
@@ -4822,6 +4843,10 @@ export async function createMeetingOccurrence(payload){
   if(payload.chairPositionId)   parent['lm_ChairmanPosition@odata.bind']  = `/cr603_organizationstructures(${payload.chairPositionId})`;
   if(payload.facilitatorPositionId) parent['lm_FacilitatorPosition@odata.bind'] = `/cr603_organizationstructures(${payload.facilitatorPositionId})`;
   if(payload.rescheduledFromId) parent['lm_RescheduledFrom@odata.bind']   = `/lm_meetingoccurrences(${payload.rescheduledFromId})`;
+  /* The Teams channel the meeting belongs to (03 Oct, a Custom Ad Hoc
+     meeting's own pick). lm_TeamChannel -> and_teamschannellinks, in IT and
+     DT New alike. */
+  if(payload.teamChannelId)     parent['lm_TeamChannel@odata.bind']       = `/and_teamschannellinks(${payload.teamChannelId})`;
 
   let occId = null;
   try{
@@ -5285,40 +5310,46 @@ const MOM_SELECT = ['lm_meetingminutesid','lm_name','lm_status','lm_submittedat'
                     '_lm_meetingoccurrence_value','_lm_signedbyposition_value','modifiedon','createdon'];
 const NOTE_SELECT = ['lm_momnotesid','lm_name','lm_notes','lm_confidential','_lm_meetingminutes_value','_lm_agendaitem_value'];
 
-/* Confidential agenda items (Stage 4 meetings only -- the rule lives in the
-   Minutes tab). A MOM Note carries lm_confidential; who may read it is one
-   lm_meetingminutesreviewerlists row per person: lm_MOMNotes -> lm_momnoteses,
-   lm_ViewerUser -> systemusers (targets read with `pac modelbuilder build`,
-   29 Sep). ⚠️ This hides the note in the app only -- the rows are still
-   readable to anyone with Read on lm_momnotes; real protection needs
-   Dataverse security on top. */
+/* Confidential agenda items (Stage 4 meetings only -- marked in the Minutes
+   tab). Since 03 Oct the flag lives on the AGENDA ITEM
+   (lm_meetingoccurrenceagenda.lm_confidential, DT New only), and who may read
+   it is one lm_meetingminutesreviewerlists row per person, linked to the item
+   through lm_MeetingOccurrenceAgenda (and to its MOM Note too, lm_MOMNotes).
+   lm_ViewerUser -> systemusers. Before 03 Oct the flag was on the MOM Note
+   (lm_momnotes.lm_confidential) and viewers hung off the note only; those
+   still count, so nothing marked earlier becomes visible.
+   ⚠️ This hides content in the app only -- the rows are still readable to
+   anyone with Read on these tables; real protection needs Dataverse security
+   on top. */
 const Lm_meetingminutesreviewerlistsService =
   dvTable('lm_meetingminutesreviewerlists', 'lm_meetingminutesreviewerlistid', PIN_ORG);
 const VIEWER_SELECT = ['lm_meetingminutesreviewerlistid','_lm_momnotes_value','_lm_vieweruser_value'];
 
-/* Viewer rows for the given notes, grouped by note id. Filtered by note id so
-   one meeting's Minutes do not pull the whole table; chunked because an OData
-   filter has a length limit. A failure leaves every note with no viewers,
-   which only ever hides more, never less. */
-async function fetchNoteViewers(noteIds){
-  const ids = [...new Set((noteIds || []).filter(Boolean))];
+/* Viewer rows whose `key` lookup is one of `ids`, grouped by that id. Chunked
+   because an OData filter has a length limit. A failure leaves no viewers,
+   which only ever hides more, never less. Selecting the agenda lookup fails
+   in IT (no such column there), which lands in the same catch. */
+async function fetchViewersBy(key, ids){
+  const list = [...new Set((ids || []).filter(Boolean))];
   const out = new Map();
-  for(let i = 0; i < ids.length; i += 25){
-    const chunk = ids.slice(i, i + 25);
+  const select = key === '_lm_momnotes_value' ? VIEWER_SELECT : [...VIEWER_SELECT, key];
+  for(let i = 0; i < list.length; i += 25){
+    const chunk = list.slice(i, i + 25);
     try{
       const res = await Lm_meetingminutesreviewerlistsService.getAll({
-        select: VIEWER_SELECT,
-        filter: `statecode eq 0 and (${chunk.map(id => `_lm_momnotes_value eq ${id}`).join(' or ')})`,
+        select,
+        filter: `statecode eq 0 and (${chunk.map(id => `${key} eq ${id}`).join(' or ')})`,
       });
       for(const r of (res?.data ?? [])){
-        const k = r._lm_momnotes_value; if(!k) continue;
+        const k = r[key]; if(!k) continue;
         if(!out.has(k)) out.set(k, []);
         out.get(k).push({ rowId: r.lm_meetingminutesreviewerlistid, userId: r._lm_vieweruser_value || null });
       }
-    }catch(e){ console.warn('[dataverse] MOM note viewers fetch failed:', e); }
+    }catch(e){ console.warn('[dataverse] confidential item viewers fetch failed:', e); }
   }
   return out;
 }
+const fetchNoteViewers = noteIds => fetchViewersBy('_lm_momnotes_value', noteIds);
 
 /* One Minutes row plus the Notes belonging to it, in the shape the Minutes tab
    and the scoring engine already expect. `notes` carries the row ids an edit
@@ -5471,40 +5502,57 @@ export async function archiveMomNote(noteId){
 }
 
 /**
- * Marks one Agenda Item's note confidential (or not). An item marked before
- * anything is written has no note row yet, so one is created, empty, to carry
- * the flag. Switching it off leaves the viewer rows alone: they only take
- * effect while the flag is on, and keeping them means switching back on does
- * not lose the list.
+ * Marks one Agenda Item confidential (or not) -- the flag on the item itself,
+ * lm_meetingoccurrenceagenda.lm_confidential (03 Oct, DT New only).
+ * Switching it off also clears the pre-03 Oct flag on the item's MOM Note,
+ * which would otherwise keep it confidential. The viewer rows are left alone:
+ * they only take effect while the flag is on, and keeping them means
+ * switching back on does not lose the list.
+ * @param {{noteId?:string, noteConfidential?:boolean}} [legacy]
  */
-export async function setMomNoteConfidential(minutesId, agendaItemId, noteId, confidential){
+export async function setAgendaItemConfidential(agendaItemId, confidential, legacy = {}){
   try{
-    let id = noteId;
-    if(!id) id = await createMomNoteRow(minutesId, agendaItemId, '');
-    assertSuccess(await Lm_momnotesesService.update(id, { lm_confidential: !!confidential }));
-    return { id, errors: [] };
+    assertSuccess(await Lm_meetingoccurrenceagendasService.update(agendaItemId, { lm_confidential: !!confidential }));
   }catch(e){
-    return { id: null, errors: [{ table:'lm_momnoteses', error:e }] };
+    return { id: null, errors: [{ table:'lm_meetingoccurrenceagendas', error:e }] };
   }
+  if(!confidential && legacy.noteId && legacy.noteConfidential){
+    try{ assertSuccess(await Lm_momnotesesService.update(legacy.noteId, { lm_confidential: false })); }
+    catch(e){ return { id: null, errors: [{ table:'lm_momnoteses', error:e }] }; }
+  }
+  return { id: agendaItemId, errors: [] };
 }
 
 /**
- * Makes a note's viewer list exactly `userIds` (systemuser ids): adds a
- * lm_meetingminutesreviewerlists row for each new person, deletes the row of
- * each one taken off. `current` is the note's viewers as last read.
+ * Makes a confidential Agenda Item's reader list exactly `userIds`
+ * (systemuser ids): adds a lm_meetingminutesreviewerlists row for each new
+ * person, deletes the row of each one taken off. `current` is the item's
+ * readers as last read, old note-linked rows included.
+ *
+ * Each new row links the agenda item AND its MOM Note. An item with no note
+ * yet gets an empty one first, as before 03 Oct, so the row is valid whether
+ * or not Dataverse requires the note link.
+ * @param {{minutesId?:string, noteId?:string}} [ctx]
  */
-export async function saveMomNoteViewers(noteId, userIds, current){
+export async function saveAgendaItemViewers(agendaItemId, userIds, current, ctx = {}){
   const errors = [];
   const want = new Set((userIds || []).filter(Boolean));
   const have = new Map((current || []).filter(v => v.userId).map(v => [v.userId, v.rowId]));
+  let noteId = ctx.noteId || null;
+  if([...want].some(uid => !have.has(uid)) && !noteId && ctx.minutesId){
+    try{ noteId = await createMomNoteRow(ctx.minutesId, agendaItemId, ''); }
+    catch(e){ return { id: null, errors: [{ table:'lm_momnoteses', error:e }] }; }
+  }
   for(const uid of want){
     if(have.has(uid)) continue;
     try{
-      await Lm_meetingminutesreviewerlistsService.create({
-        lm_name: 'MOM note viewer',
-        'lm_MOMNotes@odata.bind': `/lm_momnoteses(${noteId})`,
+      const row = {
+        lm_name: 'Confidential agenda item reader',
+        'lm_MeetingOccurrenceAgenda@odata.bind': `/lm_meetingoccurrenceagendas(${agendaItemId})`,
         'lm_ViewerUser@odata.bind': `/systemusers(${uid})`,
-      });
+      };
+      if(noteId) row['lm_MOMNotes@odata.bind'] = `/lm_momnoteses(${noteId})`;
+      await Lm_meetingminutesreviewerlistsService.create(row);
     }catch(e){ errors.push({ table:'lm_meetingminutesreviewerlists', error:e }); }
   }
   for(const [uid, rowId] of have){
@@ -5512,7 +5560,7 @@ export async function saveMomNoteViewers(noteId, userIds, current){
     try{ await Lm_meetingminutesreviewerlistsService.delete(rowId); }
     catch(e){ errors.push({ table:'lm_meetingminutesreviewerlists', error:e }); }
   }
-  return { id: errors.length ? null : noteId, errors };
+  return { id: errors.length ? null : agendaItemId, errors };
 }
 
 /**

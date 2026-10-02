@@ -49,7 +49,7 @@ import { fetchMeetingOccurrences, fetchReportOccurrences, createMeetingOccurrenc
          fetchWorkLogDecisions, createWorkLogDecision, linkWorkLogDecision, fetchReportSectionsByIds,
          fetchReportOccurrenceForEdit,
          fetchAuthorityMatrix, createMeetingMinutes, saveMomNote, updateAgendaCovered,
-         setMomNoteConfidential, saveMomNoteViewers,
+         setAgendaItemConfidential, saveAgendaItemViewers,
          submitMeetingMinutes, updateMeetingMinutesStatus, returnMeetingMinutes,
          signMeetingMinutes, createAuditGridInstance, MOM_NOTE_MAX,
          saveAuditGridAnswer, archiveAuditGridAnswer, updateAuditGridState, approveAuditGridInstance,
@@ -1238,6 +1238,30 @@ function liveAttendance(attendees, mode){
    item it did not cover (anything but Yes) that no occurrence has carried yet
    -- lm_CarriedFromAgendaItem on the new item points back at it, the same link
    AG-04 reads. A Custom meeting has no Setup, so nothing carries into it. */
+/* Confidential agenda items (Stage 4 only). One rule for every screen that
+   shows an item's content: confidential when the item carries the flag
+   (lm_confidential, 03 Oct) or, for items marked before then, its MOM Note
+   does. Readers = rows linked to the item plus any linked only to the old
+   note, one entry per row. The Organizer and the Chair always read. */
+const isStage4 = occ => /^Stage 4/.test(occ?.stage||'');
+function confidentialItem(occ, item, note){
+  return isStage4(occ) && (!!item?.confidential || !!note?.confidential);
+}
+function agendaReaders(item, note){
+  const own = item?.viewers || [];
+  const seen = new Set(own.map(v=>v.rowId));
+  return [...own, ...(note?.viewers || []).filter(v=>!seen.has(v.rowId))];
+}
+/* Can the signed-in user read this item's content? `notesByItem` is the
+   Minutes' {agendaItemId: note} map, or {} where the Minutes are not loaded. */
+function canReadAgendaItem(occ, item, note, myPositionIds, myUserId){
+  if(!confidentialItem(occ, item, note)) return true;
+  const mine = new Set(myPositionIds || []);
+  if((occ.facilitatorPositionId && mine.has(occ.facilitatorPositionId))
+     || (occ.chairPositionId && mine.has(occ.chairPositionId))) return true;
+  return !!myUserId && agendaReaders(item, note).some(v=>v.userId===myUserId);
+}
+
 function previousOccurrence(occ, all){
   if(!occ?.templateId) return null;
   return (all||[]).filter(o=>o.id!==occ.id && o.templateId===occ.templateId && o.status==='Held'
@@ -2187,6 +2211,14 @@ const TIME_ZONES=[
 /* Best time zone for a Region name, so choosing scope pre-selects it. */
 const tzForRegionName = name => (TIME_ZONES.find(t=>name&&t.match.test(name))||TIME_ZONES[0]).id;
 
+/* Teams and channels (and_teamschannellinks), read once per session and shared
+   by the Schedule Meeting page and the meeting page. A failed read is not
+   cached, so the next caller tries again. */
+let TEAMS_CHANNELS_P = null;
+const loadTeamsChannels = () => (TEAMS_CHANNELS_P ||= fetchTeamsChannels()
+  .catch(e => { TEAMS_CHANNELS_P = null; throw e; }));
+const channelLabel = c => c ? [c.team, c.name].filter(Boolean).join(' › ') : null;
+
 /* The Business Units a Meeting's scope covers. Both Departments and Positions
    hang off a Business Unit, and a Business Unit belongs to a Region -- so Stage
    1 covers the one chosen Business Unit, Stage 2 covers every Business Unit
@@ -3113,7 +3145,7 @@ function Bucket({dot,title,sub,rows,dateLabel,empty}){
 }
 
 function ScreenWorkspace(){
-  const {work,cal:calAll,go,openMeeting,openDvRec,myMeetingOccs:dvMeetingOccs,isMyMeeting,dvReportOccs,openNewReport,
+  const {work,cal:calAll,go,openMeeting,openDvRec,myMeetingOccs:dvMeetingOccs,isMyMeeting,dvReportOccs,
          dvLookup} = use();
   /* Only my meetings (01 Oct): calendar meeting / MOM-due items whose meeting
      is mine. `dvMeetingOccs` here IS the "my meetings" list (renamed on
@@ -3201,9 +3233,7 @@ function ScreenWorkspace(){
           {noPositions && <p className="cs-sub" style={{color:'var(--cs-warning)'}}>No Position is linked to your
             account, so no meeting can be matched to you yet.</p>}</div>
         <div className="cs-actions">
-          {/* Opens the Create Report page, the same as Reports / Plans' own button. */}
-          <button type="button" className="cs-btn ghost lg" onClick={openNewReport}>
-            <Plus size={13}/>New Report</button>
+          {/* "New Report" removed from here on 03 Oct (user's ask); Reports / Plans keeps its own. */}
           <button type="button" className="cs-btn primary lg" onClick={()=>go('mtg')}>
             <Plus size={13}/>New Meeting</button>
         </div>
@@ -6409,20 +6439,25 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
   const noteIdFor = {}, noteFor = {};
   minutes.notes.forEach(n=>{ if(n.agendaItemId){ noteIdFor[n.agendaItemId]=n.id; noteFor[n.agendaItemId]=n; } });
 
-  /* Confidential agenda items -- Stage 4 meetings only. The Organizer marks
-     an item confidential and picks, from this meeting's attendees, who may read
-     its note (lm_momnotes.lm_confidential + lm_meetingminutesreviewerlists).
-     Everyone else sees the item's title but not its note or its decisions.
-     The Organizer and the Chair always read every item: one writes the
-     Minutes, the other approves them. ⚠️ App-side only -- see dataverse.js. */
-  const stage4 = /^Stage 4/.test(rec.stage||'');
+  /* Confidential agenda items -- Stage 4 meetings only. The Organizer or the
+     Chair marks an item confidential and picks, from this meeting's attendees,
+     who may read it. Since 03 Oct the flag is on the agenda item itself
+     (lm_meetingoccurrenceagenda.lm_confidential) and the readers are
+     lm_meetingminutesreviewerlists rows linked to it; an item marked on its
+     MOM Note before then still counts (see confidentialItem()). Everyone else
+     sees the item's title but not its note, decisions or tasks. The Organizer
+     and the Chair always read every item: one writes the Minutes, the other
+     approves them. ⚠️ App-side only -- see dataverse.js. */
+  const stage4 = isStage4(rec);
   const mine = new Set(dvLookup?.myPositionIds||[]);
   const myUserId = currentUser?.systemUserId || null;
   const isFacilitator = !!rec.facilitatorPositionId && mine.has(rec.facilitatorPositionId);
   const isChair = !!rec.chairPositionId && mine.has(rec.chairPositionId);
-  const isConf = a => stage4 && !!noteFor[a.id]?.confidential;
+  const canMark = stage4 && (isFacilitator || isChair);
+  const isConf = a => confidentialItem(rec, a, noteFor[a.id]);
+  const readersOf = a => agendaReaders(a, noteFor[a.id]);
   const canRead = a => !isConf(a) || isFacilitator || isChair
-    || (!!myUserId && (noteFor[a.id].viewers||[]).some(v=>v.userId===myUserId));
+    || (!!myUserId && readersOf(a).some(v=>v.userId===myUserId));
   /* The people who can be chosen: this occurrence's attendees, each resolved
      through their Position to the user who holds it. One entry per person. */
   const attendeeUsers = (()=>{
@@ -6439,25 +6474,31 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
     return out;
   })();
 
+  /* The flag and its readers live on the agenda rows (rec.agenda), so both
+     saves re-read the occurrences as well as the Minutes -- same reason as
+     setCovered below. */
   const setConfidential = async (a, on) => {
     setSavingNote(a.id);
     try{
-      const {id,errors} = await setMomNoteConfidential(minutes.id, a.id, noteIdFor[a.id], on);
-      if(!id){ console.warn('[dataverse] setMomNoteConfidential() failed:', errors);
+      const n = noteFor[a.id];
+      const {id,errors} = await setAgendaItemConfidential(a.id, on,
+        { noteId: noteIdFor[a.id], noteConfidential: !!n?.confidential });
+      if(!id){ console.warn('[dataverse] setAgendaItemConfidential() failed:', errors);
                toast('Not saved','The confidentiality flag could not be saved.','err'); return; }
-      await onReload();
+      await Promise.all([refreshOccurrences(), onReload()]);
     }finally{ setSavingNote(null); }
   };
   const toggleViewer = async (a, userId) => {
-    const n = noteFor[a.id]; if(!n) return;
-    const cur = (n.viewers||[]).map(v=>v.userId).filter(Boolean);
+    const current = readersOf(a);
+    const cur = current.map(v=>v.userId).filter(Boolean);
     const next = cur.includes(userId) ? cur.filter(x=>x!==userId) : [...cur, userId];
     setSavingNote(a.id);
     try{
-      const {id,errors} = await saveMomNoteViewers(n.id, next, n.viewers);
-      if(!id){ console.warn('[dataverse] saveMomNoteViewers() failed:', errors);
+      const {id,errors} = await saveAgendaItemViewers(a.id, next, current,
+        { minutesId: minutes.id, noteId: noteIdFor[a.id] });
+      if(!id){ console.warn('[dataverse] saveAgendaItemViewers() failed:', errors);
                toast('Not saved','Who can see this item could not be saved.','err'); }
-      await onReload();
+      await Promise.all([refreshOccurrences(), onReload()]);
     }finally{ setSavingNote(null); }
   };
 
@@ -6628,7 +6669,7 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
           return {
             seq: a.seq ?? i+1, title: a.title, owner: posName(a.ownerPositionId) || null,
             covered: covOf(a), confidential: conf, withheld: !readable,
-            viewers: conf && readable ? (noteFor[a.id]?.viewers||[]).map(v=>userName(v.userId)).filter(Boolean) : [],
+            viewers: conf && readable ? readersOf(a).map(v=>userName(v.userId)).filter(Boolean) : [],
             note: readable ? textFor(a).trim() : null,
             decisions: readable
               ? decisions.filter(d=>d.agendaItemId===a.id).map(d=>({ name:d.name, taken:d.decisionTaken, status:d.status }))
@@ -6942,8 +6983,7 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
               const val = textFor(a);
               const over = val.trim().length>MOM_NOTE_MAX;
               const conf = isConf(a);
-              const note = noteFor[a.id];
-              const viewerIds = new Set((note?.viewers||[]).map(v=>v.userId));
+              const viewerIds = new Set(readersOf(a).map(v=>v.userId));
               if(!canRead(a)) return <div key={a.id} className={'mom-item'+(notCovered(a)?' off':'')}>
                 <div className="mom-item-hd">
                   <span className="mom-n">{a.seq??i+1}</span>
@@ -6951,7 +6991,7 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
                   <Tag c="red">🔒 Confidential</Tag>
                 </div>
                 <div style={{fontSize:12.5,color:'var(--muted)'}}>
-                  This item is confidential. Only the people the Organizer chose can read its notes and decisions.</div>
+                  This item is confidential. Only the Organizer, the Chair and the people they chose can read its notes, decisions and tasks.</div>
               </div>;
               return <div key={a.id} className={'mom-item'+(notCovered(a)?' off':'')}>
                 <div className="mom-item-hd">
@@ -6964,7 +7004,7 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
                     : <Tag c={covOf(a)==='Yes'?'green':covOf(a)==='No'?'red':'grey'}>
                         {covOf(a)||'Not Yet Recorded'}</Tag>}
                 </div>
-                {stage4 && isFacilitator && editable
+                {canMark && editable
                   ? <div style={{margin:'2px 0 8px',padding:'8px 10px',border:'1px solid var(--border)',
                                  borderRadius:8,background:'var(--surface)'}}>
                       <label style={{display:'flex',alignItems:'center',gap:7,fontSize:12.5,cursor:'pointer'}}>
@@ -6991,7 +7031,7 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
                             </div>}
                       </div>}
                     </div>
-                  : conf && isFacilitator
+                  : conf && (isFacilitator || isChair)
                     ? <div className="dim" style={{fontSize:11.5,margin:'0 0 6px'}}>
                         Visible to {attendeeUsers.filter(u=>u.userId && viewerIds.has(u.userId)).map(u=>u.name).join(', ')
                           || 'nobody besides the Organizer and the Chair'}.</div>
@@ -7501,11 +7541,22 @@ function ReportLinkPicker({reports, taken, place, onPick, busy, pickLabel='Link'
 }
 
 function DvMeetingDetail({rec,back}){
-  const {sel,setSel,toast,refreshOccurrences,openMeeting,S,dvMeetingOccs,dvReportOccs,openDvRec,dvDecisions=[]}=use();
+  const {sel,setSel,toast,refreshOccurrences,openMeeting,S,dvMeetingOccs,dvReportOccs,openDvRec,dvDecisions=[],
+         dvLookup,currentUser}=use();
   const tab = sel.mtgTab || 'detail';
   const setTab = t=>setSel(v=>({...v,mtgTab:t}));
   const [markingHeld,setMarkingHeld]=useState(false);
   const [attSavingId,setAttSavingId]=useState(null);
+  /* The meeting's Teams channel (03 Oct), named from the shared channel list --
+     read only when the meeting has one. */
+  const [channel,setChannel]=useState(null);
+  useEffect(()=>{
+    if(!rec.teamChannelId){ setChannel(null); return; }
+    let live=true;
+    loadTeamsChannels().then(rows=>{ if(live) setChannel((rows||[]).find(c=>c.id===rec.teamChannelId)||null); })
+      .catch(()=>{ if(live) setChannel(null); });
+    return ()=>{ live=false; };
+  },[rec.teamChannelId]);
   /* Add an attendee before the meeting is held (01 Oct). */
   const [addingAtt,setAddingAtt]=useState(false);
   const [newAtt,setNewAtt]=useState({positionId:'', type:'Required'});
@@ -7966,19 +8017,36 @@ function DvMeetingDetail({rec,back}){
   const actionState = x => DONE_ACTION.has(x.status) ? 'done'
     : (x.due && x.due < TODAY) ? 'overdue'
     : /progress|review|submitted|escalated/i.test(x.status||'') ? 'progress' : 'open';
+  /* A decision or task taken on a confidential Stage 4 item (03 Oct) keeps its
+     row -- kind, source and status -- but not its title, details, owner, due
+     date or link, for anyone who cannot read that item. This meeting's
+     Minutes are loaded, so items marked on their MOM Note before 03 Oct count
+     too; the previous meeting's are judged on the item flag alone. */
+  const myPos = dvLookup?.myPositionIds, myUser = currentUser?.systemUserId || null;
+  const noteByItem = {};
+  (minutes?.notes||[]).forEach(n=>{ if(n.agendaItemId) noteByItem[n.agendaItemId]=n; });
+  const readableIn = (occ, itemId, notes) => {
+    const item = (occ?.agenda||[]).find(a=>a.id===itemId);
+    return !item || canReadAgendaItem(occ, item, notes?.[itemId], myPos, myUser);
+  };
+  const guard = (x, occ, itemId, notes) => readableIn(occ, itemId, notes) ? x
+    : {...x, title:'🔒 Confidential item — content withheld', sub:null, owner:null, due:null, id:null, withheld:true};
   const actions = [
-    ...dvDecisions.filter(d=>d.agendaItemId && agendaById.has(d.agendaItemId)).map(d=>({
+    ...dvDecisions.filter(d=>d.agendaItemId && agendaById.has(d.agendaItemId)).map(d=>guard({
       key:'d'+d.id, kind:'Decision', title:d.name, sub:d.decisionTaken, owner:null,
-      source:agendaLabel(d.agendaItemId), due:null, status:d.status||'Recorded', from:'this'})),
-    ...(mtgTasks||[]).map(t=>({
+      source:agendaLabel(d.agendaItemId), due:null, status:d.status||'Recorded', from:'this'}, rec, d.agendaItemId, noteByItem)),
+    ...(mtgTasks||[]).map(t=>guard({
       key:'t'+t.id, kind:'Task', id:t.id, title:t.name, sub:[t.code, t.action].filter(Boolean).join(' · '),
-      owner:t.assigneeName, source:agendaLabel(t.agendaItemId)||'This meeting', due:t.due, status:t.status||'New', from:'this'})),
-    ...prevOpenDecisions.map(d=>({
+      owner:t.assigneeName, source:agendaLabel(t.agendaItemId)||'This meeting', due:t.due, status:t.status||'New', from:'this'},
+      rec, t.agendaItemId, noteByItem)),
+    ...prevOpenDecisions.map(d=>guard({
       key:'pd'+d.id, kind:'Decision', title:d.name, sub:d.decisionTaken, owner:null,
-      source:`Previous meeting · ${fmtD(prevOcc.date)}`, due:null, status:d.status||'Recorded', from:'prev'})),
-    ...prevTasks.filter(t=>!DONE_ACTION.has(t.status)).map(t=>({
+      source:`Previous meeting · ${fmtD(prevOcc.date)}`, due:null, status:d.status||'Recorded', from:'prev'},
+      prevOcc, d.agendaItemId, null)),
+    ...prevTasks.filter(t=>!DONE_ACTION.has(t.status)).map(t=>guard({
       key:'pt'+t.id, kind:'Task', id:t.id, title:t.name, sub:[t.code, t.action].filter(Boolean).join(' · '),
-      owner:t.assigneeName, source:`Previous meeting · ${fmtD(prevOcc.date)}`, due:t.due, status:t.status||'New', from:'prev'})),
+      owner:t.assigneeName, source:`Previous meeting · ${fmtD(prevOcc.date)}`, due:t.due, status:t.status||'New', from:'prev'},
+      prevOcc, t.agendaItemId, null)),
   ].map(x=>({...x, state:actionState(x)}));
   const actionCount = k => actions.filter(x=>x.state===k).length;
 
@@ -8203,6 +8271,13 @@ function DvMeetingDetail({rec,back}){
           <Row label="Mode" value={rec.mode}/>
           <Row label="Location" value={rec.location}/>
           <Row label="Online link" value={rec.link}/>
+          <Row label="Teams channel" value={rec.teamChannelId
+            ? (channel
+                ? (channel.link
+                    ? <a href={channel.link} target="_blank" rel="noopener noreferrer">{channelLabel(channel)} ↗</a>
+                    : channelLabel(channel))
+                : 'Reading…')
+            : null}/>
           <Row label="Invite sent" value={rec.inviteSent?fmtD(rec.inviteSent):null}/>
           <Row label="Agenda Distributed" value={rec.agendaSent?fmtD(rec.agendaSent):'Not recorded'}/>
           <Row label="Outlook and Teams" value={rec.sync}/>
@@ -8524,7 +8599,8 @@ function DvMeetingDetail({rec,back}){
                 <td className={'cs-mono '+(x.state==='overdue'?'mtgd-bad':'dim')}>{x.due?fmtDS(x.due):'—'}</td>
                 <td><Tag c={x.state==='done'?'green':x.state==='overdue'?'red':x.state==='progress'?'teal':'grey'}>
                   {x.state==='overdue'?'Overdue':x.status}</Tag></td>
-                <td style={{textAlign:'right'}}>{x.kind==='Task'
+                <td style={{textAlign:'right'}}>{x.withheld ? <span className="dim">—</span>
+                  : x.kind==='Task'
                   ? <OpenRecord kind="Task" id={x.id} label="Open ↗" asLink/>
                   : <a role="button" tabIndex={0} className="mtgd-more" style={{margin:0,display:'inline'}}
                       onClick={()=>setTab('minutes')} onKeyDown={e=>{ if(e.key==='Enter') setTab('minutes'); }}>Minutes</a>}</td>
@@ -9918,6 +9994,22 @@ function ScreenNewMeeting(){
       .catch(e=>{ console.warn('[dataverse] fetchMeetingCategories() failed:', e); if(live) setCategories([]); });
     return ()=>{ live=false; };
   },[]);
+  /* Custom Ad Hoc (03 Oct): an optional Teams channel, Team first, then one of
+     its channels -- the same two-step pick as a Custom report. Saved to the
+     meeting's lm_TeamChannel. */
+  const [channels,setChannels]=useState(null);         // null = reading
+  const [channelsErr,setChannelsErr]=useState(false);
+  const [chan,setChan]=useState({team:'', id:''});
+  useEffect(()=>{
+    let live=true;
+    loadTeamsChannels().then(rows=>{ if(live) setChannels(rows||[]); })
+      .catch(e=>{ console.warn('[dataverse] fetchTeamsChannels() failed:', e);
+                  if(live){ setChannels([]); setChannelsErr(true); } });
+    return ()=>{ live=false; };
+  },[]);
+  const teamNames = [...new Set((channels||[]).map(c=>c.team).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  const teamChannels = (channels||[]).filter(c=>c.team===chan.team).sort((a,b)=>a.name.localeCompare(b.name));
+  const chosenChannel = (channels||[]).find(c=>c.id===chan.id) || null;
   const onClose=()=>go('mtg');
   const [setupQ,setSetupQ]=useState('');
   const [f,setF]=useState({setup:'', tplUnitKey:'', name:'', purpose:'', bu:'AHJ',
@@ -10171,7 +10263,8 @@ function ScreenNewMeeting(){
           torLink: tplDetail.parent.lm_torpolicylink || undefined } : {}),
         ...(custom ? { setupType:cls.type,
                        classification: accredCustom ? undefined : (cls.classification||undefined),
-                       meetingCategoryId: cls.categoryId||undefined } : {}),
+                       meetingCategoryId: cls.categoryId||undefined,
+                       teamChannelId: chan.id||undefined } : {}),
         /* Carried-forward items first, each linked to the item it continues
            (lm_CarriedFromAgendaItem), then the ones typed here. */
         agenda:[
@@ -10436,6 +10529,25 @@ function ScreenNewMeeting(){
                   {categoryOpts.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
             </div>}
 
+            {custom && <div className="f-row">
+              <Field label="Team" hint="Optional. The Microsoft Team this meeting belongs to.">
+                <select id="nm-team" value={chan.team} disabled={!channels}
+                  onChange={e=>setChan({team:e.target.value, id:''})}>
+                  <option value="">{!channels ? 'Reading teams…' : teamNames.length ? 'No Team' : 'No teams loaded'}</option>
+                  {teamNames.map(t=><option key={t} value={t}>{t}</option>)}
+                </select></Field>
+              <Field label="Channel"
+                hint={chosenChannel?.link
+                  ? <a href={chosenChannel.link} target="_blank" rel="noopener noreferrer">Open the channel in Teams ↗</a>
+                  : chan.team ? 'The channel this meeting is held or discussed in.' : 'Choose a Team first.'}>
+                <select id="nm-channel" value={chan.id} disabled={!chan.team}
+                  onChange={e=>setChan(x=>({...x, id:e.target.value}))}>
+                  <option value="">{!chan.team ? '—' : teamChannels.length ? 'Select…' : 'No channels in this Team'}</option>
+                  {teamChannels.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+                </select></Field>
+            </div>}
+            {custom && channelsErr && <Note k="warn">Teams and channels could not be read from Dataverse.</Note>}
+
             <div className="f-row3">
               <Field label="Date" req
                 hint={moved
@@ -10626,6 +10738,7 @@ function ScreenNewMeeting(){
                 (categories||[]).find(c=>c.id===cls.categoryId)?.name].filter(Boolean).join(' · ')||'—')
                 : (setupCategory||'—')],
               ['Cadence', custom ? 'One-off' : (setupCadence||'—'), true],
+              ...(custom ? [['Teams channel', chosenChannel ? channelLabel(chosenChannel) : (chan.team ? `${chan.team} › —` : '—')]] : []),
               ['Scope', scopeLabel||'—'],
               ['Date', bookedDate ? fmtD(bookedDate) : '—', true],
               ['Time', f.start&&f.end ? `${f.start} – ${f.end}` : '—', true],
