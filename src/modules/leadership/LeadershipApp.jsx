@@ -3052,7 +3052,8 @@ function App({onSwitch}){
     ];
   },[dvMeetingOccs,dvReportOccs,dvMinutes,S,dvTick]);
   const counts = useMemo(()=>{
-    const c={work:work.due.length+work.finish.length};
+    /* My Workspace shows no reports (03 Oct), so its badge counts none either. */
+    const c={work:[...work.due, ...work.finish].filter(w=>w.area!=='Report').length};
     work.all.forEach(w=>{ c[w.screen]=(c[w.screen]||0)+1; });
     return c;
   },[work]);
@@ -3151,29 +3152,34 @@ function Bucket({dot,title,sub,rows,dateLabel,empty}){
 }
 
 function ScreenWorkspace(){
-  const {work,cal:calAll,go,openMeeting,openDvRec,myMeetingOccs:dvMeetingOccs,isMyMeeting,dvReportOccs,
+  const {work,cal:calAll,go,openMeeting,openDvRec,myMeetingOccs:dvMeetingOccs,isMyMeeting,
          dvLookup} = use();
   /* Only my meetings (01 Oct): calendar meeting / MOM-due items whose meeting
      is mine. `dvMeetingOccs` here IS the "my meetings" list (renamed on
-     destructure) so the activity figures below count mine too. */
-  const cal = calAll.filter(i=>(i.kind!=='Meeting' && i.kind!=='MOM') || isMyMeeting(i._rec));
+     destructure) so the activity figures below count mine too.
+     No reports anywhere on this screen (03 Oct, user's ask): report work items
+     and report calendar entries ("Report", "Report Submission") are dropped
+     here, before any count or list is built, so every figure below excludes
+     them. Reports / Plans and the Calendar still show them. */
+  const notReport = w => w.area!=='Report';
+  const cal = calAll.filter(i=>!/^Report/.test(i.kind||''))
+    .filter(i=>(i.kind!=='Meeting' && i.kind!=='MOM') || isMyMeeting(i._rec));
   const noPositions = !(dvLookup?.myPositionIds||[]).length;
   const [tab,setTab]     = useState('All');
   const [quick,setQuick] = useState('all');
-  const overdue = work.all.filter(w=>w.date && w.date<TODAY);
+  const overdue = work.all.filter(notReport).filter(w=>w.date && w.date<TODAY);
 
   /* every open item, tagged with which of the three states it's in — used only to
      choose a status label/colour and to power "Awaiting My Action" below. */
   const tagged = [
-    ...work.due.map(w=>({...w,bucket:'due'})),
-    ...work.review.map(w=>({...w,bucket:'review'})),
-    ...work.finish.map(w=>({...w,bucket:'finish'})),
+    ...work.due.filter(notReport).map(w=>({...w,bucket:'due'})),
+    ...work.review.filter(notReport).map(w=>({...w,bucket:'review'})),
+    ...work.finish.filter(notReport).map(w=>({...w,bucket:'finish'})),
   ];
 
   const TABS = [
     {id:'All',      label:'All Items'},
     {id:'Meeting',  label:'Meetings'},
-    {id:'Report',   label:'Reports'},
     {id:'Minutes',  label:'MOM'},
     {id:'Decision', label:'Decisions'},
   ];
@@ -3204,15 +3210,12 @@ function ScreenWorkspace(){
 
   const weekBounds = rangeBounds('week');
   const meetingsThisWeek = cal.filter(i=>i.kind==='Meeting' && i.date>=weekBounds[0] && i.date<=weekBounds[1]);
-  const overdueReports = overdue.filter(w=>w.area==='Report').length;
 
   /* Activity, read from the occurrence tables. Minutes, Decisions and Audit
      Grid figures are gone from here -- those records do not exist in Dataverse,
      so there is nothing real to count. */
   const meetingsHeld  = dvMeetingOccs.filter(o=>o.status==='Held').length;
   const meetingsTotal = dvMeetingOccs.filter(o=>o.status!=='Cancelled').length;
-  const reportsSubmitted = dvReportOccs.filter(r=>r.status && r.status!=='Draft').length;
-  const reportsApproved  = dvReportOccs.filter(r=>r.status==='Approved').length;
   const agendaRecorded = dvMeetingOccs.filter(o=>o.status==='Held'
     && o.agenda.length && o.agenda.every(a=>a.covered && a.covered!=='Not Yet Recorded')).length;
 
@@ -3228,7 +3231,8 @@ function ScreenWorkspace(){
   const openItem = w => w._dv
     ? openDvRec(w.area==='Report'?'Report':'Meeting', w._rec)
     : w.screen==='mtg' ? openMeeting(w.rid,w.tab||'detail') : go(w.screen,w.rid);
-  const pendingCt = work.due.length+work.finish.length;
+  const pendingCt = tagged.filter(w=>w.bucket!=='review').length;
+  const reviewCt  = tagged.filter(w=>w.bucket==='review').length;
 
   return <div className="cs-root">
     <div className="cs-head">
@@ -3261,12 +3265,9 @@ function ScreenWorkspace(){
         <div className="cs-stat-meta">{meetingsThisWeek.filter(m=>m.status==='Held').length} held</div></div>
       <div className="cs-stat acc-amber"><div className="cs-stat-lbl">Overdue items</div>
         <div className="cs-stat-val">{overdue.length}</div>
-        <div className="cs-stat-meta">{overdue.length
-          ? <><span className="c-amber">{overdueReports} report{overdueReports===1?'':'s'}</span>
-              {' + '}{overdue.length-overdueReports} other</>
-          : 'none outstanding'}</div></div>
+        <div className="cs-stat-meta">{overdue.length ? 'past their due date' : 'none outstanding'}</div></div>
       <div className="cs-stat acc-alert"><div className="cs-stat-lbl">Pending approvals</div>
-        <div className="cs-stat-val">{work.review.length}</div>
+        <div className="cs-stat-val">{reviewCt}</div>
         <div className="cs-stat-meta">with a reviewer or approver</div></div>
     </div>
 
@@ -3341,16 +3342,12 @@ function ScreenWorkspace(){
           <div className="cs-card-top"><div className="cs-card-title-grp">
             <span className="cs-icon amber" aria-hidden="true"><Activity size={16}/></span>
             <h2 className="cs-card-title" id="wa-month">This Month</h2></div></div>
-          <p className="cs-card-note">Read from the Meeting and Report Occurrence tables.</p>
+          <p className="cs-card-note">Read from the Meeting Occurrence table.</p>
           <div>
             <div className="cs-qs"><span>Meetings Held</span>
               <span className="cs-qs-v">{meetingsHeld} / {meetingsTotal}</span></div>
             <div className="cs-qs"><span>Agenda Fully Recorded</span>
               <span className="cs-qs-v">{agendaRecorded} / {meetingsHeld}</span></div>
-            <div className="cs-qs"><span>Reports Submitted</span>
-              <span className="cs-qs-v">{reportsSubmitted} / {dvReportOccs.length}</span></div>
-            <div className="cs-qs"><span>Reports Approved</span>
-              <span className="cs-qs-v">{reportsApproved} / {dvReportOccs.length}</span></div>
           </div>
         </section>
       </div>
@@ -3366,7 +3363,6 @@ function ScreenWorkspace(){
         <thead><tr><th>I want to…</th><th>Go to</th></tr></thead>
         <tbody>
           {[['See what needs doing across everything','My Workspace','work'],
-            ['Submit a Report, or review one','Reports & Plans','rpt'],
             ['Schedule a Meeting, edit its Agenda, or add attendees','Meetings & Committees','mtg'],
             ['Write or approve Meeting Minutes','Open the Meeting → Minutes tab','mtg'],
             ['Score or approve an Audit Grid','Open the Meeting → Audit Grid tab','mtg'],
@@ -10062,7 +10058,7 @@ function ScreenNewMeeting(){
     ? 'Narrowed to the Positions inside the chosen Business Unit.'
     : stageRegion
       ? 'Narrowed to the Positions inside every Business Unit in the chosen Region.'
-      : 'Group and ExCom Meetings are not narrowed — every Position is offered.';
+      : 'Group and Top Management Meetings are not narrowed — every Position is offered.';
   const scopePlaceholder = stageBU&&!f.dvBusinessUnitId ? 'Choose a Business Unit first'
     : stageRegion&&!f.dvRegionId ? 'Choose a Region first' : 'Search a Position…';
 
@@ -10473,7 +10469,7 @@ function ScreenNewMeeting(){
 
             {custom && <div className="f-row">
               <Field label="Organizational Stage" req
-                hint="Stage 1 runs in one Business Unit, Stage 2 in one Region. Group and ExCom run once, group-wide.">
+                hint="Stage 1 runs in one Business Unit, Stage 2 in one Region. Group and Top Management run once, group-wide.">
                 <select value={f.stage} onChange={e=>{
                   const v=e.target.value;
                   // Switching Stage clears the scope that no longer applies, and
@@ -10481,7 +10477,10 @@ function ScreenNewMeeting(){
                   setF(x=>({...x, stage:v, dvBusinessUnitId:'', dvRegionId:'',
                                     dvDepartmentId:'', dvChairPositionId:'', dvFacilitatorPositionId:''}));
                 }}>
-                {['Business Unit','Region','Group','ExCom'].map(s=><option key={s}>{s}</option>)}</select></Field>
+                {/* The 4th stage is labelled Top Management (03 Oct); its value stays
+                    'ExCom', the key MEETING_OCC_STAGE_KEY maps to stage 4. */}
+                {['Business Unit','Region','Group','ExCom'].map(s=>
+                  <option key={s} value={s}>{s==='ExCom' ? 'Top Management' : s}</option>)}</select></Field>
               {stageBU
                 ? <Field label="Business Unit" req hint="Shown as Business Unit — Region.">
                     <select value={f.dvBusinessUnitId} onChange={e=>{
@@ -10509,7 +10508,7 @@ function ScreenNewMeeting(){
                         <option value="">{DV_REGION_LIST.length?'Select…':'No Regions loaded'}</option>
                         {DV_REGION_LIST.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}
                       </select></Field>
-                  : <Field label="Scope" hint="Group and ExCom Meetings run once, group-wide — no Business Unit or Region.">
+                  : <Field label="Scope" hint="Group and Top Management Meetings run once, group-wide — no Business Unit or Region.">
                       <input type="text" value="Group-wide" disabled/></Field>}
             </div>}
 
@@ -10625,7 +10624,7 @@ function ScreenNewMeeting(){
                   ? 'Narrowed to the Departments inside the chosen Business Unit.'
                   : stageRegion
                     ? 'Narrowed to the Departments inside every Business Unit in the chosen Region.'
-                    : 'Group and ExCom Meetings are not narrowed — every Department is offered.'}>
+                    : 'Group and Top Management Meetings are not narrowed — every Department is offered.'}>
               <select value={f.dvDepartmentId} onChange={e=>set('dvDepartmentId',e.target.value)}
                 disabled={(stageBU&&!f.dvBusinessUnitId)||(stageRegion&&!f.dvRegionId)}>
                 <option value="">{
