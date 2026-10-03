@@ -9243,6 +9243,41 @@ meeting page would also crash on a meeting with a Teams channel.
   then to **main** on the user's explicit ask, as the same bundle
   (`index-C8NJ4Fy8.js`). Both apps are fixed.
 
+### 03 Oct: My Workspace shows no reports at all (Leadership only)
+
+Per an explicit ask ("in the work area tab remove any report"), following the
+New Report button's removal earlier the same day.
+
+- `ScreenWorkspace` drops report work items (`area==='Report'`) and report
+  calendar entries (`kind` starting "Report": `Report`, `Report Submission`)
+  **before** anything is counted or listed.
+- Gone: the **Reports** tab, report rows in the Work Queue, reports in
+  Upcoming, the "N reports + N other" overdue split (now "past their due
+  date"), the **Reports Submitted / Reports Approved** lines in This Month,
+  and the "Submit a Report" row in Where things live.
+- Pending actions, Overdue and Pending approvals now count non-report items
+  only. So does the sidebar badge for My Workspace (`counts.work`).
+- Reports / Plans, the Calendar and every other screen are unchanged.
+- Checks: Leadership builds; lint 56 unchanged; `no-undef` clean (only
+  `__PIN_ORG__`). In the dev server the tabs read All Items · Meetings · MOM ·
+  Decisions, no "report" text remains on the screen, and there are no console
+  errors. Not committed, not pushed.
+
+### 03 Oct: Schedule Meeting's 4th Organizational Stage reads "Top Management" (Leadership only)
+
+Per an explicit ask, with a screenshot of the Schedule Meeting page. The
+dropdown's 4th option now shows **Top Management**. Its value stays `ExCom`,
+the key `MEETING_OCC_STAGE_KEY` maps to stage 4, so saving and every
+`f.stage==='ExCom'` check are unchanged. The four hints on that page saying
+"Group and ExCom" now say "Group and Top Management".
+
+- ⚠️ **Not changed:** Create Report's own Organizational Stage dropdown (a
+  Custom report) still shows ExCom, as does its identical hint. Code comments
+  still say ExCom.
+- Checks: Leadership builds; lint 56; `no-undef` clean. Dev server: the
+  option reads "ExCom → Top Management" (value → text), selecting it keeps
+  value `ExCom`, and the hints update. Not committed, not pushed.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap
