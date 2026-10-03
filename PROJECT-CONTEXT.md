@@ -46,7 +46,7 @@ explicitly in the same turn. See "What is live" below.
 | Governance Setup | **Main (IT):** `4912152c-b5c8-4beb-bb74-c9f43550405b`, pushed from `C:\tmp\cad-gov`. **Test:** `786c1b14-bf09-4dd7-a0a2-5730e87744fe` ("…Governance Setup (2)"), pushed from `C:\tmp\cad-gov-old` — **reads IT since end of 01 Oct** (normal IT build, the same bundle as the main app); it read DT New before that. Both Code App Development. |
 | Leadership Execution | **Main:** `83db0ef8-4c62-4eef-84ac-dadab326b704`, pushed from `C:\tmp\cad-exec` — **reads DT New since late 01 Oct** (user: "make the 2 versions of the leadership practice to read from the DT New"), built with `LP_DATA_ORG`. **Test (DT New):** `d61c6237-fec1-45c7-80e0-a9c63dd1e662` ("…Leadership Execution (2)"), pushed from `C:\tmp\cad-exec-test` with `LP_DATA_ORG` set. ⚠️ That folder was **missing on this machine on 03 Oct** (the 01 Oct pushes were made elsewhere) and was **recreated** as a copy of `C:\tmp\cad-exec` (`.power`, `src`, `power.config.json`), changing only `appId` → `d61c6237…` and `appDisplayName` → "Andalusia Pulse - Leadership Execution (2)". Keep that name, or a push renames the test app. `pac code list` cannot list Code App Development (it is not a Dataverse org), so the id was confirmed by the push succeeding. `C:\tmp\cad-gov-old` is absent here too. Both Code App Development. |
 | Data | ⚠️ **Late 01 Oct: Leadership (both copies) = DT New; Governance (both copies) = IT.** Earlier note: **IT** (`org2f45e702`) for **both apps** again, every table but `lm_setupactivities` (follows `DATA_ORG`, = IT in Governance). Governance was on DT New for part of 29 Sep, then moved back to IT the same day per an explicit ask, once IT had the five `lm_reporttemplatedepartmentfunction` columns the per Department & Function submitters write (`lm_BU`, `lm_Region`, `lm_SubmittingPosition`, `lm_OwnerPosition`, `lm_TeamChannel` — checked, same targets as DT New). Switch: `__DATA_ORG__` + `__PIN_ORG__` in `apps/governance/vite.config.js` (see `PIN_ORG` in `xenv.js`). ⚠️ Setups saved in Governance **while it was on DT New** stay in DT New — they are not in IT. |
-| What is live (03 Oct) | **Leadership main** `83db0ef8` and **Leadership (2)** `d61c6237`: **both `4432a0b` minus `4ca0036`, reading DT New, the same bundle** (`index-9qbsYWuI.js`). Code-wise that is `f5a1707`: confidential Stage 4 agenda items stored on the item, a Teams channel on Custom meetings, and no New Report on My Workspace. The test copy was pushed first; main followed on the user's explicit "push the changes to the main leadership app", the same day. Both bundles checked: no `lm_attachmentfile`, exactly one `lm_TeamChannel@odata.bind`, DT New, the three changes present. The normal IT `dist` was rebuilt after each push. **Governance main** `4912152c` and **Governance (2)** `786c1b14`: **`409b549`, reading IT** (same bundle; no Governance code changed since). Every Leadership test push: revert steps, bundle checked (no uploader writes, data on DT New, the change present), normal IT `dist` rebuilt after. |
+| What is live (03 Oct) | **Leadership (2)** `d61c6237`: **`81393b4` minus `4ca0036`, reading DT New** (`index-C8NJ4Fy8.js`), the fixed build; see §5, 03 Oct, "fetchTeamsChannels is not defined". **Leadership main** `83db0ef8`: ⚠️ **`4432a0b` minus `4ca0036` (`index-9qbsYWuI.js`), BROKEN**: opening Schedule Meeting crashes with "fetchTeamsChannels is not defined". Push the fixed bundle (the same one is in `C:\tmp\cad-exec-test\dist`) as soon as the user asks. Both carry `f5a1707`'s three changes (confidential Stage 4 agenda items, a Teams channel on Custom meetings, no New Report on My Workspace). The normal IT `dist` was rebuilt after each push. **Governance main** `4912152c` and **Governance (2)** `786c1b14`: **`409b549`, reading IT** (same bundle; no Governance code changed since). Every Leadership test push: revert steps, bundle checked (no uploader writes, data on DT New, the change present), normal IT `dist` rebuilt after. |
 | ⚠️ Apps are split across environments | **Both Governance apps read IT, both Leadership apps read DT New**: a Setup made in Governance lands in IT and does **not** show in either Leadership app, and DT New's Setups are not editable from either Governance app. Raised with the user; not resolved yet. |
 
 ⚠️ **One commit is in git but deliberately NOT deployed: `4ca0036`** — the
@@ -85,6 +85,13 @@ git revert --no-commit 4ca0036
 #        other side is empty.
 #    Check no marker is left:
 grep -c "^<<<<<<<\|^>>>>>>>" src/modules/leadership/LeadershipApp.jsx src/services/dataverse.js   # 0 and 0
+#    ⚠️ NEW 03 Oct -- check the REVERTED tree for names the revert took away.
+#    The normal build, lint and dev server all run WITH 4ca0036, so they cannot
+#    see this; a build happily bundles an undefined name. On 03 Oct
+#    "fetchTeamsChannels is not defined" reached both Leadership apps this way.
+npx oxlint -D no-undef src/modules/leadership src/services src/shared 2>&1 | grep -i "no-undef"
+#    -> only the two __PIN_ORG__ hits in xenv.js (a Vite build-time define) are
+#       expected. Anything else: stop, fix it at HEAD, commit, start again.
 
 # 2. Build Leadership ONLY, and prove the uploader is gone from the bundle.
 npm run build:leadership
@@ -9211,6 +9218,29 @@ only **New Meeting**. Reports / Plans keeps its own "+ New Report", and
 `openNewReport()` still serves every other caller. Leadership builds; lint 56,
 unchanged; seen in the dev server. Committed `f5a1707`; **pushed 03 Oct to Leadership (2),
 then main.**
+
+### 03 Oct: "fetchTeamsChannels is not defined" in both deployed Leadership apps — fixed
+
+Reported by the user from the live app's console:
+`ReferenceError: fetchTeamsChannels is not defined`. It throws inside an
+effect, so the **Schedule Meeting page crashed** in both Leadership apps. The
+meeting page would also crash on a meeting with a Teams channel.
+
+- **Cause:** the Teams channel change (`f5a1707`) added `loadTeamsChannels()`,
+  which calls `fetchTeamsChannels`. Leadership's import of that function was
+  added by the uploader commit **`4ca0036`**, which every Leadership push
+  reverts, so the deployed build had no such name. The normal build, lint and
+  dev-server check all run with `4ca0036` present, so none of them could see
+  it, and Vite bundles an undefined global without complaint.
+- **Fix (`81393b4`):** the meetings import it under their own name,
+  `readTeamsChannels`, in a separate import statement the revert does not
+  touch.
+- **Prevention:** §0's push steps gain a `no-undef` lint of the reverted
+  tree. Checked on 03 Oct: the reverted tree has no undefined name except
+  `__PIN_ORG__`, and the check catches the original bug's pattern.
+- **Verified** before pushing: the reverted tree in the dev server opens
+  Schedule Meeting with no console error. Pushed to **Leadership (2)** only.
+  **Main is still on the broken build** until the user asks for that push.
 
 ## 6. Schema facts that are expensive to rediscover
 
