@@ -61,6 +61,12 @@ import { fetchMeetingOccurrences, fetchReportOccurrences, createMeetingOccurrenc
          ATTENDEE_TYPE, REPORT_TYPE, REPORT_CATEGORY, REPORT_FREQUENCY,
          fetchMeetingUnitRoles, fetchReportUnitRoles,
          REPORT_OBJECTIVE_MAX } from '../../services/dataverse.js';
+/* The meetings' own handle on the Teams channel list (03 Oct). Kept as a
+   separate import on purpose: `fetchTeamsChannels` in the list above arrived
+   with the uploader commit 4ca0036, which every Leadership push reverts, so a
+   meeting screen relying on it crashed with "fetchTeamsChannels is not
+   defined" in the deployed build. */
+import { fetchTeamsChannels as readTeamsChannels } from '../../services/dataverse.js';
 
 /* =========================================================================
    REFERENCE DATA + SEED
@@ -2215,7 +2221,7 @@ const tzForRegionName = name => (TIME_ZONES.find(t=>name&&t.match.test(name))||T
    by the Schedule Meeting page and the meeting page. A failed read is not
    cached, so the next caller tries again. */
 let TEAMS_CHANNELS_P = null;
-const loadTeamsChannels = () => (TEAMS_CHANNELS_P ||= fetchTeamsChannels()
+const loadTeamsChannels = () => (TEAMS_CHANNELS_P ||= readTeamsChannels()
   .catch(e => { TEAMS_CHANNELS_P = null; throw e; }));
 const channelLabel = c => c ? [c.team, c.name].filter(Boolean).join(' › ') : null;
 
