@@ -1346,8 +1346,23 @@ function meetingLimits(occ, S){
            gridSubmitHours: pick('gridSubmitHours') };
 }
 
+/* Grid scoring only (04 Oct, user's ask: "every automatic question scores
+   itself"). When no period is set on the meeting, its Setup or Governance
+   Settings, AG-05 / AG-16 / AG-17 fall back to the periods Governance Setup
+   gives every new Setup (24h / 24h / 48h) instead of reading Not Applicable.
+   The trace says when a default was used. meetingLimits() itself is unchanged,
+   so the Calendar's MOM-due items and the other deadline screens still show
+   only periods that were really set. */
+const GRID_DEFAULT_LIMITS = { momWriteupHours:24, momApprovalHours:24, gridSubmitHours:48 };
+
 function liveScoreGrid(occ, minutes, quorumPct, torLink, accred, S, grid, allOccs, decisions){
-  const LIM = meetingLimits(occ, S);
+  const SET = meetingLimits(occ, S);
+  const LIM = {}, DEF = {};
+  for(const k of Object.keys(GRID_DEFAULT_LIMITS)){
+    DEF[k] = SET[k]==null;
+    LIM[k] = SET[k] ?? GRID_DEFAULT_LIMITS[k];
+  }
+  const limTxt = k => `${DEF[k]?'default ':''}limit ${LIM[k]}h${DEF[k]?' — none is set on this meeting, its Setup or Governance Settings':''}`;
   const agendaIds = new Set(occ.agenda.map(a=>a.id));
   const meetingDecisions = (decisions||[]).filter(d=>d.agendaItemId && agendaIds.has(d.agendaItemId));
   const R = [];
@@ -1387,13 +1402,12 @@ function liveScoreGrid(occ, minutes, quorumPct, torLink, accred, S, grid, allOcc
       : carried ? `${unc.length} uncovered item(s), all carried forward to a later occurrence.`
       : `${unc.length} uncovered item(s); not all are carried forward.`);
 
-  if(LIM.momApprovalHours==null) push('AG-05','na',null,null,'No MOM approval period is set on this meeting, its Setup or Governance Settings, so approval timeliness cannot be measured.');
-  else if(!minutes?.submittedAt) push('AG-05','na',null,null,'The MOM was never submitted, so the Chair’s approval clock never started. Measured by AG-16 instead.');
+  if(!minutes?.submittedAt) push('AG-05','na',null,null,'The MOM was never submitted, so the Chair’s approval clock never started. Measured by AG-16 instead.');
   else if(!minutes?.approvedAt) push('AG-05','na',null,null,'The MOM has not been approved yet.');
   else{
     const h = hoursBetween(minutes.submittedAt, minutes.approvedAt);
     push('AG-05','auto', h<=LIM.momApprovalHours?5 : h<=LIM.momApprovalHours*2?2:0,
-      `Approved ${h} hour${h===1?'':'s'} after submission (limit ${LIM.momApprovalHours}h).`);
+      `Approved ${h} hour${h===1?'':'s'} after submission (${limTxt('momApprovalHours')}).`);
   }
 
   const withOutcome = occ.agenda.filter(a=>(minutes?.notesByAgenda?.[a.id]||'').trim()
@@ -1443,19 +1457,24 @@ function liveScoreGrid(occ, minutes, quorumPct, torLink, accred, S, grid, allOcc
     push('AG-15','auto', score, occ.inviteSent?`Invitation sent ${occ.inviteSent}, needed by ${need}.`:'No invitation date recorded.');
   }
 
-  if(LIM.momWriteupHours==null) push('AG-16','na',null,null,'No MOM write-up period is set on this meeting, its Setup or Governance Settings.');
-  else if(!occ.end) push('AG-16','na',null,null,'No end time is recorded on this occurrence, so the write-up clock cannot start.');
+  /* AG-16: the clock starts at the meeting's end. With no end time recorded
+     it starts at the start time, else at the end of the meeting day -- the
+     most generous reading for the Organizer -- rather than not starting. */
+  const wuFrom = occ.end ? occ.date+' '+occ.end : occ.start ? occ.date+' '+occ.start : occ.date+' 23:59';
+  const wuFromTxt = occ.end ? 'the Meeting ended'
+    : occ.start ? 'the Meeting started (no end time is recorded)'
+    : 'the end of the Meeting day (no time is recorded)';
+  if(!occ.date) push('AG-16','na',null,null,'No date is recorded on this occurrence, so the write-up clock cannot start.');
   else if(!minutes?.submittedAt) push('AG-16','auto',0,'The MOM was never submitted.');
   else{
-    const h = hoursBetween(occ.date+' '+occ.end, minutes.submittedAt);
+    const h = Math.max(0, hoursBetween(wuFrom, minutes.submittedAt));
     push('AG-16','auto', h<=LIM.momWriteupHours?5 : h<=LIM.momWriteupHours*2?2:0,
-      `Submitted ${h} hour${h===1?'':'s'} after the Meeting ended (limit ${LIM.momWriteupHours}h).`);
+      `Submitted ${h} hour${h===1?'':'s'} after ${wuFromTxt} (${limTxt('momWriteupHours')}).`);
   }
 
   /* AG-17 (01 Oct): Grid opened (createdon -- it is created when the MOM
      closes) -> submitted for Chair approval (lm_submitedat, DT New only). */
-  if(LIM.gridSubmitHours==null) push('AG-17','na',null,null,'No Audit Grid submission period is set on this meeting, its Setup or Governance Settings.');
-  else if(!grid) push('AG-17','na',null,null,'No Audit Grid exists for this meeting yet.');
+  if(!grid) push('AG-17','na',null,null,'No Audit Grid exists for this meeting yet.');
   else if(!grid.submittedAt) push('AG-17','na',null,null,
     grid.state==='Pending Organizer Review' || grid.state==='Returned for Revision'
       ? 'The Grid has not been submitted yet — it is measured once it is.'
@@ -1464,7 +1483,7 @@ function liveScoreGrid(occ, minutes, quorumPct, torLink, accred, S, grid, allOcc
   else{
     const h = hoursBetween(grid.created, grid.submittedAt);
     push('AG-17','auto', h<=LIM.gridSubmitHours?5 : h<=LIM.gridSubmitHours*2?2:0,
-      `Submitted ${h} hour${h===1?'':'s'} after the Grid opened (limit ${LIM.gridSubmitHours}h).`);
+      `Submitted ${h} hour${h===1?'':'s'} after the Grid opened (${limTxt('gridSubmitHours')}).`);
   }
 
   /* `note` = the Organizer's saved evidence note, kept apart from `ev` (what

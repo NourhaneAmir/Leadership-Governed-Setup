@@ -9430,6 +9430,33 @@ unchanged (all filtered items, not the page).
 - Checks: both apps build; lint 56, unchanged; `no-undef` clean. Not
   browser-checked, not pushed.
 
+### 04 Oct: Audit Grid timing questions always score — default periods (Leadership only)
+
+Per an explicit ask, with a screenshot of AG-16 reading "No MOM write-up
+period is set on this meeting, its Setup or Governance Settings": every
+automatic question should score itself from the submitted / approved times.
+
+- `liveScoreGrid()` now uses **`GRID_DEFAULT_LIMITS`** = write-up 24h,
+  approval 24h, Grid submission 48h. These are the periods Governance Setup
+  already gives a new Setup. They apply when `meetingLimits()` (meeting →
+  Setup → Governance Settings) finds none. The trace reads "default limit 24h —
+  none is set on this meeting, its Setup or Governance Settings".
+  - **AG-05** (submitted → approved), **AG-16** (meeting end → submitted) and
+    **AG-17** (Grid opened → submitted) no longer go Not Applicable for lack
+    of a period.
+  - They still go Not Applicable when the event itself has not happened
+    (not submitted / not approved / no Grid).
+- **AG-16 with no end time** starts its clock at the start time, else at the
+  end of the meeting day (23:59), instead of not starting.
+- ⚠️ **Scoring only.** `meetingLimits()` is unchanged, so the Calendar's MOM-due
+  items and the other deadline screens still show only periods really set. This
+  departs from §2's "the governance settings stay null" for these three
+  timings, on the user's explicit ask.
+- Not changed: AG-03's distribution half (agenda lead time still null → presence
+  only), AG-08 with no quorum threshold, and AG-11 to AG-14. Approved / frozen
+  Grids keep their stored scores.
+- Checks: both apps build; lint 56; `no-undef` clean. Not browser-checked.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap
