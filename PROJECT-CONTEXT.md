@@ -9290,6 +9290,26 @@ switch it back on.
 - Checks: both apps build; lint 56, unchanged; `no-undef` clean (only
   `__PIN_ORG__`). Not browser-checked, not pushed.
 
+### 04 Oct: My Workspace no longer reads Report Occurrences (Leadership only)
+
+Per an explicit ask ("remove the reports occurrences reading from the work
+area tab"). On 03 Oct reports were only *filtered out* of My Workspace after
+being read. Now the source does not read them:
+
+- `dvWorkItems(meetingOccs)` takes meetings only; its report branch (Draft /
+  In Review / Returned items) is deleted. The `work` memo no longer depends on
+  `dvReportOccs`.
+- `ScreenWorkspace`'s `notReport` filters are removed (nothing left to
+  filter). Its calendar filter stays: the shared `cal` list still carries
+  report entries for the **Calendar** screen, which keeps showing reports.
+- **Side effect, a fix:** every work item is tagged `screen:'mtg'`, so the
+  report items used to add to the **Meetings** sidebar badge. That badge now
+  counts meeting work only.
+- Untouched: `dvReportOccs` is still fetched app-wide for Reports / Plans,
+  Build, the Calendar, Submissions and the report pickers.
+- Checks: both apps build; lint 56, unchanged; `no-undef` clean (only
+  `__PIN_ORG__`). Not browser-checked, not pushed.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap

@@ -2332,7 +2332,12 @@ function dvMomDueCalItem(o, hours){
    has no Minutes or Audit Grid record behind it — those live in seeded state —
    so a Held Meeting is reported as needing its Minutes, and nothing further is
    inferred about a governance record that does not exist yet. */
-function dvWorkItems(meetingOccs, reportOccs){
+/* Meetings only (04 Oct, user's ask): My Workspace no longer reads Report
+   Occurrences at all. The report branch that built Draft / In Review /
+   Returned items is gone, not filtered afterwards. It was the only reader of
+   reports here, and since every item is tagged screen 'mtg', those report
+   items also inflated the Meetings sidebar badge. */
+function dvWorkItems(meetingOccs){
   const due=[], review=[], finish=[];
   const mk=(bucket,area,rec,title,sub,action,date,urgent)=>
     bucket.push({area, rid:rec.id, title, sub, action,
@@ -2371,22 +2376,6 @@ function dvWorkItems(meetingOccs, reportOccs){
         mk(finish,'Meeting',o,o.name,sub+' · held',
            `Record attendance for ${noAttendance} Attendee${noAttendance===1?'':'s'}`,o.date,true);
     }
-  });
-
-  reportOccs.forEach(r=>{
-    const scope=dvBu(r.businessUnitId)||dvRegion(r.regionId);
-    const sub=[r.period?fmtD(r.period):null, dvDept(r.departmentId), scope].filter(Boolean).join(' · ');
-    if(r.status==='Draft')
-      mk(due,'Report',r,r.name,sub,
-         r.fileUrl?'Prepare the working copy and submit':'Generate the working copy, then submit',
-         r.period,false);
-    if(r.status==='In Review')
-      mk(review,'Report',r,r.name,
-         sub+(r.reviewStep!=null?' · review step '+r.reviewStep:''),
-         'Review — approve, comment or request more information',r.period,false);
-    if(r.status==='Returned')
-      mk(due,'Report',r,r.name,sub+' · returned',
-         'Address the reviewer’s comments and resubmit',r.period,true);
   });
 
   return {due,review,finish};
@@ -3024,9 +3013,9 @@ function App({onSwitch}){
   },[myPosKey]);
   const myMeetingOccs = useMemo(()=>dvMeetingOccs.filter(isMyMeeting),[dvMeetingOccs,isMyMeeting]);
   const work = useMemo(()=>{
-    const {due,review,finish}=dvWorkItems(myMeetingOccs,dvReportOccs);
+    const {due,review,finish}=dvWorkItems(myMeetingOccs);
     return {due,review,finish,all:[...due,...review,...finish]};
-  },[myMeetingOccs,dvReportOccs,dvTick]);
+  },[myMeetingOccs,dvTick]);
   /* The calendar reads the occurrence tables, plus one derived kind: a MOM
      Due deadline for every Held Meeting whose write-up genuinely still owes
      (no Minutes row, or one that was never submitted) -- the same test
@@ -3053,8 +3042,8 @@ function App({onSwitch}){
     ];
   },[dvMeetingOccs,dvReportOccs,dvMinutes,S,dvTick]);
   const counts = useMemo(()=>{
-    /* My Workspace shows no reports (03 Oct), so its badge counts none either. */
-    const c={work:[...work.due, ...work.finish].filter(w=>w.area!=='Report').length};
+    /* `work` holds no reports at all since 04 Oct (dvWorkItems reads meetings only). */
+    const c={work:[...work.due, ...work.finish].length};
     work.all.forEach(w=>{ c[w.screen]=(c[w.screen]||0)+1; });
     return c;
   },[work]);
@@ -3158,24 +3147,24 @@ function ScreenWorkspace(){
   /* Only my meetings (01 Oct): calendar meeting / MOM-due items whose meeting
      is mine. `dvMeetingOccs` here IS the "my meetings" list (renamed on
      destructure) so the activity figures below count mine too.
-     No reports anywhere on this screen (03 Oct, user's ask): report work items
-     and report calendar entries ("Report", "Report Submission") are dropped
-     here, before any count or list is built, so every figure below excludes
-     them. Reports / Plans and the Calendar still show them. */
-  const notReport = w => w.area!=='Report';
+     No reports anywhere on this screen (03 Oct, user's ask). Since 04 Oct the
+     work items never contain one (dvWorkItems reads meetings only). The shared
+     calendar list still carries report entries ("Report", "Report Submission")
+     for the Calendar screen, so they are dropped here before anything is
+     counted. Reports / Plans and the Calendar still show reports. */
   const cal = calAll.filter(i=>!/^Report/.test(i.kind||''))
     .filter(i=>(i.kind!=='Meeting' && i.kind!=='MOM') || isMyMeeting(i._rec));
   const noPositions = !(dvLookup?.myPositionIds||[]).length;
   const [tab,setTab]     = useState('All');
   const [quick,setQuick] = useState('all');
-  const overdue = work.all.filter(notReport).filter(w=>w.date && w.date<TODAY);
+  const overdue = work.all.filter(w=>w.date && w.date<TODAY);
 
   /* every open item, tagged with which of the three states it's in — used only to
      choose a status label/colour and to power "Awaiting My Action" below. */
   const tagged = [
-    ...work.due.filter(notReport).map(w=>({...w,bucket:'due'})),
-    ...work.review.filter(notReport).map(w=>({...w,bucket:'review'})),
-    ...work.finish.filter(notReport).map(w=>({...w,bucket:'finish'})),
+    ...work.due.map(w=>({...w,bucket:'due'})),
+    ...work.review.map(w=>({...w,bucket:'review'})),
+    ...work.finish.map(w=>({...w,bucket:'finish'})),
   ];
 
   const TABS = [
