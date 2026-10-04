@@ -1,13 +1,15 @@
 {
-  "name": "20a0173f-dfd6-4537-84ca-ff60b9a09c79",
+  "name": "219cbff7-340a-44bf-815b-8102ed53bf1b",
   "title": "Documents",
   "x-ms-permission": "read-only",
   "x-ms-capabilities": {
     "sortRestrictions": {
       "sortable": true,
       "unsortableProperties": [
-        "OData__ExtendedDescription",
         "OData__DisplayName",
+        "OData__ExtendedDescription",
+        "MediaServiceImageTags",
+        "MediaServiceOCR",
         "{Identifier}",
         "{IsFolder}",
         "{Thumbnail}",
@@ -32,8 +34,9 @@
     "filterRestrictions": {
       "filterable": true,
       "nonFilterableProperties": [
-        "OData__ExtendedDescription",
         "OData__DisplayName",
+        "OData__ExtendedDescription",
+        "MediaServiceOCR",
         "{Identifier}",
         "{IsFolder}",
         "{Thumbnail}",
@@ -106,6 +109,75 @@
             ]
           },
           "maxLength": 255
+        },
+        "Document_x0020_Status#WssId": {
+          "title": "Document Status WssId",
+          "type": "integer",
+          "format": "int64",
+          "x-ms-permission": "read-only",
+          "x-ms-visibility": "internal"
+        },
+        "Document_x0020_Status": {
+          "title": "Document Status",
+          "type": "object",
+          "x-ms-permission": "read-write",
+          "x-ms-sort": "asc,desc",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq"
+            ]
+          },
+          "properties": {
+            "@odata.type": {
+              "title": "@odata.type",
+              "x-ms-visibility": "internal",
+              "type": "string",
+              "x-ms-permission": "read-write"
+            },
+            "TermGuid": {
+              "title": "TermGuid",
+              "type": "string",
+              "x-ms-permission": "read-only"
+            },
+            "Value": {
+              "title": "Value",
+              "type": "string",
+              "x-ms-dynamic-values": {
+                "operationId": "GetEntityValues",
+                "parameters": {
+                  "dataset": {
+                    "parameter": "dataset"
+                  },
+                  "table": {
+                    "parameter": "table"
+                  },
+                  "id": "b840bf21-9ded-4035-b203-a043eee8c2b9"
+                },
+                "value-path": "Value",
+                "value-title": "Label",
+                "value-collection": "value"
+              }
+            },
+            "WssId": {
+              "title": "WssId",
+              "type": "integer",
+              "format": "int64",
+              "x-ms-permission": "read-only"
+            },
+            "Label": {
+              "title": "Label",
+              "type": "string",
+              "x-ms-permission": "read-only"
+            },
+            "Path": {
+              "title": "Path",
+              "type": "string",
+              "x-ms-permission": "read-only"
+            }
+          },
+          "x-ms-displayFormat": {
+            "titleProperty": "Label"
+          }
         },
         "Author#Claims": {
           "title": "Created By Claims",
@@ -190,8 +262,8 @@
               "description": "Link to a picture of the user who created this item.",
               "format": "uri",
               "x-ms-media-kind": "image",
-              "x-ms-media-default-folder-path": "/sites/SMO-AndalusialeadershipPractice",
-              "x-ms-media-base-url": "https://andalusiagroupegypt.sharepoint.com/sites/SMO-AndalusialeadershipPractice",
+              "x-ms-media-default-folder-path": "/sites/DigitalTransformation-UnifiedTransformationAlignment",
+              "x-ms-media-base-url": "https://andalusiagroupegypt.sharepoint.com/sites/DigitalTransformation-UnifiedTransformationAlignment",
               "x-ms-permission": "read-only"
             },
             "Department": {
@@ -314,8 +386,8 @@
               "description": "Link to a picture of the user who last changed this item.",
               "format": "uri",
               "x-ms-media-kind": "image",
-              "x-ms-media-default-folder-path": "/sites/SMO-AndalusialeadershipPractice",
-              "x-ms-media-base-url": "https://andalusiagroupegypt.sharepoint.com/sites/SMO-AndalusialeadershipPractice",
+              "x-ms-media-default-folder-path": "/sites/DigitalTransformation-UnifiedTransformationAlignment",
+              "x-ms-media-base-url": "https://andalusiagroupegypt.sharepoint.com/sites/DigitalTransformation-UnifiedTransformationAlignment",
               "x-ms-permission": "read-only"
             },
             "Department": {
@@ -335,75 +407,6 @@
             "titleProperty": "DisplayName",
             "subtitleProperty": "Email",
             "thumbnailProperty": "Picture"
-          }
-        },
-        "Weeks#WssId": {
-          "title": "Weeks WssId",
-          "type": "integer",
-          "format": "int64",
-          "x-ms-permission": "read-only",
-          "x-ms-visibility": "internal"
-        },
-        "Weeks": {
-          "title": "Weeks",
-          "type": "object",
-          "x-ms-permission": "read-write",
-          "x-ms-sort": "asc,desc",
-          "x-ms-capabilities": {
-            "filterFunctions": [
-              "eq"
-            ]
-          },
-          "properties": {
-            "@odata.type": {
-              "title": "@odata.type",
-              "x-ms-visibility": "internal",
-              "type": "string",
-              "x-ms-permission": "read-write"
-            },
-            "TermGuid": {
-              "title": "TermGuid",
-              "type": "string",
-              "x-ms-permission": "read-only"
-            },
-            "Value": {
-              "title": "Value",
-              "type": "string",
-              "x-ms-dynamic-values": {
-                "operationId": "GetEntityValues",
-                "parameters": {
-                  "dataset": {
-                    "parameter": "dataset"
-                  },
-                  "table": {
-                    "parameter": "table"
-                  },
-                  "id": "0dc75fbe-0f4f-4e73-b695-2aad45c8b171"
-                },
-                "value-path": "Value",
-                "value-title": "Label",
-                "value-collection": "value"
-              }
-            },
-            "WssId": {
-              "title": "WssId",
-              "type": "integer",
-              "format": "int64",
-              "x-ms-permission": "read-only"
-            },
-            "Label": {
-              "title": "Label",
-              "type": "string",
-              "x-ms-permission": "read-only"
-            },
-            "Path": {
-              "title": "Path",
-              "type": "string",
-              "x-ms-permission": "read-only"
-            }
-          },
-          "x-ms-displayFormat": {
-            "titleProperty": "Label"
           }
         },
         "Month#WssId": {
@@ -447,240 +450,7 @@
                   "table": {
                     "parameter": "table"
                   },
-                  "id": "019d7c87-9d79-4a8f-a432-57a91bfebf55"
-                },
-                "value-path": "Value",
-                "value-title": "Label",
-                "value-collection": "value"
-              }
-            },
-            "WssId": {
-              "title": "WssId",
-              "type": "integer",
-              "format": "int64",
-              "x-ms-permission": "read-only"
-            },
-            "Label": {
-              "title": "Label",
-              "type": "string",
-              "x-ms-permission": "read-only"
-            },
-            "Path": {
-              "title": "Path",
-              "type": "string",
-              "x-ms-permission": "read-only"
-            }
-          },
-          "x-ms-displayFormat": {
-            "titleProperty": "Label"
-          }
-        },
-        "Year#WssId": {
-          "title": "Year WssId",
-          "type": "integer",
-          "format": "int64",
-          "x-ms-permission": "read-only",
-          "x-ms-visibility": "internal"
-        },
-        "Year": {
-          "title": "Year",
-          "type": "object",
-          "x-ms-permission": "read-write",
-          "x-ms-sort": "asc,desc",
-          "x-ms-capabilities": {
-            "filterFunctions": [
-              "eq"
-            ]
-          },
-          "properties": {
-            "@odata.type": {
-              "title": "@odata.type",
-              "x-ms-visibility": "internal",
-              "type": "string",
-              "x-ms-permission": "read-write"
-            },
-            "TermGuid": {
-              "title": "TermGuid",
-              "type": "string",
-              "x-ms-permission": "read-only"
-            },
-            "Value": {
-              "title": "Value",
-              "type": "string",
-              "x-ms-dynamic-values": {
-                "operationId": "GetEntityValues",
-                "parameters": {
-                  "dataset": {
-                    "parameter": "dataset"
-                  },
-                  "table": {
-                    "parameter": "table"
-                  },
-                  "id": "c8c2093e-0b77-4ada-8e16-3626f66d242a"
-                },
-                "value-path": "Value",
-                "value-title": "Label",
-                "value-collection": "value"
-              }
-            },
-            "WssId": {
-              "title": "WssId",
-              "type": "integer",
-              "format": "int64",
-              "x-ms-permission": "read-only"
-            },
-            "Label": {
-              "title": "Label",
-              "type": "string",
-              "x-ms-permission": "read-only"
-            },
-            "Path": {
-              "title": "Path",
-              "type": "string",
-              "x-ms-permission": "read-only"
-            }
-          },
-          "x-ms-displayFormat": {
-            "titleProperty": "Label"
-          }
-        },
-        "Document_x0020_Status#WssId": {
-          "title": "Document Status WssId",
-          "type": "integer",
-          "format": "int64",
-          "x-ms-permission": "read-only",
-          "x-ms-visibility": "internal"
-        },
-        "Document_x0020_Status": {
-          "title": "Document Status",
-          "type": "object",
-          "x-ms-permission": "read-write",
-          "x-ms-sort": "asc,desc",
-          "x-ms-capabilities": {
-            "filterFunctions": [
-              "eq"
-            ]
-          },
-          "properties": {
-            "@odata.type": {
-              "title": "@odata.type",
-              "x-ms-visibility": "internal",
-              "type": "string",
-              "x-ms-permission": "read-write"
-            },
-            "TermGuid": {
-              "title": "TermGuid",
-              "type": "string",
-              "x-ms-permission": "read-only"
-            },
-            "Value": {
-              "title": "Value",
-              "type": "string",
-              "x-ms-dynamic-values": {
-                "operationId": "GetEntityValues",
-                "parameters": {
-                  "dataset": {
-                    "parameter": "dataset"
-                  },
-                  "table": {
-                    "parameter": "table"
-                  },
-                  "id": "1528916f-a98d-4579-b4ed-12abe05930e1"
-                },
-                "value-path": "Value",
-                "value-title": "Label",
-                "value-collection": "value"
-              }
-            },
-            "WssId": {
-              "title": "WssId",
-              "type": "integer",
-              "format": "int64",
-              "x-ms-permission": "read-only"
-            },
-            "Label": {
-              "title": "Label",
-              "type": "string",
-              "x-ms-permission": "read-only"
-            },
-            "Path": {
-              "title": "Path",
-              "type": "string",
-              "x-ms-permission": "read-only"
-            }
-          },
-          "x-ms-displayFormat": {
-            "titleProperty": "Label"
-          }
-        },
-        "Related_x0020_Process": {
-          "title": "Related Process",
-          "type": "string",
-          "x-ms-permission": "read-write",
-          "x-ms-sort": "asc,desc",
-          "x-ms-capabilities": {
-            "filterFunctions": [
-              "eq",
-              "startswith"
-            ]
-          },
-          "maxLength": 255
-        },
-        "Related_x0020_KPI_x0027_s": {
-          "title": "Related KPI's",
-          "type": "string",
-          "x-ms-permission": "read-write",
-          "x-ms-sort": "asc,desc",
-          "x-ms-capabilities": {
-            "filterFunctions": [
-              "eq",
-              "startswith"
-            ]
-          },
-          "maxLength": 255
-        },
-        "PDCA#WssId": {
-          "title": "PDCA WssId",
-          "type": "integer",
-          "format": "int64",
-          "x-ms-permission": "read-only",
-          "x-ms-visibility": "internal"
-        },
-        "PDCA": {
-          "title": "PDCA",
-          "type": "object",
-          "x-ms-permission": "read-write",
-          "x-ms-sort": "asc,desc",
-          "x-ms-capabilities": {
-            "filterFunctions": [
-              "eq"
-            ]
-          },
-          "properties": {
-            "@odata.type": {
-              "title": "@odata.type",
-              "x-ms-visibility": "internal",
-              "type": "string",
-              "x-ms-permission": "read-write"
-            },
-            "TermGuid": {
-              "title": "TermGuid",
-              "type": "string",
-              "x-ms-permission": "read-only"
-            },
-            "Value": {
-              "title": "Value",
-              "type": "string",
-              "x-ms-dynamic-values": {
-                "operationId": "GetEntityValues",
-                "parameters": {
-                  "dataset": {
-                    "parameter": "dataset"
-                  },
-                  "table": {
-                    "parameter": "table"
-                  },
-                  "id": "b4f4ea6e-cc49-4596-9472-d37baa5d760d"
+                  "id": "9fc39743-efbf-4406-b374-ff978491e79e"
                 },
                 "value-path": "Value",
                 "value-title": "Label",
@@ -726,6 +496,245 @@
             ]
           }
         },
+        "Year#WssId": {
+          "title": "Year WssId",
+          "type": "integer",
+          "format": "int64",
+          "x-ms-permission": "read-only",
+          "x-ms-visibility": "internal"
+        },
+        "Year": {
+          "title": "Year",
+          "type": "object",
+          "x-ms-permission": "read-write",
+          "x-ms-sort": "asc,desc",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq"
+            ]
+          },
+          "properties": {
+            "@odata.type": {
+              "title": "@odata.type",
+              "x-ms-visibility": "internal",
+              "type": "string",
+              "x-ms-permission": "read-write"
+            },
+            "TermGuid": {
+              "title": "TermGuid",
+              "type": "string",
+              "x-ms-permission": "read-only"
+            },
+            "Value": {
+              "title": "Value",
+              "type": "string",
+              "x-ms-dynamic-values": {
+                "operationId": "GetEntityValues",
+                "parameters": {
+                  "dataset": {
+                    "parameter": "dataset"
+                  },
+                  "table": {
+                    "parameter": "table"
+                  },
+                  "id": "026bef4a-43dd-4ec0-8143-9f34168ad8f3"
+                },
+                "value-path": "Value",
+                "value-title": "Label",
+                "value-collection": "value"
+              }
+            },
+            "WssId": {
+              "title": "WssId",
+              "type": "integer",
+              "format": "int64",
+              "x-ms-permission": "read-only"
+            },
+            "Label": {
+              "title": "Label",
+              "type": "string",
+              "x-ms-permission": "read-only"
+            },
+            "Path": {
+              "title": "Path",
+              "type": "string",
+              "x-ms-permission": "read-only"
+            }
+          },
+          "x-ms-displayFormat": {
+            "titleProperty": "Label"
+          }
+        },
+        "Weeks#WssId": {
+          "title": "Weeks WssId",
+          "type": "integer",
+          "format": "int64",
+          "x-ms-permission": "read-only",
+          "x-ms-visibility": "internal"
+        },
+        "Weeks": {
+          "title": "Weeks",
+          "type": "object",
+          "x-ms-permission": "read-write",
+          "x-ms-sort": "asc,desc",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq"
+            ]
+          },
+          "properties": {
+            "@odata.type": {
+              "title": "@odata.type",
+              "x-ms-visibility": "internal",
+              "type": "string",
+              "x-ms-permission": "read-write"
+            },
+            "TermGuid": {
+              "title": "TermGuid",
+              "type": "string",
+              "x-ms-permission": "read-only"
+            },
+            "Value": {
+              "title": "Value",
+              "type": "string",
+              "x-ms-dynamic-values": {
+                "operationId": "GetEntityValues",
+                "parameters": {
+                  "dataset": {
+                    "parameter": "dataset"
+                  },
+                  "table": {
+                    "parameter": "table"
+                  },
+                  "id": "a00e1cd5-f20c-48b5-a250-ac9ddf8279a7"
+                },
+                "value-path": "Value",
+                "value-title": "Label",
+                "value-collection": "value"
+              }
+            },
+            "WssId": {
+              "title": "WssId",
+              "type": "integer",
+              "format": "int64",
+              "x-ms-permission": "read-only"
+            },
+            "Label": {
+              "title": "Label",
+              "type": "string",
+              "x-ms-permission": "read-only"
+            },
+            "Path": {
+              "title": "Path",
+              "type": "string",
+              "x-ms-permission": "read-only"
+            }
+          },
+          "x-ms-displayFormat": {
+            "titleProperty": "Label"
+          }
+        },
+        "PDCA#WssId": {
+          "title": "PDCA WssId",
+          "type": "integer",
+          "format": "int64",
+          "x-ms-permission": "read-only",
+          "x-ms-visibility": "internal"
+        },
+        "PDCA": {
+          "title": "PDCA",
+          "type": "object",
+          "x-ms-permission": "read-write",
+          "x-ms-sort": "asc,desc",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq"
+            ]
+          },
+          "properties": {
+            "@odata.type": {
+              "title": "@odata.type",
+              "x-ms-visibility": "internal",
+              "type": "string",
+              "x-ms-permission": "read-write"
+            },
+            "TermGuid": {
+              "title": "TermGuid",
+              "type": "string",
+              "x-ms-permission": "read-only"
+            },
+            "Value": {
+              "title": "Value",
+              "type": "string",
+              "x-ms-dynamic-values": {
+                "operationId": "GetEntityValues",
+                "parameters": {
+                  "dataset": {
+                    "parameter": "dataset"
+                  },
+                  "table": {
+                    "parameter": "table"
+                  },
+                  "id": "ff2610e6-8998-4834-b9d2-3f8afeb69493"
+                },
+                "value-path": "Value",
+                "value-title": "Label",
+                "value-collection": "value"
+              }
+            },
+            "WssId": {
+              "title": "WssId",
+              "type": "integer",
+              "format": "int64",
+              "x-ms-permission": "read-only"
+            },
+            "Label": {
+              "title": "Label",
+              "type": "string",
+              "x-ms-permission": "read-only"
+            },
+            "Path": {
+              "title": "Path",
+              "type": "string",
+              "x-ms-permission": "read-only"
+            }
+          },
+          "x-ms-displayFormat": {
+            "titleProperty": "Label"
+          }
+        },
+        "Related_x0020_KPI_x0027_s": {
+          "title": "Related KPI's",
+          "type": "string",
+          "x-ms-permission": "read-write",
+          "x-ms-sort": "asc,desc",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "startswith"
+            ]
+          },
+          "maxLength": 255
+        },
+        "Related_x0020_Process": {
+          "title": "Related Process",
+          "type": "string",
+          "x-ms-permission": "read-write",
+          "x-ms-sort": "asc,desc",
+          "x-ms-capabilities": {
+            "filterFunctions": [
+              "eq",
+              "startswith"
+            ]
+          },
+          "maxLength": 255
+        },
+        "OData__DisplayName": {
+          "title": "Sensitivity",
+          "type": "string",
+          "x-ms-permission": "read-only",
+          "x-ms-sort": "none"
+        },
         "OData__ColorTag": {
           "title": "Color Tag",
           "type": "string",
@@ -756,6 +765,96 @@
           "title": "Description",
           "type": "string",
           "x-ms-permission": "read-write",
+          "x-ms-sort": "none"
+        },
+        "MediaServiceImageTags#WssId": {
+          "title": "Image Tags WssId",
+          "x-ms-permission": "read-only",
+          "x-ms-visibility": "internal",
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "@odata.type": "#Collection(Microsoft.Azure.Connectors.SharePoint.SPListExpandedTaxonomy)"
+        },
+        "MediaServiceImageTags@odata.type": {
+          "title": "MediaServiceImageTags",
+          "type": "string",
+          "x-ms-visibility": "internal",
+          "x-ms-permission": "read-write"
+        },
+        "MediaServiceImageTags": {
+          "title": "Image Tags",
+          "description": "Field created by MediaTA",
+          "x-ms-permission": "read-write",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "x-ms-sort": "none",
+            "x-ms-capabilities": {
+              "filterFunctions": [
+                "eq"
+              ]
+            },
+            "properties": {
+              "@odata.type": {
+                "title": "@odata.type",
+                "x-ms-visibility": "internal",
+                "type": "string",
+                "x-ms-permission": "read-write"
+              },
+              "TermGuid": {
+                "title": "TermGuid",
+                "type": "string",
+                "x-ms-permission": "read-only"
+              },
+              "Value": {
+                "title": "Value",
+                "type": "string",
+                "x-ms-dynamic-values": {
+                  "operationId": "GetEntityValues",
+                  "parameters": {
+                    "dataset": {
+                      "parameter": "dataset"
+                    },
+                    "table": {
+                      "parameter": "table"
+                    },
+                    "id": "5cf76f15-5ced-4ddc-b409-7134ff3c332f"
+                  },
+                  "value-path": "Value",
+                  "value-title": "Label",
+                  "value-collection": "value"
+                }
+              },
+              "WssId": {
+                "title": "WssId",
+                "type": "integer",
+                "format": "int64",
+                "x-ms-permission": "read-only"
+              },
+              "Label": {
+                "title": "Label",
+                "type": "string",
+                "x-ms-permission": "read-only"
+              },
+              "Path": {
+                "title": "Path",
+                "type": "string",
+                "x-ms-permission": "read-only"
+              }
+            },
+            "x-ms-displayFormat": {
+              "titleProperty": "Label"
+            }
+          },
+          "@odata.type": "#Collection(Microsoft.Azure.Connectors.SharePoint.SPListExpandedTaxonomy)"
+        },
+        "MediaServiceOCR": {
+          "title": "Extracted Text",
+          "type": "string",
+          "x-ms-permission": "read-only",
           "x-ms-sort": "none"
         },
         "CheckoutUser#Claims": {
@@ -835,8 +934,8 @@
               "type": "string",
               "format": "uri",
               "x-ms-media-kind": "image",
-              "x-ms-media-default-folder-path": "/sites/SMO-AndalusialeadershipPractice",
-              "x-ms-media-base-url": "https://andalusiagroupegypt.sharepoint.com/sites/SMO-AndalusialeadershipPractice",
+              "x-ms-media-default-folder-path": "/sites/DigitalTransformation-UnifiedTransformationAlignment",
+              "x-ms-media-base-url": "https://andalusiagroupegypt.sharepoint.com/sites/DigitalTransformation-UnifiedTransformationAlignment",
               "x-ms-permission": "read-only"
             },
             "Department": {
@@ -856,12 +955,6 @@
             "thumbnailProperty": "Picture"
           }
         },
-        "OData__DisplayName": {
-          "title": "Sensitivity",
-          "type": "string",
-          "x-ms-permission": "read-only",
-          "x-ms-sort": "none"
-        },
         "{Identifier}": {
           "title": "Identifier",
           "description": "Value that can be used in file related actions for selecting a file.",
@@ -870,7 +963,7 @@
           "x-ms-sort": "none"
         },
         "{IsFolder}": {
-          "title": "IsFolder",
+          "title": "Is folder",
           "description": "True when the item is a folder, false otherwise.",
           "type": "boolean",
           "x-ms-permission": "read-only",
@@ -1064,6 +1157,14 @@
         }
       },
       "x-ms-relationships": {
+        "Document_x0020_Status": {
+          "targetEntity": "Document_x0020_Status",
+          "referentialConstraints": {
+            "Document_x0020_Status#WssId": {
+              "referencedProperty": "WssId"
+            }
+          }
+        },
         "Author": {
           "targetEntity": "Author",
           "referentialConstraints": {
@@ -1077,14 +1178,6 @@
           "referentialConstraints": {
             "Editor#Claims": {
               "referencedProperty": "Claims"
-            }
-          }
-        },
-        "Weeks": {
-          "targetEntity": "Weeks",
-          "referentialConstraints": {
-            "Weeks#WssId": {
-              "referencedProperty": "WssId"
             }
           }
         },
@@ -1104,10 +1197,10 @@
             }
           }
         },
-        "Document_x0020_Status": {
-          "targetEntity": "Document_x0020_Status",
+        "Weeks": {
+          "targetEntity": "Weeks",
           "referentialConstraints": {
-            "Document_x0020_Status#WssId": {
+            "Weeks#WssId": {
               "referencedProperty": "WssId"
             }
           }
@@ -1116,6 +1209,14 @@
           "targetEntity": "PDCA",
           "referentialConstraints": {
             "PDCA#WssId": {
+              "referencedProperty": "WssId"
+            }
+          }
+        },
+        "MediaServiceImageTags": {
+          "targetEntity": "MediaServiceImageTags",
+          "referentialConstraints": {
+            "MediaServiceImageTags#WssId": {
               "referencedProperty": "WssId"
             }
           }
@@ -1146,43 +1247,56 @@
           "Document_x0020_Status",
           "PDCA",
           "Related_x0020_KPI_x0027_s",
-          "Related_x0020_Process"
+          "Related_x0020_Process",
+          "MediaServiceImageTags",
+          "MediaServiceOCR"
         ],
         "propertiesCompactDisplayOrder": [
           "Title",
+          "Document_x0020_Status",
           "Author",
           "Modified",
           "Editor",
-          "Weeks",
           "Month",
+          "Created",
           "Year",
-          "Document_x0020_Status",
-          "Related_x0020_Process",
-          "Related_x0020_KPI_x0027_s",
+          "Weeks",
           "PDCA",
-          "Created"
+          "Related_x0020_KPI_x0027_s",
+          "Related_x0020_Process",
+          "OData__DisplayName"
         ],
         "propertiesTabularDisplayOrder": [
           "Title",
+          "Document_x0020_Status",
           "Author",
           "Modified",
           "Editor",
-          "Weeks",
           "Month",
+          "Created",
           "Year",
-          "Document_x0020_Status",
-          "Related_x0020_Process",
-          "Related_x0020_KPI_x0027_s",
+          "Weeks",
           "PDCA",
-          "Created"
+          "Related_x0020_KPI_x0027_s",
+          "Related_x0020_Process",
+          "OData__DisplayName"
         ]
       }
     }
   },
   "referencedEntities": {
+    "Document_x0020_Status": {
+      "lookupEndpoint": {
+        "path": "/tables/219cbff7-340a-44bf-815b-8102ed53bf1b/entities/Document_x0020_Status",
+        "capabilities": {
+          "searchable": true,
+          "requiresSearch": false
+        }
+      }
+    },
     "Author": {
       "lookupEndpoint": {
-        "path": "/tables/20a0173f-dfd6-4537-84ca-ff60b9a09c79/entities/Author",
+        "path": "/tables/219cbff7-340a-44bf-815b-8102ed53bf1b/entities/Author",
         "capabilities": {
           "searchable": true,
           "requiresSearch": false
@@ -1191,16 +1305,7 @@
     },
     "Editor": {
       "lookupEndpoint": {
-        "path": "/tables/20a0173f-dfd6-4537-84ca-ff60b9a09c79/entities/Editor",
-        "capabilities": {
-          "searchable": true,
-          "requiresSearch": false
-        }
-      }
-    },
-    "Weeks": {
-      "lookupEndpoint": {
-        "path": "/tables/20a0173f-dfd6-4537-84ca-ff60b9a09c79/entities/Weeks",
+        "path": "/tables/219cbff7-340a-44bf-815b-8102ed53bf1b/entities/Editor",
         "capabilities": {
           "searchable": true,
           "requiresSearch": false
@@ -1209,7 +1314,7 @@
     },
     "Month": {
       "lookupEndpoint": {
-        "path": "/tables/20a0173f-dfd6-4537-84ca-ff60b9a09c79/entities/Month",
+        "path": "/tables/219cbff7-340a-44bf-815b-8102ed53bf1b/entities/Month",
         "capabilities": {
           "searchable": true,
           "requiresSearch": false
@@ -1218,16 +1323,16 @@
     },
     "Year": {
       "lookupEndpoint": {
-        "path": "/tables/20a0173f-dfd6-4537-84ca-ff60b9a09c79/entities/Year",
+        "path": "/tables/219cbff7-340a-44bf-815b-8102ed53bf1b/entities/Year",
         "capabilities": {
           "searchable": true,
           "requiresSearch": false
         }
       }
     },
-    "Document_x0020_Status": {
+    "Weeks": {
       "lookupEndpoint": {
-        "path": "/tables/20a0173f-dfd6-4537-84ca-ff60b9a09c79/entities/Document_x0020_Status",
+        "path": "/tables/219cbff7-340a-44bf-815b-8102ed53bf1b/entities/Weeks",
         "capabilities": {
           "searchable": true,
           "requiresSearch": false
@@ -1236,7 +1341,16 @@
     },
     "PDCA": {
       "lookupEndpoint": {
-        "path": "/tables/20a0173f-dfd6-4537-84ca-ff60b9a09c79/entities/PDCA",
+        "path": "/tables/219cbff7-340a-44bf-815b-8102ed53bf1b/entities/PDCA",
+        "capabilities": {
+          "searchable": true,
+          "requiresSearch": false
+        }
+      }
+    },
+    "MediaServiceImageTags": {
+      "lookupEndpoint": {
+        "path": "/tables/219cbff7-340a-44bf-815b-8102ed53bf1b/entities/MediaServiceImageTags",
         "capabilities": {
           "searchable": true,
           "requiresSearch": false
@@ -1245,7 +1359,7 @@
     },
     "CheckoutUser": {
       "lookupEndpoint": {
-        "path": "/tables/20a0173f-dfd6-4537-84ca-ff60b9a09c79/entities/CheckoutUser",
+        "path": "/tables/219cbff7-340a-44bf-815b-8102ed53bf1b/entities/CheckoutUser",
         "capabilities": {
           "searchable": true,
           "requiresSearch": false
@@ -1254,7 +1368,7 @@
     },
     "4651e8f2-38c9-4ad0-8def-41f743f76f30": {
       "lookupEndpoint": {
-        "path": "/tables/20a0173f-dfd6-4537-84ca-ff60b9a09c79/entities/%257bContentType%257d",
+        "path": "/tables/219cbff7-340a-44bf-815b-8102ed53bf1b/entities/%257bContentType%257d",
         "capabilities": {
           "searchable": true,
           "requiresSearch": false
@@ -1262,7 +1376,7 @@
       }
     }
   },
-  "webUrl": "https://andalusiagroupegypt.sharepoint.com/sites/SMO-AndalusialeadershipPractice/Shared Documents/Forms/AllItems.aspx",
+  "webUrl": "https://andalusiagroupegypt.sharepoint.com/sites/DigitalTransformation-UnifiedTransformationAlignment/Shared Documents/Forms/AllItems.aspx",
   "x-ms-connection-version": "",
   "x-ms-model-name-suffix": ""
 }

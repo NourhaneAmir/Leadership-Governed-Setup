@@ -18,10 +18,10 @@
         "documents"
       ],
       "dataSets": {
-        "https://andalusiagroupegypt.sharepoint.com/sites/SMO-AndalusialeadershipPractice": {
+        "https://andalusiagroupegypt.sharepoint.com/sites/DigitalTransformation-UnifiedTransformationAlignment": {
           "dataSources": {
             "documents": {
-              "tableName": "20a0173f-dfd6-4537-84ca-ff60b9a09c79"
+              "tableName": "219cbff7-340a-44bf-815b-8102ed53bf1b"
             }
           }
         }

@@ -5800,14 +5800,16 @@ export async function fetchMeetingOccurrenceLinkedReports(occurrenceId){
   const base = ['lm_meetingoccurrencelinkedreportsid', 'lm_reportname',
                 '_lm_reportoccurrence_value', '_lm_reporttemplate_value', 'createdon'];
   const filter = `_lm_meetingoccurrence_value eq ${occurrenceId}`;
-  /* lm_fileurl (a link-only input, 01 Oct) exists in DT New only; selecting a
-     missing column fails the whole read, so IT falls back to the base set. */
-  let res;
-  try{
-    res = await Lm_meetingoccurrencelinkedreportsesService.getAll({ select:[...base, 'lm_fileurl'], filter });
-    if(res?.success === false) throw new Error('lm_fileurl not readable');
-  }catch{
-    res = await Lm_meetingoccurrencelinkedreportsesService.getAll({ select:base, filter });
+  /* lm_fileurl (a link-only input, 01 Oct) and lm_reporttype (Output / Input,
+     04 Oct) exist in DT New only; selecting a missing column fails the whole
+     read, so each step falls back to fewer columns (IT: the base set). */
+  let res = null;
+  for(const extra of [['lm_fileurl','lm_reporttype'], ['lm_fileurl'], []]){
+    try{
+      res = await Lm_meetingoccurrencelinkedreportsesService.getAll({ select:[...base, ...extra], filter });
+      if(res?.success === false) throw new Error('columns not readable');
+      break;
+    }catch{ res = null; }
   }
   const rows = res?.data ?? [];
   return rows.map(r => ({
@@ -5816,8 +5818,45 @@ export async function fetchMeetingOccurrenceLinkedReports(occurrenceId){
     reportOccurrenceId: r._lm_reportoccurrence_value || null,
     reportTemplateId: r._lm_reporttemplate_value || null,
     fileUrl: r.lm_fileurl || null,
+    reportType: MEETING_DOC_TYPE[r.lm_reporttype] || null,
     created: r.createdon || null,
   }));
+}
+
+/** The meeting's current Minutes document row, or null: { id, name, fileUrl }. */
+export async function getMeetingMinutesDocument(occurrenceId){
+  try{
+    const res = await Lm_meetingoccurrencelinkedreportsesService.getAll({
+      select: ['lm_meetingoccurrencelinkedreportsid','lm_reportname','lm_fileurl'],
+      filter: `_lm_meetingoccurrence_value eq ${occurrenceId} and lm_reporttype eq 1 and startswith(lm_reportname,'MOM - ')`,
+    });
+    const r = (res?.data ?? [])[0];
+    return r ? { id: r.lm_meetingoccurrencelinkedreportsid, name: r.lm_reportname, fileUrl: r.lm_fileurl || null } : null;
+  }catch(e){
+    console.warn('[dataverse] getMeetingMinutesDocument() failed:', e);
+    return null;
+  }
+}
+
+/** The meeting's Minutes document (04 Oct): one OUTPUT row per meeting,
+ *  named "MOM - …", whose lm_fileurl points at the Word file in SharePoint.
+ *  Re-saving (on approval) updates the same row instead of adding another. */
+export async function upsertMeetingMinutesDocument({ occurrenceId, name, fileUrl }){
+  try{
+    const res = await Lm_meetingoccurrencelinkedreportsesService.getAll({
+      select: ['lm_meetingoccurrencelinkedreportsid'],
+      filter: `_lm_meetingoccurrence_value eq ${occurrenceId} and lm_reporttype eq 1 and startswith(lm_reportname,'MOM - ')`,
+    });
+    const existing = (res?.data ?? [])[0]?.lm_meetingoccurrencelinkedreportsid;
+    if(existing){
+      assertSuccess(await Lm_meetingoccurrencelinkedreportsesService.update(existing, {
+        lm_reportname: name.slice(0, 850), lm_fileurl: fileUrl }));
+      return { id: existing, errors: [] };
+    }
+  }catch(e){
+    return { id: null, errors: [{ table:'lm_meetingoccurrencelinkedreportses', error:e }] };
+  }
+  return linkMeetingOccurrenceReport({ meetingOccurrenceId: occurrenceId, name, fileUrl, reportType: 'Output' });
 }
 
 /** The reports a Meeting Setup names as its INPUTS (lm_meetingtemplatelinkedreports,
@@ -5841,7 +5880,12 @@ export async function fetchMeetingTemplateInputReports(templateId){
 /** Links one document to a Meeting Occurrence -- a Report Occurrence, a
  *  Report Template (when no occurrence exists for it yet), or both, per the
  *  Documents tab's own linking flow. */
-export async function linkMeetingOccurrenceReport({ meetingOccurrenceId, name, reportOccurrenceId, reportTemplateId, fileUrl }){
+/* lm_reporttype on lm_meetingoccurrencelinkedreports (DT New, 04 Oct):
+   Output 1, Input 2 -- the same codes as the Setup's linked reports. */
+const MEETING_DOC_TYPE_KEY = { Output: 1, Input: 2 };
+const MEETING_DOC_TYPE = { 1: 'Output', 2: 'Input' };
+
+export async function linkMeetingOccurrenceReport({ meetingOccurrenceId, name, reportOccurrenceId, reportTemplateId, fileUrl, reportType }){
   try{
     const row = {
       'lm_MeetingOccurrence@odata.bind': `/lm_meetingoccurrences(${meetingOccurrenceId})`,
@@ -5850,6 +5894,7 @@ export async function linkMeetingOccurrenceReport({ meetingOccurrenceId, name, r
     /* A link-only input (01 Oct): a pasted SharePoint / Teams link with no
        Report Occurrence behind it. lm_fileurl is DT New only so far. */
     if(fileUrl) row.lm_fileurl = fileUrl.trim();
+    if(reportType) row.lm_reporttype = MEETING_DOC_TYPE_KEY[reportType] ?? null;
     if(reportOccurrenceId) row['lm_ReportOccurrence@odata.bind'] = `/lm_reportoccurrences(${reportOccurrenceId})`;
     if(reportTemplateId)   row['lm_ReportTemplate@odata.bind']   = `/lm_report_templates(${reportTemplateId})`;
     const created = await Lm_meetingoccurrencelinkedreportsesService.create(row);

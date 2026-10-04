@@ -13,7 +13,8 @@ import { ymd, TODAY, PERIOD, HOLIDAYS, isNonWorking, isWeekend,
          addDays, addHours, nowStamp, money, pct, uid,
          band, scoreColour, pctColour } from '../../shared/format.js';
 import { Ctx, use } from './store.jsx';
-import { exportMinutesDocx } from '../../services/minutesExport.js';
+import { exportMinutesDocx, minutesDocxBase64, minutesFileName } from '../../services/minutesExport.js';
+import { uploadMinutesFile, pathFromUrl } from '../../services/sharepoint.js';
 /* Attach an existing Task to a Minutes agenda item (04 Oct). Its own import
    statement on purpose: the deploy-time revert of 4ca0036 rewrites the big
    dataverse.js import above, and a name added there can silently vanish
@@ -42,7 +43,7 @@ import { fetchMeetingOccurrences, fetchReportOccurrences, createMeetingOccurrenc
          fetchMeetingOccurrenceDepartments, fetchMeetingOccurrenceLinkedReports, fetchMeetingTemplateInputReports,
          fetchTasksForMeeting, addMeetingOccurrenceAttendee,
          linkMeetingOccurrenceReport, unlinkMeetingOccurrenceReport, fetchMeetingCategories, MEETING_OCC_STAGE_KEY,
-         updateLinkedReportFile,
+         updateLinkedReportFile, upsertMeetingMinutesDocument, getMeetingMinutesDocument,
          attachReportOccurrenceToLink,
          fetchBusinessUnits, fetchPositions, fetchDepartments, fetchFunctions, fetchRegions,
          fetchMeetingTemplatesList, fetchMeetingTemplateDetail,
@@ -6532,7 +6533,7 @@ function AgendaTaskPanel({rec,item,tasks,canAdd,onRaised}){
 }
 
 function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksChanged,
-                        decisions=[],quorum,writeupHours,approvalHours,setupName}){
+                        decisions=[],quorum,writeupHours,approvalHours,setupName,onDocsChanged}){
   const {toast,dvLookup,currentUser,refreshOccurrences}=use();
   /* Coverage lives on the agenda rows (rec.agenda), not on the Minutes, so a
      Yes/No click must re-read the occurrences -- reloading the Minutes alone
@@ -6726,8 +6727,38 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
     }finally{ setBusy(null); }
   };
 
-  const submit = () => run('submit', ()=>submitMeetingMinutes(minutes.id),
-    'Submitted to the Chair','The write-up clock is stamped. The Minutes now sit with the Meeting Chair.');
+  /* After Submit and after Approve (04 Oct): the Minutes as a Word file in
+     SharePoint (Shared Documents › Cross Functional Projects › DT › Design
+     Documents › Leadership Practice), linked on the meeting as an OUTPUT
+     document. The approved version replaces the submitted one (same name,
+     same link). A failure here never undoes the Submit or the Approve. */
+  const [savingDoc,setSavingDoc]=useState(false);
+  const saveMinutesDoc = async (stage, over) => {
+    setSavingDoc(true);
+    try{
+      const model = await buildMinutesModel(over, true);
+      const fileName = minutesFileName(model);
+      /* The previous version is deleted before the new one is saved (04 Oct):
+         a resubmission after the Chair returned the Minutes, or the approved
+         copy, replaces it -- even if the meeting's name or date changed. */
+      const prev = await getMeetingMinutesDocument(rec.id);
+      const { url, replaced } = await uploadMinutesFile(fileName, await minutesDocxBase64(model), [pathFromUrl(prev?.fileUrl)]);
+      const r = await upsertMeetingMinutesDocument({ occurrenceId: rec.id, name: fileName.replace(/\.docx$/i,''), fileUrl: url });
+      if(!r.id) throw (r.errors?.[0]?.error || new Error('the link could not be saved on the meeting'));
+      toast('Saved to SharePoint', `${fileName} is in Leadership Practice${replaced ? ', replacing the previous version' : ''}, `
+        + `and linked on the meeting's Documents tab.`, 'ok');
+      if(onDocsChanged) await onDocsChanged();
+    }catch(e){
+      console.warn('[minutes → SharePoint] failed:', e);
+      toast('Word file not saved', `The Minutes were ${stage==='approve'?'approved':'submitted'}, but the Word file could not be saved to SharePoint: `
+        + (e?.message || 'unknown error') + '. Use Export to Word and upload it by hand.', 'warn');
+    }finally{ setSavingDoc(false); }
+  };
+  const submit = async () => {
+    const ok = await run('submit', ()=>submitMeetingMinutes(minutes.id),
+      'Submitted to the Chair','The write-up clock is stamped. The Minutes now sit with the Meeting Chair.');
+    if(ok) await saveMinutesDoc('submit', { status:'Submitted — with the Chair', submitted: fmtISODT(new Date().toISOString()) });
+  };
 
   /* Approval and signature are one act, not two: the Chair's approval IS the
      signature, which is why AG-07 was retired. */
@@ -6738,15 +6769,19 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
     const ok = await run('approve', ()=>updateMeetingMinutesStatus(minutes.id,'Approved'),
       'Minutes approved', signs ? 'The signature has been captured.' : 'Approved by the Meeting Chair.');
     if(!ok) return;
-    if(!signs){ await onReload(); return; }
     const now = new Date();
-    await signMeetingMinutes(minutes.id, {
-      positionId: rec.chairPositionId || undefined,
-      name: (rec.chairPositionId && DV_POS_HOLDER[rec.chairPositionId]) || posName(rec.chairPositionId) || 'Meeting Chair',
-      date: ymd(now),
-      time: now.toTimeString().slice(0,5),
-    });
+    const signer = (rec.chairPositionId && DV_POS_HOLDER[rec.chairPositionId]) || posName(rec.chairPositionId) || 'Meeting Chair';
+    if(signs){
+      await signMeetingMinutes(minutes.id, {
+        positionId: rec.chairPositionId || undefined,
+        name: signer,
+        date: ymd(now),
+        time: now.toTimeString().slice(0,5),
+      });
+    }
     await onReload();
+    await saveMinutesDoc('approve', { status:'Approved', approved: fmtISODT(now.toISOString()),
+      ...(signs ? { signedBy: signer, signedOn: fmtD(ymd(now)) + ' · ' + now.toTimeString().slice(0,5) } : {}) });
   };
 
   /* Closure releases the Audit Grid for a Committee occurrence -- and only for
@@ -6788,10 +6823,12 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
      read them here. Decisions are read fresh so the file carries the latest. */
   const [exporting,setExporting]=useState(false);
   const holderOr = id => (id && DV_POS_HOLDER[id]) || posName(id) || null;
-  const exportWord = async () => {
-    if(exporting) return;
-    setExporting(true);
-    try{
+  /* The Word model, shared by "Export to Word" and the SharePoint copy (04 Oct).
+     `over` replaces Minutes fields that the screen has not re-read yet (the
+     status just set, its time, the signature). `forStore`: the copy saved to
+     SharePoint never carries a confidential Stage 4 item's content, whoever
+     submits -- the folder is wider than the item's readers. */
+  const buildMinutesModel = async (over = {}, forStore = false) => {
       let decisions = [];
       try{ decisions = await fetchWorkLogDecisions(); }
       catch(e){ console.warn('[minutesExport] decisions could not be read; exporting without them:', e); }
@@ -6824,7 +6861,7 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
           name: (a.positionId && DV_POS_HOLDER[a.positionId]) || a.name || null,
           position: posName(a.positionId) || null, type: a.type, present: a.present })),
         agenda: rec.agenda.map((a,i)=>{
-          const readable = canRead(a), conf = isConf(a);
+          const conf = isConf(a), readable = forStore ? !conf : canRead(a);
           return {
             seq: a.seq ?? i+1, title: a.title, owner: posName(a.ownerPositionId) || null,
             covered: covOf(a), confidential: conf, withheld: !readable,
@@ -6841,6 +6878,14 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
         generatedAt: fmtISODT(new Date().toISOString()),
         exportedBy: currentUser?.fullName || null,
       };
+      model.minutes = { ...model.minutes, ...over };
+      return model;
+  };
+  const exportWord = async () => {
+    if(exporting) return;
+    setExporting(true);
+    try{
+      const model = await buildMinutesModel();
       const { filename } = await exportMinutesDocx(model);
       toast('Exported', `${filename} has downloaded.`, 'ok');
     }catch(e){
@@ -6954,6 +6999,7 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
           : closed ? 'Closed' : (signs && minutes.signedName ? 'Approved · signed' : 'Approved')}</span>
         <span className="cs-mono mom-code">{momCode(minutes)}</span>
         <span className="muted">· Submitted by {submitter||'the Organizer'} on {fmtISODT(minutes.submittedAt)}</span>
+        {savingDoc && <span className="muted">· Saving the Word file to SharePoint…</span>}
         <div style={{flex:1}}/>
         <button type="button" className="cs-btn ghost lg" disabled={exporting} onClick={exportWord}>
           <Download size={13}/>{exporting ? 'Exporting…' : 'Export to Word'}</button>
@@ -7747,9 +7793,9 @@ function ReportLinkPicker({reports, taken, place, onPick, busy, pickLabel='Link'
    (04 Oct, user's ask). The flow and its code are unchanged: set to true to
    bring the buttons back. */
 const SHOW_ATTACH_OCC = false;
-/* "Link a report" on a Submissions row is hidden too (04 Oct, user's ask):
-   required inputs are submitted as links only for now. Set to true to bring
-   it back; the Documents tab's own linking is unchanged. */
+/* "Link a report" on a Submissions row, and the Documents tab's "Link a
+   document by Report Template" card, are hidden too (04 Oct, user's asks):
+   inputs are submitted as links only for now. Set to true to bring both back. */
 const SHOW_LINK_REPORT = false;
 
 function DvMeetingDetail({rec,back}){
@@ -7904,9 +7950,11 @@ function DvMeetingDetail({rec,back}){
   const needApproved = S.inputReadiness==='approved';
   const INPUT_RANK = {'In Review':1,'Approved':2};
   const requiredTplIds = new Set(setupInputs.map(s=>s.reportTemplateId).filter(Boolean));
-  const linkedTplIds = new Set((docs||[]).map(d=>d.reportTemplateId).filter(Boolean));
+  /* Output documents (the Minutes' Word file, 04 Oct) are not inputs. */
+  const inputDocs = (docs||[]).filter(d=>d.reportType!=='Output');
+  const linkedTplIds = new Set(inputDocs.map(d=>d.reportTemplateId).filter(Boolean));
   const submissions = [
-    ...(docs||[]).map(d=>{
+    ...inputDocs.map(d=>{
       const occ = d.reportOccurrenceId ? dvReportOccs.find(r=>r.id===d.reportOccurrenceId) : null;
       /* A link-only input (lm_fileurl on the link row, 01 Oct): a pasted file
          link with no report behind it -- counts as submitted. */
@@ -8770,7 +8818,8 @@ function DvMeetingDetail({rec,back}){
           tasks={mtgTasks} onTasksChanged={()=>setTasksTick(t=>t+1)}
           decisions={dvDecisions.filter(d=>d.agendaItemId && agendaById.has(d.agendaItemId))}
           quorum={quorum} writeupHours={meetingLimits(rec, S).momWriteupHours}
-          approvalHours={meetingLimits(rec, S).momApprovalHours} setupName={dvTpl(rec.templateId)}/>}
+          approvalHours={meetingLimits(rec, S).momApprovalHours} setupName={dvTpl(rec.templateId)}
+          onDocsChanged={reloadDocs}/>}
     </>}
 
     {tab==='grid' && <>
@@ -8924,7 +8973,7 @@ function DvMeetingDetail({rec,back}){
                       - occsForTemplate(d.reportTemplateId,true).length : 0;
                   return <React.Fragment key={d.id}>
                     <tr>
-                    <td><div className="t-main">{d.name}</div>
+                    <td><div className="t-main">{d.name}{d.reportType==='Output' && <> <Tag c="teal">Output</Tag></>}</div>
                       {d.fileUrl && <a className="t-sub mtgd-splink" href={d.fileUrl} target="_blank"
                         rel="noreferrer" title={d.fileUrl}><Paperclip size={11}/>Open the file ↗</a>}</td>
                     <td>{occ
@@ -8974,7 +9023,7 @@ function DvMeetingDetail({rec,back}){
                   </React.Fragment>;})}
                 </tbody></table>}
 
-          <div className="card">
+          {SHOW_LINK_REPORT && <div className="card">
             <h3 style={{fontSize:13,marginBottom:2}}>Link a document by Report Template</h3>
             <div className="csub" style={{marginBottom:10}}>
               Choose a Report Template. A live Report Occurrence for the same Template,
@@ -9012,7 +9061,7 @@ function DvMeetingDetail({rec,back}){
                     {linking?'Linking…':'Link the Template only — add the occurrence later'}</Btn>
                 </div>
             ) : null}
-          </div>
+          </div>}
 
           {/* Ad hoc meetings: link any Report Occurrence straight away -- a Draft
               or a Custom report included. It counts on the Submissions tab, and

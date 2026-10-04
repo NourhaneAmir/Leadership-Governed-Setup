@@ -3894,13 +3894,13 @@ export const dataSourcesInfo = {
     "apis": {}
   },
   "documents": {
-    "tableId": "20a0173f-dfd6-4537-84ca-ff60b9a09c79",
+    "tableId": "219cbff7-340a-44bf-815b-8102ed53bf1b",
     "version": "",
     "primaryKey": "ID",
     "dataSourceType": "Connector",
     "apis": {
-      "GetAuthor": {
-        "path": "/{connectionId}/datasets/{dataset}/tables/20a0173fdfd6453784caff60b9a09c79/entities/Author",
+      "GetDocument_x0020_Status": {
+        "path": "/{connectionId}/datasets/{dataset}/tables/{tableName}/entities/Document_x0020_Status",
         "method": "GET",
         "parameters": [
           {
@@ -3916,7 +3916,42 @@ export const dataSourcesInfo = {
             "type": "string"
           },
           {
-            "name": "table",
+            "name": "tableName",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "responseInfo": {
+          "200": {
+            "type": "array"
+          }
+        }
+      },
+      "GetAuthor": {
+        "path": "/{connectionId}/datasets/{dataset}/tables/{tableName}/entities/Author",
+        "method": "GET",
+        "parameters": [
+          {
+            "name": "connectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "dataset",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "tableName",
             "in": "path",
             "required": true,
             "type": "string"
@@ -3935,7 +3970,7 @@ export const dataSourcesInfo = {
         }
       },
       "GetEditor": {
-        "path": "/{connectionId}/datasets/{dataset}/tables/20a0173fdfd6453784caff60b9a09c79/entities/Editor",
+        "path": "/{connectionId}/datasets/{dataset}/tables/{tableName}/entities/Editor",
         "method": "GET",
         "parameters": [
           {
@@ -3951,42 +3986,7 @@ export const dataSourcesInfo = {
             "type": "string"
           },
           {
-            "name": "table",
-            "in": "path",
-            "required": true,
-            "type": "string"
-          },
-          {
-            "name": "search",
-            "in": "query",
-            "required": false,
-            "type": "string"
-          }
-        ],
-        "responseInfo": {
-          "200": {
-            "type": "array"
-          }
-        }
-      },
-      "GetWeeks": {
-        "path": "/{connectionId}/datasets/{dataset}/tables/20a0173fdfd6453784caff60b9a09c79/entities/Weeks",
-        "method": "GET",
-        "parameters": [
-          {
-            "name": "connectionId",
-            "in": "path",
-            "required": true,
-            "type": "string"
-          },
-          {
-            "name": "dataset",
-            "in": "path",
-            "required": true,
-            "type": "string"
-          },
-          {
-            "name": "table",
+            "name": "tableName",
             "in": "path",
             "required": true,
             "type": "string"
@@ -4005,7 +4005,7 @@ export const dataSourcesInfo = {
         }
       },
       "GetMonth": {
-        "path": "/{connectionId}/datasets/{dataset}/tables/20a0173fdfd6453784caff60b9a09c79/entities/Month",
+        "path": "/{connectionId}/datasets/{dataset}/tables/{tableName}/entities/Month",
         "method": "GET",
         "parameters": [
           {
@@ -4021,7 +4021,7 @@ export const dataSourcesInfo = {
             "type": "string"
           },
           {
-            "name": "table",
+            "name": "tableName",
             "in": "path",
             "required": true,
             "type": "string"
@@ -4040,7 +4040,7 @@ export const dataSourcesInfo = {
         }
       },
       "GetYear": {
-        "path": "/{connectionId}/datasets/{dataset}/tables/20a0173fdfd6453784caff60b9a09c79/entities/Year",
+        "path": "/{connectionId}/datasets/{dataset}/tables/{tableName}/entities/Year",
         "method": "GET",
         "parameters": [
           {
@@ -4056,7 +4056,7 @@ export const dataSourcesInfo = {
             "type": "string"
           },
           {
-            "name": "table",
+            "name": "tableName",
             "in": "path",
             "required": true,
             "type": "string"
@@ -4074,8 +4074,8 @@ export const dataSourcesInfo = {
           }
         }
       },
-      "GetDocument_x0020_Status": {
-        "path": "/{connectionId}/datasets/{dataset}/tables/20a0173fdfd6453784caff60b9a09c79/entities/Document_x0020_Status",
+      "GetWeeks": {
+        "path": "/{connectionId}/datasets/{dataset}/tables/{tableName}/entities/Weeks",
         "method": "GET",
         "parameters": [
           {
@@ -4091,7 +4091,7 @@ export const dataSourcesInfo = {
             "type": "string"
           },
           {
-            "name": "table",
+            "name": "tableName",
             "in": "path",
             "required": true,
             "type": "string"
@@ -4110,7 +4110,7 @@ export const dataSourcesInfo = {
         }
       },
       "GetPDCA": {
-        "path": "/{connectionId}/datasets/{dataset}/tables/20a0173fdfd6453784caff60b9a09c79/entities/PDCA",
+        "path": "/{connectionId}/datasets/{dataset}/tables/{tableName}/entities/PDCA",
         "method": "GET",
         "parameters": [
           {
@@ -4126,7 +4126,42 @@ export const dataSourcesInfo = {
             "type": "string"
           },
           {
-            "name": "table",
+            "name": "tableName",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "responseInfo": {
+          "200": {
+            "type": "array"
+          }
+        }
+      },
+      "GetMediaServiceImageTags": {
+        "path": "/{connectionId}/datasets/{dataset}/tables/{tableName}/entities/MediaServiceImageTags",
+        "method": "GET",
+        "parameters": [
+          {
+            "name": "connectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "dataset",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "tableName",
             "in": "path",
             "required": true,
             "type": "string"
@@ -4145,7 +4180,7 @@ export const dataSourcesInfo = {
         }
       },
       "GetCheckoutUser": {
-        "path": "/{connectionId}/datasets/{dataset}/tables/20a0173fdfd6453784caff60b9a09c79/entities/CheckoutUser",
+        "path": "/{connectionId}/datasets/{dataset}/tables/{tableName}/entities/CheckoutUser",
         "method": "GET",
         "parameters": [
           {
@@ -4161,7 +4196,7 @@ export const dataSourcesInfo = {
             "type": "string"
           },
           {
-            "name": "table",
+            "name": "tableName",
             "in": "path",
             "required": true,
             "type": "string"
@@ -4180,7 +4215,7 @@ export const dataSourcesInfo = {
         }
       },
       "Get4651e8f238c94ad08def41f743f76f30": {
-        "path": "/{connectionId}/datasets/{dataset}/tables/20a0173fdfd6453784caff60b9a09c79/entities/4651e8f238c94ad08def41f743f76f30",
+        "path": "/{connectionId}/datasets/{dataset}/tables/{tableName}/entities/4651e8f238c94ad08def41f743f76f30",
         "method": "GET",
         "parameters": [
           {
@@ -4196,7 +4231,7 @@ export const dataSourcesInfo = {
             "type": "string"
           },
           {
-            "name": "table",
+            "name": "tableName",
             "in": "path",
             "required": true,
             "type": "string"

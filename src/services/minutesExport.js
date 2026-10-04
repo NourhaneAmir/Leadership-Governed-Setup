@@ -202,6 +202,20 @@ export async function minutesToDocx(model){
   return Packer.toBlob(doc);
 }
 
+/** The same document as base64 (no data: prefix), for an upload (04 Oct). */
+export async function minutesDocxBase64(model){
+  const blob = await minutesToDocx(model);
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let bin = '';
+  for(let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+
+/** The file name the Minutes are saved under in SharePoint -- the same for
+ *  the submitted and the approved version, so the approved one replaces it. */
+export const minutesFileName = model =>
+  safeFileName(`MOM - ${model.meeting.name}${model.meeting.date ? ' - ' + model.meeting.date : ''}`) + '.docx';
+
 /** Writes the document and hands it to the browser. */
 export async function exportMinutesDocx(model){
   const blob = await minutesToDocx(model);
