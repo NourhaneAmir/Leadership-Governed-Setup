@@ -1639,7 +1639,7 @@ function Side(){
         ? <div key={i.id} className="nav-i lp-soon" aria-disabled="true" role="link"
             title={i.label+' — coming soon'} aria-label={i.label+' — coming soon'}>
             <span className="nav-n"><i.Icon size={16} strokeWidth={2.25}/></span><span className="lp-nav-label">{i.label}</span>
-            <span className="lp-soon-tag">Soon</span>
+            <span className="lp-soon-tag"><Clock size={13} strokeWidth={2.25} aria-hidden="true"/>Soon</span>
           </div>
         : <button key={i.id} type="button" aria-current={screen===i.id?'page':undefined}
           aria-label={i.label+(counts[i.id]>0?' — '+counts[i.id]+' open activities':'')}

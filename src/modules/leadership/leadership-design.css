@@ -903,33 +903,19 @@
    theme's light gold (--cs-gold-light) on the dark sidebar, led by a small
    live dot that pulses unless reduced motion is asked for. */
 .nav-i.lp-soon{ cursor:not-allowed }
-.nav-i.lp-soon .nav-n, .nav-i.lp-soon .lp-nav-label{ opacity:.48 }
 .nav-i.lp-soon:hover{ background:none; color:inherit }
+/* "Soon" pill (04 Oct, user's screenshot): solid bronze, cream text, a clock icon. */
 .lp-soon-tag{
-  margin-left:auto; display:inline-flex; align-items:center; gap:5px;
-  padding:3px 8px 3px 7px; border-radius:999px; line-height:1; white-space:nowrap;
-  font:600 9px var(--cs-sans, inherit); letter-spacing:.09em; text-transform:uppercase;
-  color:#F0C893;
-  background:linear-gradient(135deg, rgba(240,200,147,.18) 0%, rgba(165,132,91,.08) 100%);
-  border:1px solid rgba(240,200,147,.32);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.07), 0 1px 6px rgba(0,0,0,.18);
-  -webkit-backdrop-filter:blur(4px); backdrop-filter:blur(4px);
-  transition:border-color .2s ease, background .2s ease;
+  margin-left:auto; flex:0 0 auto; display:inline-flex; align-items:center; gap:6px;
+  padding:6px 13px 6px 10px; border-radius:999px; line-height:1; white-space:nowrap;
+  font-family:var(--cs-sans, inherit); font-size:12px; font-weight:600; letter-spacing:.01em;
+  color:#F6E7CC;
+  background:linear-gradient(180deg, #8C6838 0%, #6E5029 100%);
+  border:1px solid rgba(240,200,147,.28);
+  box-shadow:inset 0 1px 0 rgba(255,236,200,.14), 0 1px 2px rgba(0,0,0,.25);
 }
-.lp-soon-tag::before{
-  content:""; width:5px; height:5px; border-radius:50%; flex:0 0 auto;
-  background:#F0C893; animation:lpSoonPulse 2.4s ease-out infinite;
-}
-.nav-i.lp-soon:hover .lp-soon-tag{
-  border-color:rgba(240,200,147,.55);
-  background:linear-gradient(135deg, rgba(240,200,147,.26) 0%, rgba(165,132,91,.12) 100%);
-}
-@keyframes lpSoonPulse{
-  0%   { box-shadow:0 0 0 0 rgba(240,200,147,.55) }
-  70%  { box-shadow:0 0 0 5px rgba(240,200,147,0) }
-  100% { box-shadow:0 0 0 0 rgba(240,200,147,0) }
-}
-@media (prefers-reduced-motion: reduce){ .lp-soon-tag::before{ animation:none } }
+.lp-soon-tag svg{ flex:0 0 auto; color:#F6E7CC }
+.nav-i.lp-soon:hover .lp-soon-tag{ background:linear-gradient(180deg, #96713E 0%, #77572D 100%) }
 
 /* ---------- Pager (04 Oct, Work Queue first) ---------------------------- */
 .cs-root .cs-pager{ display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;
