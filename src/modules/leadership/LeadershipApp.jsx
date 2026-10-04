@@ -6627,7 +6627,10 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
   const noteOptional = a => notCovered(a) || hasOutput(a);
   const missingNotes = rec.agenda.filter(a=>!noteOptional(a) && !textFor(a).trim());
   const tooLong      = rec.agenda.filter(a=>textFor(a).trim().length>MOM_NOTE_MAX);
-  const canSubmit    = rec.agenda.length>0 && !missingNotes.length && !tooLong.length;
+  /* 04 Oct (user's rule): every agenda item must be marked covered or not
+     before the Minutes can be submitted. */
+  const unmarked     = rec.agenda.filter(a=>covOf(a)!=='Yes' && covOf(a)!=='No');
+  const canSubmit    = rec.agenda.length>0 && !unmarked.length && !missingNotes.length && !tooLong.length;
 
   const saveNote = async a => {
     const text = textFor(a).trim();
@@ -6658,6 +6661,23 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
     }finally{ setSavingNote(null); }
   };
 
+  /* Auto-cover (04 Oct, user's rule): an item not marked yet becomes "Yes" as
+     soon as it has a saved Discussion Note, a decision or a task. An item the
+     Organizer marked "No" is never changed, and each item is auto-marked at
+     most once per visit (so un-ticking Yes by hand sticks). */
+  const autoCovered = useRef(new Set());
+  useEffect(()=>{
+    if(!editable) return;
+    rec.agenda.forEach(a=>{
+      const cv = covOf(a);
+      if(cv==='Yes' || cv==='No' || autoCovered.current.has(a.id)) return;
+      if(!hasOutput(a) && !(minutes.notesByAgenda[a.id]||'').trim()) return;
+      autoCovered.current.add(a.id);
+      setCovered(a,'Yes');
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[editable, rec.agenda, decisions, tasks, minutes, covSet]);
+
   const run = async (key, fn, okTitle, okMsg) => {
     setBusy(key);
     try{
@@ -6679,10 +6699,14 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
 
   /* Approval and signature are one act, not two: the Chair's approval IS the
      signature, which is why AG-07 was retired. */
+  /* Signing is for Accreditation Committees only (04 Oct, user's rule). A
+     Business Meeting's Chair approves; no signature is captured or saved. */
+  const signs = !!accred;
   const approve = async () => {
     const ok = await run('approve', ()=>updateMeetingMinutesStatus(minutes.id,'Approved'),
-      'Minutes approved','The signature has been captured. Outputs would activate here once Tasks and Decisions exist.');
+      'Minutes approved', signs ? 'The signature has been captured.' : 'Approved by the Meeting Chair.');
     if(!ok) return;
+    if(!signs){ await onReload(); return; }
     const now = new Date();
     await signMeetingMinutes(minutes.id, {
       positionId: rec.chairPositionId || undefined,
@@ -6858,8 +6882,11 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
      ⚠️ lm_meetingminutes has no comments column: the comment box is what
      "Return with Comments" saves (lm_returnreason); it is not stored on an
      approval, and the card says so. */
-  if(awaitingChair){
-    const apDue = approvalHours!=null && minutes.submittedAt ? addHours(minutes.submittedAt, approvalHours) : null;
+  /* 04 Oct (user's ask): the same Review layout serves Approved and Closed
+     Minutes too; only the right-hand card, the badge and the progress change.
+     Drafts (and Minutes returned to the Recorder) keep the editing layout. */
+  if(awaitingChair || approved || closed){
+    const apDue = awaitingChair && approvalHours!=null && minutes.submittedAt ? addHours(minutes.submittedAt, approvalHours) : null;
     const apLeftH = apDue ? hoursBetween(nowStamp(), apDue) : null;
     const apLate = apLeftH!=null && apLeftH < 0;
     const apLabel = apLeftH==null ? null
@@ -6872,22 +6899,27 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
     const readable = rec.agenda.filter(a=>canRead(a));
     const chairPos = posName(rec.chairPositionId);
     return <>
-      <Note k="info" ic="i">{isChair
-        ? <>You are the <b>Meeting Chair</b>. Review the minutes and sign digitally to approve. You can also return them with comments.</>
-        : <>Waiting on <b>{chairName||'the Meeting Chair'}</b> to review and sign these minutes.</>}</Note>
+      {awaitingChair && <Note k="info" ic="i">{isChair
+        ? <>You are the <b>Meeting Chair</b>. Review the minutes and {signs ? 'sign digitally to approve' : 'approve them'}. You can also return them with comments.</>
+        : <>Waiting on <b>{chairName||'the Meeting Chair'}</b> to review and {signs ? 'sign' : 'approve'} these minutes.</>}</Note>}
+      {approved && <Note k="ok" ic="✓"><b>Approved</b>{minutes.approvedAt ? ' on '+fmtISODT(minutes.approvedAt) : ''}{signs && minutes.signedName ? ', signed by '+minutes.signedName : ''}.
+        Closing finalises the record and releases the Meeting Governance Audit Grid.</Note>}
+      {closed && <Note k="lock"><b>Closed and locked</b>{minutes.closedAt ? ' on '+fmtISODT(minutes.closedAt) : ''}. A correction must be
+        made as a new version or an addendum, never by editing this record.</Note>}
 
       {apDue && <div className={'mom-te'+(apLate?' late':'')}>
         <span className="mom-te-ic"><Clock size={15}/></span>
         <div className="mom-te-t">
           <b>{apLate ? 'MOM Approval Period Exceeded' : 'MOM Approval Period Active'}</b>
-          <span>AG-05 / OD-09b: the Chair must sign within <strong>{approvalHours} hours</strong> of submission.
+          <span>AG-05 / OD-09b: the Chair must {signs ? 'sign' : 'approve'} within <strong>{approvalHours} hours</strong> of submission.
             Submitted {fmtISODT(minutes.submittedAt)} — deadline {apLate?'was':'is'} {fmtDT(apDue)}.</span>
         </div>
         <span className="mom-te-c">{apLabel}</span>
       </div>}
 
       <div className="card mom-bar">
-        <span className="cs-badge chair"><i/>Pending signature</span>
+        <span className={'cs-badge '+(awaitingChair?'chair':'approved')}><i/>{awaitingChair ? (signs ? 'Pending signature' : 'Pending approval')
+          : closed ? 'Closed' : (signs && minutes.signedName ? 'Approved · signed' : 'Approved')}</span>
         <span className="cs-mono mom-code">{momCode(minutes)}</span>
         <span className="muted">· Submitted by {submitter||'the Organizer'} on {fmtISODT(minutes.submittedAt)}</span>
         <div style={{flex:1}}/>
@@ -6938,34 +6970,61 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
         </div>
 
         <aside className="mtgd-side">
-          <section className="card mom-sign">
-            <div className="mtgd-card-top">
-              <span className="cs-icon gold" aria-hidden="true"><PenLine size={15}/></span>
-              <h2>Digital Signature</h2>
-            </div>
-            <div className="mom-hint">By signing, you confirm that the minutes accurately reflect the meeting proceedings and decisions.</div>
-            <label className="mom-lbl">Chair comments <span style={{textTransform:'none',letterSpacing:0,fontWeight:400}}>(needed to return)</span></label>
-            <textarea className="mom-input" rows={3} value={chairNote} maxLength={GRID_REASON_MAX}
-              placeholder="Add comments before signing, or the reason for returning…"
-              onChange={e=>setChairNote(e.target.value)}/>
-            <div className="mom-hint" style={{margin:'4px 0 10px'}}>Saved only when you return the minutes — an approval does not store a comment.</div>
-            <button type="button" className={'mom-sigbox'+(sigReady?' on':'')} onClick={()=>setSigReady(v=>!v)}
-              aria-pressed={sigReady}>
-              <PenLine size={15}/>
-              <b>{chairName||'Meeting Chair'}</b>
-              <span>{chairPos ? chairPos+' — Chair' : 'Chair'}</span>
-              <i>{sigReady ? (chairName||'Signed') : 'Click to sign digitally'}</i>
-            </button>
-            <button type="button" className="cs-btn green lg mom-sign-btn" disabled={!sigReady||busy==='approve'} onClick={approve}
-              title={sigReady ? 'Approve and sign these minutes' : 'Click the signature box first'}>
-              <PenLine size={13}/>{busy==='approve'?'Signing…':'Sign & Approve'}</button>
-            <button type="button" className="cs-btn ghost lg mom-sign-btn" disabled={!!busy}
-              onClick={async()=>{ const r=chairNote.trim();
-                if(!r){ setReturning(true); return; }
-                await run('return', ()=>returnMeetingMinutes(minutes.id, r),
-                  'Returned to the Recorder','The reason is recorded and every Output stays Draft.'); }}>
-              <RotateCcw size={13}/>{busy==='return'?'Returning…':'Return with Comments'}</button>
-          </section>
+          {awaitingChair ?           <section className="card mom-sign">
+              <div className="mtgd-card-top">
+                <span className="cs-icon gold" aria-hidden="true"><PenLine size={15}/></span>
+                <h2>{signs ? 'Digital Signature' : 'Chair Approval'}</h2>
+              </div>
+              <div className="mom-hint">By {signs ? 'signing' : 'approving'}, you confirm that the minutes accurately reflect the meeting proceedings and decisions.
+                {signs ? '' : ' A Business Meeting is approved without a signature.'}</div>
+              <label className="mom-lbl">Chair comments <span style={{textTransform:'none',letterSpacing:0,fontWeight:400}}>(needed to return)</span></label>
+              <textarea className="mom-input" rows={3} value={chairNote} maxLength={GRID_REASON_MAX}
+                placeholder={signs ? 'Add comments before signing, or the reason for returning…' : 'The reason for returning…'}
+                onChange={e=>setChairNote(e.target.value)}/>
+              <div className="mom-hint" style={{margin:'4px 0 10px'}}>Saved only when you return the minutes — an approval does not store a comment.</div>
+              {signs && <button type="button" className={'mom-sigbox'+(sigReady?' on':'')} onClick={()=>setSigReady(v=>!v)}
+                aria-pressed={sigReady}>
+                <PenLine size={15}/>
+                <b>{chairName||'Meeting Chair'}</b>
+                <span>{chairPos ? chairPos+' — Chair' : 'Chair'}</span>
+                <i>{sigReady ? (chairName||'Signed') : 'Click to sign digitally'}</i>
+              </button>}
+              {signs
+                ? <button type="button" className="cs-btn green lg mom-sign-btn" disabled={!sigReady||busy==='approve'} onClick={approve}
+                    title={sigReady ? 'Approve and sign these minutes' : 'Click the signature box first'}>
+                    <PenLine size={13}/>{busy==='approve'?'Signing…':'Sign & Approve'}</button>
+                : <button type="button" className="cs-btn green lg mom-sign-btn" disabled={busy==='approve'} onClick={approve}
+                    title="Approve these minutes">
+                    <Check size={13}/>{busy==='approve'?'Approving…':'Approve'}</button>}
+              <button type="button" className="cs-btn ghost lg mom-sign-btn" disabled={!!busy}
+                onClick={async()=>{ const r=chairNote.trim();
+                  if(!r){ setReturning(true); return; }
+                  await run('return', ()=>returnMeetingMinutes(minutes.id, r),
+                    'Returned to the Recorder','The reason is recorded and every Output stays Draft.'); }}>
+                <RotateCcw size={13}/>{busy==='return'?'Returning…':'Return with Comments'}</button>
+            </section>
+          : <section className="card mom-sign">
+              <div className="mtgd-card-top">
+                <span className={'cs-icon '+(closed?'dark':'green')} aria-hidden="true">{closed ? <Lock size={15}/> : <Check size={15}/>}</span>
+                <h2>{closed ? 'Closed' : signs ? 'Signed & Approved' : 'Approved'}</h2>
+              </div>
+              {signs && minutes.signedName
+                ? <div className="mom-sigbox on" aria-label="Signature">
+                    <PenLine size={15}/>
+                    <b>{minutes.signedName}</b>
+                    <span>{chairPos ? chairPos+' — Chair' : 'Chair'}</span>
+                    <i>{minutes.signedName}</i>
+                    <span style={{marginTop:6}}>{minutes.signedDate ? fmtD(minutes.signedDate) : ''}{minutes.signedTime ? ' · '+minutes.signedTime : ''}</span>
+                  </div>
+                : <div className="mom-hint">{signs ? 'No signature was recorded on this approval.'
+                    : 'Approved by the Meeting Chair. A Business Meeting is approved without a signature.'}</div>}
+              <div className="mtgd-kv">
+                {minutes.approvedAt && <div><span>Approved</span><b className="cs-mono">{fmtISODT(minutes.approvedAt)}</b></div>}
+                {minutes.closedAt && <div><span>Closed</span><b className="cs-mono">{fmtISODT(minutes.closedAt)}</b></div>}
+              </div>
+              {approved && <button type="button" className="cs-btn primary lg mom-sign-btn" disabled={busy==='close'} onClick={close}>
+                <Lock size={13}/>{busy==='close'?'Closing…':'Close the Minutes'}</button>}
+            </section>}
 
           <section className="card">
             <h2 className="mtgd-h">MOM Details</h2>
@@ -6976,14 +7035,18 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
               <div><span>Recorder</span><b>{organizerName||'—'}</b></div>
               <div><span>Submitted</span><b className="cs-mono">{fmtISODT(minutes.submittedAt)}</b></div>
               <div><span>Type</span><b>{accred ? 'Accreditation' : 'Business Meeting'}</b></div>
+              <div><span>Status</span><b><span className={'cs-badge '+(awaitingChair?'chair':'approved')}><i/>{stateLabel}</span></b></div>
             </div>
           </section>
 
           <section className="card mom-flow">
             <h2 className="mtgd-h">Approval Progress</h2>
             {step(1, 'Organizer submitted', `${organizerName||'—'} · ${fmtISODT(minutes.submittedAt)}`, 'done')}
-            {step(2, 'Chair review & signature', chairName, 'cur')}
-            {step(3, 'Close & release the Audit Grid', `${outputs.length} output${outputs.length===1?'':'s'} recorded`, 'wait')}
+            {step(2, signs ? 'Chair review & signature' : 'Chair review & approval',
+              minutes.approvedAt ? `${chairName||'—'} · ${fmtISODT(minutes.approvedAt)}` : chairName, awaitingChair ? 'cur' : 'done')}
+            {step(3, 'Close & release the Audit Grid',
+              closed ? `Closed · ${fmtISODT(minutes.closedAt)}` : `${outputs.length} output${outputs.length===1?'':'s'} recorded`,
+              closed ? 'done' : approved ? 'cur' : 'wait')}
           </section>
 
           <section className="card">
@@ -7031,18 +7094,23 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
         <Download size={13}/>{exporting ? 'Exporting…' : 'Export to Word'}</button>
       {drafting &&
         <button type="button" className="cs-btn primary lg" disabled={!canSubmit||busy==='submit'} onClick={submit}
-          title={canSubmit ? 'Send the Minutes to the Meeting Chair' : 'Every covered agenda item needs a note first'}>
+          title={canSubmit ? 'Send the Minutes to the Meeting Chair'
+            : unmarked.length ? 'Mark every agenda item Yes or No first' : 'Every covered agenda item needs a note first'}>
           <Send size={13}/>{busy==='submit'?'Submitting…':'Submit for Approval'}</button>}
       {awaitingChair && <>
         <button type="button" className="cs-btn danger lg" disabled={!!busy} onClick={()=>setReturning(true)}>
           <RotateCcw size={13}/>Return for revision</button>
         <button type="button" className="cs-btn green lg" disabled={busy==='approve'} onClick={approve}>
-          <Check size={13}/>{busy==='approve'?'Approving…':'Approve and sign'}</button></>}
+          <Check size={13}/>{busy==='approve'?'Approving…':(signs?'Approve and sign':'Approve')}</button></>}
       {approved &&
         <button type="button" className="cs-btn primary lg" disabled={busy==='close'} onClick={close}>
           <Lock size={13}/>{busy==='close'?'Closing…':'Close the Minutes'}</button>}
     </div>
 
+    {drafting && !!unmarked.length &&
+      <Note k="warn">{unmarked.length} Agenda Item{unmarked.length>1?'s are':' is'} not marked covered or not
+        covered: {unmarked.map(a=>a.title||'—').join(', ')}. Choose <b>Yes</b> or <b>No</b> on each — writing a note or
+        adding a decision or task marks it <b>Yes</b> for you.</Note>}
     {drafting && !!missingNotes.length &&
       <Note k="warn">{missingNotes.length} Agenda Item{missingNotes.length>1?'s have':' has'} no
         Discussion Note: {missingNotes.map(a=>a.title||'—').join(', ')}. Add a note, raise a decision or task
@@ -7077,7 +7145,7 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
             <span className="cs-mono mtgd-count">{rec.agenda.length} item{rec.agenda.length===1?'':'s'}</span>
           </div>
           <div className="mom-hint">One note per agenda item and whether it was covered.
-            {editable ? ' Notes save when you click away from the box. An item marked No, or with a decision or task, needs no note.'
+            {editable ? ' Every item must be marked Yes or No before submitting; a note, decision or task marks it Yes automatically. Notes save when you click away from the box. An item marked No, or with a decision or task, needs no note.'
                       : ' Read-only in this state.'}</div>
           {rec.agenda.length===0
             ? <Empty>No Agenda Item on this occurrence.</Empty>
@@ -7202,9 +7270,9 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
 
         <section className="card mom-flow">
           <h2 className="mtgd-h">Approval Flow</h2>
-          <div className="mom-hint">The Chair's approval is the signature.</div>
+          <div className="mom-hint">{signs ? 'The Chair’s approval is the signature.' : 'The Chair approves; a Business Meeting is not signed.'}</div>
           {step(1, 'Organizer submits MOM', organizerName, returned ? 'ret' : drafting ? 'cur' : 'done')}
-          {step(2, 'Chair reviews & signs', chairName, awaitingChair ? 'cur' : (approved||closed) ? 'done' : 'wait')}
+          {step(2, signs ? 'Chair reviews & signs' : 'Chair reviews & approves', chairName, awaitingChair ? 'cur' : (approved||closed) ? 'done' : 'wait')}
           {step(3, 'Close & release the Audit Grid', 'Organizer', approved ? 'cur' : closed ? 'done' : 'wait')}
         </section>
 
@@ -7642,6 +7710,11 @@ function ReportLinkPicker({reports, taken, place, onPick, busy, pickLabel='Link'
       : null}
   </div>;
 }
+
+/* "Attach an occurrence" (Submissions + Documents tabs) is hidden for now
+   (04 Oct, user's ask). The flow and its code are unchanged: set to true to
+   bring the buttons back. */
+const SHOW_ATTACH_OCC = false;
 
 function DvMeetingDetail({rec,back}){
   const {sel,setSel,toast,refreshOccurrences,openMeeting,S,dvMeetingOccs,dvReportOccs,openDvRec,dvDecisions=[],
@@ -8764,7 +8837,7 @@ function DvMeetingDetail({rec,back}){
                     {' '}<Btn k="sm" onClick={()=>openDvRec('Report',x.occ)}>Open</Btn></>
                 : x.link
                 ? <>{linkBtn(x)}
-                    {x.link.reportTemplateId && !x.link.reportOccurrenceId && !x.link.fileUrl
+                    {SHOW_ATTACH_OCC && x.link.reportTemplateId && !x.link.reportOccurrenceId && !x.link.fileUrl
                       ? <>{' '}<Btn k="sm" onClick={()=>{ setAttachFor(x.link.id); setAttachAll(false); setTab('docs'); }}>
                           Attach an occurrence</Btn></> : null}</>
                 : x.tplId
@@ -8828,7 +8901,7 @@ function DvMeetingDetail({rec,back}){
                     <td className="dim">{dvRptTpl(d.reportTemplateId)||'—'}</td>
                     <td className="dim">{d.created?fmtD(d.created.slice(0,10)):'—'}</td>
                     <td style={{textAlign:'right',whiteSpace:'nowrap'}}>
-                      {attachable
+                      {SHOW_ATTACH_OCC && attachable
                         ? <Btn k="sm" onClick={()=>{ setAttachFor(open?null:d.id); setAttachAll(false); }}>
                             {open?'Cancel':'Attach an occurrence'}</Btn>
                         : null}{' '}
