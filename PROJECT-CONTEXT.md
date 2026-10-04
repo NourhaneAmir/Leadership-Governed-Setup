@@ -9310,6 +9310,53 @@ being read. Now the source does not read them:
 - Checks: both apps build; lint 56, unchanged; `no-undef` clean (only
   `__PIN_ORG__`). Not browser-checked, not pushed.
 
+### 04 Oct: the generator guide checked against the live DT New schema — checklist published
+
+Per an explicit ask: the user's build guide for the weekly generator
+(https://claude.ai/code/artifact/6d7fefca-78cf-4172-a967-ce99bab2dbd1, the §10
+plan as a page) compared column by column with **DT New as of 04 Oct** — a
+fresh `pac modelbuilder build` of 13 tables (the Setup, its BU / Region /
+agenda / department / attendee / linked-report children, and the five
+occurrence tables) and their choice sets. Read-only; nothing was changed.
+Checklist with paste-ready expressions and per-row ticks:
+**https://claude.ai/artifact/QwPbHXU2hEo7ui9vQGb6p4** (private). It complements
+the 02 Oct fix list (which reviewed the live flow itself).
+
+**Schema facts found (DT New, 04 Oct):**
+
+| Column | Values / target | Effect on the guide |
+|---|---|---|
+| `lm_meetingtemplate.lm_daysoftheweek` (local choice) | Sun 124330000 … Thu 124330004, **Sat 989230001** | D1 `sub(x,124330000)` never matches Saturday |
+| `lm_seconddayoftheweek` (global `lm_weekdays`) | Sun 1 … Thu 5, **Sat 6** | D2 `sub(x,1)` turns Saturday into Friday (5) |
+| `lm_dayofweeks` (multi-select, global `lm_daysofmonth`) | day 1 = 124330000 … day 31 = 124330030 | Weekly / Twice Weekly "Multiple days" never fire |
+| `cr18c_month` (global `pm_month` 1–12) | on the Setup | Annual is buildable — not `lm_month` |
+| `lm_monthofthequarter` / `lm_monthofthesemesterseme` | 124330000-based / 1-based | unchanged |
+| `lm_meetingoccurrenceagenda.lm_CarriedFromAgendaItem` | → **`lm_meetingoccurrenceagenda`** (self) | the guide binds a Setup agenda item → the create fails |
+| `lm_meetingattendeeslist` | has `lm_meetingtemplate`, `lm_isgroup`, `lm_microsoftgroup` | group-wide attendees exist (both unit lookups null); group rows have no Position |
+| unit tables (BU / Region) | own `lm_meetingcochairman`, `lm_teamchannel`, and schedule columns (unused by meetings) | copy Co-Chair / channel |
+| `lm_meetingoccurrence` | `lm_meetingcochairman`, `lm_teamchannel`, `lm_setuptype`, `lm_meetingclassification`, `lm_meetingcategory` (DT New), `lm_torpolicylink`, three hour limits | none set by the guide |
+| `lm_meetingtemplatelinkedreports.lm_reporttype` | Output 1, Input 2 | copy Inputs only |
+| template department table | `lm_meetingtemplatedepartmentfunction(s)` | the guide twice spells it `…department_functions` |
+| choice codes that still match | template status 4, frequency 1–9, stage 1–4, mode 1–3, occurrence status 1–3, sync 1–3, covered 3, present 3, Core/Supportive 1/2 → Required/Optional 1/2 | no change |
+
+`lm_departmentname` / `lm_businessunitname` / `lm_regionname` are not in
+the generated classes (virtual name columns); the checklist gives the
+lookup's `…@OData.Community.Display.V1.FormattedValue` as the fallback if the
+flow cannot select them.
+
+**Checklist contents (by the guide's steps):** two decisions first — the IT /
+DT New split (Setups from Governance never reach the flow) and the missing
+Setup start/end times (generated meetings cannot be Held until edited); step
+5's full Select list; step 6's new D1 / D2 and new Y / MD Composes, extra unit
+and agenda columns, and an `InputReports` list; step 8's complete Fires
+expression (Multiple days + Annual); steps 9–10's Stage ≤ 2 gate, CoChair /
+Channel Composes, the new occurrence columns and an empty-check on every
+lookup; step 11's removal of the carried-from bind, the owner fallback to the
+Organizer, `lm_isgroup ne true`, the department table name, and a new Loop G
+for Input reports; step 12's real duplicate guard, roles from the Setup row,
+and Setup-level attendees; plus a "still matches" table and extra test runs.
+IT was not checked (the flow runs in DT New).
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap
