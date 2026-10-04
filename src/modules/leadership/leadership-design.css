@@ -974,3 +974,13 @@
 .cs-mtgd .mom-chip.absent{ background:var(--cs-danger-soft); color:var(--cs-danger) }
 .cs-mtgd .mom-chip.absent i{ background:var(--cs-danger) }
 @media (max-width:560px){ .cs-mtgd .mom-rv-tiles{ grid-template-columns:1fr } }
+
+/* Attendee avatar stack (04 Oct): Meetings list */
+.cs-root .cs-avs{ display:inline-flex; align-items:center }
+.cs-root .cs-av{ width:24px; height:24px; border-radius:50%; display:grid; place-items:center; flex:0 0 auto;
+  font:700 8.5px var(--cs-sans); letter-spacing:.02em; color:#fff; border:2px solid #fff; margin-left:-6px;
+  box-shadow:0 1px 2px rgba(33,28,30,.12) }
+.cs-root .cs-av:first-child{ margin-left:0 }
+.cs-root .cs-av.o{ background:var(--cs-grad-gold) }
+.cs-root .cs-av.g{ background:var(--cs-grad-green) }
+.cs-root .cs-av.more{ background:var(--cs-hover); color:var(--cs-muted); font:600 8.5px var(--cs-mono) }

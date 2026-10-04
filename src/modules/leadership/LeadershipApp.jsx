@@ -5621,6 +5621,22 @@ const occStatusTag = (o,mom,grid) => {
    Attendee has attendance recorded. Quorum is measured against the Meeting
    Template's threshold by liveQuorum() (29 Sep); quorum does not decide
    whether a Meeting is settled. */
+/* Attendees as an avatar stack (04 Oct, user's screenshot): the first two
+   people as initials, alternating gold / green, then "+N". Every name is in
+   the tooltip. Names come from the Position's current holder, then the
+   attendee row's own name, then the Position. */
+const attendeeName = a => (a.positionId && DV_POS_HOLDER[a.positionId]) || a.name || dvPos(a.positionId) || 'Attendee';
+const initialsOf = name => String(name).replace(/^(dr|mr|mrs|ms|eng|prof)\.?\s+/i,'').trim()
+  .split(/\s+/).map(w=>(w.match(/[A-Za-z0-9؀-ۿ]/)||[''])[0]).filter(Boolean).slice(0,2).join('').toUpperCase() || '?';
+function AttendeeStack({attendees, show=2}){
+  const names = attendees.map(attendeeName);
+  const rest = names.length - show;
+  return <span className="cs-avs" title={names.join('\n')} aria-label={names.length+' attendees: '+names.join(', ')}>
+    {names.slice(0,show).map((n,i)=><span key={i} className={'cs-av '+(i%2?'g':'o')}>{initialsOf(n)}</span>)}
+    {rest>0 && <span className="cs-av more">+{rest}</span>}
+  </span>;
+}
+
 function ScreenMeetings(){
   const {sel,setSel,dvMeetingOccs,dvMinutes,S,dvLoading,dvError,openMeeting,go} = use();
   const [tab,setTab]=useState('due');
@@ -5842,9 +5858,12 @@ function ScreenMeetings(){
                               :`${o.agenda.length} item${o.agenda.length>1?'s':''}`}</span>
                         : <span className="cs-count bad"><i/>None</span>}</td>
                       <td>{o.attendees.length
-                        ? <span className={'cs-count'+(o.status==='Held'&&recd<o.attendees.length?' warn':'')}>
-                            {o.status==='Held'?`${present}/${o.attendees.length} present`
-                              :`${o.attendees.length}`}</span>
+                        ? <>
+                            <AttendeeStack attendees={o.attendees}/>
+                            {o.status==='Held' &&
+                              <div className={'cs-cov-sub'+(recd<o.attendees.length?' mtgd-warn':'')} style={{marginTop:3}}>
+                                {present}/{o.attendees.length} present</div>}
+                          </>
                         : <span className="cs-count bad"><i/>None</span>}
                         {(()=>{ const qr=quorumOf(o);
                           return qr.state==='met'||qr.state==='missed'||qr.state==='incomplete'
