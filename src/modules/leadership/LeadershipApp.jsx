@@ -5640,7 +5640,8 @@ function AttendeeStack({attendees, show=2}){
 function ScreenMeetings(){
   const {sel,setSel,dvMeetingOccs,dvMinutes,S,dvLoading,dvError,openMeeting,go} = use();
   const [tab,setTab]=useState('due');
-  const [typeFilter,setTypeFilter]=useState('all');
+  /* This Week is the default filter, and the first chip (04 Oct, user's ask). */
+  const [typeFilter,setTypeFilter]=useState('week');
   /* Declared with the other state, ABOVE the early return below — a hook after
      a conditional return is React error #310. */
   const [q,setQ]=useState('');
@@ -5791,13 +5792,13 @@ function ScreenMeetings(){
     </div>
 
     <div className="cs-chips" role="group" aria-label="Filter by type">
-      {[['all','All Types',Layers],['setup','From a Setup',ClipboardCheck],['adhoc','Ad Hoc',PenLine],
-        ['week','This Week',CalendarDays]].map(([k,l,Ic])=>
+      {[['week','This Week',CalendarDays],['all','All Types',Layers],['setup','From a Setup',ClipboardCheck],
+        ['adhoc','Ad Hoc',PenLine]].map(([k,l,Ic])=>
         <button key={k} type="button" aria-pressed={typeFilter===k}
           className={'cs-chip'+(typeFilter===k?' on':'')} onClick={()=>setTypeFilter(k)}>
           <Ic size={11} aria-hidden="true"/>{l}</button>)}
       <button type="button" className="cs-btn cs-chips-end"
-        onClick={()=>{setTab('due');setTypeFilter('all');setQ('');}}>
+        onClick={()=>{setTab('due');setTypeFilter('week');setQ('');}}>
         <RotateCcw size={11}/>Reset filters</button>
     </div>
 
