@@ -3146,6 +3146,34 @@ function Bucket({dot,title,sub,rows,dateLabel,empty}){
   </div>;
 }
 
+/* A pager in the cs-* design (04 Oct, first used by the Work Queue).
+   "Showing 1–10 of 34" on the left; Previous, page numbers and Next on the
+   right. Long runs fold into an ellipsis: always page 1, the last page, and the
+   current page with one neighbour each side. */
+function csPageList(cur, pages){
+  if(pages<=7) return Array.from({length:pages},(_,i)=>i+1);
+  const keep=new Set([1,pages,cur-1,cur,cur+1].filter(n=>n>=1&&n<=pages));
+  const out=[]; let prev=0;
+  [...keep].sort((a,b)=>a-b).forEach(n=>{ if(n-prev>1) out.push('…'+n); out.push(n); prev=n; });
+  return out;
+}
+function CsPager({page,pages,onPage,first,last,total,label}){
+  return <nav className="cs-pager" aria-label={label||'Pages'}>
+    <span className="cs-pager-info">Showing <b>{first}–{last}</b> of <b>{total}</b></span>
+    <div className="cs-pager-ctl">
+      <button type="button" className="cs-pg nav" disabled={page<=1}
+        onClick={()=>onPage(page-1)} aria-label="Previous page">‹ <span>Previous</span></button>
+      {csPageList(page,pages).map(n=> typeof n==='string'
+        ? <span key={n} className="cs-pg gap" aria-hidden="true">…</span>
+        : <button key={n} type="button" className={'cs-pg'+(n===page?' on':'')}
+            aria-current={n===page?'page':undefined} aria-label={'Page '+n}
+            onClick={()=>onPage(n)}>{n}</button>)}
+      <button type="button" className="cs-pg nav" disabled={page>=pages}
+        onClick={()=>onPage(page+1)} aria-label="Next page"><span>Next</span> ›</button>
+    </div>
+  </nav>;
+}
+
 function ScreenWorkspace(){
   const {work,cal:calAll,go,openMeeting,openDvRec,myMeetingOccs:dvMeetingOccs,isMyMeeting,
          dvLookup} = use();
@@ -3162,6 +3190,10 @@ function ScreenWorkspace(){
   const noPositions = !(dvLookup?.myPositionIds||[]).length;
   const [tab,setTab]     = useState('All');
   const [quick,setQuick] = useState('all');
+  /* Work Queue pagination (04 Oct, user's ask). Back to page 1 whenever the
+     filters change, so a narrower list never opens on an empty page. */
+  const [page,setPage]   = useState(1);
+  useEffect(()=>{ setPage(1); },[tab,quick]);
   const overdue = work.all.filter(w=>w.date && w.date<TODAY);
 
   /* every open item, tagged with which of the three states it's in — used only to
@@ -3190,6 +3222,11 @@ function ScreenWorkspace(){
   else if(quick==='today') rows = rows.filter(w=>w.date===TODAY);
   else if(quick==='mine') rows = rows.filter(w=>w.bucket!=='review');
   rows = [...rows].sort((a,b)=>(a.date||'9999').localeCompare(b.date||'9999'));
+  const WQ_PAGE = 10;
+  const totalPages = Math.max(1, Math.ceil(rows.length/WQ_PAGE));
+  const curPage = Math.min(page, totalPages);          // a list that shrank under us
+  const pageStart = (curPage-1)*WQ_PAGE;
+  const pageRows = rows.slice(pageStart, pageStart+WQ_PAGE);
 
   const statusOf = w =>
     w.bucket==='review' ? (w.area==='Report'?'Under Review':w.area==='Decision'?'Pending':'In Review')
@@ -3289,7 +3326,7 @@ function ScreenWorkspace(){
             <thead><tr><th style={{width:4}}><span className="sr-only">Priority</span></th><th>Area</th>
               <th>Item</th><th>Accountable</th><th>Status</th><th>Due</th>
               <th><span className="sr-only">Action</span></th></tr></thead>
-            <tbody>{rows.map((w,i)=>{
+            <tbody>{pageRows.map((w,i)=>{
               const st = statusOf(w);
               const late = w.date && w.date<TODAY;
               const open = ()=>openItem(w);
@@ -3308,6 +3345,9 @@ function ScreenWorkspace(){
                     onClick={e=>{ e.stopPropagation(); open(); }}>{actionVerb(w)}</button></td>
               </tr>;})}
             </tbody></table></div>}
+        {rows.length>WQ_PAGE && <CsPager page={curPage} pages={totalPages} onPage={setPage}
+          first={pageStart+1} last={Math.min(pageStart+WQ_PAGE, rows.length)} total={rows.length}
+          label="Work Queue pages"/>}
       </section>
 
       <div className="cs-side">

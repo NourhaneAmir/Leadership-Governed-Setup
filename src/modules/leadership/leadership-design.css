@@ -931,6 +931,28 @@
 }
 @media (prefers-reduced-motion: reduce){ .lp-soon-tag::before{ animation:none } }
 
+/* ---------- Pager (04 Oct, Work Queue first) ---------------------------- */
+.cs-root .cs-pager{ display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;
+  padding:10px 16px; border-top:1px solid var(--cs-border) }
+.cs-root .cs-pager-info{ font:400 12px var(--cs-body-font); color:var(--cs-muted) }
+.cs-root .cs-pager-info b{ font-weight:600; color:var(--cs-text); font-variant-numeric:tabular-nums }
+.cs-root .cs-pager-ctl{ display:flex; align-items:center; gap:4px; flex-wrap:wrap }
+.cs-root .cs-pg{ min-width:30px; height:30px; padding:0 9px; border-radius:8px; border:1px solid transparent;
+  background:none; color:var(--cs-body); cursor:pointer;
+  font:500 12px var(--cs-mono); font-variant-numeric:tabular-nums;
+  display:inline-flex; align-items:center; justify-content:center; gap:5px;
+  transition:background .18s var(--cs-ease), border-color .18s var(--cs-ease), color .18s var(--cs-ease) }
+.cs-root .cs-pg:hover:not(:disabled):not(.on){ background:var(--cs-hover); border-color:var(--cs-border) }
+.cs-root .cs-pg:focus-visible{ outline:2px solid var(--cs-gold); outline-offset:1px }
+.cs-root .cs-pg.on{ background:var(--cs-gold-soft); border-color:rgba(165,132,91,.45); color:var(--cs-gold); font-weight:700 }
+.cs-root .cs-pg.nav{ font:600 12px var(--cs-sans); border-color:var(--cs-border) }
+.cs-root .cs-pg:disabled{ opacity:.4; cursor:not-allowed }
+.cs-root .cs-pg.gap{ min-width:18px; padding:0; cursor:default; color:var(--cs-dim) }
+@media (max-width:560px){
+  .cs-root .cs-pager{ justify-content:center }
+  .cs-root .cs-pg.nav span{ display:none }          /* arrows only on a phone */
+}
+
 /* ---------- Minutes: Review & Sign (01 Oct) ------------------------------ */
 .cs-mtgd .mom-rv-tiles{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px }
 .cs-mtgd .mom-rv-tiles > div{ display:flex; flex-direction:column; align-items:center; gap:3px; padding:14px 8px;

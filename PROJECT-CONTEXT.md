@@ -9411,6 +9411,25 @@ Per an explicit ask. Each agenda item's task panel (`AgendaTaskPanel`) had only
 - Checks: both apps build; lint 56, unchanged; `no-undef` clean. Not
   browser-checked, not pushed.
 
+### 04 Oct: My Workspace — the Work Queue is paginated (Leadership only)
+
+Per an explicit ask. The Work Queue shows **10 items per page**. The page
+returns to 1 when a tab, quick filter or Reset changes the list, and is
+clamped if the list shrinks underneath it. The header's "N of M" count is
+unchanged (all filtered items, not the page).
+
+- **New reusable `CsPager`** (`LeadershipApp.jsx`, just above
+  `ScreenWorkspace`), styled `.cs-pager` / `.cs-pg` in `leadership-design.css`
+  under `.cs-root`. It shows "Showing 1–10 of 34" and has Previous, page
+  numbers and Next. Long runs fold through `csPageList()`: always the first,
+  the last, and the current page ±1 (checked in Node: 1/12 → `1 2 … 12`;
+  6/12 → `1 … 5 6 7 … 12`). On a phone the Previous / Next words drop to
+  arrows. Hidden when everything fits on one page.
+- The arrows are text characters, not lucide icons, so the icon import line
+  (rewritten by the deploy-time revert of `4ca0036`) is untouched.
+- Checks: both apps build; lint 56, unchanged; `no-undef` clean. Not
+  browser-checked, not pushed.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap
