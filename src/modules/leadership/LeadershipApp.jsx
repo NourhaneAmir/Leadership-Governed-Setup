@@ -1583,7 +1583,7 @@ const SCREENS = [
   {id:'chain', group:'Artifact',     label:'Strategy chain', comingSoon:true,         Icon:Target,         wide:true,
    Screen:ScreenStrategyChain,
    hint:'Each Strategy from its KPI to execution and actuals, its Projects and POCs, and what reports say about them.'},
-  {id:'comms', group:'Exchange',     label:'Communication & execution', Icon:MessagesSquare, wide:true,
+  {id:'comms', group:'Exchange',     label:'Communication & execution', comingSoon:true, Icon:MessagesSquare, wide:true,
    Screen:ScreenComms,
    hint:'Reports sent to you and by you, and the tasks you are accountable for.'},
   {id:'hier', group:'Artifact',      label:'Reporting hierarchy', comingSoon:true,    Icon:Network,        wide:true,
@@ -1616,7 +1616,8 @@ const SCREENS = [
 /* everything below is derived — nothing else in the file lists screens */
 /* comingSoon (01 Oct, user's instruction): the Artifact entries stay listed
    but cannot be opened from the sidebar for now. Their screens, routes and
-   code are untouched -- delete the flag to switch one back on. */
+   code are untouched -- delete the flag to switch one back on. Communication
+   & execution joined them on 04 Oct, same instruction. */
 const VISIBLE_SCREENS = SCREENS.filter(s=>!s.hidden);
 const NAV = [...new Set(VISIBLE_SCREENS.map(s=>s.group))].map(g=>({
   g, items: VISIBLE_SCREENS.filter(s=>s.group===g),

@@ -9278,6 +9278,18 @@ the key `MEETING_OCC_STAGE_KEY` maps to stage 4, so saving and every
   option reads "ExCom → Top Management" (value → text), selecting it keeps
   value `ExCom`, and the hints update. Not committed, not pushed.
 
+### 04 Oct: Communication & execution is "coming soon" too (Leadership only)
+
+Per an explicit ask: the sidebar's **Communication & execution** entry
+(`comms`, Exchange group) gets `comingSoon:true`, the same flag the Artifact
+entries got on 01 Oct. It stays listed with a "Soon" tag, greyed and not
+clickable. Nothing else in the app calls `go('comms')`, so it can't be reached
+any other way. `ScreenComms` and its code are untouched: delete the flag to
+switch it back on.
+
+- Checks: both apps build; lint 56, unchanged; `no-undef` clean (only
+  `__PIN_ORG__`). Not browser-checked, not pushed.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap
