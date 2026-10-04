@@ -57,12 +57,20 @@ const ACTIONS = {
   },
 };
 
+/* ⚠️ The Power Apps runtime is a singleton: it keeps the FIRST registry any
+   getClient() call hands it (the generated services' dataSourcesInfo) and
+   ignores later ones, so a copy with extra actions is never seen ("Cannot
+   read properties of undefined (reading 'path')", 04 Oct). The actions are
+   therefore added INTO the shared registry object, which the runtime holds
+   by reference -- before or after it starts, it finds them. */
 let client = null;
 function spClient(){
   if(client) return client;
   const base = dataSourcesInfo[DS];
   if(!base) throw new Error('The SharePoint "documents" data source is not registered in this app.');
-  client = getClient({ ...dataSourcesInfo, [DS]: { ...base, apis: { ...(base.apis || {}), ...ACTIONS } } });
+  base.apis = base.apis || {};
+  Object.assign(base.apis, ACTIONS);
+  client = getClient(dataSourcesInfo);
   return client;
 }
 const call = (operationName, parameters) =>
