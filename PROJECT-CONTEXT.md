@@ -7,7 +7,7 @@
 > (covering 09-12 Sep), updated 13 Sep 2026, updated 14 Sep 2026,
 > updated 16 Sep 2026, updated 17 Sep 2026 (three times), against branch `leadership-practice`;
 > since then updated per session through 28 Sep 2026, now on branch `CrossEnv-Leadership`;
-> **status snapshot below refreshed 03 Oct 2026 (code last changed at `f5a1707`; see §0 "What is live" for which app runs which commit).**
+> **status snapshot below refreshed 04 Oct 2026, evening (code last changed at `7ddf918`; see §0 "What is live" for which app runs which commit).**
 >
 > This file records **decisions, hard-won schema facts and open questions** —
 > the things that are expensive to rediscover. It is not a substitute for the
@@ -46,7 +46,7 @@ explicitly in the same turn. See "What is live" below.
 | Governance Setup | **Main (IT):** `4912152c-b5c8-4beb-bb74-c9f43550405b`, pushed from `C:\tmp\cad-gov`. **Test:** `786c1b14-bf09-4dd7-a0a2-5730e87744fe` ("…Governance Setup (2)"), pushed from `C:\tmp\cad-gov-old` — **reads IT since end of 01 Oct** (normal IT build, the same bundle as the main app); it read DT New before that. Both Code App Development. |
 | Leadership Execution | **Main:** `83db0ef8-4c62-4eef-84ac-dadab326b704`, pushed from `C:\tmp\cad-exec` — **reads DT New since late 01 Oct** (user: "make the 2 versions of the leadership practice to read from the DT New"), built with `LP_DATA_ORG`. **Test (DT New):** `d61c6237-fec1-45c7-80e0-a9c63dd1e662` ("…Leadership Execution (2)"), pushed from `C:\tmp\cad-exec-test` with `LP_DATA_ORG` set. ⚠️ That folder was **missing on this machine on 03 Oct** (the 01 Oct pushes were made elsewhere) and was **recreated** as a copy of `C:\tmp\cad-exec` (`.power`, `src`, `power.config.json`), changing only `appId` → `d61c6237…` and `appDisplayName` → "Andalusia Pulse - Leadership Execution (2)". Keep that name, or a push renames the test app. `pac code list` cannot list Code App Development (it is not a Dataverse org), so the id was confirmed by the push succeeding. `C:\tmp\cad-gov-old` is absent here too. Both Code App Development. |
 | Data | ⚠️ **Late 01 Oct: Leadership (both copies) = DT New; Governance (both copies) = IT.** Earlier note: **IT** (`org2f45e702`) for **both apps** again, every table but `lm_setupactivities` (follows `DATA_ORG`, = IT in Governance). Governance was on DT New for part of 29 Sep, then moved back to IT the same day per an explicit ask, once IT had the five `lm_reporttemplatedepartmentfunction` columns the per Department & Function submitters write (`lm_BU`, `lm_Region`, `lm_SubmittingPosition`, `lm_OwnerPosition`, `lm_TeamChannel` — checked, same targets as DT New). Switch: `__DATA_ORG__` + `__PIN_ORG__` in `apps/governance/vite.config.js` (see `PIN_ORG` in `xenv.js`). ⚠️ Setups saved in Governance **while it was on DT New** stay in DT New — they are not in IT. |
-| What is live (04 Oct, latest) | **Leadership (2)** `d61c6237`: **`7ddf918` minus `4ca0036`**, reading DT New (`index-BSOo7plm.js`). Carries the Grid default periods (AG-05/16/17) plus the parallel session's `082c714`…`15a5c27` (Soon tag as a bronze pill, Minutes coverage rules, Meetings list changes, decision dialog, Minutes saved as Word to SharePoint). `C:\tmp\cad-exec-test\power.config.json` already pointed at the new SharePoint site (DigitalTransformation-UnifiedTransformationAlignment). Bundle checked: 1 `lm_TeamChannel@odata.bind`, no `lm_attachmentfile`, DT New, `no-undef` clean. **Leadership main still NOT updated.** ⚠️ Previous: **Leadership (2)** `d61c6237`: **`4c79ff5` minus `4ca0036`**, reading DT New (`index-DbWYFV7P.js`). On top of the earlier 04 Oct push it adds `a6171a6` (new decisions save a status), `9ef3915` (Attach a task on a Minutes agenda item), `9fbcb89` (restyled Soon tag) and `4c79ff5` (Work Queue pagination). Bundle checked the same way. **Leadership main still NOT updated.** ⚠️ Earlier 04 Oct push: **Leadership (2)** `d61c6237`: **`4be138d` minus `4ca0036`**, reading DT New (`index-C9dT5gq6.js`, pushed 04 Oct). It adds `86e4b51` (My Workspace without reports, "Top Management" stage label), `3c1abb7` (Communication & execution coming soon) and `4be138d` (My Workspace no longer reads Report Occurrences). Bundle checked: one `lm_TeamChannel@odata.bind`, no `lm_attachmentfile`, data on DT New, `no-undef` clean. ⚠️ `C:\tmp\cad-exec-test` had no `.power` folder on this machine; it was copied from `C:\tmp\cad-exec` before the push. **Leadership main is NOT updated** — still the 03 Oct build below. ⚠️ Earlier (03 Oct): **Leadership main** `83db0ef8` and **Leadership (2)** `d61c6237`: **both `81393b4` minus `4ca0036`, reading DT New, the same bundle** (`index-C8NJ4Fy8.js`). That is the fixed build; see §5, 03 Oct, "fetchTeamsChannels is not defined". Main ran the broken `index-9qbsYWuI.js` for part of 03 Oct, until the user asked for the fix to be pushed. Both carry `f5a1707`'s three changes (confidential Stage 4 agenda items, a Teams channel on Custom meetings, no New Report on My Workspace). Proof the fix is in: the broken bundle has a bare global `fetchTeamsChannels()` call, and the fixed one has that name only inside a warning string. The normal IT `dist` was rebuilt after each push. **Governance main** `4912152c` and **Governance (2)** `786c1b14`: **`409b549`, reading IT** (same bundle; no Governance code changed since). Every Leadership test push: revert steps, bundle checked (no uploader writes, data on DT New, the change present), normal IT `dist` rebuilt after. |
+| What is live (04 Oct, evening) | **Leadership main** `83db0ef8` **and Leadership (2)** `d61c6237`: **both `7ddf918` minus `4ca0036`, reading DT New, the same bundle** (`index-BSOo7plm.js`). Main was pushed on the user's explicit ask five times on 04 Oct (`4be138d`, `4c79ff5`, `af1f7de`, `0efdd20`, then this one), each time with the exact bundle already on the test copy (copied from `C:\tmp\cad-exec-test\dist`, re-checked). ⚠️ **Both staging configs now carry the SharePoint connection** (`C:\tmp\cad-exec` and `C:\tmp\cad-exec-test` `power.config.json` + `.power/schemas/sharepointonline`) — see §5, 04 Oct, "Minutes saved as Word to SharePoint". The rest of this cell is the earlier history. **Leadership (2)** `d61c6237`: **`7ddf918` minus `4ca0036`**, reading DT New (`index-BSOo7plm.js`). Carries the Grid default periods (AG-05/16/17) plus the parallel session's `082c714`…`15a5c27` (Soon tag as a bronze pill, Minutes coverage rules, Meetings list changes, decision dialog, Minutes saved as Word to SharePoint). `C:\tmp\cad-exec-test\power.config.json` already pointed at the new SharePoint site (DigitalTransformation-UnifiedTransformationAlignment). Bundle checked: 1 `lm_TeamChannel@odata.bind`, no `lm_attachmentfile`, DT New, `no-undef` clean. **Leadership main still NOT updated.** ⚠️ Previous: **Leadership (2)** `d61c6237`: **`4c79ff5` minus `4ca0036`**, reading DT New (`index-DbWYFV7P.js`). On top of the earlier 04 Oct push it adds `a6171a6` (new decisions save a status), `9ef3915` (Attach a task on a Minutes agenda item), `9fbcb89` (restyled Soon tag) and `4c79ff5` (Work Queue pagination). Bundle checked the same way. **Leadership main still NOT updated.** ⚠️ Earlier 04 Oct push: **Leadership (2)** `d61c6237`: **`4be138d` minus `4ca0036`**, reading DT New (`index-C9dT5gq6.js`, pushed 04 Oct). It adds `86e4b51` (My Workspace without reports, "Top Management" stage label), `3c1abb7` (Communication & execution coming soon) and `4be138d` (My Workspace no longer reads Report Occurrences). Bundle checked: one `lm_TeamChannel@odata.bind`, no `lm_attachmentfile`, data on DT New, `no-undef` clean. ⚠️ `C:\tmp\cad-exec-test` had no `.power` folder on this machine; it was copied from `C:\tmp\cad-exec` before the push. **Leadership main is NOT updated** — still the 03 Oct build below. ⚠️ Earlier (03 Oct): **Leadership main** `83db0ef8` and **Leadership (2)** `d61c6237`: **both `81393b4` minus `4ca0036`, reading DT New, the same bundle** (`index-C8NJ4Fy8.js`). That is the fixed build; see §5, 03 Oct, "fetchTeamsChannels is not defined". Main ran the broken `index-9qbsYWuI.js` for part of 03 Oct, until the user asked for the fix to be pushed. Both carry `f5a1707`'s three changes (confidential Stage 4 agenda items, a Teams channel on Custom meetings, no New Report on My Workspace). Proof the fix is in: the broken bundle has a bare global `fetchTeamsChannels()` call, and the fixed one has that name only inside a warning string. The normal IT `dist` was rebuilt after each push. **Governance main** `4912152c` and **Governance (2)** `786c1b14`: **`409b549`, reading IT** (same bundle; no Governance code changed since). Every Leadership test push: revert steps, bundle checked (no uploader writes, data on DT New, the change present), normal IT `dist` rebuilt after. |
 | ⚠️ Apps are split across environments | **Both Governance apps read IT, both Leadership apps read DT New**: a Setup made in Governance lands in IT and does **not** show in either Leadership app, and DT New's Setups are not editable from either Governance app. Raised with the user; not resolved yet. |
 
 ⚠️ **One commit is in git but deliberately NOT deployed: `4ca0036`** — the
@@ -9456,6 +9456,98 @@ automatic question should score itself from the submitted / approved times.
   only), AG-08 with no quorum threshold, and AG-11 to AG-14. Approved / frozen
   Grids keep their stored scores.
 - Checks: both apps build; lint 56; `no-undef` clean. Not browser-checked.
+
+### 04 Oct: Minutes, Meetings and sidebar changes; the Minutes saved as Word to SharePoint (Leadership; both apps)
+
+From this session (`082c714` … `15a5c27`), all pushed to the test copy and then
+to **main** on the user's explicit asks (see §0 "What is live").
+
+- **`082c714` — sidebar "Soon" tag** restyled to the user's screenshot: a
+  solid bronze pill with a clock icon, labels back at full brightness. The
+  font is set as separate properties: the sidebar is outside `.cs-root`, so
+  `var(--cs-sans)` is undefined there and a `font:` shorthand was dropped.
+- **`44cd579` — Minutes:**
+  - **every agenda item must be marked Yes or No** before Submit;
+  - **auto-Yes**: an unmarked item becomes Yes once it has a saved note, a
+    decision or a task (an effect, once per item per visit; "No" is never
+    changed);
+  - **only Accreditation Committees sign** (`signs = accred`): a Business
+    Meeting's Chair gets a "Chair Approval" card and a plain **Approve**; no
+    signature fields are written;
+  - the **Review layout** now serves With the Chair, **Approved** and
+    **Closed** Minutes (per-state right card: signature / Close the Minutes /
+    closed), drafts keep the editing layout;
+  - **"Attach an occurrence"** hidden (`SHOW_ATTACH_OCC = false`).
+- **`af1f7de` — Meetings list: attendees as an avatar stack**
+  (`AttendeeStack`): two initials circles (gold / green) + "+N", all names in
+  the tooltip; initials skip Dr./Eng./Prof. and take each word's first letter
+  (Arabic included).
+- **`0efdd20` — Meetings: "This Week" is the default filter** and the first
+  chip; Reset filters returns to it.
+- **`54e5003`:**
+  - **Raise a decision is a dialog** (`DecisionLink.jsx`, `Modal` portalled
+    to `<body>`, like Raise a task) — Minutes agenda items and report sections;
+  - **Raise a task: "Action to be taken" removed** (the field; `f.action`
+    stays empty);
+  - **Meetings table paginated** 10 per page with the shared `CsPager`;
+  - **Submissions: "Link a report" hidden** (`SHOW_LINK_REPORT = false`).
+- **`979adeb` + `15a5c27` — the Minutes saved as Word to SharePoint**, see
+  below. `979adeb` also hides the Documents tab's "Link a document by Report
+  Template" card (same `SHOW_LINK_REPORT`).
+- **Checked, no change:** My Workspace's "my meetings" filter (Chair /
+  Co-Chair / Organizer / Attendee or delegate, by Position id) is intact. In DT
+  New the user holds 4 Positions, which sit on 33 of 161 meetings (26 as
+  Co-Chairman — "Software Director for Delivery Affairs" is Co-Chair on many
+  test Setups). The sidebar badge counts open ITEMS, not meetings.
+
+**Minutes saved as Word to SharePoint (04 Oct).**
+
+- **What:** on **Submit** and on **Approve** the Minutes are built with the
+  Export-to-Word model and saved to
+  `/Shared Documents/Cross Functional Projects/DT/Design Documents/Leadership Practice`
+  on `https://andalusiagroupegypt.sharepoint.com/sites/DigitalTransformation-UnifiedTransformationAlignment`,
+  named `MOM - <meeting> - <date>.docx`. The **previous version is deleted
+  first** (the user's rule: a resubmission after the Chair returns it, and
+  the approved copy, replace it — the old path is read from the saved link).
+  The stored copy **always withholds confidential Stage 4 items** (title +
+  "withheld"), whoever submits. A failure never undoes the Submit / Approve;
+  the user gets a warning to export and upload by hand.
+- **Link:** one `lm_meetingoccurrencelinkedreports` row per meeting, name
+  "MOM - …", `lm_fileurl` = the file's `?web=1` link, **`lm_reporttype` = 1
+  (Output)** — a choice the user added in **DT New** (Output 1 / Input 2; IT
+  has none). Reads of it fall back when missing. Documents shows an "Output"
+  tag; Submissions ignores Output rows (`inputDocs`).
+- **How (code apps):** the user created a **SharePoint connection** in Code
+  App Development (`895d143de0e64dbfbe7a1e7d04bbacd9`, their account).
+  `power-apps add-data-source -a shared_sharepointonline` only accepts a
+  **table**, so the site's **Documents** library was added as data source
+  `documents` (table `219cbff7-340a-44bf-815b-8102ed53bf1b`, connection
+  reference `38d50d16-18ea-4bef-843f-95c6e0664e38`) — that only generates list
+  CRUD. `src/services/sharepoint.js` registers the connector's
+  **CreateFile / GetFileByPath / DeleteFile** actions on it and calls them via
+  `executeAsync`; the runtime fills connection + site, URL-encodes path params
+  and sends a base64 `format: binary` body as bytes
+  (`connectorDataOperationExecutor.js`).
+- ⚠️ **Gotcha fixed in `15a5c27`:** the Power Apps data runtime is a
+  **singleton** (`PowerDataSourcesInfoProvider.getInstance`) that keeps the
+  FIRST registry any `getClient()` receives (the generated `dataSourcesInfo`)
+  and ignores later ones. Passing a copy with extra actions failed with
+  "Execute operation failure: Cannot read properties of undefined (reading
+  'path')". The actions are now added INTO the shared registry object (held by
+  reference). Check one registry is bundled:
+  `grep -o "219cbff7-340a-44bf-815b-8102ed53bf1b" dist/assets/*.js | wc -l` → 1.
+- **Repo:** `apps/leadership/.power/schemas/appschemas/dataSourcesInfo.ts`
+  (`documents` now the DT site), `.power/schemas/sharepointonline/documents.Schema.json`,
+  `apps/leadership/power.config.json`, regenerated `DocumentsModel/Service.ts`.
+  The old SMO-AndalusialeadershipPractice "documents" source is gone.
+- **Staging:** both `C:\tmp\cad-exec` and `C:\tmp\cad-exec-test` now carry the
+  SharePoint connection reference (backups of their previous configs are in the
+  session scratchpad). Every user gets a one-time consent prompt; Organizers and
+  Chairs need **write access** to that folder.
+- **Status:** the first real try (before `15a5c27`) failed with the singleton
+  error; the fixed build is on both apps but **not yet confirmed** by a real
+  Submit. Replacing relies on Delete + Create; if SharePoint rejects the
+  delete, the save stops with a warning (never two versions).
 
 ## 6. Schema facts that are expensive to rediscover
 
