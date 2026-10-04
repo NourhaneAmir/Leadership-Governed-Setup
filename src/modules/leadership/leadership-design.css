@@ -898,10 +898,38 @@
 .cs-mtgd .mom-addag input:focus{ outline:none; border-color:var(--cs-gold); box-shadow:0 0 0 3px var(--cs-gold-soft) }
 
 /* Sidebar entries marked comingSoon (01 Oct): listed, not clickable. */
-.nav-i.lp-soon{ cursor:not-allowed; opacity:.5; }
+/* "Soon" (restyled 04 Oct, user's ask: more modern). Only the icon and label
+   fade, so the tag itself stays crisp; the tag is a glassy outlined pill in the
+   theme's light gold (--cs-gold-light) on the dark sidebar, led by a small
+   live dot that pulses unless reduced motion is asked for. */
+.nav-i.lp-soon{ cursor:not-allowed }
+.nav-i.lp-soon .nav-n, .nav-i.lp-soon .lp-nav-label{ opacity:.48 }
 .nav-i.lp-soon:hover{ background:none; color:inherit }
-.lp-soon-tag{ margin-left:auto; font:700 8.5px var(--cs-sans, inherit); letter-spacing:.6px; text-transform:uppercase;
-  padding:2px 7px; border-radius:999px; background:rgba(165,132,91,.35); color:#F1E6D4; white-space:nowrap }
+.lp-soon-tag{
+  margin-left:auto; display:inline-flex; align-items:center; gap:5px;
+  padding:3px 8px 3px 7px; border-radius:999px; line-height:1; white-space:nowrap;
+  font:600 9px var(--cs-sans, inherit); letter-spacing:.09em; text-transform:uppercase;
+  color:#F0C893;
+  background:linear-gradient(135deg, rgba(240,200,147,.18) 0%, rgba(165,132,91,.08) 100%);
+  border:1px solid rgba(240,200,147,.32);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.07), 0 1px 6px rgba(0,0,0,.18);
+  -webkit-backdrop-filter:blur(4px); backdrop-filter:blur(4px);
+  transition:border-color .2s ease, background .2s ease;
+}
+.lp-soon-tag::before{
+  content:""; width:5px; height:5px; border-radius:50%; flex:0 0 auto;
+  background:#F0C893; animation:lpSoonPulse 2.4s ease-out infinite;
+}
+.nav-i.lp-soon:hover .lp-soon-tag{
+  border-color:rgba(240,200,147,.55);
+  background:linear-gradient(135deg, rgba(240,200,147,.26) 0%, rgba(165,132,91,.12) 100%);
+}
+@keyframes lpSoonPulse{
+  0%   { box-shadow:0 0 0 0 rgba(240,200,147,.55) }
+  70%  { box-shadow:0 0 0 5px rgba(240,200,147,0) }
+  100% { box-shadow:0 0 0 0 rgba(240,200,147,0) }
+}
+@media (prefers-reduced-motion: reduce){ .lp-soon-tag::before{ animation:none } }
 
 /* ---------- Minutes: Review & Sign (01 Oct) ------------------------------ */
 .cs-mtgd .mom-rv-tiles{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px }
