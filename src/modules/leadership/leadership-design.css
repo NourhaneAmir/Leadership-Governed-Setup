@@ -984,3 +984,18 @@
 .cs-root .cs-av.o{ background:var(--cs-grad-gold) }
 .cs-root .cs-av.g{ background:var(--cs-grad-green) }
 .cs-root .cs-av.more{ background:var(--cs-hover); color:var(--cs-muted); font:600 8.5px var(--cs-mono) }
+
+/* Meeting Overview (04 Oct, screenshot): highlighted agenda card, Linked Items */
+.cs-mtgd .card.mtgd-hl{ border-color:var(--cs-gold-light) }
+.cs-mtgd .mtgd-links{ display:flex; flex-direction:column; gap:6px }
+.cs-mtgd .mtgd-li{ display:flex; align-items:center; gap:10px; width:100%; padding:8px 10px; border:none; border-radius:10px;
+  background:var(--cs-hover); text-align:left; cursor:pointer; text-decoration:none; color:inherit; font:inherit }
+.cs-mtgd .mtgd-li:hover{ background:var(--cs-gold-100) }
+.cs-mtgd .mtgd-li:focus-visible{ outline:2px solid var(--cs-gold); outline-offset:2px }
+.cs-mtgd .mtgd-li-ic{ flex:0 0 26px; width:26px; height:26px; border-radius:8px; display:grid; place-items:center; color:#fff }
+.cs-mtgd .mtgd-li-ic.o{ background:var(--cs-grad-gold) }
+.cs-mtgd .mtgd-li-ic.g{ background:var(--cs-grad-green) }
+.cs-mtgd .mtgd-li-t{ flex:1; min-width:0; display:flex; flex-direction:column; gap:1px }
+.cs-mtgd .mtgd-li-t b{ font:600 11.5px var(--cs-sans); color:var(--cs-text); overflow-wrap:anywhere }
+.cs-mtgd .mtgd-li-t span{ font:400 10px var(--cs-body-font); color:var(--cs-muted); overflow-wrap:anywhere }
+.cs-mtgd .mtgd-all-sub{ margin-top:12px; padding-top:10px; border-top:1px solid var(--cs-border) }

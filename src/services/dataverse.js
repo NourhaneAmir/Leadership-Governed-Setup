@@ -3948,6 +3948,7 @@ export async function fetchMeetingOccurrences(){
       facilitatorPositionId: o._lm_facilitatorposition_value || null,
       rescheduledFromId: o._lm_rescheduledfrom_value || null,
       updated: o.modifiedon || o.createdon || null,
+      created: o.createdon || null,
       agenda: (agendaBy.get(id) || [])
         .slice().sort((a,b)=>(a.lm_sequence||0)-(b.lm_sequence||0))
         .map(a=>({ id:a.lm_meetingoccurrenceagendaid, title:a.lm_title||'', seq:a.lm_sequence??null,

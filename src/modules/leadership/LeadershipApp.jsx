@@ -8444,7 +8444,7 @@ function DvMeetingDetail({rec,back}){
           </div>
           <div className="mtgd-tile">
             <Clock size={18} aria-hidden="true"/>
-            <b className="cs-mono">{[rec.start,rec.end].filter(Boolean).join(' – ')||'—'}</b>
+            <b className="cs-mono">{rec.start||'—'}</b>
             <span>{durMin!=null?durMin+' minutes':(rec.timezone||'Time')}</span>
           </div>
           <div className="mtgd-tile">
@@ -8454,7 +8454,7 @@ function DvMeetingDetail({rec,back}){
           </div>
         </section>
 
-        <section className="card" aria-labelledby="mtgd-agenda">
+        <section className="card mtgd-hl" aria-labelledby="mtgd-agenda">
           <div className="mtgd-card-top">
             <span className="cs-icon gold" aria-hidden="true"><ListOrdered size={15}/></span>
             <h2 id="mtgd-agenda">Agenda Preview</h2>
@@ -8512,7 +8512,8 @@ function DvMeetingDetail({rec,back}){
         <section className="card" aria-labelledby="mtgd-det">
           <h2 id="mtgd-det" className="mtgd-h">Meeting Details</h2>
           <div className="mtgd-kv">
-            {[['Setup', dvTpl(rec.templateId)||(rec.templateId?'(not in the loaded list)':'Custom Ad Hoc')],
+            {[['ID', rec.date ? occCode(rec) : null],
+              ['Setup', dvTpl(rec.templateId)||(rec.templateId?'(not in the loaded list)':'Custom Ad Hoc')],
               ['Type', typeLabel],
               ['Category', tplCategory],
               ['Chair', posName(rec.chairPositionId)],
@@ -8520,79 +8521,10 @@ function DvMeetingDetail({rec,back}){
               ['Location', rec.location || rec.link || null],
               ['Scope', scope],
               ['Cadence', cadence],
-             ].filter(([,v])=>v).map(([k,v])=><div key={k}><span>{k}</span><b>{v}</b></div>)}
+              ['Created', rec.created ? fmtD(rec.created.slice(0,10)) : null],
+             ].filter(([,v])=>v).map(([k,v])=><div key={k}><span>{k}</span><b className={k==='ID'||k==='Created'?'cs-mono':undefined}>{v}</b></div>)}
           </div>
         </section>
-
-        <details className="card mtgd-all">
-          <summary className="mtgd-h">All details</summary>
-          <Row label="Meeting name" value={rec.name}/>
-          <Row label="Status" value={rec.status}/>
-          <Row label="Stage" value={rec.stage}/>
-          <Row label="Business Unit" value={dvBu(rec.businessUnitId)}/>
-          <Row label="Region" value={dvRegion(rec.regionId)}/>
-          <Row label="Department" value={dvDept(rec.departmentId)}/>
-          <Row label="Setup" value={dvTpl(rec.templateId)
-            ||(rec.templateId?'(not in the loaded list)':(rec.adhocType?'Ad Hoc — '+rec.adhocType:'Custom Ad Hoc'))}/>
-          <Row label="Setup Type" value={tplSetupType||(rec.templateId?null:'Ad Hoc')}/>
-          <Row label="Classification" value={tplCategory}/>
-          <Row label="Cadence" value={cadence}/>
-          <Row label="TOR or Policy Reference" value={rec.torLink
-            ? rec.torLink
-            : 'None on this occurrence — TOR questions are Not Applicable'}/>
-          <Row label="Quorum Threshold" value={tpl
-            ? (tpl.quorumPct!=null?tpl.quorumPct+'%':'Not configured')
-            : null}/>
-          <Row label="Ad Hoc Type" value={rec.adhocType}/>
-          <Row label="Date" value={rec.date?fmtD(rec.date):null}/>
-          <Row label="Time" value={[rec.start,rec.end].filter(Boolean).join(' – ')||null}/>
-          <Row label="Time zone" value={rec.timezone}/>
-          <Row label="Mode" value={rec.mode}/>
-          <Row label="Location" value={rec.location}/>
-          <Row label="Online link" value={rec.link}/>
-          <Row label="Teams channel" value={rec.teamChannelId
-            ? (channel
-                ? (channel.link
-                    ? <a href={channel.link} target="_blank" rel="noopener noreferrer">{channelLabel(channel)} ↗</a>
-                    : channelLabel(channel))
-                : 'Reading…')
-            : null}/>
-          <Row label="Invite sent" value={rec.inviteSent?fmtD(rec.inviteSent):null}/>
-          <Row label="Agenda Distributed" value={rec.agendaSent?fmtD(rec.agendaSent):'Not recorded'}/>
-          <Row label="Outlook and Teams" value={rec.sync}/>
-          <Row label="Cancellation reason" value={rec.cancelReason}/>
-        </details>
-
-        <div className="card">
-          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:2}}>
-            <div className="wa-icon gold">👤</div><h2 style={{flex:1}}>Who runs it</h2>
-          </div>
-          <Row label="Meeting Chair" value={posName(rec.chairPositionId)}/>
-          <Row label="Organizer" value={posName(rec.facilitatorPositionId)}/>
-          <Row label="MoM Recorder" value="Not tracked at the occurrence level"/>
-          <div style={{fontSize:12,color:'var(--muted)',marginTop:8}}>
-            The Organizer owns the agenda items and writes up the Minutes.</div>
-        </div>
-
-        <div className="card">
-          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:2}}>
-            <div className="wa-icon green">✓</div><h2 style={{flex:1}}>Where it stands</h2>
-          </div>
-          {[['Agenda Items', rec.agenda.length, null],
-            ['Agenda covered', rec.status==='Held'?`${covered} / ${rec.agenda.length}`:'—',
-              rec.status==='Held'&&covered<rec.agenda.length?'amber':null],
-            ['Attendees', rec.attendees.length, rec.attendees.length?null:'red'],
-            ['Required Attendees', required.length, null],
-            ['Required present', rec.status==='Held'?`${requiredPresent} / ${required.length}`:'—',
-              rec.status==='Held'&&requiredPresent<required.length?'amber':null],
-            ['Present in total', rec.status==='Held'?`${present} / ${rec.attendees.length}`:'—', null],
-          ].map(([label,val,colour])=>
-            <div key={label} style={{display:'flex',alignItems:'center',gap:8,padding:'5px 0',
-                                     borderBottom:'1px solid var(--border)'}}>
-              <div style={{flex:1,fontSize:12.5,color:'var(--ink-2)'}}>{label}</div>
-              <b style={colour?{color:`var(--${colour})`}:null}>{val}</b>
-            </div>)}
-        </div>
 
         {quorum.state!=='none' && <div className="card">
           <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8,flexWrap:'wrap'}}>
@@ -8607,6 +8539,40 @@ function DvMeetingDetail({rec,back}){
               : S.delegatedAttend==='half' ? ' Attendance by a delegate counts as half.'
               : ' Attendance by a delegate counts in full.'}</div>
         </div>}
+
+        {/* Linked Items (04 Oct, screenshot): the meeting's documents -- linked
+            reports, links and the Minutes' Word file -- and the previous
+            meeting's Minutes. Up to four documents; the rest on Documents. */}
+        <section className="card" aria-labelledby="mtgd-links">
+          <h2 id="mtgd-links" className="mtgd-h">Linked Items</h2>
+          {(()=>{
+            const items = (docs||[]).slice(0,4).map(d=>{
+              const occ = d.reportOccurrenceId ? dvReportOccs.find(r=>r.id===d.reportOccurrenceId) : null;
+              const out = d.reportType==='Output';
+              return { key:'d'+d.id, out, title: occ ? occ.name : d.name,
+                sub: out ? 'Output · Minutes (Word)' : occ ? [fmtP(occ.period), RPT_STATUS_WORD(occ.status)].filter(Boolean).join(' · ')
+                  : d.fileUrl ? 'Linked file' : (dvRptTpl(d.reportTemplateId)||'Report Template'),
+                href: !occ && d.fileUrl ? d.fileUrl : null,
+                open: occ ? ()=>openDvRec('Report',occ) : ()=>setTab('docs') };
+            });
+            if(prevOcc) items.push({ key:'prev', prev:true, title:`Previous MOM — ${fmtD(prevOcc.date)}`,
+              sub: prevOcc.name, open: ()=>openMeeting(prevOcc.id,'minutes') });
+            const more = (docs||[]).length - 4;
+            if(!items.length) return <div className="mom-hint" style={{margin:0}}>{docsLoading ? 'Reading linked items…' : 'No document is linked to this meeting yet.'}</div>;
+            return <div className="mtgd-links">
+              {items.map(it=>{
+                const inner = <>
+                  <span className={'mtgd-li-ic '+(it.prev||it.out?'g':'o')} aria-hidden="true">
+                    {it.prev ? <MessageSquare size={13}/> : it.out ? <ClipboardList size={13}/> : <FileText size={13}/>}</span>
+                  <span className="mtgd-li-t"><b>{it.title}</b><span>{it.sub}</span></span></>;
+                return it.href
+                  ? <a key={it.key} className="mtgd-li" href={it.href} target="_blank" rel="noreferrer">{inner}</a>
+                  : <button key={it.key} type="button" className="mtgd-li" onClick={it.open}>{inner}</button>;
+              })}
+              {more>0 && <button type="button" className="mtgd-more" onClick={()=>setTab('docs')}>+{more} more on Documents →</button>}
+            </div>;
+          })()}
+        </section>
 
         {(prevOcc || carriedIn.length>0) && <div className="card">
           <h2>Carried forward</h2>
@@ -8672,6 +8638,77 @@ function DvMeetingDetail({rec,back}){
             </div>
           </div>
         </div>
+
+        <details className="card mtgd-all">
+          <summary className="mtgd-h">All details</summary>
+          <Row label="Meeting name" value={rec.name}/>
+          <Row label="Status" value={rec.status}/>
+          <Row label="Stage" value={rec.stage}/>
+          <Row label="Business Unit" value={dvBu(rec.businessUnitId)}/>
+          <Row label="Region" value={dvRegion(rec.regionId)}/>
+          <Row label="Department" value={dvDept(rec.departmentId)}/>
+          <Row label="Setup" value={dvTpl(rec.templateId)
+            ||(rec.templateId?'(not in the loaded list)':(rec.adhocType?'Ad Hoc — '+rec.adhocType:'Custom Ad Hoc'))}/>
+          <Row label="Setup Type" value={tplSetupType||(rec.templateId?null:'Ad Hoc')}/>
+          <Row label="Classification" value={tplCategory}/>
+          <Row label="Cadence" value={cadence}/>
+          <Row label="TOR or Policy Reference" value={rec.torLink
+            ? rec.torLink
+            : 'None on this occurrence — TOR questions are Not Applicable'}/>
+          <Row label="Quorum Threshold" value={tpl
+            ? (tpl.quorumPct!=null?tpl.quorumPct+'%':'Not configured')
+            : null}/>
+          <Row label="Ad Hoc Type" value={rec.adhocType}/>
+          <Row label="Date" value={rec.date?fmtD(rec.date):null}/>
+          <Row label="Time" value={[rec.start,rec.end].filter(Boolean).join(' – ')||null}/>
+          <Row label="Time zone" value={rec.timezone}/>
+          <Row label="Mode" value={rec.mode}/>
+          <Row label="Location" value={rec.location}/>
+          <Row label="Online link" value={rec.link}/>
+          <Row label="Teams channel" value={rec.teamChannelId
+            ? (channel
+                ? (channel.link
+                    ? <a href={channel.link} target="_blank" rel="noopener noreferrer">{channelLabel(channel)} ↗</a>
+                    : channelLabel(channel))
+                : 'Reading…')
+            : null}/>
+          <Row label="Invite sent" value={rec.inviteSent?fmtD(rec.inviteSent):null}/>
+          <Row label="Agenda Distributed" value={rec.agendaSent?fmtD(rec.agendaSent):'Not recorded'}/>
+          <Row label="Outlook and Teams" value={rec.sync}/>
+          <Row label="Cancellation reason" value={rec.cancelReason}/>
+
+
+        <div className="mtgd-all-sub">
+          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:2}}>
+            <div className="wa-icon gold">👤</div><h2 style={{flex:1}}>Who runs it</h2>
+          </div>
+          <Row label="Meeting Chair" value={posName(rec.chairPositionId)}/>
+          <Row label="Organizer" value={posName(rec.facilitatorPositionId)}/>
+          <Row label="MoM Recorder" value="Not tracked at the occurrence level"/>
+          <div style={{fontSize:12,color:'var(--muted)',marginTop:8}}>
+            The Organizer owns the agenda items and writes up the Minutes.</div>
+        </div>
+
+        <div className="mtgd-all-sub">
+          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:2}}>
+            <div className="wa-icon green">✓</div><h2 style={{flex:1}}>Where it stands</h2>
+          </div>
+          {[['Agenda Items', rec.agenda.length, null],
+            ['Agenda covered', rec.status==='Held'?`${covered} / ${rec.agenda.length}`:'—',
+              rec.status==='Held'&&covered<rec.agenda.length?'amber':null],
+            ['Attendees', rec.attendees.length, rec.attendees.length?null:'red'],
+            ['Required Attendees', required.length, null],
+            ['Required present', rec.status==='Held'?`${requiredPresent} / ${required.length}`:'—',
+              rec.status==='Held'&&requiredPresent<required.length?'amber':null],
+            ['Present in total', rec.status==='Held'?`${present} / ${rec.attendees.length}`:'—', null],
+          ].map(([label,val,colour])=>
+            <div key={label} style={{display:'flex',alignItems:'center',gap:8,padding:'5px 0',
+                                     borderBottom:'1px solid var(--border)'}}>
+              <div style={{flex:1,fontSize:12.5,color:'var(--ink-2)'}}>{label}</div>
+              <b style={colour?{color:`var(--${colour})`}:null}>{val}</b>
+            </div>)}
+        </div>
+        </details>
       </div>
     </div>}
 
