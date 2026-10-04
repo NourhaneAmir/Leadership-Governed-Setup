@@ -1052,9 +1052,8 @@ export function NewTaskForm({ subject, onCancel, onDone, toast, link, doneText }
       <textarea value={f.description} rows={4} maxLength={2000}
         placeholder="Describe the task or the context behind it…"
         onChange={e => set({ description: e.target.value })}/></Field>
-    <Field label="Action to be taken">
-      <input type="text" value={f.action} maxLength={850} placeholder="The concrete action expected…"
-        onChange={e => set({ action: e.target.value })}/></Field>
+    {/* "Action to be taken" removed from the dialog (04 Oct, user's ask);
+        f.action stays empty, so the task saves with no action. */}
   </Modal>, document.body);
 }
 

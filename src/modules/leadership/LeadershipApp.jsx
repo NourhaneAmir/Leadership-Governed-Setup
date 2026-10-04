@@ -5645,6 +5645,10 @@ function ScreenMeetings(){
   /* Declared with the other state, ABOVE the early return below — a hook after
      a conditional return is React error #310. */
   const [q,setQ]=useState('');
+  /* Pagination of the meetings table (04 Oct, user's ask) -- the same CsPager
+     as My Workspace's Work Queue. Back to page 1 whenever a filter changes. */
+  const [page,setPage]=useState(1);
+  useEffect(()=>{ setPage(1); },[tab,typeFilter,q]);
 
   const list=dvMeetingOccs;
   const rec=list.find(o=>o.id===sel.mtg);
@@ -5699,6 +5703,11 @@ function ScreenMeetings(){
     dvPos(o.chairPositionId), dvPos(o.facilitatorPositionId),
     o.stage, o.mode, o.status, o.date, o.date?fmtDS(o.date):'',
   ]));
+  const MTG_PAGE = 10;
+  const totalPages = Math.max(1, Math.ceil(rows.length/MTG_PAGE));
+  const curPage = Math.min(page, totalPages);           // a list that shrank under us
+  const pageStart = (curPage-1)*MTG_PAGE;
+  const pageRows = rows.slice(pageStart, pageStart+MTG_PAGE);
 
   const thisWeek = upcoming.filter(o=>o.date>=wk[0] && o.date<=wk[1]).slice(0,5);
 
@@ -5831,7 +5840,7 @@ function ScreenMeetings(){
               : <div className="cs-tbl-wrap"><table className="cs-tbl" style={{minWidth:1000}}>
                   <thead><tr><th>Meeting</th><th>Setup / Type</th><th>Scope</th><th>Date &amp; Time</th><th>Mode</th>
                     <th>Agenda</th><th>Attendees</th><th>Status</th><th><span className="sr-only">Action</span></th></tr></thead>
-                  <tbody>{rows.map(o=>{
+                  <tbody>{pageRows.map(o=>{
                     const scope=dvBu(o.businessUnitId)||dvRegion(o.regionId)||'Group-wide';
                     const covered=o.agenda.filter(a=>a.covered==='Yes').length;
                     const present=o.attendees.filter(a=>a.present==='Present').length;
@@ -5877,6 +5886,9 @@ function ScreenMeetings(){
                           onClick={e=>{ e.stopPropagation(); open(); }}>View</button></td>
                     </tr>;})}
                   </tbody></table></div>}
+        {rows.length>MTG_PAGE && <CsPager page={curPage} pages={totalPages} onPage={setPage}
+          first={pageStart+1} last={Math.min(pageStart+MTG_PAGE, rows.length)} total={rows.length}
+          label="Meetings pages"/>}
       </section>
 
       <div className="cs-side">
@@ -7735,6 +7747,10 @@ function ReportLinkPicker({reports, taken, place, onPick, busy, pickLabel='Link'
    (04 Oct, user's ask). The flow and its code are unchanged: set to true to
    bring the buttons back. */
 const SHOW_ATTACH_OCC = false;
+/* "Link a report" on a Submissions row is hidden too (04 Oct, user's ask):
+   required inputs are submitted as links only for now. Set to true to bring
+   it back; the Documents tab's own linking is unchanged. */
+const SHOW_LINK_REPORT = false;
 
 function DvMeetingDetail({rec,back}){
   const {sel,setSel,toast,refreshOccurrences,openMeeting,S,dvMeetingOccs,dvReportOccs,openDvRec,dvDecisions=[],
@@ -8862,7 +8878,7 @@ function DvMeetingDetail({rec,back}){
                           Attach an occurrence</Btn></> : null}</>
                 : x.tplId
                 ? <>{linkBtn(x)}
-                    {' '}<Btn k="sm" onClick={()=>{ setLinkTplId(x.tplId); setShowAll(false); setTab('docs'); }}>Link a report</Btn></>
+                    {SHOW_LINK_REPORT && <>{' '}<Btn k="sm" onClick={()=>{ setLinkTplId(x.tplId); setShowAll(false); setTab('docs'); }}>Link a report</Btn></>}</>
                 : null}</td>
           </tr>
           {spFor===x.key && <tr className="mtgd-spform"><td colSpan={6}>

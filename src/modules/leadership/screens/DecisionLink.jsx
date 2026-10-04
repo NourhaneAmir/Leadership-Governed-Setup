@@ -15,8 +15,9 @@
    list without a read of its own.
    ========================================================================= */
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { use } from '../store.jsx';
-import { Btn, Tag } from '../../../shared/ui.jsx';
+import { Btn, Tag, Modal, Field } from '../../../shared/ui.jsx';
 import { matchesQuery } from '../domain.jsx';
 import { createWorkLogDecision, linkWorkLogDecision,
          NEW_DECISION_STATUSES } from '../../../services/dataverse.js';
@@ -105,28 +106,41 @@ export function DecisionPanel({ target, canAdd = true }){
 
     {canAdd
       ? <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: linked.length ? 8 : 0 }}>
-          <Btn k="sm" disabled={busy} onClick={() => setMode(m => m === 'new' ? null : 'new')}>
-            {mode === 'new' ? 'Cancel' : '+ Raise a decision'}</Btn>
+          <Btn k="sm" disabled={busy} onClick={() => setMode('new')}>+ Raise a decision</Btn>
           <Btn k="sm" disabled={busy || !dvDecisions.length} onClick={() => setMode(m => m === 'attach' ? null : 'attach')}>
             {mode === 'attach' ? 'Cancel' : 'Attach a decision'}</Btn>
         </div>
       : null}
 
-    {mode === 'new' && <div className="dec-form">
-      <input type="text" value={f.name} maxLength={100} placeholder="Decision title (required)"
-        aria-label="Decision title" onChange={e => setF(x => ({ ...x, name: e.target.value }))}/>
-      <textarea rows={3} value={f.decisionTaken} maxLength={4000} placeholder="What was decided (required)"
-        aria-label="Decision taken" onChange={e => setF(x => ({ ...x, decisionTaken: e.target.value }))}/>
-      <textarea rows={2} value={f.expectedOutput} maxLength={1000} placeholder="Expected output (optional)"
-        aria-label="Expected output" onChange={e => setF(x => ({ ...x, expectedOutput: e.target.value }))}/>
-      <label className="holder" style={{ fontSize: 11.5, display: 'flex', alignItems: 'center', gap: 6 }}>Status
-        <select value={f.status} aria-label="Decision status"
-          onChange={e => setF(x => ({ ...x, status: e.target.value }))}>
-          {NEW_DECISION_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-        </select></label>
-      <div><Btn k="sm pri" disabled={!ok || busy} onClick={raise}>
-        {busy ? 'Saving…' : `Raise it against ${where}`}</Btn></div>
-    </div>}
+    {/* Raise a decision opens a dialog (04 Oct, user's ask), like Raise a task:
+        portalled to <body>, and closing with input in it asks first. */}
+    {mode === 'new' && (() => {
+      const dirty = !!(f.name.trim() || f.decisionTaken.trim() || f.expectedOutput.trim());
+      const close = () => {
+        if (busy) return;
+        if (dirty && !window.confirm('Discard this decision? What you entered will be lost.')) return;
+        setMode(null); setF({ name: '', decisionTaken: '', expectedOutput: '', status: 'Pending' });
+      };
+      return createPortal(<Modal title="Raise a decision" wide onClose={close}
+        sub={target.label ? `Recorded against ${where}: ${target.label}` : `Recorded against ${where}.`}
+        footer={<>
+          <Btn disabled={busy} onClick={close}>Cancel</Btn>
+          <Btn k="pri" disabled={!ok || busy} onClick={raise}>{busy ? 'Saving…' : 'Raise decision'}</Btn></>}>
+        <Field label="Decision title" req hint="Max 100 characters.">
+          <input type="text" value={f.name} maxLength={100} autoFocus placeholder="A short name for the decision"
+            onChange={e => setF(x => ({ ...x, name: e.target.value }))}/></Field>
+        <Field label="What was decided" req>
+          <textarea rows={4} value={f.decisionTaken} maxLength={4000} placeholder="The decision, as it was agreed…"
+            onChange={e => setF(x => ({ ...x, decisionTaken: e.target.value }))}/></Field>
+        <Field label="Expected output">
+          <textarea rows={2} value={f.expectedOutput} maxLength={1000} placeholder="What should come out of it (optional)"
+            onChange={e => setF(x => ({ ...x, expectedOutput: e.target.value }))}/></Field>
+        <Field label="Status">
+          <select value={f.status} onChange={e => setF(x => ({ ...x, status: e.target.value }))}>
+            {NEW_DECISION_STATUSES.map(st => <option key={st} value={st}>{st}</option>)}
+          </select></Field>
+      </Modal>, document.body);
+    })()}
 
     {mode === 'attach' && <div className="dec-form">
       <input type="search" value={q} placeholder="Search decisions, work logs…" aria-label="Search decisions"
