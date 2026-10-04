@@ -46,7 +46,7 @@ import { fetchMeetingOccurrences, fetchReportOccurrences, createMeetingOccurrenc
          TEMPLATE_STATUS_LABEL,
          fetchMeetingMinutes, fetchMeetingMinutesByOccurrence, fetchAuditGridInstancesByOccurrence,
          fetchAuditGridInstances,
-         fetchWorkLogDecisions, createWorkLogDecision, linkWorkLogDecision, fetchReportSectionsByIds,
+         fetchWorkLogDecisions, createWorkLogDecision, linkWorkLogDecision, NEW_DECISION_STATUSES, fetchReportSectionsByIds,
          fetchReportOccurrenceForEdit,
          fetchAuthorityMatrix, createMeetingMinutes, saveMomNote, updateAgendaCovered,
          setAgendaItemConfidential, saveAgendaItemViewers,
@@ -11994,6 +11994,7 @@ function WorkLogDecisionModal({onClose, decision}){
   const {toast,refreshOccurrences,dvReportOccs,dvMeetingOccs}=use();
   const linkOnly = !!decision;
   const [f,setF]=useState({name:'',decisionTaken:'',expectedOutput:'',managerNote:'',evidenceUrl:'',
+    status:'Pending',
     where: decision?.agendaItemId ? 'meeting' : decision?.sectionId ? 'report' : (linkOnly?'report':'none'),
     reportId:'', sectionId:'', meetingId:'', agendaItemId:''});
   const [saving,setSaving]=useState(false);
@@ -12028,6 +12029,7 @@ function WorkLogDecisionModal({onClose, decision}){
             expectedOutput:f.expectedOutput.trim()||undefined,
             managerNote:f.managerNote.trim()||undefined,
             evidenceUrl:f.evidenceUrl.trim()||undefined,
+            status:f.status,
             ...target,
           });
       if(!id){
@@ -12059,6 +12061,8 @@ function WorkLogDecisionModal({onClose, decision}){
         <textarea rows={3} value={f.decisionTaken} onChange={e=>set('decisionTaken',e.target.value)} maxLength={4000}/></Field>
       <Field label="Expected Output">
         <textarea rows={2} value={f.expectedOutput} onChange={e=>set('expectedOutput',e.target.value)} maxLength={1000}/></Field>
+      <Field label="Status" hint="Saved on the Decision. Escalate it later from the Work Log if it needs escalating.">
+        <Pills opts={NEW_DECISION_STATUSES} val={f.status} onChange={v=>set('status',v||'Pending')}/></Field>
     </>}
 
     <Field label="Where was it taken?">

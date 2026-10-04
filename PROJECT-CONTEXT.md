@@ -9357,6 +9357,33 @@ for Input reports; step 12's real duplicate guard, roles from the Setup row,
 and Setup-level attendees; plus a "still matches" table and extra test runs.
 IT was not checked (the flow runs in DT New).
 
+### 04 Oct: a new decision saves its status (Leadership only)
+
+Per an explicit ask, with a screenshot: decisions raised in the app showed
+Status "—" in the register, beside older rows reading Pending.
+`createWorkLogDecision()` never wrote `wlog_decisionstatus`, and the option
+set has no default.
+
+- **Values** (`pac modelbuilder build`, IT and DT New identical): global choice
+  `cr18c_wlog_decision_wlog_decisionstatus`, Completed 1, Pending 2, Waiting 3,
+  Escalated 4. Exported as `DECISION_STATUS_KEY`. `NEW_DECISION_STATUSES` is
+  Pending, Waiting and Completed.
+- **Save:** `createWorkLogDecision({…, status})` always writes the status,
+  **Pending** when none is passed.
+- **Forms:** both creation points get a **Status** pick, defaulting to Pending:
+  - the Decisions screen's **Log a Decision** (`WorkLogDecisionModal`), as Pills;
+  - the **+ Raise a decision** panel on report sections and Minutes agenda
+    items (`DecisionLink.jsx`), as a select.
+- **Escalated** is not offered at creation. Escalating has its own fields
+  (escalated to, reason).
+- Rows already saved without a status are not back-filled.
+- `NEW_DECISION_STATUSES` is imported on a line `4ca0036` never touched, so the
+  deploy-time revert keeps it.
+- ⚠️ A parallel session overwrote `dataverse.js` mid-change once (its commit
+  `ee6c875`). The edit was re-applied before this commit.
+- Checks: both apps build; lint 56, unchanged; `no-undef` clean; the bundle
+  writes `wlog_decisionstatus`. Not browser-checked, not pushed.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap

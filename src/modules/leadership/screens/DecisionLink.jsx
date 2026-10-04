@@ -18,7 +18,8 @@ import React, { useState } from 'react';
 import { use } from '../store.jsx';
 import { Btn, Tag } from '../../../shared/ui.jsx';
 import { matchesQuery } from '../domain.jsx';
-import { createWorkLogDecision, linkWorkLogDecision } from '../../../services/dataverse.js';
+import { createWorkLogDecision, linkWorkLogDecision,
+         NEW_DECISION_STATUSES } from '../../../services/dataverse.js';
 
 const decisionTagC = s => s === 'Completed' ? 'green' : s === 'Escalated' ? 'amber' : 'grey';
 
@@ -27,7 +28,7 @@ const decisionTagC = s => s === 'Completed' ? 'green' : s === 'Escalated' ? 'amb
 export function DecisionPanel({ target, canAdd = true }){
   const { dvDecisions = [], toast, refreshOccurrences } = use();
   const [mode, setMode] = useState(null);          // 'new' | 'attach' | null
-  const [f, setF] = useState({ name: '', decisionTaken: '', expectedOutput: '' });
+  const [f, setF] = useState({ name: '', decisionTaken: '', expectedOutput: '', status: 'Pending' });
   const [q, setQ] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -38,7 +39,7 @@ export function DecisionPanel({ target, canAdd = true }){
 
   const done = async (title, msg) => {
     toast(title, msg, 'ok');
-    setMode(null); setF({ name: '', decisionTaken: '', expectedOutput: '' }); setQ('');
+    setMode(null); setF({ name: '', decisionTaken: '', expectedOutput: '', status: 'Pending' }); setQ('');
     await refreshOccurrences();
   };
 
@@ -48,6 +49,7 @@ export function DecisionPanel({ target, canAdd = true }){
       const { id, errors } = await createWorkLogDecision({
         name: f.name.trim(), decisionTaken: f.decisionTaken.trim(),
         expectedOutput: f.expectedOutput.trim() || undefined,
+        status: f.status,
         [linkKey]: target.id,
       });
       if (!id) {
@@ -117,6 +119,11 @@ export function DecisionPanel({ target, canAdd = true }){
         aria-label="Decision taken" onChange={e => setF(x => ({ ...x, decisionTaken: e.target.value }))}/>
       <textarea rows={2} value={f.expectedOutput} maxLength={1000} placeholder="Expected output (optional)"
         aria-label="Expected output" onChange={e => setF(x => ({ ...x, expectedOutput: e.target.value }))}/>
+      <label className="holder" style={{ fontSize: 11.5, display: 'flex', alignItems: 'center', gap: 6 }}>Status
+        <select value={f.status} aria-label="Decision status"
+          onChange={e => setF(x => ({ ...x, status: e.target.value }))}>
+          {NEW_DECISION_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+        </select></label>
       <div><Btn k="sm pri" disabled={!ok || busy} onClick={raise}>
         {busy ? 'Saving…' : `Raise it against ${where}`}</Btn></div>
     </div>}

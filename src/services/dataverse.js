@@ -6511,14 +6511,24 @@ const decisionLinkBinds = ({ sectionId, agendaItemId } = {}) => {
   return b;
 };
 
+/* wlog_decisionstatus (global choice cr18c_wlog_decision_wlog_decisionstatus),
+   the same codes in IT and DT New (pac modelbuilder, 04 Oct). A new decision
+   always gets one -- it used to be created with none (the option set has no
+   default), which the register showed as "—" beside older rows reading
+   Pending. Escalated (4) is not offered at creation: escalating has its own
+   fields (escalated to, reason). */
+export const DECISION_STATUS_KEY = { 'Completed':1, 'Pending':2, 'Waiting':3, 'Escalated':4 };
+export const NEW_DECISION_STATUSES = ['Pending', 'Waiting', 'Completed'];
+
 /** Logs a new Work Log Decision, optionally where it was taken -- a report
- *  section and/or a meeting agenda item. No status is set on create (the
- *  option set's own default applies). */
+ *  section and/or a meeting agenda item, with a status (Pending when none is
+ *  given). */
 export async function createWorkLogDecision({ name, decisionTaken, expectedOutput, managerNote, evidenceUrl,
-                                              sectionId, agendaItemId } = {}){
+                                              sectionId, agendaItemId, status } = {}){
   try{
     const created = await Wlog_decisionsService.create({
       wlog_name: (name||'').trim().slice(0,100) || undefined,
+      wlog_decisionstatus: DECISION_STATUS_KEY[status] ?? DECISION_STATUS_KEY.Pending,
       wlog_decisiontaken: decisionTaken ? decisionTaken.slice(0,4000) : undefined,
       wlog_expectedoutput: expectedOutput ? expectedOutput.slice(0,1000) : undefined,
       wlog_managernote: managerNote ? managerNote.slice(0,2000) : undefined,
