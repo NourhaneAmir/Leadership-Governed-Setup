@@ -9384,6 +9384,33 @@ set has no default.
 - Checks: both apps build; lint 56, unchanged; `no-undef` clean; the bundle
   writes `wlog_decisionstatus`. Not browser-checked, not pushed.
 
+### 04 Oct: "Attach a task" on a Minutes agenda item (Leadership only)
+
+Per an explicit ask. Each agenda item's task panel (`AgendaTaskPanel`) had only
+**+ Raise a task**. It now also has **Attach a task**, the Task counterpart of
+`DecisionPanel`'s "Attach a decision".
+
+- **Search** (`searchTasks(text)`, `dataverse.js`): runs on the server, by
+  `contains()` on `hx_tasktitle` or `hx_taskcode`, active Tasks only, newest
+  first. It starts at 3 characters, 350 ms after typing stops. The list caps at
+  50 with a "type more" note. `hx_tasks` is too large to list in the browser
+  (44k+ in IT). Each result shows status, assignee, due date, and whether it is
+  already on another agenda item or meeting.
+- **Attach** (`linkTaskToMeeting(taskId, {meetingOccurrenceId, agendaItemId})`):
+  PATCHes the Task's `lm_MeetingOccurrence` and `lm_MeetingOccurrenceAgendaItem`,
+  the same two lookups `createTask()` binds. A Task holds one of each, so one
+  attached elsewhere **moves**, after a confirm. The panel then re-reads its
+  tasks, so the Actions tab picks it up too.
+- **Environment:** both lookups exist on `hx_tasks` in **DT New only**, which
+  both Leadership apps read since 01 Oct. In IT the panel already says tasks
+  cannot be linked there (`fetchTasksForMeeting` returns null), so no button
+  shows.
+- `searchTasks` / `linkTaskToMeeting` are imported in **their own import
+  statement**, which `4ca0036` never touches, so the deploy-time revert keeps
+  them.
+- Checks: both apps build; lint 56, unchanged; `no-undef` clean. Not
+  browser-checked, not pushed.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap

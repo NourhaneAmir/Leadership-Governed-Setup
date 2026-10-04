@@ -2675,6 +2675,43 @@ export async function createTask(t){
   }
 }
 
+/** Existing Tasks to attach to a meeting agenda item (04 Oct), found on the
+ *  SERVER by title or task code -- hx_tasks is far too large to list in the
+ *  browser (44k+ rows in IT). Active Tasks only, newest first; the caller asks
+ *  only once at least 3 characters are typed. Carries the current meeting
+ *  links so the picker can say when attaching would move a Task.
+ *  -> { rows: task[], more: boolean } -- `more` when over `limit` matched. */
+export async function searchTasks(text, limit = 50){
+  const q = String(text || '').trim();
+  if(q.length < 3) return { rows: [], more: false };
+  const lit = q.replace(/'/g, "''");
+  const res = await Hx_taskesService.getAll({
+    filter: `statecode eq 0 and (contains(hx_tasktitle,'${lit}') or contains(hx_taskcode,'${lit}'))`,
+    select: [...TASK_FULL_SELECT, '_lm_meetingoccurrence_value', '_lm_meetingoccurrenceagendaitem_value'],
+    orderBy: 'createdon desc',
+  });
+  assertSuccess(res);
+  const all = (res.data ?? []).map(taskFromRow);
+  return { rows: all.slice(0, limit), more: all.length > limit };
+}
+
+/** Attaches an EXISTING Task to a meeting and one of its agenda items -- the
+ *  same two lookups createTask() binds when a Task is raised from the Minutes
+ *  (DT New only; IT lacks both). Each lookup holds one target, so a Task
+ *  already attached elsewhere moves here; the caller says so first. */
+export async function linkTaskToMeeting(taskId, { meetingOccurrenceId, agendaItemId } = {}){
+  if(!taskId || !meetingOccurrenceId)
+    return { id: null, errors: [{ table:'hx_taskses', error: new Error('a task and a meeting are both required') }] };
+  const patch = { 'lm_MeetingOccurrence@odata.bind': `/lm_meetingoccurrences(${meetingOccurrenceId})` };
+  if(agendaItemId) patch['lm_MeetingOccurrenceAgendaItem@odata.bind'] = `/lm_meetingoccurrenceagendas(${agendaItemId})`;
+  try{
+    assertSuccess(await Hx_taskesService.update(taskId, patch));
+    return { id: taskId, errors: [] };
+  }catch(e){
+    return { id: null, errors: [{ table:'hx_taskses', error:e }] };
+  }
+}
+
 const MEETING_STAGE_KEY = {
   'Stage 1 BU Operational':1, 'Stage 2 Regional Functional':2,
   'Stage 3 Group Functional':3, 'Stage 4 Top Management, COO & CEO':4,

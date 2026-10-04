@@ -14,6 +14,11 @@ import { ymd, TODAY, PERIOD, HOLIDAYS, isNonWorking, isWeekend,
          band, scoreColour, pctColour } from '../../shared/format.js';
 import { Ctx, use } from './store.jsx';
 import { exportMinutesDocx } from '../../services/minutesExport.js';
+/* Attach an existing Task to a Minutes agenda item (04 Oct). Its own import
+   statement on purpose: the deploy-time revert of 4ca0036 rewrites the big
+   dataverse.js import above, and a name added there can silently vanish
+   (the 03 Oct "fetchTeamsChannels is not defined" crash). */
+import { searchTasks, linkTaskToMeeting } from '../../services/dataverse.js';
 /* The Artifact screens live in their own files — see screens/README-less
    note in domain.jsx for why the domain had to move first. */
 import { ScreenBI } from './screens/BusinessIntelligence.jsx';
@@ -6348,9 +6353,70 @@ const fmtISODT = s => { if(!s) return '—';
    column exists) -- then the panel says so instead of offering a button that
    would fail. */
 const TASK_DONE = new Set(['Closed','Completed','Cancelled','Rejected']);
+/* "Attach a task" (04 Oct): links an EXISTING Task to this agenda item, the
+   Task counterpart of DecisionPanel's "Attach a decision". Searched on the
+   server by title or code (searchTasks), then linkTaskToMeeting() sets the
+   Task's meeting and agenda-item lookups. A Task holds one of each, so one
+   already attached elsewhere moves here, and the picker says so first. */
+function AttachTaskPicker({rec,item,onAttached,onCancel}){
+  const {toast}=use();
+  const [q,setQ]=useState('');
+  const [res,setRes]=useState(null);       // null = not searched; {rows,more} | {error}
+  const [busy,setBusy]=useState(false);
+  useEffect(()=>{
+    const text=q.trim();
+    if(text.length<3){ setRes(null); return; }
+    let live=true;
+    const t=setTimeout(()=>{
+      searchTasks(text)
+        .then(r=>{ if(live) setRes(r); })
+        .catch(e=>{ console.warn('[dataverse] searchTasks() failed:', e); if(live) setRes({error:true}); });
+    }, 350);
+    return ()=>{ live=false; clearTimeout(t); };
+  },[q]);
+  const attach=async t=>{
+    const elsewhere = t.agendaItemId && t.agendaItemId!==item.id;
+    if(elsewhere && !window.confirm(`“${t.name}” is already attached to another agenda item. A task holds one — move it here?`)) return;
+    setBusy(true);
+    try{
+      const {id,errors}=await linkTaskToMeeting(t.id,{meetingOccurrenceId:rec.id, agendaItemId:item.id});
+      if(!id){ console.warn('[dataverse] linkTaskToMeeting() failed:', errors);
+               toast('Not attached','Attaching the task failed. Check the console for details.','err'); return; }
+      toast('Task attached',`“${t.name}” is now on this agenda item.`,'ok');
+      onAttached();
+    }finally{ setBusy(false); }
+  };
+  const rows=(res?.rows||[]).filter(t=>t.agendaItemId!==item.id);
+  return <div className="dec-form">
+    <input type="search" value={q} autoFocus placeholder="Search tasks by title or code (3+ characters)…"
+      aria-label="Search tasks" onChange={e=>setQ(e.target.value)}/>
+    <div className="dec-pick">
+      {q.trim().length<3 ? <div className="holder" style={{padding:8}}>Type at least 3 characters of a task’s title or code.</div>
+       : res===null ? <div className="holder" style={{padding:8}}>Searching…</div>
+       : res.error ? <div className="holder" style={{padding:8}}>The task search failed. Check the console for details.</div>
+       : rows.length===0 ? <div className="holder" style={{padding:8}}>No active task matches.</div>
+       : rows.map(t=><div key={t.id} className="dec-pick-row">
+           <span style={{flex:1,minWidth:0}}>
+             <div style={{fontSize:12.5,fontWeight:600}}>{t.name}{t.code?<span className="t-sub" style={{fontWeight:400}}> · {t.code}</span>:null}</div>
+             <div className="holder" style={{fontSize:11}}>
+               {[t.status||'New', t.assigneeName?'Assigned to '+t.assigneeName:'Unassigned',
+                 t.due?'Due '+fmtDS(t.due):null,
+                 t.agendaItemId ? 'on another agenda item — attaching moves it'
+                   : t.meetingId ? 'on another meeting — attaching moves it' : null]
+                 .filter(Boolean).join(' · ')}</div>
+           </span>
+           <Btn k="sm" disabled={busy} onClick={()=>attach(t)}>Attach</Btn>
+         </div>)}
+    </div>
+    {res?.more ? <div className="holder" style={{fontSize:11}}>Showing the newest 50 — type more to narrow.</div> : null}
+    <div><Btn k="sm" disabled={busy} onClick={onCancel}>Cancel</Btn></div>
+  </div>;
+}
+
 function AgendaTaskPanel({rec,item,tasks,canAdd,onRaised}){
   const {toast}=use();
   const [open,setOpen]=useState(false);
+  const [attaching,setAttaching]=useState(false);
   if(tasks===undefined) return null;
   const mine=(tasks||[]).filter(t=>t.agendaItemId===item.id);
   if(tasks===null) return canAdd
@@ -6378,7 +6444,12 @@ function AgendaTaskPanel({rec,item,tasks,canAdd,onRaised}){
         </div>;})}
     </div>}
     {canAdd && <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:mine.length?8:0}}>
-      <Btn k="sm" onClick={()=>setOpen(true)}>+ Raise a task</Btn></div>}
+      <Btn k="sm" onClick={()=>{ setAttaching(false); setOpen(true); }}>+ Raise a task</Btn>
+      <Btn k="sm" onClick={()=>{ setOpen(false); setAttaching(a=>!a); }}>
+        {attaching?'Cancel':'Attach a task'}</Btn></div>}
+    {attaching && <AttachTaskPicker rec={rec} item={item}
+        onCancel={()=>setAttaching(false)}
+        onAttached={()=>{ setAttaching(false); if(onRaised) onRaised(); }}/>}
     {open && <NewTaskForm subject={`${rec.name} — ${item.title||'agenda item'}`}
         link={{meetingOccurrenceId:rec.id, agendaItemId:item.id}}
         doneText="Task raised on this agenda item."
