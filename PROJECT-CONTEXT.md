@@ -10003,6 +10003,24 @@ far from where the form is finished.
   56 with the parallel session's commits); `no-undef` clean. Not
   browser-checked, not pushed.
 
+### 05 Oct: Schedule Meeting — the Agenda shown as required (Leadership only)
+
+Per an explicit ask ("in the custom adhoc creation make the agenda items at
+least one mandatory"). **The rule already existed** for every meeting, Custom
+included: `ok` needs `agenda.length + carryNow.length > 0`, and the "Still
+needed" list says "at least one agenda item". What was missing was showing it.
+
+- The Agenda card heading gets the red **\*** the required fields use
+  (inline-coloured; `.req` is styled only inside form labels).
+- While there is no item, a red line under the list reads "Add at least one
+  agenda item — the meeting can't be scheduled without one." It has
+  `role="alert"`, the same style as the missing-owner line.
+- The first agenda input has `aria-required`.
+- Applies to Setup-based meetings too, since the rule is the same for every
+  meeting. A Setup's items normally pre-fill, so it rarely shows there.
+- Checks: both apps build; lint 55, same as HEAD; `no-undef` clean. Not
+  browser-checked, not pushed.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap

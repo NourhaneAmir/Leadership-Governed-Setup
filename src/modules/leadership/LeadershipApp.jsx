@@ -11144,7 +11144,11 @@ function ScreenNewMeeting(){
           {/* ---- Agenda ---- */}
           <section className="cs-card cs-mtg-form" aria-labelledby="nm-agenda">
             <div className="cs-card-top" style={{marginBottom:10}}>
-              <h2 className="cs-card-title" id="nm-agenda">Agenda</h2>
+              {/* Required for every meeting, Custom included (the `ok` rule:
+                  agenda.length + carryNow.length > 0). Marked like a required
+                  field since 05 Oct, user's ask. */}
+              <h2 className="cs-card-title" id="nm-agenda">Agenda
+                <span className="req" aria-label="required" style={{color:'var(--cs-danger)',marginLeft:3}}>*</span></h2>
               {!custom ? <span className="cs-type adhoc">From Setup</span> : null}
             </div>
             <p className="cs-card-note" style={{marginBottom:10}}>{custom
@@ -11171,6 +11175,7 @@ function ScreenNewMeeting(){
                 return <div key={i} className={'cs-agenda-row'+(needsOwner?' no-owner':'')}>
                   <span className="cs-agenda-n">{i+1}.</span>
                   <input type="text" value={a} placeholder={'Agenda Item '+(i+1)} aria-label={'Agenda Item '+(i+1)}
+                    aria-required={i===0 ? 'true' : undefined}
                     onChange={e=>setAgendaLine(i,{title:e.target.value})}/>
                   {/* Every agenda item must have an owner (05 Oct). */}
                   <div className="cs-agenda-owner" aria-label={'Owner of Agenda Item '+(i+1)}>
@@ -11184,6 +11189,9 @@ function ScreenNewMeeting(){
                     : null}
                 </div>;})}
             </div>
+            {agenda.length+carryNow.length===0 && <p className="cs-card-note" role="alert"
+                style={{marginTop:6,color:'var(--cs-danger)'}}>
+              Add at least one agenda item — the meeting can’t be scheduled without one.</p>}
             {agendaNoOwner>0 && <p className="cs-card-note" style={{marginTop:6,color:'var(--cs-danger)'}}>
               Every agenda item needs an owner — {agendaNoOwner} still {agendaNoOwner===1?'has':'have'} none.</p>}
             <button type="button" className="cs-btn" style={{marginTop:8}} onClick={addAgendaLine}>
