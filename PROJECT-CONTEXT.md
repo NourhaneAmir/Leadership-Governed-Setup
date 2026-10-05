@@ -9698,6 +9698,99 @@ of the meeting.
   - **Not posted for real** (needs the live app and Teams). Not committed,
     not pushed.
 
+### 05 Oct: an optional TOR / Policy link on Custom and ad hoc meetings (Leadership only)
+
+Per an explicit ask. The Schedule Meeting page's **Meeting Details** gains a
+**TOR / Policy link** field (after Ad Hoc Type). It is optional for both
+kinds.
+
+- **Ad hoc from a Setup:** pre-filled with the Setup's `lm_torpolicylink`
+  (the hint says so). It can be changed or cleared for this meeting only.
+  Before, the Setup's link was copied silently.
+- **Custom:** blank. Before, a Custom meeting could never have one, so its
+  AG-01 / AG-02 were always a locked Not Applicable (01 Oct rule: TOR
+  questions follow the occurrence's own link).
+- **Saved** as the occurrence's `lm_torpolicylink`
+  (`createMeetingOccurrence`'s existing `torLink`). It is `f.torLink` in
+  `blankForm()`, so the Custom reset clears it, and a Setup change resets it.
+- **Rules when filled:** a full `https://` link of at most **100 characters**
+  (`TOR_LINK_MAX`). The field shows the error and "Still needed" lists
+  it. ⚠️ 100 is the Setup column's documented size (its schema,
+  `Data-Dictionary.md`). The occurrence column is not in the repo's schema
+  files and holds no data in either environment yet, so its size is assumed
+  to match. An overlong value would make Dataverse reject the whole meeting.
+  SharePoint links are often longer: widening both columns (e.g. to 850)
+  and raising `TOR_LINK_MAX` would allow them.
+- Checks: both apps build; lint 55; `no-undef` clean. The rule run in Node (6
+  cases). In the dev server, a Custom meeting shows the optional field and
+  rejects a link without https, with no console errors. Not committed, not
+  pushed.
+
+### 05 Oct: AG-13 scored from the meeting's Tasks, showing their agenda items (Leadership only)
+
+Per an explicit ask, with a screenshot of AG-13 reading Not Applicable "Tasks
+have no link to a meeting yet (PRO-02)". In DT New, which both Leadership apps
+read, Tasks DO link to a meeting and an agenda item (`hx_tasks`
+`lm_MeetingOccurrence` / `lm_MeetingOccurrenceAgendaItem`, 01 Oct), so AG-13
+can now be computed.
+
+- **`liveScoreGrid(…, decisions, tasks)`** takes a 10th argument, the
+  meeting's Tasks from `fetchTasksForMeeting()`: an array; `null` where Tasks
+  cannot link to a meeting (IT); `undefined` while still being read.
+- **AG-13** = Tasks that have an **Execution Owner** (the Task's Assignee)
+  **and a due date**, as a % of all of the meeting's Tasks (on an agenda item
+  or on the meeting), `band()`ed 0–5. The trace reads, for example:
+  "1 of 2 Tasks have an Execution Owner and a due date → 50%. Linked to agenda
+  items: #1 Budget (1); 1 linked to the meeting only. Missing: "Follow up" (no
+  Execution Owner, no due date)."
+  Not Applicable when no Task was raised / attached, in IT, or while reading.
+- **Both callers pass the Tasks**, so they agree:
+  - the meeting's Grid tab (`DvGridBody` gets `tasks={mtgTasks}`, the Actions
+    tab's list);
+  - Committee Scores, which reads the Tasks of each OPEN Grid's meeting once
+    per set of open Grids (`tasksByOcc`).
+- A manual answer given earlier to AG-13 no longer applies once it is computed
+  (`applyManualOverrides` only fills N/A / blank rows), as with AG-10 on
+  29 Sep. Approved / frozen Grids keep their stored scores.
+- ⚠️ **Not changed, though now possible in DT New:** AG-06 and AG-10 still
+  count Decisions only (their traces still say Tasks are not counted, PRO-02),
+  and AG-14 (prior Tasks closed on time) is still Not Applicable.
+- Checks: both apps build; lint 55; `no-undef` clean. The AG-13 block run in
+  Node with `shared/format.js`'s `band` / `pct` on 7 cases (2 of 4 → 50% →
+  1; agenda links and the meeting-only count listed; missing owner / due date
+  named; all complete → 5; none / IT / reading → N/A). Not browser-checked.
+  Not committed, not pushed.
+
+### 05 Oct: quorum is always worked out — 90% default when the Setup sets none (Leadership only)
+
+Per an explicit ask, with a screenshot of AG-08 reading Not Applicable ("No
+quorum threshold is configured for this Committee"): quorum should be
+calculated from the attendees and the required percentage.
+
+- **`QUORUM_DEFAULT_PCT = 90`**, the threshold Governance gives every new
+  Meeting Setup (17 Sep). It applies when the meeting's Setup has no
+  `lm_quorumthreshold`, or the meeting has no Setup (Custom). The occurrence
+  has no quorum column of its own, in either environment (checked).
+- **The same rule in both places**, so they still agree:
+  - `liveQuorum()` (the meeting's Quorum Rules / Quorum Calculation cards)
+    returns `isDefault`, and its text says "the default — no threshold is set
+    on this meeting's Setup";
+  - **AG-08** in `liveScoreGrid()` now always scores 5 / 0 from Required
+    attendance. The trace gives "N of M Required present → X% against a Y%
+    quorum", marked "(default …)" when it is. It is Not Applicable only when
+    the meeting has **no Required Attendee** (0 of 0 is not a missed quorum).
+- **Schedule Meeting's Quorum Rules card** shows the rule for a Custom meeting
+  and for a Setup without a threshold too, saying the default applies.
+- Committee Scores' live coverage follows (same `liveScoreGrid`).
+  Approved / frozen Grids keep their stored scores.
+- ⚠️ Like the 04 Oct default periods, this departs from §2's "governance
+  settings stay null", on the user's explicit ask.
+- Checks: both apps build; lint 55; `no-undef` clean. `liveQuorum` /
+  `quorumLine` run in Node on 5 cases (no Setup → 90% met 9/10; Setup without
+  a threshold → missed 8/10; a Setup's 50% wins; no Required Attendee; not yet
+  Held → pending). Not browser-checked (needs Dataverse). Not committed, not
+  pushed.
+
 ### 05 Oct: Post to Teams — "Data source not found: teams" on the first live try, fixed
 
 Reported from the test app's console:
