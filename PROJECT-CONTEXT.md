@@ -16,10 +16,17 @@
 
 ---
 
-## 0. Current status — read this first (03 Oct 2026)
+## 0. Current status — read this first (updated 06 Oct 2026)
 
 The dated entries in §5 are the history; this section is where things stand.
 Everything below was checked against the repo and IT when written.
+
+**At a glance (06 Oct, end):** all four apps are in step with the branch.
+Leadership main + Leadership (2) run `22f63a0` (minus `4ca0036`), reading
+DT New, all three connections. Governance main + Governance (2) run
+`08594cf`, reading IT. **Open:** the Excel-formula Meeting Template name
+(§5, 05 Oct, waiting on the user); the Meeting Cancelled flow is being built
+by the user from the guide (needs `lm_outlookeventid`).
 
 ### Deployment
 
