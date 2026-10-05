@@ -1750,7 +1750,7 @@ function Side(){
 }
 
 function TopBar(){
-  const {bu,setBu,businessUnits,navOpen,setNavOpen,currentUser} = use();
+  const {navOpen,setNavOpen,currentUser} = use();
   const position=DV_POS_LIST.find(p=>currentUser?.fullName && p.holder &&
     p.holder.toLowerCase()===currentUser.fullName.toLowerCase());
   const userLabel=currentUser?.fullName || P('u0').name;
@@ -1764,13 +1764,9 @@ function TopBar(){
     <span className="tb-scope" title="This demo signs in as one user holding every role, so the whole
       governance cycle can be walked in one sitting. Each record still names its accountable owner.">
       Signed in · full access, every role</span>
-    <div className="tb-f">
-      <label>Business unit</label>
-      <select value={bu} onChange={e=>setBu(e.target.value)}>
-        <option value="ALL">All business units</option>
-        {businessUnits.map(b=><option key={b.id} value={b.id}>{b.name}</option>)}
-      </select>
-    </div>
+    {/* The Business unit filter was removed from the top bar (05 Oct, user's
+        ask). The shared `bu` stays 'ALL', which is what its one reader
+        (Business intelligence) treats as no filter. */}
     <div className="tb-sp"/>
     <span className="tb-scope">{fmtD(TODAY)}</span>
     <button type="button" className="lp-user" title={`${userLabel} · ${userTitle}`}>
@@ -2430,7 +2426,19 @@ function dvMomDueCalItem(o, hours){
    Returned items is gone, not filtered afterwards. It was the only reader of
    reports here, and since every item is tagged screen 'mtg', those report
    items also inflated the Meetings sidebar badge. */
-function dvWorkItems(meetingOccs){
+/* `roleOf(o)` (05 Oct, user's rule) -> {chair, coChair, organizer, attendee}:
+   the Work Queue lists a MEETING item only when the signed-in user is the
+   meeting's Chair, Co-Chair, Organizer (facilitator) or an Attendee (or an
+   attendee's delegate), and a MINUTES item only when they are its Organizer.
+   With no roleOf, every item is listed.
+
+   ⚠️ Co-Chair was excluded when this was first written and added back the
+   same day on the user's say-so, so the four roles here now match
+   isMyMeeting() exactly -- which is what the page header has always claimed
+   ("the ones you chair, co-chair, organize or attend"). Minutes stays
+   Organizer-only: writing up the meeting is one person's job, not the
+   chair's. */
+function dvWorkItems(meetingOccs, roleOf){
   const due=[], review=[], finish=[];
   const mk=(bucket,area,rec,title,sub,action,date,urgent)=>
     bucket.push({area, rid:rec.id, title, sub, action,
@@ -2438,17 +2446,21 @@ function dvWorkItems(meetingOccs){
                  tab:null, screen:'mtg', _dv:true, _rec:rec});
 
   meetingOccs.forEach(o=>{
+    const role = roleOf ? roleOf(o) : {chair:true, coChair:true, organizer:true, attendee:true};
+    const seesMeeting = role.chair || role.coChair || role.organizer || role.attendee;
+    const mkMeeting = (...a) => { if(seesMeeting) mk(...a); };
+    const mkMinutes = (...a) => { if(role.organizer) mk(...a); };
     const when=[o.date?fmtD(o.date):null, o.start].filter(Boolean).join(' · ');
     const scope=dvBu(o.businessUnitId)||dvRegion(o.regionId);
     const sub=[when, scope].filter(Boolean).join(' · ');
     if(o.status==='Scheduled'){
       if(!o.agenda.length)
-        mk(due,'Meeting',o,o.name,sub,
+        mkMeeting(due,'Meeting',o,o.name,sub,
            'Add at least one Agenda Item — the Meeting cannot proceed without one',o.date,true);
       else if(!o.agendaSent)
-        mk(due,'Meeting',o,o.name,sub,'Distribute the Agenda ahead of the Meeting',o.date,false);
+        mkMeeting(due,'Meeting',o,o.name,sub,'Distribute the Agenda ahead of the Meeting',o.date,false);
       if(!o.attendees.length)
-        mk(due,'Meeting',o,o.name,sub,'No Attendees on this Meeting yet',o.date,true);
+        mkMeeting(due,'Meeting',o,o.name,sub,'No Attendees on this Meeting yet',o.date,true);
       /* Independent of attendee recording -- a Meeting stuck in Scheduled
          past its date needs this regardless of whether none, some, or all
          of its Attendees already have a presence recorded. Was previously
@@ -2456,17 +2468,17 @@ function dvWorkItems(meetingOccs){
          with even one Attendee already marked silently vanished from the
          Work Queue despite still needing to be closed out. */
       if(o.date && o.date<TODAY)
-        mk(finish,'Meeting',o,o.name,sub+' · past its date, still Scheduled',
+        mkMeeting(finish,'Meeting',o,o.name,sub+' · past its date, still Scheduled',
            'Mark the Meeting as Held, or cancel it',o.date,true);
     }
     if(o.status==='Held'){
       const notCovered=o.agenda.filter(a=>!a.covered||a.covered==='Not Yet Recorded').length;
       if(notCovered)
-        mk(finish,'Minutes',o,o.name,sub+' · held',
+        mkMinutes(finish,'Minutes',o,o.name,sub+' · held',
            `Record the outcome of ${notCovered} Agenda Item${notCovered===1?'':'s'}`,o.date,true);
       const noAttendance=o.attendees.filter(a=>!a.present||a.present==='Not Yet Recorded').length;
       if(noAttendance)
-        mk(finish,'Meeting',o,o.name,sub+' · held',
+        mkMeeting(finish,'Meeting',o,o.name,sub+' · held',
            `Record attendance for ${noAttendance} Attendee${noAttendance===1?'':'s'}`,o.date,true);
     }
   });
@@ -3105,10 +3117,21 @@ function App({onSwitch}){
       || (o.attendees||[]).some(a=>mine.has(a.positionId) || mine.has(a.delegatePositionId));
   },[myPosKey]);
   const myMeetingOccs = useMemo(()=>dvMeetingOccs.filter(isMyMeeting),[dvMeetingOccs,isMyMeeting]);
+  /* My role on one meeting, for the Work Queue (05 Oct): see dvWorkItems. */
+  const meetingRoleOf = useCallback(o=>{
+    const mine = new Set(myPosKey ? myPosKey.split(',') : []);
+    return {
+      chair: !!o.chairPositionId && mine.has(o.chairPositionId),
+      coChair: !!o.coChairPositionId && mine.has(o.coChairPositionId),
+      organizer: !!o.facilitatorPositionId && mine.has(o.facilitatorPositionId),
+      attendee: (o.attendees||[]).some(a=>(a.positionId && mine.has(a.positionId))
+                                          || (a.delegatePositionId && mine.has(a.delegatePositionId))),
+    };
+  },[myPosKey]);
   const work = useMemo(()=>{
-    const {due,review,finish}=dvWorkItems(myMeetingOccs);
+    const {due,review,finish}=dvWorkItems(myMeetingOccs, meetingRoleOf);
     return {due,review,finish,all:[...due,...review,...finish]};
-  },[myMeetingOccs,dvTick]);
+  },[myMeetingOccs,meetingRoleOf,dvTick]);
   /* The calendar reads the occurrence tables, plus one derived kind: a MOM
      Due deadline for every Held Meeting whose write-up genuinely still owes
      (no Minutes row, or one that was never submitted) -- the same test

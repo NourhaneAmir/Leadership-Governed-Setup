@@ -9698,6 +9698,50 @@ of the meeting.
   - **Not posted for real** (needs the live app and Teams). Not committed,
     not pushed.
 
+### 05 Oct: My Workspace's Work Queue lists only meetings and Minutes that are the user's (Leadership only)
+
+Per an explicit ask. The Work Queue holds two kinds of items, **Meeting** and
+**Minutes** (`dvWorkItems`), built from "my meetings" (`isMyMeeting`: Chair,
+Co-Chair, Organizer, Attendee or delegate). Now, per item:
+
+- **Meeting items** (add agenda / distribute agenda / no attendees / past its
+  date / record attendance): only when the user is the meeting's **Chair**,
+  **Co-Chair**, **Organizer** (facilitator) or an **Attendee**. A listed
+  attendee's **delegate** counts as attending.
+  ⚠️ **Co-Chair was left out of the first version and added back the same
+  day**, on the user's "include the co chairman too". So the four roles now
+  match `isMyMeeting` exactly, and the ⚠️ below no longer describes a
+  difference.
+- **Minutes items** (record the outcome of agenda items after a held
+  meeting): only when the user is the meeting's **Organizer**.
+- How: `dvWorkItems(meetingOccs, roleOf)` routes each item through
+  `mkMeeting` / `mkMinutes`. The shell's `meetingRoleOf(o)` returns
+  `{chair, coChair, organizer, attendee}` by Position id (the same
+  `myPositionIds` as `isMyMeeting`). With no `roleOf` every item is listed,
+  as before.
+- The sidebar count for My Workspace (`counts.work`) and the Meetings badge
+  follow, since they count the same `work` lists.
+- **Consistent across the page:** the Work Queue, My Workspace's
+  **Upcoming** and **This Month**, the calendar items and the sidebar counts
+  now all treat the same four roles as "my meeting". The page header's
+  "the ones you chair, co-chair, organize or attend" is accurate for the
+  Work Queue as well.
+- Checks: Leadership builds; lint 55; `no-undef` clean. `dvWorkItems` run in
+  Node on 7 cases (organizer → Meeting + Minutes; chair → Meeting only;
+  attendee → Meeting only; delegate counts; **co-chair only → Meeting items,
+  no Minutes** (was "nothing" before the same-day change); scheduled chair →
+  Meeting items; no roleOf → unchanged). Not committed, not pushed.
+
+### 05 Oct: the Business unit filter removed from the top bar (Leadership only)
+
+Per an explicit ask, with a screenshot. `TopBar` no longer renders the
+"Business unit / All business units" select. The shared `bu` state
+(`useState('ALL')`) is kept and stays `'ALL'`. Its only reader is Business
+intelligence (sidebar "Soon" since 01 Oct), whose KPI panel treats `'ALL'` as
+no filter, so no screen is left filtered. Governance's top bar is untouched.
+Leadership builds; lint 55; `no-undef` clean. In the dev server the top bar
+shows no select and there are no console errors. Not committed, not pushed.
+
 ### 05 Oct: retired questions are not shown on the Grid either (Leadership only)
 
 Per an explicit ask, with a screenshot of AG-07 shown struck through as
