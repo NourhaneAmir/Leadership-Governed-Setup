@@ -9698,6 +9698,34 @@ of the meeting.
   - **Not posted for real** (needs the live app and Teams). Not committed,
     not pushed.
 
+### 05 Oct: AG-17 is always calculated — provisional until the Grid is submitted (Leadership only)
+
+Per an explicit ask, with a screenshot of AG-17 reading Not Applicable ("The
+Grid has not been submitted yet") and offering a manual score with a required
+evidence note.
+
+- **Before submission** (Pending Organizer Review / Returned for Revision),
+  `liveScoreGrid` scores AG-17 from the Grid's opening (`createdon`) to
+  **now**, against the Grid submission period (the 48h default unless set):
+  5 on time, 2 up to twice the period, else 0. That is the score the Grid
+  would get if submitted now. The row carries `provisional` and shows an
+  amber **"Provisional · fixed on submission"** tag. Its lock note says it
+  updates live and the submission time fixes it. Being `auto`, it takes no
+  manual answer.
+- **On Submit** (unchanged): `updateAuditGridState(…,'Submitted for
+  Approval')` stamps `lm_submitedat` (DT New), and AG-17 becomes final:
+  "Submitted N hours after the Grid opened". A Return and resubmit is
+  measured to the latest submission.
+- Still Not Applicable: no Grid, no opening time, or submitted with no stamp
+  recorded (older Grids, or IT, which has no `lm_submitedat`).
+- Committee Scores' live coverage counts the provisional AG-17 for open
+  Grids, through the same function.
+- Checks: both apps build; lint 55; `no-undef` clean. The AG-17 block run in
+  Node with the real `hoursBetween` on 6 cases (open 10h → 5, open 70h → 2,
+  returned 120h → 0, all provisional; submitted after 30h → final 5;
+  submitted without a stamp → N/A; no Grid → N/A). Not browser-checked. Not
+  committed, not pushed.
+
 ### 05 Oct: an optional TOR / Policy link on Custom and ad hoc meetings (Leadership only)
 
 Per an explicit ask. The Schedule Meeting page's **Meeting Details** gains a
