@@ -9698,6 +9698,33 @@ of the meeting.
   - **Not posted for real** (needs the live app and Teams). Not committed,
     not pushed.
 
+### 05 Oct: every agenda item on a Custom / ad hoc meeting needs an owner (Leadership only)
+
+Per an explicit ask. On the Schedule Meeting page (`ScreenNewMeeting`, both
+the ad hoc meeting from a Setup and the Custom one), each agenda line now has
+an **Owner** picker. It is the same `PositionSelect` and the same in-scope
+Positions as Chair and Organizer.
+
+- **Required:** the meeting does not save until every typed item has an
+  owner. The row gets a red edge, a note says how many lack one, and "Still
+  needed" lists "an owner for N agenda items".
+- **Before:** every typed item silently took the Organizer (else the Chair)
+  as its owner, and Setup items lost the owner the Setup gave them.
+- **From a Setup:** items now arrive with the Setup's own
+  `_lm_agendaitemowner_value` pre-filled. An item the Setup left ownerless
+  (optional in Governance since 01 Oct) waits for a pick.
+- **Data:** `f.agendaOwners` sits beside `f.agenda` (same index, in
+  `blankForm()`, so the Custom reset clears it). `setAgendaLine` /
+  `addAgendaLine` / `removeAgendaLine` keep the two lists aligned, and
+  `agenda` is now `{title, owner}` rows. Saved as each item's
+  `lm_OwnerPosition`.
+- **Unchanged:** carried-forward items keep the previous item's owner, else
+  the Organizer / Chair. Adding an agenda item later (the meeting's Agenda tab,
+  the Minutes) is not changed here.
+- Checks: both apps build; lint 55; `no-undef` clean. In the dev server a typed
+  item shows the owner picker, the red edge, the note and the "Still needed"
+  entry, with no console errors. Not committed, not pushed.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap
