@@ -10129,6 +10129,29 @@ the Submissions tab's links and **+ Add a submission** are untouched.
 - Checks: both apps build; lint 55, same as HEAD; `no-undef` clean. Not
   browser-checked, not pushed.
 
+### 05 Oct: Meetings list — filter by Stage and by my role (Leadership only)
+
+Per an explicit ask, with a screenshot of Upcoming Meetings.
+
+- Two labelled selects in the type-chip row (`.cs-chip-sel`, new in
+  `leadership-design.css`):
+  - **Stage**: Any, or Stage 1–4, with the 4th labelled Top Management.
+  - **My role**: Any, Any of my roles, Attendee, Chairman, Co-Chairman,
+    Facilitator.
+- **Role** reads the signed-in user's own role through `meetingRoleOf(o)` (from
+  the context). An attendee's delegate counts as an attendee.
+- **Stage** reads the occurrence's `stage`, else its Setup's `stageCode`
+  (`MEETING_OCC_STAGE`), because generator-made rows can lack
+  `lm_meetingstage`.
+- Both filter before the search, so the count, the pager (back to page 1) and
+  the CSV Export all follow. **Reset filters** clears both. Tab badges and the
+  stat cards are unchanged (whole-list figures).
+- ⚠️ The `no-undef` check caught `MEETING_OCC_STAGE` not being imported. It is
+  now in the separate dataverse import (`searchTasks, linkTaskToMeeting`),
+  which `4ca0036` never touches.
+- Checks: both apps build; lint 55, same as HEAD; `no-undef` clean. Not
+  browser-checked, not pushed.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap

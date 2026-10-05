@@ -917,6 +917,16 @@
 .lp-soon-tag svg{ flex:0 0 auto; color:#F6E7CC }
 .nav-i.lp-soon:hover .lp-soon-tag{ background:linear-gradient(180deg, #96713E 0%, #77572D 100%) }
 
+/* ---------- A labelled select that sits in a chip row (05 Oct, Meetings) - */
+.cs-root .cs-chip-sel{ display:inline-flex; align-items:center; gap:6px; height:30px; padding:0 4px 0 11px;
+  border:1px solid var(--cs-border); border-radius:999px; background:#fff; cursor:pointer;
+  transition:border-color .2s var(--cs-ease) }
+.cs-root .cs-chip-sel:hover, .cs-root .cs-chip-sel:focus-within{ border-color:var(--cs-gold) }
+.cs-root .cs-chip-sel > span{ font:600 10px var(--cs-sans); letter-spacing:.06em; text-transform:uppercase;
+  color:var(--cs-muted) }
+.cs-root .cs-chip-sel select{ border:none; background:none; padding:4px 22px 4px 2px; height:28px;
+  font:500 12px var(--cs-sans); color:var(--cs-text); cursor:pointer; outline:none; max-width:210px }
+
 /* ---------- Schedule Meeting: Setup filters (05 Oct) -------------------- */
 .cs-root .cs-tpl-filters{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)) auto; gap:10px 12px;
   align-items:end; margin:10px 0 8px }

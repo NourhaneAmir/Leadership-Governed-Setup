@@ -19,7 +19,7 @@ import { uploadMinutesFile, pathFromUrl } from '../../services/sharepoint.js';
    statement on purpose: the deploy-time revert of 4ca0036 rewrites the big
    dataverse.js import above, and a name added there can silently vanish
    (the 03 Oct "fetchTeamsChannels is not defined" crash). */
-import { searchTasks, linkTaskToMeeting } from '../../services/dataverse.js';
+import { searchTasks, linkTaskToMeeting, MEETING_OCC_STAGE } from '../../services/dataverse.js';
 /* The Artifact screens live in their own files — see screens/README-less
    note in domain.jsx for why the domain had to move first. */
 import { ScreenBI } from './screens/BusinessIntelligence.jsx';
@@ -5759,18 +5759,36 @@ function AttendeeStack({attendees, show=2}){
   </span>;
 }
 
+/* Meetings list filters (05 Oct, user's ask): the meeting's Stage, and the
+   signed-in user's own role on it (meetingRoleOf). An attendee's delegate
+   counts as an attendee, as everywhere else. */
+const MTG_STAGE_FILTERS = [
+  {v:'', label:'Any stage'},
+  {v:'Stage 1 BU Operational', label:'Stage 1 · BU Operational'},
+  {v:'Stage 2 Regional Functional', label:'Stage 2 · Regional Functional'},
+  {v:'Stage 3 Group Functional', label:'Stage 3 · Group Functional'},
+  {v:'Stage 4 Top Management, COO & CEO', label:'Stage 4 · Top Management'},
+];
+const MTG_ROLE_FILTERS = [
+  {v:'', label:'Any role'}, {v:'mine', label:'Any of my roles'},
+  {v:'attendee', label:'Attendee'}, {v:'chair', label:'Chairman'},
+  {v:'coChair', label:'Co-Chairman'}, {v:'organizer', label:'Facilitator'},
+];
+
 function ScreenMeetings(){
-  const {sel,setSel,dvMeetingOccs,dvMinutes,S,dvLoading,dvError,openMeeting,go} = use();
+  const {sel,setSel,dvMeetingOccs,dvMinutes,S,dvLoading,dvError,openMeeting,go,meetingRoleOf} = use();
   const [tab,setTab]=useState('due');
   /* This Week is the default filter, and the first chip (04 Oct, user's ask). */
   const [typeFilter,setTypeFilter]=useState('week');
   /* Declared with the other state, ABOVE the early return below — a hook after
      a conditional return is React error #310. */
   const [q,setQ]=useState('');
+  const [fStage,setFStage]=useState('');
+  const [fRole,setFRole]=useState('');
   /* Pagination of the meetings table (04 Oct, user's ask) -- the same CsPager
      as My Workspace's Work Queue. Back to page 1 whenever a filter changes. */
   const [page,setPage]=useState(1);
-  useEffect(()=>{ setPage(1); },[tab,typeFilter,q]);
+  useEffect(()=>{ setPage(1); },[tab,typeFilter,q,fStage,fRole]);
 
   const list=dvMeetingOccs;
   const rec=list.find(o=>o.id===sel.mtg);
@@ -5813,7 +5831,17 @@ function ScreenMeetings(){
     : typeFilter==='adhoc' ? rows.filter(o=>!o.templateId)
     : typeFilter==='week'  ? rows.filter(o=>o.date>=wk[0] && o.date<=wk[1])
     : rows;
-  const typedRows = applyType((TABS.find(t=>t.id===tab)||TABS[0]).rows);
+  const roleMatch = o => {
+    if(!fRole) return true;
+    const r = meetingRoleOf ? meetingRoleOf(o) : null;
+    if(!r) return false;
+    return fRole==='mine' ? (r.attendee||r.chair||r.coChair||r.organizer) : !!r[fRole];
+  };
+  /* The occurrence's own Stage, else its Setup's -- rows made by the generator
+     flow can carry no lm_meetingstage. */
+  const stageOf = o => o.stage || MEETING_OCC_STAGE[dvTplDetail(o.templateId)?.stageCode] || null;
+  const typedRows = applyType((TABS.find(t=>t.id===tab)||TABS[0]).rows)
+    .filter(o=>(!fStage || stageOf(o)===fStage) && roleMatch(o));
   /* A plain filter, not useMemo: this sits below the early return above, and a
      hook here would reintroduce the same #310.
      Every column the table shows, so a search matches what the reader sees:
@@ -5928,8 +5956,18 @@ function ScreenMeetings(){
         <button key={k} type="button" aria-pressed={typeFilter===k}
           className={'cs-chip'+(typeFilter===k?' on':'')} onClick={()=>setTypeFilter(k)}>
           <Ic size={11} aria-hidden="true"/>{l}</button>)}
+      <label className="cs-chip-sel">
+        <span>Stage</span>
+        <select value={fStage} onChange={e=>setFStage(e.target.value)} aria-label="Filter by stage">
+          {MTG_STAGE_FILTERS.map(o=><option key={o.v} value={o.v}>{o.label}</option>)}</select>
+      </label>
+      <label className="cs-chip-sel">
+        <span>My role</span>
+        <select value={fRole} onChange={e=>setFRole(e.target.value)} aria-label="Filter by my role">
+          {MTG_ROLE_FILTERS.map(o=><option key={o.v} value={o.v}>{o.label}</option>)}</select>
+      </label>
       <button type="button" className="cs-btn cs-chips-end"
-        onClick={()=>{setTab('due');setTypeFilter('week');setQ('');}}>
+        onClick={()=>{setTab('due');setTypeFilter('week');setQ('');setFStage('');setFRole('');}}>
         <RotateCcw size={11}/>Reset filters</button>
     </div>
 
