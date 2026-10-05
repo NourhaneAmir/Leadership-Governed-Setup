@@ -7954,6 +7954,10 @@ const SHOW_ATTACH_OCC = false;
    document by Report Template" card, are hidden too (04 Oct, user's asks):
    inputs are submitted as links only for now. Set to true to bring both back. */
 const SHOW_LINK_REPORT = false;
+/* The Documents tab's "Link a report directly" card (an ad hoc meeting's
+   picker of any Report Occurrence) is hidden too (05 Oct, user's ask). Its
+   code and ReportLinkPicker are unchanged: set to true to bring it back. */
+const SHOW_LINK_REPORT_DIRECT = false;
 
 function DvMeetingDetail({rec,back}){
   const {sel,setSel,toast,refreshOccurrences,openMeeting,S,dvMeetingOccs,dvReportOccs,openDvRec,dvDecisions=[],
@@ -9329,7 +9333,7 @@ function DvMeetingDetail({rec,back}){
           {/* Ad hoc meetings: link any Report Occurrence straight away -- a Draft
               or a Custom report included. It counts on the Submissions tab, and
               becomes submitted there the moment its author submits it. */}
-          {(rec.adhocType || !rec.templateId) && <div className="card">
+          {SHOW_LINK_REPORT_DIRECT && (rec.adhocType || !rec.templateId) && <div className="card">
             <h3 style={{fontSize:13,marginBottom:2}}>Link a report directly</h3>
             <div className="csub" style={{marginBottom:10}}>
               For an ad hoc meeting: any report or plan, whatever its status — a Draft included, and Custom

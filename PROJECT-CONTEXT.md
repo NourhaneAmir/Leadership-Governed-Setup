@@ -10115,6 +10115,20 @@ an input already listed (a linked report or one the Setup names).
 - Checks: both apps build; lint 55, same as HEAD; `no-undef` clean. No new
   import. Not browser-checked, not pushed.
 
+### 05 Oct: "Link a report directly" removed from the meeting's Documents tab (Leadership only)
+
+Per an explicit ask, with a screenshot. The ad hoc meeting's **Link a report
+directly** card (`ReportLinkPicker` over every Report Occurrence) is hidden
+behind a new flag, **`SHOW_LINK_REPORT_DIRECT = false`**, beside
+`SHOW_ATTACH_OCC` / `SHOW_LINK_REPORT`. Its code is unchanged; set the flag to
+true to bring it back. Linked documents already on a meeting still list, and
+the Submissions tab's links and **+ Add a submission** are untouched.
+
+- ⚠️ Not changed: Schedule Meeting's own "Reports for this meeting" picker,
+  the same `ReportLinkPicker`.
+- Checks: both apps build; lint 55, same as HEAD; `no-undef` clean. Not
+  browser-checked, not pushed.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap
