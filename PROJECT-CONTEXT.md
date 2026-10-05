@@ -9951,7 +9951,7 @@ Positions as Chair and Organizer.
 ### 05 Oct: pushed Leadership (2) — the user's Work Queue, and no top-bar BU filter
 
 `72d8c87` minus `4ca0036`, reading DT New, bundle `index-DXMbSUyh.js`, pushed
-to **`d61c6237`** (`C:	mp\cad-exec-test`). **Leadership main `83db0ef8` was
+to **`d61c6237`** (`C:\tmp\cad-exec-test`). **Leadership main `83db0ef8` was
 NOT pushed** — the ask was "build and push the app", which §0 defines as the
 test copies; main needs the user to name it in the same turn.
 
