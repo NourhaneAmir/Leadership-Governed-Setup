@@ -7791,7 +7791,9 @@ function DvGridBody({rec,grid,olderVersions,minutes,quorumPct,torLink,accred,S,p
       {rows.filter(r=>r.locked).map(r=>r.id).join(' and ')} {live.locked===1?'is':'are'} left out of this Grid:
       no TOR or Policy link is set on this meeting.</div>}
     {AG_CATEGORIES.map(cat=>{
-      const catRows = rows.filter(r=>r.q.cat===cat && !r.locked);
+      /* Retired questions (AG-07) are not shown either (05 Oct): they score
+         nothing and are outside every count already. */
+      const catRows = rows.filter(r=>r.q.cat===cat && !r.locked && r.state!=='retired');
       if(!catRows.length) return null;
       const applicable = catRows.filter(r=>r.state!=='na' && r.state!=='retired');
       const notRetired = catRows.filter(r=>r.state!=='retired');
