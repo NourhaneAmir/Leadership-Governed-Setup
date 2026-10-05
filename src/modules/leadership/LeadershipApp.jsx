@@ -6939,7 +6939,11 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
       if(!id){ console.warn('[dataverse] '+key+' failed:', errors);
                toast('Not saved','That step could not be saved. Check the console.','err'); return false; }
       toast(okTitle, okMsg, 'ok');
-      await onReload();
+      /* Both copies (05 Oct, user's ask): this meeting's own Minutes AND the
+         app-wide list (dvMinutes, via refreshOccurrences) that the Meeting
+         Minutes screen, My Workspace and Committee Scores read -- so Submit /
+         Approve / Return / Close show the new status everywhere at once. */
+      await Promise.all([onReload(), refreshOccurrences()]);
       return true;
     }catch(e){
       console.warn('[dataverse] '+key+' threw:', e);
@@ -7002,8 +7006,8 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
         date: ymd(now),
         time: now.toTimeString().slice(0,5),
       });
+      await Promise.all([onReload(), refreshOccurrences()]);   // the signature, everywhere
     }
-    await onReload();
     await saveMinutesDoc('approve', { status:'Approved', approved: fmtISODT(now.toISOString()),
       ...(signs ? { signedBy: signer, signedOn: fmtD(ymd(now)) + ' · ' + now.toTimeString().slice(0,5) } : {}) });
   };
@@ -7035,7 +7039,8 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
       else { console.warn('[dataverse] createAuditGridInstance() failed:', g.errors);
              toast('Grid not created','The Minutes are Closed, but the Audit Grid Instance failed. Check the console.','warn'); }
     }
-    await onReload();
+    /* the new Grid too, for Committee Scores */
+    await Promise.all([onReload(), refreshOccurrences()]);
   };
 
   const stateLabel = closed ? 'Closed' : approved ? 'Approved' : awaitingChair ? 'Submitted — with the Chair'

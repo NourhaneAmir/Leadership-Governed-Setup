@@ -10257,6 +10257,32 @@ run by us — the user builds it; nothing in the apps changed.
 - ⚠️ **Other machine:** its staging folders still need the SharePoint
   reference (`38d50d16…`, data source `documents`) before it pushes again, or
   Minutes → Word in SharePoint breaks there the same way.
+### 05 Oct: Minutes status refreshes everywhere after Submit / Approve (Leadership only)
+
+Per an explicit ask. `DvMinutesBody`'s actions reloaded only the meeting's own
+Minutes (`onReload` = `reloadGovernance`). The app-wide `dvMinutes`, read by
+the Meeting Minutes screen, My Workspace and Committee Scores, kept the old
+status until a full reload.
+
+- `run()` (Submit, Approve, Return, Close) now awaits
+  `Promise.all([onReload(), refreshOccurrences()])`. `refreshOccurrences`
+  re-reads occurrences, reports, Minutes, Grids and decisions.
+- Approve's post-signature reload does the same.
+- Close's final reload (after the Grid is created) does the same, so Committee
+  Scores shows the new Grid.
+- Checks: both apps build; lint 55, same as HEAD; `no-undef` clean. Not
+  browser-checked, not pushed.
+
+**Same day, answered in chat, no code:** a Dataverse **formula column** for
+the Excel naming rule (`BU_Region_Frequency | Classification_Category`, else
+`Department[_Region]_Frequency | …`). `lm_meetingtemplate` holds Classification
+(`lm_typeclassification`), Category (`lm_Category` + stamped `lm_category_name`)
+and Frequency (`lm_frequency`), but **no Business Unit, Region or Department**.
+Those are child tables (`lm_meetingtemplatebusinessunitses` / `regions` /
+`departmentfunctions`), and a formula column cannot read one-to-many children.
+Governance's own `derivedName()` already writes the controlled name into
+`lm_meetingtemplatename` on save.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap
