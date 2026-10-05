@@ -10352,6 +10352,9 @@ function ScreenNewMeeting(){
     adhoc:'Governance', restricted:false, dept:P(me).dept, stage:'Business Unit',
     chair:'u2', facilitator:'u3', recorder:null,
     attend:[{who:'u2',type:'Required'},{who:'u5',type:'Required'}], agenda:[''], inputs:[],
+    /* One owner Position per agenda line, same index as `agenda` (05 Oct:
+       every agenda item must have an owner). */
+    agendaOwners:[''],
     inviteSent:TODAY, link:'',
     /* Real Dataverse row ids -- the lookups on lm_meetingoccurrences will not
        accept this module's seeded ids, for either an Ad Hoc from Setup or a
@@ -10363,7 +10366,21 @@ function ScreenNewMeeting(){
   const [tplDetail,setTplDetail]=useState(null);
   const [tplLoading,setTplLoading]=useState(false);
   const set=(k,v)=>setF(x=>({...x,[k]:v}));
-  const agenda=f.agenda.filter(a=>a.trim());
+  /* The typed agenda items, each with its owner (05 Oct). Blank lines are
+     ignored; every item kept must have an owner before the meeting saves. */
+  const agenda=f.agenda.map((t,i)=>({title:t.trim(), owner:(f.agendaOwners||[])[i]||''})).filter(r=>r.title);
+  const agendaNoOwner=agenda.filter(r=>!r.owner).length;
+  const setAgendaLine=(i,patch)=>setF(x=>{
+    const titles=[...x.agenda], owners=[...(x.agendaOwners||[])];
+    while(owners.length<titles.length) owners.push('');
+    if('title' in patch) titles[i]=patch.title;
+    if('owner' in patch) owners[i]=patch.owner;
+    return {...x, agenda:titles, agendaOwners:owners};
+  });
+  const addAgendaLine=()=>setF(x=>({...x, agenda:[...x.agenda,''],
+    agendaOwners:[...(x.agendaOwners||[]).slice(0,x.agenda.length), '']}));
+  const removeAgendaLine=i=>setF(x=>({...x, agenda:x.agenda.filter((_,j)=>j!==i),
+    agendaOwners:(x.agendaOwners||[]).filter((_,j)=>j!==i)}));
 
   /* Stage decides what the Meeting is scoped to, and therefore which picker is
      shown: Stage 1 runs in a Business Unit, Stage 2 in a Region, and Group /
@@ -10484,7 +10501,7 @@ function ScreenNewMeeting(){
     let cancelled=false;
     setTplLoading(true); setTplDetail(null);
     setF(x=>({...x, tplUnitKey:'', dvBusinessUnitId:'', dvRegionId:'', dvDepartmentId:'',
-                    dvChairPositionId:'', dvFacilitatorPositionId:'', dvAttend:[], agenda:['']}));
+                    dvChairPositionId:'', dvFacilitatorPositionId:'', dvAttend:[], agenda:[''], agendaOwners:['']}));
     fetchMeetingTemplateDetail(f.setup)
       .then(d=>{ if(!cancelled) setTplDetail(d); })
       .catch(e=>{ console.warn('[dataverse] fetchMeetingTemplateDetail() failed:', e); })
@@ -10504,8 +10521,12 @@ function ScreenNewMeeting(){
      date. */
   useEffect(()=>{
     if(custom || !tplDetail) return;
-    const ag=(tplDetail.agenda||[]).slice().sort((a,b)=>(a.lm_step||0)-(b.lm_step||0))
-      .map(a=>a.lm_agendaitemname||'').filter(Boolean);
+    /* The Setup's items with their own owners (05 Oct) -- an item the Setup
+       left without one (optional since 01 Oct) waits for a pick here. */
+    const agRows=(tplDetail.agenda||[]).slice().sort((a,b)=>(a.lm_step||0)-(b.lm_step||0))
+      .filter(a=>a.lm_agendaitemname);
+    const ag=agRows.map(a=>a.lm_agendaitemname);
+    const agOwners=agRows.map(a=>a._lm_agendaitemowner_value||'');
     const p = tplDetail.parent||{};
     const natural = naturalRecurrenceDate(
       MEETING_FREQUENCY[p.lm_frequency]||null,
@@ -10514,7 +10535,7 @@ function ScreenNewMeeting(){
       TODAY,
       typeof p.cr18c_month==='number' ? p.cr18c_month : null,
     );
-    setF(x=>({...x, agenda: ag.length?ag:[''], date: natural || x.date }));
+    setF(x=>({...x, agenda: ag.length?ag:[''], agendaOwners: ag.length?agOwners:[''], date: natural || x.date }));
     if(tplUnits.length<=1) applyUnit(tplUnits[0]||null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[tplDetail]);
@@ -10557,7 +10578,7 @@ function ScreenNewMeeting(){
   };
   const carryAll = carryCandidates(carryPrev, dvMeetingOccs);
   const carryNow = carryAll.filter(a=>!skipCarry.has(a.id));
-  const ok = !!f.date && (agenda.length+carryNow.length)>0 && f.dvAttend.length>0 && scopeOk
+  const ok = !!f.date && (agenda.length+carryNow.length)>0 && !agendaNoOwner && f.dvAttend.length>0 && scopeOk
     && f.dvChairPositionId && f.dvFacilitatorPositionId && f.tz && modeOk
     && classOk
     && (custom
@@ -10606,8 +10627,7 @@ function ScreenNewMeeting(){
         agenda:[
           ...carryNow.map(a=>({title:a.title, source:'Carried forward', carriedFromId:a.id,
                                ownerPositionId:a.ownerPositionId||f.dvFacilitatorPositionId||f.dvChairPositionId||undefined})),
-          ...agenda.map(t=>({title:t, source:'Ad Hoc',
-                             ownerPositionId:f.dvFacilitatorPositionId||f.dvChairPositionId||undefined})),
+          ...agenda.map(r=>({title:r.title, source:'Ad Hoc', ownerPositionId:r.owner||undefined})),
         ],
         // `type` is carried but not yet written -- lm_meetingoccurrenceattendeeses
         // has no attendee-type column. See createMeetingOccurrence().
@@ -10723,6 +10743,7 @@ function ScreenNewMeeting(){
     !f.tz ? 'a time zone' : null,
     !f.dvAttend.length ? 'at least one attendee' : null,
     !(agenda.length+carryNow.length) ? 'at least one agenda item' : null,
+    agendaNoOwner ? `an owner for ${agendaNoOwner===1?'1 agenda item':agendaNoOwner+' agenda items'}` : null,
     !modeOk ? (needsLink && !f.link.trim() ? 'a meeting link' : 'a location') : null,
   ].filter(Boolean) : [];
 
@@ -11026,18 +11047,28 @@ function ScreenNewMeeting(){
                   first and linked back to the item it continues.</p>
               </div>}
             <div className="cs-agenda">
-              {f.agenda.map((a,i)=>
-                <div key={i} className="cs-agenda-row">
+              {f.agenda.map((a,i)=>{
+                const owner=(f.agendaOwners||[])[i]||'';
+                const needsOwner=!!a.trim() && !owner;
+                return <div key={i} className={'cs-agenda-row'+(needsOwner?' no-owner':'')}>
                   <span className="cs-agenda-n">{i+1}.</span>
                   <input type="text" value={a} placeholder={'Agenda Item '+(i+1)} aria-label={'Agenda Item '+(i+1)}
-                    onChange={e=>set('agenda',f.agenda.map((x,j)=>j===i?e.target.value:x))}/>
+                    onChange={e=>setAgendaLine(i,{title:e.target.value})}/>
+                  {/* Every agenda item must have an owner (05 Oct). */}
+                  <div className="cs-agenda-owner" aria-label={'Owner of Agenda Item '+(i+1)}>
+                    <PositionSelect value={owner} onChange={v=>setAgendaLine(i,{owner:v||''})}
+                      opts={chairOpts} disabled={!scopeChosen}
+                      placeholder={scopeChosen ? 'Owner…' : scopePlaceholder} emptyText="No Positions in this scope"/>
+                  </div>
                   {f.agenda.length>1
                     ? <button type="button" className="cs-btn" aria-label={'Remove Agenda Item '+(i+1)}
-                        onClick={()=>set('agenda',f.agenda.filter((_,j)=>j!==i))}><X size={12}/></button>
+                        onClick={()=>removeAgendaLine(i)}><X size={12}/></button>
                     : null}
-                </div>)}
+                </div>;})}
             </div>
-            <button type="button" className="cs-btn" style={{marginTop:8}} onClick={()=>set('agenda',[...f.agenda,''])}>
+            {agendaNoOwner>0 && <p className="cs-card-note" style={{marginTop:6,color:'var(--cs-danger)'}}>
+              Every agenda item needs an owner — {agendaNoOwner} still {agendaNoOwner===1?'has':'have'} none.</p>}
+            <button type="button" className="cs-btn" style={{marginTop:8}} onClick={addAgendaLine}>
               <Plus size={12}/>Add an item</button>
           </section>
 

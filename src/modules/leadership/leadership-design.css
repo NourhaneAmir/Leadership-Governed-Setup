@@ -1012,3 +1012,9 @@
 .tm-preview ol, .tm-preview ul{ margin:0 0 8px; padding-left:20px; display:flex; flex-direction:column; gap:5px }
 .tm-preview a{ color:#5B5FC7 }
 .tm-at{ color:#5B5FC7; font-weight:600; background:rgba(91,95,199,.10); border-radius:4px; padding:0 3px }
+
+/* ---------- Schedule Meeting: an owner on every agenda item (05 Oct) ---------- */
+.cs-root .cs-agenda-row{ flex-wrap:wrap }
+.cs-root .cs-agenda-owner{ flex:0 1 240px; min-width:180px }
+.cs-root .cs-agenda-row.no-owner{ border-left-color:var(--cs-danger) }
+@media (max-width:640px){ .cs-root .cs-agenda-owner{ flex:1 1 100% } }
