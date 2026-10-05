@@ -1207,13 +1207,18 @@ function gridTotals(rows){
   const blanks = rows.filter(r=>r.state==='blank');
   const scored = app.reduce((s,r)=>s+r.score*r.q.w, 0);
   const max    = app.reduce((s,r)=>s+5*r.q.w, 0);
-  const total  = AG_ACTIVE.length;
+  /* A LOCKED Not Applicable (AG-01 / AG-02 with no TOR on the meeting) is not
+     part of this meeting's Grid at all (05 Oct, user's ask): it leaves the
+     total, so it no longer lowers coverage, and is not counted as N/A. */
+  const locked = rows.filter(r=>r.locked).length;
+  const total  = AG_ACTIVE.length - locked;
   const applicable = app.length + blanks.length;
   return {
     score: max? Math.round(scored/max*1000)/10 : null,
-    coverage: Math.round(applicable/total*1000)/10,
+    coverage: total ? Math.round(applicable/total*1000)/10 : 0,
     applicable, total, blanks: blanks.length,
-    na: rows.filter(r=>r.state==='na').length,
+    na: rows.filter(r=>r.state==='na' && !r.locked).length,
+    locked,
   };
 }
 
@@ -7780,8 +7785,14 @@ function DvGridBody({rec,grid,olderVersions,minutes,quorumPct,torLink,accred,S,p
         before this Grid can be submitted.</Note>}
     </div>
 
+    {/* Locked Not Applicable questions are left out of this Grid entirely
+        (05 Oct): not drawn, not counted. One line says which, and why. */}
+    {live.locked>0 && <div className="dim" style={{fontSize:12,margin:'-4px 0 10px'}}>
+      {rows.filter(r=>r.locked).map(r=>r.id).join(' and ')} {live.locked===1?'is':'are'} left out of this Grid:
+      no TOR or Policy link is set on this meeting.</div>}
     {AG_CATEGORIES.map(cat=>{
-      const catRows = rows.filter(r=>r.q.cat===cat);
+      const catRows = rows.filter(r=>r.q.cat===cat && !r.locked);
+      if(!catRows.length) return null;
       const applicable = catRows.filter(r=>r.state!=='na' && r.state!=='retired');
       const notRetired = catRows.filter(r=>r.state!=='retired');
       return <div className="card" key={cat}>
