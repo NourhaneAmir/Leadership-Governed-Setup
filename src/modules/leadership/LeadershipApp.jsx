@@ -3306,7 +3306,9 @@ function ScreenWorkspace(){
   /* Work Queue pagination (04 Oct, user's ask). Back to page 1 whenever the
      filters change, so a narrower list never opens on an empty page. */
   const [page,setPage]   = useState(1);
-  useEffect(()=>{ setPage(1); },[tab,quick]);
+  /* Work Queue search (05 Oct, user's ask): title, detail line, action, area. */
+  const [wq,setWq]       = useState('');
+  useEffect(()=>{ setPage(1); },[tab,quick,wq]);
   const overdue = work.all.filter(w=>w.date && w.date<TODAY);
 
   /* every open item, tagged with which of the three states it's in — used only to
@@ -3334,6 +3336,8 @@ function ScreenWorkspace(){
   if(quick==='urgent') rows = rows.filter(w=>w.urgent);
   else if(quick==='today') rows = rows.filter(w=>w.date===TODAY);
   else if(quick==='mine') rows = rows.filter(w=>w.bucket!=='review');
+  const wqNeedle = wq.trim().toLowerCase();
+  if(wqNeedle) rows = rows.filter(w=>matchesQuery(wqNeedle,[w.title, w.sub, w.action, w.area]));
   rows = [...rows].sort((a,b)=>(a.date||'9999').localeCompare(b.date||'9999'));
   const WQ_PAGE = 10;
   const totalPages = Math.max(1, Math.ceil(rows.length/WQ_PAGE));
@@ -3420,8 +3424,8 @@ function ScreenWorkspace(){
       {QUICK.map(q=>
         <button key={q.id} type="button" aria-pressed={quick===q.id}
           className={'cs-chip'+(quick===q.id?' on':'')} onClick={()=>setQuick(q.id)}>{q.label}</button>)}
-      {(tab!=='All'||quick!=='all') && <button type="button" className="cs-btn cs-chips-end"
-        onClick={()=>{setTab('All');setQuick('all');}}><RotateCcw size={11}/>Reset filters</button>}
+      {(tab!=='All'||quick!=='all'||wqNeedle) && <button type="button" className="cs-btn cs-chips-end"
+        onClick={()=>{setTab('All');setQuick('all');setWq('');}}><RotateCcw size={11}/>Reset filters</button>}
     </div>
 
     <div className="cs-two-col">
@@ -3432,9 +3436,14 @@ function ScreenWorkspace(){
             <div><h2 className="cs-card-title" id="wa-queue">Work Queue</h2>
               <div className="cs-card-note">Everything open right now — open a record to act on it.</div></div>
           </div>
-          <span className="cs-search-n">{rows.length} of {tagged.length}</span>
+          <span className="cs-search">
+            <input type="search" value={wq} placeholder="Search the work queue…" aria-label="Search the work queue"
+              onChange={e=>setWq(e.target.value)}/>
+            <span className="cs-search-n">{rows.length} of {tagged.length}</span>
+          </span>
         </div>
-        {rows.length===0 ? <div className="cs-empty">Nothing matches these filters.</div>
+        {rows.length===0 ? <div className="cs-empty">{wqNeedle
+            ? <>Nothing in the work queue matches “{wq.trim()}”.</> : 'Nothing matches these filters.'}</div>
         : <div className="cs-tbl-wrap"><table className="cs-tbl dense" style={{minWidth:760}}>
             <thead><tr><th style={{width:4}}><span className="sr-only">Priority</span></th><th>Area</th>
               <th>Item</th><th>Accountable</th><th>Status</th><th>Due</th>

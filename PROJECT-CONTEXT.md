@@ -10080,6 +10080,20 @@ answers true.
 - Checks: both apps build; lint 55, same as HEAD; `no-undef` clean. Not
   browser-checked, not pushed.
 
+### 05 Oct: My Workspace — a search box on the Work Queue (Leadership only)
+
+Per an explicit ask. The Work Queue card's header gets the design's
+`.cs-search` input (the same one as Meetings) beside its "N of M" count.
+
+- Matches with `matchesQuery()`: case-insensitive, and every typed word must
+  appear somewhere in the item's title, detail line (date · scope), action
+  text or area. It applies after the tab and quick filters.
+- Typing returns the pager to page 1. **Reset filters** now also clears the
+  search and shows whenever a search is typed. With no match, the empty
+  state names the search text.
+- Checks: both apps build; lint 55, same as HEAD; `no-undef` clean. Not
+  browser-checked, not pushed.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap
