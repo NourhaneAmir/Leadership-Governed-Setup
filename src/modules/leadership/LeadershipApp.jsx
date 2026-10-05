@@ -8185,6 +8185,39 @@ function DvMeetingDetail({rec,back}){
       toast('Not saved','Saving the link failed. Check the console for details.','err');
     }finally{ setSpSaving(false); }
   };
+  /* A NEW submission (05 Oct, user's ask): the meeting's Organizer
+     (facilitator) can add an input of their own before the meeting is held --
+     a name and its SharePoint / Teams link. Saved as a link-only input row on
+     lm_meetingoccurrencelinkedreports (the same shape "Submit a link" makes),
+     so it lists here, counts as submitted, and shows on the Documents tab. */
+  const canAddSubmission = rec.status==='Scheduled' && !!myRole?.organizer;
+  const [addingSub,setAddingSub]=useState(false);
+  const [newSub,setNewSub]=useState({name:'', url:''});
+  const [savingSub,setSavingSub]=useState(false);
+  const newSubErr = !newSub.url.trim() ? null
+    : !/^https:\/\//i.test(newSub.url.trim()) ? 'Paste the full link, starting with https://' : null;
+  const saveNewSubmission = async () => {
+    const name = newSub.name.trim(), url = newSub.url.trim();
+    if(!name || !url || newSubErr) return;
+    setSavingSub(true);
+    try{
+      const res = await linkMeetingOccurrenceReport({ meetingOccurrenceId: rec.id, name, fileUrl: url });
+      if(!res.id){
+        console.warn('[dataverse] adding a submission failed:', res.errors);
+        const why = res.errors?.[0]?.error?.message || '';
+        toast('Not saved', /length|too long|exceed/i.test(why)
+          ? 'This link is longer than the column allows — use a shorter link.'
+          : 'Adding the submission failed. Check the console for details.', 'err');
+        return;
+      }
+      toast('Submission added', `${name} is linked to this meeting and counts as submitted.`, 'ok');
+      setNewSub({name:'', url:''}); setAddingSub(false);
+      await reloadDocs();
+    }catch(e){
+      console.warn('[dataverse] adding a submission threw unexpectedly:', e);
+      toast('Not saved','Adding the submission failed. Check the console for details.','err');
+    }finally{ setSavingSub(false); }
+  };
   const linkBtn = x => rec.status!=='Cancelled' &&
     <Btn k={x.occ||x.link?'sm':'sm pri'} onClick={()=>{ setSpFor(spFor===x.key?null:x.key); setSpUrl(spCurrent(x)); }}>
       {spFor===x.key ? 'Close' : spCurrent(x) ? 'Change link' : x.occ ? 'Add SharePoint link' : 'Submit a link'}</Btn>;
@@ -9105,10 +9138,31 @@ function DvMeetingDetail({rec,back}){
         <h2>Pre-Meeting Submissions</h2>
         <span className="mtgd-bar" aria-hidden="true"><i style={{width:(submissions.length?readyCount/submissions.length*100:0)+'%'}}/></span>
         <span className="cs-mono mtgd-count">{readyCount}/{submissions.length}</span>
+        {canAddSubmission &&
+          <Btn k="sm" onClick={()=>setAddingSub(v=>!v)}>{addingSub?'Close':'+ Add a submission'}</Btn>}
       </div>
+      {canAddSubmission && addingSub && <div className="mtgd-addatt">
+        <div style={{flex:'1 1 220px',minWidth:0}}>
+          <Field label="Submission name" req>
+            <input type="text" value={newSub.name} autoFocus maxLength={850}
+              placeholder="e.g. Q3 occupancy analysis"
+              onChange={e=>setNewSub(x=>({...x,name:e.target.value}))}/></Field>
+        </div>
+        <div style={{flex:'2 1 300px',minWidth:0}}>
+          <Field label="Document link" req err={newSubErr}
+            hint="The document’s link in SharePoint or Teams. It counts as submitted for this meeting.">
+            <input type="url" value={newSub.url} placeholder="https://…sharepoint.com/…"
+              onChange={e=>setNewSub(x=>({...x,url:e.target.value}))}
+              onKeyDown={e=>{ if(e.key==='Enter') saveNewSubmission(); }}/></Field>
+        </div>
+        <Btn k="pri" disabled={savingSub||!newSub.name.trim()||!newSub.url.trim()||!!newSubErr}
+          onClick={saveNewSubmission}>{savingSub?'Adding…':'Add submission'}</Btn>
+      </div>}
       {docsLoading ? <div style={{padding:'8px 17px 17px'}}><Empty ic="…">Reading inputs…</Empty></div>
       : submissions.length===0
-        ? <div style={{padding:'8px 17px 17px'}}><Empty>No input is linked, and the Setup names none.</Empty></div>
+        ? <div style={{padding:'8px 17px 17px'}}><Empty>{canAddSubmission
+            ? 'No input is linked yet, and the Setup names none. Use + Add a submission to add one.'
+            : 'No input is linked, and the Setup names none.'}</Empty></div>
       : <div className="t-wrap"><table className="data">
           <thead><tr><th>Submission</th><th>Owner</th><th>Report Template</th><th>Period</th><th>Status</th><th></th></tr></thead>
           <tbody>{submissions.map(x=><React.Fragment key={x.key}><tr>

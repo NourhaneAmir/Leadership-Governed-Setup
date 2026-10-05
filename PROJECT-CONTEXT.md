@@ -10094,6 +10094,27 @@ Per an explicit ask. The Work Queue card's header gets the design's
 - Checks: both apps build; lint 55, same as HEAD; `no-undef` clean. Not
   browser-checked, not pushed.
 
+### 05 Oct: the Organizer can add a new submission before the meeting (Leadership only)
+
+Per an explicit ask ("make the facilitator able to add a new submission
+before the meeting is held"). The Submissions tab could only attach a link to
+an input already listed (a linked report or one the Setup names).
+
+- **+ Add a submission** in the tab's header. It shows only when the meeting
+  is **Scheduled** and the signed-in user is its **Organizer**
+  (`myRole.organizer`, from `meetingRoleOf`). Chair, Co-Chair and attendees do
+  not get it.
+- The form takes a **name** (required, 850) and a **document link**
+  (required, `https://…`). It saves through `linkMeetingOccurrenceReport({
+  meetingOccurrenceId, name, fileUrl })`: a link-only row on
+  `lm_meetingoccurrencelinkedreports`, the same shape the existing "Submit a
+  link" makes. `lm_reporttype` is left unset, as that path does, and is read as
+  an input. It lists immediately, counts as **submitted**, and shows on the
+  Documents tab. `lm_fileurl` on that table is DT New only, so this works in the
+  DT New Leadership apps.
+- Checks: both apps build; lint 55, same as HEAD; `no-undef` clean. No new
+  import. Not browser-checked, not pushed.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap
