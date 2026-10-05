@@ -6213,12 +6213,18 @@ function OccRow({o,past}){
    faked: lm_tasks/lm_decisions don't exist yet, so there is nothing live to
    count. */
 function ScreenMinutes(){
-  const {go,openMeeting,dvMeetingOccs,dvMinutes,S} = use();
+  const {go,openMeeting,dvMeetingOccs,dvMinutes,S,isMyMeeting,dvLookup} = use();
   const [tab,setTab]=useState('draft');
 
+  /* User-based (05 Oct, user's rule): only the Minutes of meetings where the
+     signed-in user is the Chair, Co-Chair, Organizer (facilitator) or an
+     Attendee (or an attendee's delegate) -- isMyMeeting(), the same test My
+     Workspace uses. Every tab, figure and the Needs-action list below derive
+     from `list`, so they all follow. No Position on the account = none. */
+  const noPositions = !(dvLookup?.myPositionIds||[]).length;
   const list = dvMinutes
     .map(m=>({...m, occ_:dvMeetingOccs.find(o=>o.id===m.occurrenceId)}))
-    .filter(m=>m.occ_);
+    .filter(m=>m.occ_ && (isMyMeeting ? isMyMeeting(m.occ_) : false));
 
   const draft    = list.filter(m=>m.status==='Draft' && !m.submittedAt);
   const pending  = list.filter(m=>m.status==='Draft' && m.submittedAt);
@@ -6263,8 +6269,10 @@ function ScreenMinutes(){
     <div className="cs-head">
       <div className="cs-head-top">
         <div><h1 className="cs-title">Meeting Minutes</h1>
-          <p className="cs-sub">Record and approve meeting outcomes. Every Minutes row in Dataverse — open one to
-            work on it in its Meeting.</p></div>
+          <p className="cs-sub">Record and approve meeting outcomes. The Minutes of meetings you chair, co-chair,
+            facilitate or attend — open one to work on it in its Meeting.</p>
+          {noPositions && <p className="cs-sub" style={{color:'var(--cs-warning)'}}>No Position is linked to your
+            account, so no meeting can be matched to you yet.</p>}</div>
         <button type="button" className="cs-btn primary lg" onClick={()=>go('mtg')}>
           <PenLine size={13}/>Go to Meetings</button>
       </div>
@@ -6302,7 +6310,8 @@ function ScreenMinutes(){
           </div>
         </div>
         {rows.length===0
-          ? <div className="cs-empty">{list.length===0 ? 'No Minutes yet.' : 'Nothing here.'}</div>
+          ? <div className="cs-empty">{list.length===0
+              ? 'No Minutes for any meeting you chair, co-chair, facilitate or attend.' : 'Nothing here.'}</div>
           : <div className="cs-tbl-wrap"><table className="cs-tbl" style={{minWidth:640}}>
             <thead><tr><th>MOM</th><th>Meeting</th><th>Status</th><th>Date</th>
               <th><span className="sr-only">Action</span></th></tr></thead>

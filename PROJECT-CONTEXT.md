@@ -10152,6 +10152,24 @@ Per an explicit ask, with a screenshot of Upcoming Meetings.
 - Checks: both apps build; lint 55, same as HEAD; `no-undef` clean. Not
   browser-checked, not pushed.
 
+### 05 Oct: the Meeting Minutes screen is user-based (Leadership only)
+
+Per an explicit ask, with a screenshot: show a meeting's Minutes only to its
+Chairman, Co-Chairman, Facilitator or an Attendee.
+
+- `ScreenMinutes` filters its `list` with **`isMyMeeting(m.occ_)`** (context;
+  the same test My Workspace uses: Chair, Co-Chair, Organizer, or an attendee or
+  their delegate, Positions matched by id). Every tab badge, the four stat
+  cards, the table and the Needs-action list derive from `list`, so all follow.
+- No Position on the account means no Minutes, with the same warning line My
+  Workspace shows. The subtitle and the empty state now say "meetings you
+  chair, co-chair, facilitate or attend".
+- ⚠️ **Not changed:** the Meetings list still lists every meeting, and its
+  Minutes tab opens for anyone; the view-only rule from earlier on 05 Oct
+  stops attendees editing. Hiding is app-side only.
+- Checks: both apps build; lint 55, same as HEAD; `no-undef` clean. Not
+  browser-checked, not pushed.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap
