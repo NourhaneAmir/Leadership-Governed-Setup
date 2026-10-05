@@ -1961,18 +1961,11 @@ function DvOccurrenceModal({item,onClose}){
    calendar-derived widgets (CalendarWebpart, the counts on My Workspace)
    keep reading the unfiltered `cal` from context unchanged. */
 function ScreenCalendar(){
-  const {cal:calAll,go,openMeeting,dvError,openDvRec,dvLookup,currentUser} = use();
+  const {cal:calAll,go,openMeeting,dvError,openDvRec,dvLookup,currentUser,isMyMeeting} = use();
   const [view,setView] = useState('month');   /* month | week | list */
   const [kind,setKind] = useState('All');
   const [ym,setYm]     = useState(TODAY.slice(0,7));
 
-  /* ⚠️ TEMPORARY -- testing only, per explicit ask 22 Sep. Bypasses the
-     21 Sep role filter below entirely so every occurrence can be checked
-     against what used to show, without needing a second Dataverse user to
-     sign in as. Remove this state, the toggle button in the header, and
-     the `showAll ? calAll :` branch once testing is done -- the role
-     filter itself is not what's being questioned here. */
-  const [showAll,setShowAll] = useState(false);
 
   /* Co-Chairman (Meetings) and Owner Position / Review Chain (Reports) both
      live on the SETUP, not the occurrence -- see fetchMeetingUnitRoles()/
@@ -2006,6 +1999,9 @@ function ScreenCalendar(){
      against a Position directly on the row; a Microsoft-Group Attendee
      (19-20 Sep) is not expanded to its members here. */
   const meetingVisible = o => {
+    /* The same test as every other "my meetings" screen (06 Oct), which also
+       counts an attendee's delegate and the occurrence's own Co-Chair. */
+    if(isMyMeeting && isMyMeeting(o)) return true;
     if(o.chairPositionId && mine.has(o.chairPositionId)) return true;
     if(o.facilitatorPositionId && mine.has(o.facilitatorPositionId)) return true;
     const coChair = meetingRoles?.forOccurrence(o);
@@ -2027,7 +2023,6 @@ function ScreenCalendar(){
   };
 
   const cal = useMemo(()=>{
-    if(showAll) return calAll;   // ⚠️ TEMPORARY testing bypass, see above
     if(rolesLoading || !mine.size) return [];
     return calAll.filter(i=>{
       /* MOM Due is meeting-shaped (its _rec is the Meeting Occurrence, see
@@ -2037,7 +2032,7 @@ function ScreenCalendar(){
       if(i.kind==='Report') return reportVisible(i._rec);
       return true;
     });
-  },[calAll, meetingRoles, reportRoles, mine, rolesLoading, showAll]);
+  },[calAll, meetingRoles, reportRoles, mine, rolesLoading]);   // isMyMeeting changes only with `mine` (both from my Positions)
 
   const vis = kind==='All' ? cal : cal.filter(i=>i.kind===kind);
   /* A live Dataverse row has no seeded record behind it, so it opens the
@@ -2105,17 +2100,8 @@ function ScreenCalendar(){
 
     {dvError && <Note k="warn" ic="⚠">{dvError}</Note>}
 
-    {/* ⚠️ TEMPORARY -- testing only, see the showAll state declaration above.
-        Remove this whole Note once testing is done. */}
-    <Note k="warn" ic="🧪">
-      <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer'}}>
-        <input type="checkbox" checked={showAll} onChange={e=>setShowAll(e.target.checked)}/>
-        <span><b>Testing:</b> show all users' occurrences, ignoring the role filter below.
-          {showAll ? ' — ON, everyone’s Meetings and Reports are showing.' : ''}</span>
-      </label>
-    </Note>
 
-    {!showAll && (rolesLoading
+    {(rolesLoading
       ? <Note k="info" ic="…">Reading which Meetings and Reports you hold a role on…</Note>
       : !mine.size
       ? <Note k="warn" ic="⚠">{currentUser?.fullName
@@ -5823,7 +5809,7 @@ const MTG_ROLE_FILTERS = [
 ];
 
 function ScreenMeetings(){
-  const {sel,setSel,dvMeetingOccs,dvMinutes,S,dvLoading,dvError,openMeeting,go,meetingRoleOf} = use();
+  const {sel,setSel,dvMeetingOccs,dvMinutes,S,dvLoading,dvError,openMeeting,go,meetingRoleOf,isMyMeeting} = use();
   const [tab,setTab]=useState('due');
   /* This Week is the default filter, and the first chip (04 Oct, user's ask). */
   const [typeFilter,setTypeFilter]=useState('week');
@@ -5837,8 +5823,13 @@ function ScreenMeetings(){
   const [page,setPage]=useState(1);
   useEffect(()=>{ setPage(1); },[tab,typeFilter,q,fStage,fRole]);
 
-  const list=dvMeetingOccs;
-  const rec=list.find(o=>o.id===sel.mtg);
+  /* Only my meetings (06 Oct, user's rule): where a Position I hold is the
+     Chair, Co-Chair, Organizer, an Attendee or an attendee's delegate -- the
+     same isMyMeeting() test as My Workspace and Meeting Minutes. A meeting
+     opened from elsewhere still opens (view only, see DvMeetingDetail), so
+     the detail is looked up in every meeting, not just the list. */
+  const list=dvMeetingOccs.filter(o=>isMyMeeting ? isMyMeeting(o) : false);
+  const rec=dvMeetingOccs.find(o=>o.id===sel.mtg);
   if(rec) return <DvMeetingDetail rec={rec} back={()=>setSel(v=>({...v,mtg:null,mtgTab:null}))}/>;
 
   /* A live Meeting's governance record is its own agenda outcomes and
@@ -7783,7 +7774,7 @@ function DvGridQuestion({r,editable,savingId,onScore,onEvidence,onClear}){
    `grid` is the newest version (fetchAuditGridInstancesByOccurrence sorts
    newest-first); `olderVersions` is whatever is left, shown read-only below --
    normally empty, populated only once a correction version has been opened. */
-function DvGridBody({rec,grid,olderVersions,minutes,quorumPct,torLink,accred,S,posName,dvMeetingOccs,onReload,tasks}){
+function DvGridBody({rec,grid,olderVersions,minutes,quorumPct,torLink,accred,S,posName,dvMeetingOccs,onReload,tasks,viewOnly=false}){
   const {toast,dvDecisions=[]}=use();
   const [savingId,setSavingId]=useState(null);
   const [submitting,setSubmitting]=useState(false);
@@ -7799,7 +7790,7 @@ function DvGridBody({rec,grid,olderVersions,minutes,quorumPct,torLink,accred,S,p
         applicable:grid.coverage, total:grid.total }
     : { score:live.score, coverage:live.coverage, applicable:live.applicable, total:live.total };
 
-  const editable = grid.state==='Pending Organizer Review' || grid.state==='Returned for Revision';
+  const editable = !viewOnly && (grid.state==='Pending Organizer Review' || grid.state==='Returned for Revision');
   const blanks = rows.filter(r=>r.state==='blank');
   /* ⚠️ Was hard-coded to AG-02, the only Manual question at the time. Any
      question can now carry a manual score, so every one of them needs its
@@ -8082,7 +8073,10 @@ function DvMeetingDetail({rec,back}){
      reschedule or cancel it, change its agenda or attendance, or write,
      submit, approve, return or close its Minutes. Everyone else is unchanged. */
   const myRole = meetingRoleOf ? meetingRoleOf(rec) : null;
-  const viewOnly = !!myRole && myRole.attendee && !myRole.organizer && !myRole.chair && !myRole.coChair;
+  /* 06 Oct (user's rule): someone with NO role on the meeting is view only
+     too, the same as an attendee -- they can still open it from a link. */
+  const viewOnly = !myRole || (!myRole.organizer && !myRole.chair && !myRole.coChair);
+  const noRole = !myRole || !myRole.attendee;
   const tab = sel.mtgTab || 'detail';
   const setTab = t=>setSel(v=>({...v,mtgTab:t}));
   const [markingHeld,setMarkingHeld]=useState(false);
@@ -8717,7 +8711,7 @@ function DvMeetingDetail({rec,back}){
     {rescheduling && <DvRescheduleOccModal rec={rec} onClose={()=>setRescheduling(false)}/>}
     {cancelling && <DvCancelOccModal rec={rec} onClose={()=>setCancelling(false)}/>}
 
-    {viewOnly && <Note k="info">You are an <b>attendee</b> of this meeting: you can see everything, but only
+    {viewOnly && <Note k="info">{noRole ? <>You have <b>no role</b> in this meeting</> : <>You are an <b>attendee</b> of this meeting</>}: you can see everything, but only
       its Organizer, Chair or Co-Chair can change it, mark it Held, or write and approve its Minutes.</Note>}
     {canRun && missingWhen.length>0 &&
       <Note k="warn">This meeting can’t be marked Held until its {missingWhen.join(', ').replace(/, ([^,]*)$/,' and $1')}
@@ -9189,7 +9183,7 @@ function DvMeetingDetail({rec,back}){
           <div style={{fontSize:12,color:'var(--muted)',textAlign:'center',padding:'0 17px 14px'}}>
             An Instance is created on closure of a Committee occurrence's Minutes.</div></div>}
       {!govLoading && grids.length>0 &&
-        <DvGridBody rec={rec} grid={grids[0]} olderVersions={grids.slice(1)} minutes={minutes}
+        <DvGridBody viewOnly={viewOnly} rec={rec} grid={grids[0]} olderVersions={grids.slice(1)} minutes={minutes}
           quorumPct={tpl?.quorumPct} torLink={tpl?.torLink} accred={accred} S={S} posName={posName}
           dvMeetingOccs={dvMeetingOccs} onReload={reloadGovernance} tasks={mtgTasks}/>}
     </>}
