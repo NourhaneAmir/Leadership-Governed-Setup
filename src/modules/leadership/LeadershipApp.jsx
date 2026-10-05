@@ -1292,12 +1292,20 @@ function carryCandidates(prev, all){
 }
 const DECISION_DONE = new Set(['Completed','Closed','Cancelled']);
 
+/* The quorum used when a meeting's Setup sets none, or the meeting has no
+   Setup (Custom): 90%, the threshold Governance gives every new Meeting Setup
+   (05 Oct, user's ask: quorum is always worked out from the attendees). Used
+   by the Quorum card AND AG-08, so the two still agree. */
+const QUORUM_DEFAULT_PCT = 90;
+/* lm_torpolicylink's size: 100 characters on lm_meetingtemplate (its schema,
+   Data-Dictionary.md); the occurrence column is assumed to match. */
+const TOR_LINK_MAX = 100;
 function liveQuorum(occ, tpl, mode){
-  const threshold = tpl?.quorumPct;
-  if(threshold==null) return { state:'none' };
+  const isDefault = tpl?.quorumPct==null;
+  const threshold = isDefault ? QUORUM_DEFAULT_PCT : tpl.quorumPct;
   const req = (occ.attendees||[]).filter(a=>(a.type||'Required')==='Required');
   const need = Math.ceil(threshold/100*req.length);
-  const base = { threshold, need, total:req.length };
+  const base = { threshold, isDefault, need, total:req.length };
   if(!req.length) return { ...base, state:'noRequired' };
   if(occ.status!=='Held') return { ...base, state:'pending' };
   const a = liveAttendance(occ.attendees, mode);
@@ -1312,7 +1320,9 @@ const QUORUM_TAG = {
 };
 function quorumLine(qr){
   if(qr.state==='none') return 'No quorum threshold is configured on the Setup.';
-  if(qr.state==='noRequired') return `The Setup sets a ${qr.threshold}% quorum, but this occurrence has no Required Attendee.`;
+  if(qr.state==='noRequired') return qr.isDefault
+    ? `A ${qr.threshold}% quorum applies by default, but this occurrence has no Required Attendee.`
+    : `The Setup sets a ${qr.threshold}% quorum, but this occurrence has no Required Attendee.`;
   if(qr.state==='pending') return `Needs ${qr.need} of ${qr.total} Required Attendees present (${qr.threshold}%).`;
   const got = `${qr.present} of ${qr.total} Required present (${Math.round(qr.pct)}%) against ${qr.threshold}% — ${qr.need} needed.`;
   return qr.state==='incomplete'
@@ -1358,7 +1368,10 @@ function meetingLimits(occ, S){
    only periods that were really set. */
 const GRID_DEFAULT_LIMITS = { momWriteupHours:24, momApprovalHours:24, gridSubmitHours:48 };
 
-function liveScoreGrid(occ, minutes, quorumPct, torLink, accred, S, grid, allOccs, decisions){
+/* `tasks` (05 Oct): this meeting's Tasks from fetchTasksForMeeting() --
+   an array; null where Tasks cannot link to a meeting (IT); undefined while
+   they are still being read. Scores AG-13. */
+function liveScoreGrid(occ, minutes, quorumPct, torLink, accred, S, grid, allOccs, decisions, tasks){
   const SET = meetingLimits(occ, S);
   const LIM = {}, DEF = {};
   for(const k of Object.keys(GRID_DEFAULT_LIMITS)){
@@ -1422,11 +1435,16 @@ function liveScoreGrid(occ, minutes, quorumPct, torLink, accred, S, grid, allOcc
 
   push('AG-07','retired',null,null);
 
-  if(quorumPct==null) push('AG-08','na',null,null,'No quorum threshold is configured for this Committee.');
-  else{
+  /* AG-08 always scores from the attendance (05 Oct): the Setup's threshold,
+     else QUORUM_DEFAULT_PCT. Not Applicable only with no Required Attendee
+     to measure -- 0 of 0 is not a missed quorum. */
+  {
+    const q8 = quorumPct ?? QUORUM_DEFAULT_PCT;
     const a8 = liveAttendance(occ.attendees, S.delegatedAttend);
-    push('AG-08','auto', a8.pct>=quorumPct?5:0,
-      `${Math.round(a8.pct)}% Required attendance against a ${quorumPct}% quorum threshold.`);
+    if(!a8.total) push('AG-08','na',null,null,'This meeting has no Required Attendee, so there is no quorum to measure.');
+    else push('AG-08','auto', a8.pct>=q8?5:0,
+      `${a8.present} of ${a8.total} Required Attendees present → ${Math.round(a8.pct)}% against a ${q8}% quorum`
+      + (quorumPct==null ? ' (default — no threshold is set on the meeting’s Setup).' : ' threshold, from the Setup.'));
   }
 
   const a9 = liveAttendance(occ.attendees, S.delegatedAttend);
@@ -1450,7 +1468,38 @@ function liveScoreGrid(occ, minutes, quorumPct, torLink, accred, S, grid, allOcc
     meetingDecisions.length
       ? 'A Decision in IT carries no Direct / Request path and no Approval Cycle, so the Authority Matrix route cannot be checked.'
       : 'No Decision was recorded from this Meeting.');
-  push('AG-13','na',null,null,'Tasks have no link to a meeting yet (PRO-02), so the Tasks created from these Minutes cannot be found.');
+  /* AG-13 (05 Oct): computed from the Tasks raised or attached on this
+     meeting -- on an agenda item or on the meeting itself. An Execution Owner
+     is the Task's Assignee. The trace shows which agenda item each Task is
+     linked to, and names the Tasks missing a value. */
+  if(tasks===null)
+    push('AG-13','na',null,null,'Tasks cannot be linked to a meeting in this environment, so the Tasks created from these Minutes cannot be found.');
+  else if(tasks===undefined)
+    push('AG-13','na',null,null,'This meeting’s Tasks are still being read.');
+  else if(!tasks.length)
+    push('AG-13','na',null,null,'No Task was raised or attached in these Minutes.');
+  else{
+    const hasOwner = t => !!(t.assigneeId || t.assigneeName);
+    const ok = tasks.filter(t=>hasOwner(t) && t.due);
+    const p13 = ok.length/tasks.length*100;
+    const seqOf = id => { const i = occ.agenda.findIndex(a=>a.id===id); return i<0 ? null : (occ.agenda[i].seq ?? i+1); };
+    const byItem = new Map(); let meetingOnly = 0;
+    for(const t of tasks){
+      if(t.agendaItemId && agendaIds.has(t.agendaItemId)) byItem.set(t.agendaItemId, (byItem.get(t.agendaItemId)||0)+1);
+      else meetingOnly++;
+    }
+    const links = [...byItem].sort((a,b)=>(seqOf(a[0])??0)-(seqOf(b[0])??0)).map(([id,n])=>{
+      const a = occ.agenda.find(x=>x.id===id);
+      return `#${seqOf(id)} ${a?.title||'—'} (${n})`;
+    });
+    const missing = tasks.filter(t=>!(hasOwner(t) && t.due)).map(t=>
+      `“${t.name}” (${[!hasOwner(t)?'no Execution Owner':null, !t.due?'no due date':null].filter(Boolean).join(', ')})`);
+    push('AG-13','auto', band(p13),
+      `${ok.length} of ${tasks.length} Task${tasks.length===1?'':'s'} ${ok.length===1?'has':'have'} an Execution Owner and a due date → ${pct(p13)}. `
+      + (links.length ? `Linked to agenda items: ${links.join('; ')}` : 'None is linked to an agenda item')
+      + (meetingOnly ? `; ${meetingOnly} linked to the meeting only.` : '.')
+      + (missing.length ? ` Missing: ${missing.join('; ')}.` : ''));
+  }
   push('AG-14','na',null,null,'Tasks have no link to a meeting yet (PRO-02), so the earlier meetings’ Tasks cannot be found.');
 
   if(S.inviteLeadDays==null) push('AG-15','na',null,null,'No invitation lead time is configured.');
@@ -7569,7 +7618,7 @@ function DvGridQuestion({r,editable,savingId,onScore,onEvidence,onClear}){
    `grid` is the newest version (fetchAuditGridInstancesByOccurrence sorts
    newest-first); `olderVersions` is whatever is left, shown read-only below --
    normally empty, populated only once a correction version has been opened. */
-function DvGridBody({rec,grid,olderVersions,minutes,quorumPct,torLink,accred,S,posName,dvMeetingOccs,onReload}){
+function DvGridBody({rec,grid,olderVersions,minutes,quorumPct,torLink,accred,S,posName,dvMeetingOccs,onReload,tasks}){
   const {toast,dvDecisions=[]}=use();
   const [savingId,setSavingId]=useState(null);
   const [submitting,setSubmitting]=useState(false);
@@ -7577,7 +7626,7 @@ function DvGridBody({rec,grid,olderVersions,minutes,quorumPct,torLink,accred,S,p
   const [returning,setReturning]=useState(false);
   const [openingVersion,setOpeningVersion]=useState(false);
 
-  const rows = liveScoreGrid(rec, minutes, quorumPct, torLink, accred, S, grid, dvMeetingOccs, dvDecisions);
+  const rows = liveScoreGrid(rec, minutes, quorumPct, torLink, accred, S, grid, dvMeetingOccs, dvDecisions, tasks);
   const live = gridTotals(rows);
   const frozen = !!grid.frozen;
   const display = frozen
@@ -8549,7 +8598,8 @@ function DvMeetingDetail({rec,back}){
           <div className="cs-rule">✓ Min {quorum.need} of {quorum.total} required ({quorum.threshold}%)</div>
           <div style={{fontSize:12,color:'var(--ink-2)',marginTop:8}}>{quorumLine(quorum)}</div>
           <div className="csub" style={{marginTop:6,marginBottom:0}}>
-            Threshold {quorum.threshold}% of Required Attendees, from the Setup. The same count scores AG-08.
+            Threshold {quorum.threshold}% of Required Attendees, {quorum.isDefault
+              ? 'the default — no threshold is set on this meeting’s Setup' : 'from the Setup'}. The same count scores AG-08.
             {S.delegatedAttend==='exclude' ? ' Attendance by a delegate is not counted.'
               : S.delegatedAttend==='half' ? ' Attendance by a delegate counts as half.'
               : ' Attendance by a delegate counts in full.'}</div>
@@ -8852,7 +8902,7 @@ function DvMeetingDetail({rec,back}){
         <h2 id="mtgd-qc" className="mtgd-h">Quorum Calculation</h2>
         {quorum.state==='none'
           ? <p className="t-sub" style={{margin:0}}>This meeting’s Setup sets no quorum threshold.</p>
-          : <div className="cs-rule">✓ Min {quorum.need} of {quorum.total} required members ({quorum.threshold}%)</div>}
+          : <div className="cs-rule">✓ Min {quorum.need} of {quorum.total} required members ({quorum.threshold}%{quorum.isDefault?', default':''})</div>}
         <div className="mtgd-qbar">
           <span className="mtgd-bar" aria-hidden="true"><i style={{width:(required.length?requiredPresent/required.length*100:0)+'%'}}/></span>
           <span className="cs-mono mtgd-count">{requiredPresent}/{required.length}</span>
@@ -8902,7 +8952,7 @@ function DvMeetingDetail({rec,back}){
       {!govLoading && grids.length>0 &&
         <DvGridBody rec={rec} grid={grids[0]} olderVersions={grids.slice(1)} minutes={minutes}
           quorumPct={tpl?.quorumPct} torLink={tpl?.torLink} accred={accred} S={S} posName={posName}
-          dvMeetingOccs={dvMeetingOccs} onReload={reloadGovernance}/>}
+          dvMeetingOccs={dvMeetingOccs} onReload={reloadGovernance} tasks={mtgTasks}/>}
     </>}
 
     {tab==='actions' && <div className="cs-two-col mtgd-cols">
@@ -10355,6 +10405,9 @@ function ScreenNewMeeting(){
     /* One owner Position per agenda line, same index as `agenda` (05 Oct:
        every agenda item must have an owner). */
     agendaOwners:[''],
+    /* Optional TOR / Policy link (05 Oct) -- pre-filled from the Setup on an
+       ad hoc meeting, blank on a Custom one. */
+    torLink:'',
     inviteSent:TODAY, link:'',
     /* Real Dataverse row ids -- the lookups on lm_meetingoccurrences will not
        accept this module's seeded ids, for either an Ad Hoc from Setup or a
@@ -10501,7 +10554,7 @@ function ScreenNewMeeting(){
     let cancelled=false;
     setTplLoading(true); setTplDetail(null);
     setF(x=>({...x, tplUnitKey:'', dvBusinessUnitId:'', dvRegionId:'', dvDepartmentId:'',
-                    dvChairPositionId:'', dvFacilitatorPositionId:'', dvAttend:[], agenda:[''], agendaOwners:['']}));
+                    dvChairPositionId:'', dvFacilitatorPositionId:'', dvAttend:[], agenda:[''], agendaOwners:[''], torLink:''}));
     fetchMeetingTemplateDetail(f.setup)
       .then(d=>{ if(!cancelled) setTplDetail(d); })
       .catch(e=>{ console.warn('[dataverse] fetchMeetingTemplateDetail() failed:', e); })
@@ -10535,7 +10588,8 @@ function ScreenNewMeeting(){
       TODAY,
       typeof p.cr18c_month==='number' ? p.cr18c_month : null,
     );
-    setF(x=>({...x, agenda: ag.length?ag:[''], agendaOwners: ag.length?agOwners:[''], date: natural || x.date }));
+    setF(x=>({...x, agenda: ag.length?ag:[''], agendaOwners: ag.length?agOwners:[''], date: natural || x.date,
+              torLink: p.lm_torpolicylink || '' }));
     if(tplUnits.length<=1) applyUnit(tplUnits[0]||null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[tplDetail]);
@@ -10578,7 +10632,14 @@ function ScreenNewMeeting(){
   };
   const carryAll = carryCandidates(carryPrev, dvMeetingOccs);
   const carryNow = carryAll.filter(a=>!skipCarry.has(a.id));
-  const ok = !!f.date && (agenda.length+carryNow.length)>0 && !agendaNoOwner && f.dvAttend.length>0 && scopeOk
+  /* TOR / Policy link (05 Oct): optional; when given, a full https link that
+     fits lm_torpolicylink (100 characters, the Setup column's documented size
+     -- an overlong value would make Dataverse reject the whole meeting). */
+  const torTrim = (f.torLink||'').trim();
+  const torErr = !torTrim ? null
+    : !/^https:\/\//i.test(torTrim) ? 'Paste the full link, starting with https://'
+    : torTrim.length>TOR_LINK_MAX ? `At most ${TOR_LINK_MAX} characters — this link has ${torTrim.length}.` : null;
+  const ok = !!f.date && (agenda.length+carryNow.length)>0 && !agendaNoOwner && !torErr && f.dvAttend.length>0 && scopeOk
     && f.dvChairPositionId && f.dvFacilitatorPositionId && f.tz && modeOk
     && classOk
     && (custom
@@ -10616,8 +10677,10 @@ function ScreenNewMeeting(){
         ...(!custom && tplDetail?.parent ? {
           momWriteupHours: tplDetail.parent.lm_momwriteuphours ?? undefined,
           momApprovalHours: tplDetail.parent.lm_momapprovalhours ?? undefined,
-          gridSubmitHours: tplDetail.parent.lm_gridsubmithours ?? undefined,
-          torLink: tplDetail.parent.lm_torpolicylink || undefined } : {}),
+          gridSubmitHours: tplDetail.parent.lm_gridsubmithours ?? undefined } : {}),
+        /* The TOR / Policy link as shown on the form -- the Setup's, edited or
+           cleared, or one typed for a Custom meeting (05 Oct). */
+        torLink: torTrim || undefined,
         ...(custom ? { setupType:cls.type,
                        classification: accredCustom ? undefined : (cls.classification||undefined),
                        meetingCategoryId: cls.categoryId||undefined,
@@ -10744,6 +10807,7 @@ function ScreenNewMeeting(){
     !f.dvAttend.length ? 'at least one attendee' : null,
     !(agenda.length+carryNow.length) ? 'at least one agenda item' : null,
     agendaNoOwner ? `an owner for ${agendaNoOwner===1?'1 agenda item':agendaNoOwner+' agenda items'}` : null,
+    torErr ? 'a valid TOR / Policy link (or leave it empty)' : null,
     !modeOk ? (needsLink && !f.link.trim() ? 'a meeting link' : 'a location') : null,
   ].filter(Boolean) : [];
 
@@ -10977,6 +11041,14 @@ function ScreenNewMeeting(){
             </div>
             <Field label="Ad Hoc Type" req hint="A one-to-one or skip-level Meeting uses Leadership or Governance.">
               <Pills val={f.adhoc} onChange={v=>set('adhoc',v||'Governance')} opts={ADHOC_TYPES}/></Field>
+            {/* Optional (05 Oct). The Audit Grid's TOR questions (AG-01 / AG-02)
+                apply only when the meeting has one. */}
+            <Field label="TOR / Policy link" err={torErr}
+              hint={!custom && tplDetail?.parent?.lm_torpolicylink && torTrim===tplDetail.parent.lm_torpolicylink
+                ? 'From the Setup — change or clear it for this meeting only. The Audit Grid’s TOR questions use it.'
+                : 'Optional. A link to the Terms of Reference or governing policy; the Audit Grid’s TOR questions apply only when one is set.'}>
+              <input type="text" id="nm-tor" value={f.torLink} maxLength={850} placeholder="https://…"
+                onChange={e=>set('torLink',e.target.value)}/></Field>
             <Field label="">
               <label className="chk"><input type="checkbox" checked={f.restricted}
                 onChange={e=>set('restricted',e.target.checked)}/>
@@ -11170,14 +11242,17 @@ function ScreenNewMeeting(){
 
         <section className="cs-card" aria-labelledby="nm-quorum">
           <h2 className="cs-card-title" id="nm-quorum" style={{marginBottom:8}}>Quorum Rules</h2>
-          {custom
-            ? <p className="cs-card-note">A Custom Meeting has no Setup, so no quorum threshold applies.</p>
-            : !f.setup
+          {/* No threshold on the Setup, or no Setup at all (Custom): the default
+              QUORUM_DEFAULT_PCT applies (05 Oct), as on the meeting and in AG-08. */}
+          {!custom && !f.setup
             ? <p className="cs-card-note">Choose a Setup to see its quorum threshold.</p>
-            : quorumPct==null
-            ? <p className="cs-card-note">This Setup sets no quorum threshold.</p>
-            : <div className="cs-rule">✓ Min {Math.ceil(quorumPct/100*requiredCount)} of {requiredCount} required
-                {' '}({quorumPct}%)</div>}
+            : <>
+                <div className="cs-rule">✓ Min {Math.ceil((quorumPct ?? QUORUM_DEFAULT_PCT)/100*requiredCount)} of {requiredCount} required
+                  {' '}({quorumPct ?? QUORUM_DEFAULT_PCT}%)</div>
+                {(custom || quorumPct==null) && <p className="cs-card-note" style={{marginTop:6}}>
+                  {custom ? 'A Custom Meeting has no Setup' : 'This Setup sets no threshold'}, so the default
+                  {' '}{QUORUM_DEFAULT_PCT}% applies.</p>}
+              </>}
           <p className="cs-card-note" style={{marginTop:8}}>Quorum is measured when attendance is taken — the
             same count the Audit Grid scores.</p>
         </section>
@@ -11796,6 +11871,27 @@ function ScreenGrid(){
   const minutesByOcc = useMemo(()=>{
     const m=new Map(); dvMinutes.forEach(x=>{ if(x.occurrenceId) m.set(x.occurrenceId,x); }); return m;
   },[dvMinutes]);
+  /* The Tasks of each OPEN Grid's meeting (05 Oct), so AG-13 scores here
+     exactly as on the meeting's own Grid tab. Read once per set of open
+     Grids; a meeting not read yet is undefined (AG-13 "still being read"). */
+  const openOccKey = dvGridInstances.filter(g=>g.state!=='Void' && g.state!=='Approved' && !g.frozen)
+    .map(g=>g.occurrenceId).filter(id=>occById.has(id)).sort().join(',');
+  const [tasksByOcc,setTasksByOcc]=useState(()=>new Map());
+  useEffect(()=>{
+    if(!openOccKey) return;
+    let live=true;
+    (async()=>{
+      const m=new Map();
+      for(const id of openOccKey.split(',')){
+        const o=occById.get(id);
+        try{ m.set(id, await fetchTasksForMeeting(id, (o?.agenda||[]).map(a=>a.id))); }
+        catch(e){ console.warn('[Committee Scores] tasks for '+id+':', e); }
+      }
+      if(live) setTasksByOcc(m);
+    })();
+    return ()=>{ live=false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[openOccKey]);
   const coverageById = useMemo(()=>{
     const m=new Map();
     for(const g of dvGridInstances){
@@ -11809,7 +11905,7 @@ function ScreenGrid(){
       const accred=(tpl ? MEETING_SETUP_TYPE[tpl.setupTypeCode] : null)==='Accreditation Committee';
       try{
         const t=gridTotals(liveScoreGrid(o, minutesByOcc.get(o.id)||null, tpl?.quorumPct, tpl?.torLink,
-                                         accred, S, g, dvMeetingOccs, dvDecisions));
+                                         accred, S, g, dvMeetingOccs, dvDecisions, tasksByOcc.get(o.id)));
         m.set(g.id,{pct:t.coverage, covered:t.applicable, total:t.total, live:true});
       }catch(e){ console.warn('[Committee Scores] live coverage failed for Grid '+g.id+':', e); }
     }
@@ -11817,7 +11913,7 @@ function ScreenGrid(){
   // dvTick is deliberate: dvTplDetail() reads a module-level map the linter
   // cannot see, and the Setup details (quorum, TOR, Setup Type) load after the Grids.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[dvGridInstances,occById,minutesByOcc,dvMeetingOccs,dvDecisions,S,dvTick]);
+  },[dvGridInstances,occById,minutesByOcc,dvMeetingOccs,dvDecisions,S,dvTick,tasksByOcc]);
   const covOf = g => coverageById.get(g.id) || null;
 
   const rows = list.filter(tabDef.test).slice().sort((a,b)=>
