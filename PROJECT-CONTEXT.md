@@ -9698,6 +9698,16 @@ of the meeting.
   - **Not posted for real** (needs the live app and Teams). Not committed,
     not pushed.
 
+### 05 Oct: retired questions are not shown on the Grid either (Leadership only)
+
+Per an explicit ask, with a screenshot of AG-07 shown struck through as
+"Retired". `DvGridBody` now leaves `state==='retired'` rows out of each
+category's list, alongside the locked ones. Display only: retired questions
+already scored nothing and sat outside every total (`AG_ACTIVE` excludes
+them). The Committee Scores question catalogue still lists AG-07 as retired,
+since that is the global list. Leadership builds; lint 55; `no-undef` clean.
+Not committed, not pushed.
+
 ### 05 Oct: locked Not Applicable questions are removed from the Grid (Leadership only)
 
 Per an explicit ask, with a screenshot of AG-01 / AG-02 shown as "🔒 Not
