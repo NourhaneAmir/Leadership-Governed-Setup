@@ -10021,6 +10021,35 @@ needed" list says "at least one agenda item". What was missing was showing it.
 - Checks: both apps build; lint 55, same as HEAD; `no-undef` clean. Not
   browser-checked, not pushed.
 
+### 05 Oct: Schedule Meeting — filter the Setups by Stage, Business Unit and Region (Leadership only)
+
+Per an explicit ask, with a screenshot of the Select Setup grid.
+
+- Three filters above the cards, all the shared searchable `Combo` (now
+  imported into `LeadershipApp.jsx`): **Stage** (1–4, the 4th labelled "Top
+  Management"), **Business Unit** (with each unit's Region as its sub-line)
+  and **Region**. Then "N of M Setups" and **Clear filters**, which also
+  clears the search.
+- **Defaults:** Business Unit = the unit of the first Position the signed-in
+  user holds (`dvLookup.myPositionIds` → `DV_POS_LIST.bu`). Region = that unit's
+  Region (`DV_BU_LIST.region`). Applied **once**; a `filterTouched` flag stops a
+  late-loading Position list from overriding any choice, "Any" included. A
+  note says when the defaults are in force. With no Position, there are no
+  defaults.
+- **Matching** (from `fetchMeetingTemplatesList()`'s `businessUnitIds` /
+  `regionIds`; no new reads):
+  - a Setup with no unit rows is group-wide and **always** shows;
+  - otherwise it matches a Business Unit it runs in or whose Region it runs in,
+    and a Region it runs in or one of whose Business Units it runs in;
+  - a Stage 4 Setup's scope rows count as where it runs.
+  - Checked in Node on sample Setups.
+- Picking a Business Unit sets Region to that unit's. Picking a Region clears
+  a Business Unit outside it.
+- The selected Setup always stays visible. With nothing matching, a note
+  offers Clear filters or a Custom Meeting.
+- Checks: both apps build; lint 55, same as HEAD; `no-undef` clean. The `Combo`
+  import line is not touched by `4ca0036`. Not browser-checked, not pushed.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap

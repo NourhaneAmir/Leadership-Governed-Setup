@@ -917,6 +917,20 @@
 .lp-soon-tag svg{ flex:0 0 auto; color:#F6E7CC }
 .nav-i.lp-soon:hover .lp-soon-tag{ background:linear-gradient(180deg, #96713E 0%, #77572D 100%) }
 
+/* ---------- Schedule Meeting: Setup filters (05 Oct) -------------------- */
+.cs-root .cs-tpl-filters{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)) auto; gap:10px 12px;
+  align-items:end; margin:10px 0 8px }
+.cs-root .cs-tpl-filter .f{ margin:0 }
+.cs-root .cs-tpl-filter .f > label{ font:600 10.5px var(--cs-sans); letter-spacing:.06em; text-transform:uppercase;
+  color:var(--cs-muted); margin-bottom:4px }
+.cs-root .cs-tpl-filter-end{ display:flex; align-items:center; gap:8px; justify-content:flex-end; padding-bottom:4px;
+  white-space:nowrap }
+@media (max-width:900px){
+  .cs-root .cs-tpl-filters{ grid-template-columns:repeat(2,minmax(0,1fr)) }
+  .cs-root .cs-tpl-filter-end{ grid-column:1 / -1; justify-content:flex-start }
+}
+@media (max-width:560px){ .cs-root .cs-tpl-filters{ grid-template-columns:1fr } }
+
 /* ---------- Form footer (05 Oct, Schedule Meeting first) ---------------- */
 /* The page's own actions, at the end where the form is finished. */
 .cs-root .cs-form-foot{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;

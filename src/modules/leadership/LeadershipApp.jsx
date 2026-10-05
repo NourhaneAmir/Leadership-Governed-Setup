@@ -36,7 +36,7 @@ import { PostMinutesToTeams } from './screens/PostToTeams.jsx';
 import { PEOPLE, P, RPT_SETUPS, RS, DIAG, DiagChip, PROC_REG, PR, BI_REPORTS, BIR, KPI_CAT, KPIC, findKpi, bdDims, achFor, achPct, achCls, CITE_KINDS, citeKind, citeId, citeCls, canSeeReport, rptCfg, rptTagC, matchesQuery, CiteCard,
   STRAT, ST, PM_ENTRIES, PME, ISSUES, ISS, rptName } from './domain.jsx';
 import { Tag, Btn, Note, OD, Bar, Field, Empty, Stat, KVBlock, Rail,
-         Modal, Pills, ScoreHero } from '../../shared/ui.jsx';
+         Modal, Pills, ScoreHero, Combo } from '../../shared/ui.jsx';
 import { fetchMeetingOccurrences, fetchReportOccurrences, createMeetingOccurrence,
          createReportOccurrence, updateReportOccurrenceFile, uploadReportOccurrenceFile,
          fetchTeamsChannels, channelDestinationPath,
@@ -10443,6 +10443,34 @@ function ScreenNewMeeting(){
   const chosenChannel = (channels||[]).find(c=>c.id===chan.id) || null;
   const onClose=()=>go('mtg');
   const [setupQ,setSetupQ]=useState('');
+  /* Setup filters (05 Oct, user's ask): Stage, Business Unit and Region, the
+     last two defaulting ONCE to the signed-in user's own -- the Business Unit
+     of the first Position they hold, and that unit's Region. `touched` stops a
+     late-loading Position list from overriding a choice (including "Any"). */
+  const {dvLookup:setupLookup,dvTick:setupTick}=use();
+  const [fStage,setFStage]=useState('');
+  const [fBu,setFBu]=useState('');
+  const [fRegion,setFRegion]=useState('');
+  const [filterTouched,setFilterTouched]=useState(false);
+  const myPosKey=(setupLookup?.myPositionIds||[]).join(',');
+  const myBu = useMemo(()=>{
+    for(const id of (myPosKey ? myPosKey.split(',') : [])){
+      const p=DV_POS_LIST.find(x=>x.id===id);
+      if(p?.bu) return p.bu;
+    }
+    return '';
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[myPosKey,setupTick]);
+  const buRegion = id => (id && DV_BU_LIST.find(b=>b.id===id)?.region) || '';
+  const myRegion = buRegion(myBu);
+  useEffect(()=>{
+    if(filterTouched || !myBu) return;
+    setFBu(myBu); setFRegion(myRegion);
+  },[filterTouched, myBu, myRegion]);
+  const pickBu = id => { setFilterTouched(true); setFBu(id); if(id) setFRegion(buRegion(id)); };
+  const pickRegion = id => { setFilterTouched(true); setFRegion(id); if(id && fBu && buRegion(fBu)!==id) setFBu(''); };
+  const pickStage = v => { setFilterTouched(true); setFStage(v); };
+  const clearSetupFilters = () => { setFilterTouched(true); setFStage(''); setFBu(''); setFRegion(''); setSetupQ(''); };
   /* The pristine form. A FUNCTION, not a constant, because it reads `me` and
      TODAY -- and named once so the initial state and the Custom reset below
      cannot drift into two different ideas of "empty". */
@@ -10786,10 +10814,26 @@ function ScreenNewMeeting(){
   const approvedSetups = (DV_TPL_LIST||[]).filter(setupIsApproved);
   const hiddenSetups = (DV_TPL_LIST||[]).length - approvedSetups.length;
   const setupNeedle = setupQ.trim().toLowerCase();
-  const shownSetups = setupNeedle
-    ? approvedSetups.filter(t=>matchesQuery(setupNeedle,[t.name, MEETING_SETUP_TYPE[t.setupTypeCode],
-        MEETING_CATEGORY[t.categoryCode], MEETING_FREQUENCY[t.frequencyCode]]) || t.id===f.setup)
-    : approvedSetups;
+  /* A Setup with no Business Unit or Region rows is group-wide and always
+     matches. Otherwise it matches a Business Unit it runs in or whose Region it
+     runs in, and a Region it runs in or one of whose Business Units it runs in.
+     (A Stage 4 Setup's scope rows count as where it runs.) */
+  const groupWideSetup = t => !(t.businessUnitIds||[]).length && !(t.regionIds||[]).length;
+  const setupInBu = (t,bu) => !bu || groupWideSetup(t) || (t.businessUnitIds||[]).includes(bu)
+    || (!!buRegion(bu) && (t.regionIds||[]).includes(buRegion(bu)));
+  const setupInRegion = (t,rg) => !rg || groupWideSetup(t) || (t.regionIds||[]).includes(rg)
+    || (t.businessUnitIds||[]).some(b=>buRegion(b)===rg);
+  const filtersOn = !!(fStage || fBu || fRegion);
+  const shownSetups = approvedSetups.filter(t => t.id===f.setup || (
+       (!setupNeedle || matchesQuery(setupNeedle,[t.name, MEETING_SETUP_TYPE[t.setupTypeCode],
+          MEETING_CATEGORY[t.categoryCode], MEETING_FREQUENCY[t.frequencyCode]]))
+    && (!fStage || String(t.stageCode)===fStage)
+    && setupInBu(t,fBu) && setupInRegion(t,fRegion)));
+  const STAGE_FILTER_OPTS = [{id:'1',name:'Stage 1 · BU Operational'},{id:'2',name:'Stage 2 · Regional Functional'},
+    {id:'3',name:'Stage 3 · Group Functional'},{id:'4',name:'Stage 4 · Top Management'}];
+  const buFilterOpts = DV_BU_LIST.map(b=>({id:b.id, name:b.name||'(unnamed unit)', sub:dvRegion(b.region)||undefined}))
+    .concat(fBu && !DV_BU_LIST.some(b=>b.id===fBu) ? [{id:fBu, name:dvBu(fBu)||'Your Business Unit'}] : []);
+  const regionFilterOpts = DV_REGION_LIST.map(r=>({id:r.id, name:r.name||'(unnamed region)'}));
   const setupRow = f.setup ? dvTplDetail(f.setup) : null;
   const setupType = setupRow ? (MEETING_SETUP_TYPE[setupRow.setupTypeCode]||null) : null;
   const setupCategory = setupRow ? (MEETING_CATEGORY[setupRow.categoryCode]||null) : null;
@@ -10887,6 +10931,25 @@ function ScreenNewMeeting(){
               {setupNeedle ? <span className="cs-search-n">{shownSetups.length} of {approvedSetups.length}</span> : null}
             </span>
           </div>
+          <div className="cs-tpl-filters" role="group" aria-label="Filter Setups">
+            <div className="cs-tpl-filter"><Combo label="Stage" value={fStage} onChange={pickStage}
+              opts={STAGE_FILTER_OPTS} all="Any stage" placeholder="Search stages…"/></div>
+            <div className="cs-tpl-filter"><Combo label="Business Unit" value={fBu} onChange={pickBu}
+              opts={buFilterOpts} all="Any Business Unit" placeholder="Search Business Units…"/></div>
+            <div className="cs-tpl-filter"><Combo label="Region" value={fRegion} onChange={pickRegion}
+              opts={regionFilterOpts} all="Any Region" placeholder="Search Regions…"/></div>
+            <div className="cs-tpl-filter-end">
+              <span className="cs-search-n">{shownSetups.length} of {approvedSetups.length} Setups</span>
+              {(filtersOn || setupNeedle)
+                ? <button type="button" className="cs-btn" onClick={clearSetupFilters}>
+                    <RotateCcw size={11}/>Clear filters</button>
+                : null}
+            </div>
+          </div>
+          {!filterTouched && myBu && (fBu===myBu)
+            ? <p className="cs-card-note" style={{marginBottom:6}}>Showing Setups for your Business Unit
+                {dvBu(myBu) ? <> (<b>{dvBu(myBu)}</b>)</> : null} and its Region, plus every group-wide Setup.</p>
+            : null}
           <p className="cs-card-note" style={{marginBottom:12}}>
             Meetings inherit their classification, people, cadence, agenda and quorum from the selected Setup.
             {hiddenSetups>0 ? ` ${hiddenSetups} Setup${hiddenSetups===1?' is':'s are'} not approved and hidden.` : ''}</p>
@@ -10894,6 +10957,11 @@ function ScreenNewMeeting(){
             ? <Note k="warn">None of the {(DV_TPL_LIST||[]).length} Setups read from Dataverse is Active /
                 Approved, so there is nothing to create from. Approve one in Governance Setup first — or
                 schedule a Custom Meeting.</Note>
+            : null}
+          {approvedSetups.length>0 && shownSetups.length===0
+            ? <div className="cs-card-note" style={{marginBottom:10}}>No approved Setup matches these filters.
+                {' '}<button type="button" className="cs-btn" onClick={clearSetupFilters}>Clear filters</button>
+                {' '}or schedule a Custom Meeting below.</div>
             : null}
           <div className="cs-tpl-grid" role="radiogroup" aria-label="Meeting Setups">
             {shownSetups.map(t=>{
