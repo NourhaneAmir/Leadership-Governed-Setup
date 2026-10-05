@@ -9629,6 +9629,75 @@ warnings. ⚠️ **Verified statically, not clicked through** — the screen nee
 live Dataverse to reach the Setup cards. Not committed at the time of writing,
 not pushed.
 
+### 05 Oct: Post the approved Minutes to the meeting's Teams channel (Leadership only)
+
+Per an explicit ask: the Organizer posts the approved MOM to the meeting's
+Teams channel, with the task owners @mentioned (due dates, details) and the
+link to the approved Word file in SharePoint. User's choices (asked): an
+**in-app dialog that posts for them** (Teams refuses to be framed, so it
+cannot be embedded); the channel **falls back to the Setup's**; **all tasks**
+of the meeting.
+
+- **Where:** the Minutes' Review layout bar, beside Export to Word: **Post to
+  Teams**, shown when the Minutes are Approved or Closed **and** the user is
+  the meeting's Organizer (`isFacilitator`).
+- **The dialog** (`screens/PostToTeams.jsx`, `PostMinutesToTeams`, portalled
+  to `<body>`):
+  - **Team → Channel**, pre-set to the meeting's `lm_TeamChannel`, else the
+    Setup unit row's (BU or Region), else the Setup's own; the hint says
+    which, and any channel can be picked;
+  - an editable **Subject** and **Message**;
+  - a **preview** of the whole post and the list of people it mentions.
+- **The post** (`minutesTeamsHtml`):
+  - meeting, date, Chair, Organizer and approval, then the Word file link
+    (`getMeetingMinutesDocument`);
+  - the agenda with coverage, the note (cut to 300 characters) and decisions;
+  - **every task** (agenda items, then meeting-level) as "@owner — task (code)
+    · due · priority · status", with its description (cut to 250) and source
+    item;
+  - built from `buildMinutesModel({}, true)`, so **confidential Stage 4 items
+    are withheld**, as in the SharePoint copy;
+  - over 24,000 characters the notes are dropped (Teams caps a message at
+    about 28 KB).
+- **Mentions:** each owner's systemuser (`taskFromRow` now carries
+  `assigneeId`) is read by the new `fetchUsersByIds()` (Entra object id, else
+  domain name / email) and turned into a token by `AtMentionUser`. Anyone
+  Teams can't resolve is named in bold, and the toast says how many.
+- **Posting:** `src/services/teams.js` registers just two Teams connector
+  actions, **`AtMentionUser`** and **`PostMessageToChannelV3`** (definitions
+  copied from the CLI-generated registry), into the shared `dataSourcesInfo`
+  as data source **`teams`**, the same way `sharepoint.js` does. The message is
+  posted **as the signed-in user**. `fetchTeamsChannels()` now maps
+  `teamObjectId` / `channelObjectId` (296 of 297 DT New channels have both).
+- **Connection:** Code App Development already had a Teams connection
+  (`3d5a47ad6bb44a248168e60529f78927`, the user's).
+  `power-apps add-data-source -a shared_teams -c …` was run in a **scratch
+  copy** of the staging folder: it generated connection reference
+  **`c17b71ab-8149-4a3b-8986-38734a872a62`** (dataSources `["teams"]`), a
+  5,500-line registry entry and a 130 KB service. Only the reference
+  (`apps/leadership/power.config.json`) and the schema
+  (`apps/leadership/.power/schemas/teams/`) were kept in the repo. Every user
+  gets a one-time consent prompt for Teams.
+- ⚠️ **DEPLOY PREREQUISITE ON THIS MACHINE (05 Oct):** `C:\tmp\cad-exec` and
+  `C:\tmp\cad-exec-test` here hold **only the Dataverse** connection
+  reference. The 04 Oct note that both "carry the SharePoint connection" was
+  true on the machine that pushed then, not here. Before the next push from
+  this machine, add to BOTH staging `power.config.json` files:
+  - the SharePoint reference (the repo's `06859f41…` entry, under the id the
+    live apps already use, `38d50d16-18ea-4bef-843f-95c6e0664e38`);
+  - the Teams one above;
+  - `.power/schemas/sharepointonline` and `.power/schemas/teams`.
+
+  Otherwise the push strips SharePoint, and Minutes-to-SharePoint breaks.
+- Checks:
+  - both apps build; lint 55 (baseline), `no-undef` clean;
+  - `minutesTeamsHtml` tested in Node on a sample (escaping, withheld item,
+    note cut, decisions, mentions with due / details, a meeting-level task, the
+    over-budget fallback — 9/9);
+  - the dev server loads with the new modules and no console errors.
+  - **Not posted for real** (needs the live app and Teams). Not committed,
+    not pushed.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap
