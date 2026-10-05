@@ -7997,9 +7997,10 @@ function ReportLinkPicker({reports, taken, place, onPick, busy, pickLabel='Link'
    (04 Oct, user's ask). The flow and its code are unchanged: set to true to
    bring the buttons back. */
 const SHOW_ATTACH_OCC = false;
-/* "Link a report" on a Submissions row, and the Documents tab's "Link a
-   document by Report Template" card, are hidden too (04 Oct, user's asks):
-   inputs are submitted as links only for now. Set to true to bring both back. */
+/* "Link a report" on a Submissions row, the Documents tab's "Link a
+   document by Report Template" card (04 Oct) and the Schedule Meeting page's
+   report picker (05 Oct) are hidden: inputs are links only for now. Set to
+   true to bring them back. */
 const SHOW_LINK_REPORT = false;
 /* The Documents tab's "Link a report directly" card (an ad hoc meeting's
    picker of any Report Occurrence) is hidden too (05 Oct, user's ask). Its
@@ -10925,13 +10926,17 @@ function ScreenNewMeeting(){
       }
       /* The chosen reports, linked now the meeting has an id. A failure here is
          reported with the rest; the meeting itself is already saved. */
-      for(const r of (custom ? [] : linkReports)){
+      /* Links only for EVERY meeting for now (05 Oct, user's ask): a meeting
+         from a Setup gets the same name + URL rows a Custom one does, and no
+         Report Occurrence is linked from here. SHOW_LINK_REPORT (above
+         DvMeetingDetail) turns the report picker back on. */
+      const linksOnly = custom || !SHOW_LINK_REPORT;
+      for(const r of (linksOnly ? [] : linkReports)){
         const res = await linkMeetingOccurrenceReport({ meetingOccurrenceId:id, reportOccurrenceId:r.id,
           reportTemplateId:r.templateId||undefined, name:r.name });
         if(!res.id) errors.push(...res.errors);
       }
-      /* A Custom meeting's input reports are links only (01 Oct). */
-      for(const l of (custom ? inLinks : [])){
+      for(const l of (linksOnly ? inLinks : [])){
         const res = await linkMeetingOccurrenceReport({ meetingOccurrenceId:id, name:l.name, fileUrl:l.url });
         if(!res.id) errors.push(...res.errors);
       }
@@ -11416,7 +11421,7 @@ function ScreenNewMeeting(){
               <h2 className="cs-card-title" id="nm-reports">Reports for this meeting</h2>
               <span className="cs-type adhoc">Optional</span>
             </div>
-            {custom ? <>
+            {(custom || !SHOW_LINK_REPORT) ? <>
             <p className="cs-card-note" style={{marginBottom:10}}>Input reports as <b>links</b> for now — paste the
               SharePoint or Teams link of each file. They appear on the meeting’s Documents and Submissions tabs,
               and a linked file counts as submitted.</p>
