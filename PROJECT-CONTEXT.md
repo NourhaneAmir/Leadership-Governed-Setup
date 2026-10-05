@@ -9948,6 +9948,43 @@ Positions as Chair and Organizer.
   item shows the owner picker, the red edge, the note and the "Still needed"
   entry, with no console errors. Committed `9e1fe4c`; pushed 05 Oct to Leadership (2) only.
 
+### 05 Oct: pushed Leadership (2) — the user's Work Queue, and no top-bar BU filter
+
+`72d8c87` minus `4ca0036`, reading DT New, bundle `index-DXMbSUyh.js`, pushed
+to **`d61c6237`** (`C:	mp\cad-exec-test`). **Leadership main `83db0ef8` was
+NOT pushed** — the ask was "build and push the app", which §0 defines as the
+test copies; main needs the user to name it in the same turn.
+
+Carries one commit: the per-item Work Queue filter (Meeting items for Chair,
+**Co-Chair**, Organizer or Attendee; Minutes items for the Organizer only) and
+the removal of the top bar's Business unit select.
+
+Push steps followed as written in §0:
+
+| Step | Result |
+|---|---|
+| `git revert --no-commit 4ca0036` | 2 conflicts, the documented pair |
+| Resolve — **drop both sides** | `LeadershipApp.jsx` uploader helpers vs `ApprovedSetupPicker`; `dataverse.js` `uploadReportOccurrenceFile()` vs empty. Markers 0 / 0, no `ApprovedSetupPicker` reference left |
+| `oxlint -D no-undef` on the **reverted** tree | only the two `__PIN_ORG__` hits in `xenv.js`, as expected |
+| Bundle: uploader gone | **1** `lm_TeamChannel@odata.bind`, **no** `lm_attachmentfile` ✅ |
+| Bundle: environment | `org319b4ea9` ×2 and `org2f45e702` ×1 — the documented Leadership shape (`IT_ORG` is a constant in `xenv.js`) |
+| Bundle: the change present | `coChair` ×7, `coChairPositionId` ×4 |
+| `git revert --abort`, rebuild normal IT `dist` | tree clean, uploader restored |
+
+**Two bundle greps looked wrong and were not:**
+
+- **"All business units" still appears twice.** Not the top bar — both are
+  `BuildReport.jsx`'s own Business Unit selector, which was never part of this
+  change. Checked in the source rather than assumed.
+- **`fetchTeamsChannels` appears once.** That is the 03 Oct production bug's
+  exact shape, so it was read in context: the hit sits inside a
+  `console.warn('[dataverse] fetchTeamsChannels() failed:', ...)` string, which
+  is the **fixed**-build signature. A bare global call would be the broken one.
+
+⚠️ Worth keeping as a habit: both greps would have passed as "fine" on the
+count alone, and one of them is the known way a broken bundle reaches an app.
+The count is the question, never the answer.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap
