@@ -3188,6 +3188,8 @@ function App({onSwitch}){
   const ctx = {db,setDb,mut,me,bu,setBu,businessUnits,navOpen,setNavOpen,currentUser,screen,go,openMeeting,openWork,sel,setSel,
                toast,toasts,reset,S,A,work,cal,counts,onSwitch,
                dvMeetingOccs,dvReportOccs,dvMinutes,dvGridInstances,dvDecisions,dvLoading,dvError,refreshOccurrences,
+               /* my role on one meeting -- {chair, coChair, organizer, attendee} (05 Oct) */
+               meetingRoleOf,
                myMeetingOccs,isMyMeeting,
                /* bumped when the module-level name/Setup maps (DV_TPL_DETAIL…) load --
                   a screen memoising anything read through dvTplDetail() depends on it */
@@ -6642,8 +6644,11 @@ function AgendaTaskPanel({rec,item,tasks,canAdd,onRaised}){
   </div>;
 }
 
+/* viewOnly (05 Oct): the signed-in user is only an attendee of this meeting --
+   they read the Minutes but cannot write, submit, approve, return or close
+   them (see DvMeetingDetail). */
 function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksChanged,
-                        decisions=[],quorum,writeupHours,approvalHours,setupName,onDocsChanged}){
+                        decisions=[],quorum,writeupHours,approvalHours,setupName,onDocsChanged,viewOnly=false}){
   const {toast,dvLookup,currentUser,refreshOccurrences}=use();
   /* Coverage lives on the agenda rows (rec.agenda), not on the Minutes, so a
      Yes/No click must re-read the occurrences -- reloading the Minutes alone
@@ -6753,7 +6758,10 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
   const returned     = minutes.status==='Draft' && !!minutes.returnReason;
   const awaitingChair= minutes.status==='Draft' && !!minutes.submittedAt && !returned;
   const drafting     = minutes.status==='Draft' && !awaitingChair;
-  const editable     = drafting;
+  const editable     = drafting && !viewOnly;
+  /* the Chair's step and the closing step, both closed to a view-only attendee */
+  const chairActs    = awaitingChair && !viewOnly;
+  const canClose     = approved && !viewOnly;
 
   const textFor = a => drafts[a.id] !== undefined ? drafts[a.id] : (minutes.notesByAgenda[a.id]||'');
   /* RULE-MOM-02: an Agenda Item with no Output needs a Discussion Note. No
@@ -7168,7 +7176,15 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
         </div>
 
         <aside className="mtgd-side">
-          {awaitingChair ?           <section className="card mom-sign">
+          {awaitingChair && viewOnly ? <section className="card mom-sign">
+              <div className="mtgd-card-top">
+                <span className="cs-icon gold" aria-hidden="true"><PenLine size={15}/></span>
+                <h2>{signs ? 'Awaiting signature' : 'Awaiting approval'}</h2>
+              </div>
+              <div className="mom-hint">With <b>{chairName||'the Meeting Chair'}</b> to review and {signs ? 'sign' : 'approve'}.
+                Attendees can read the Minutes but do not approve them.</div>
+            </section>
+          : awaitingChair ?           <section className="card mom-sign">
               <div className="mtgd-card-top">
                 <span className="cs-icon gold" aria-hidden="true"><PenLine size={15}/></span>
                 <h2>{signs ? 'Digital Signature' : 'Chair Approval'}</h2>
@@ -7220,7 +7236,7 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
                 {minutes.approvedAt && <div><span>Approved</span><b className="cs-mono">{fmtISODT(minutes.approvedAt)}</b></div>}
                 {minutes.closedAt && <div><span>Closed</span><b className="cs-mono">{fmtISODT(minutes.closedAt)}</b></div>}
               </div>
-              {approved && <button type="button" className="cs-btn primary lg mom-sign-btn" disabled={busy==='close'} onClick={close}>
+              {canClose && <button type="button" className="cs-btn primary lg mom-sign-btn" disabled={busy==='close'} onClick={close}>
                 <Lock size={13}/>{busy==='close'?'Closing…':'Close the Minutes'}</button>}
             </section>}
 
@@ -7292,26 +7308,26 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
       <div style={{flex:1}}/>
       <button type="button" className="cs-btn ghost lg" disabled={exporting} onClick={exportWord}>
         <Download size={13}/>{exporting ? 'Exporting…' : 'Export to Word'}</button>
-      {drafting &&
+      {drafting && !viewOnly &&
         <button type="button" className="cs-btn primary lg" disabled={!canSubmit||busy==='submit'} onClick={submit}
           title={canSubmit ? 'Send the Minutes to the Meeting Chair'
             : unmarked.length ? 'Mark every agenda item Yes or No first' : 'Every covered agenda item needs a note first'}>
           <Send size={13}/>{busy==='submit'?'Submitting…':'Submit for Approval'}</button>}
-      {awaitingChair && <>
+      {chairActs && <>
         <button type="button" className="cs-btn danger lg" disabled={!!busy} onClick={()=>setReturning(true)}>
           <RotateCcw size={13}/>Return for revision</button>
         <button type="button" className="cs-btn green lg" disabled={busy==='approve'} onClick={approve}>
           <Check size={13}/>{busy==='approve'?'Approving…':(signs?'Approve and sign':'Approve')}</button></>}
-      {approved &&
+      {canClose &&
         <button type="button" className="cs-btn primary lg" disabled={busy==='close'} onClick={close}>
           <Lock size={13}/>{busy==='close'?'Closing…':'Close the Minutes'}</button>}
     </div>
 
-    {drafting && !!unmarked.length &&
+    {editable && !!unmarked.length &&
       <Note k="warn">{unmarked.length} Agenda Item{unmarked.length>1?'s are':' is'} not marked covered or not
         covered: {unmarked.map(a=>a.title||'—').join(', ')}. Choose <b>Yes</b> or <b>No</b> on each — writing a note or
         adding a decision or task marks it <b>Yes</b> for you.</Note>}
-    {drafting && !!missingNotes.length &&
+    {editable && !!missingNotes.length &&
       <Note k="warn">{missingNotes.length} Agenda Item{missingNotes.length>1?'s have':' has'} no
         Discussion Note: {missingNotes.map(a=>a.title||'—').join(', ')}. Add a note, raise a decision or task
         on it, or mark it <b>No</b> if it was not covered.</Note>}
@@ -7932,7 +7948,14 @@ const SHOW_LINK_REPORT = false;
 
 function DvMeetingDetail({rec,back}){
   const {sel,setSel,toast,refreshOccurrences,openMeeting,S,dvMeetingOccs,dvReportOccs,openDvRec,dvDecisions=[],
-         dvLookup,currentUser}=use();
+         dvLookup,currentUser,meetingRoleOf}=use();
+  /* Attendees view, they don't run the meeting (05 Oct, user's rule). A user
+     who is ONLY an attendee (or an attendee's delegate) of this meeting --
+     not its Organizer, Chair or Co-Chair -- cannot edit it, mark it Held,
+     reschedule or cancel it, change its agenda or attendance, or write,
+     submit, approve, return or close its Minutes. Everyone else is unchanged. */
+  const myRole = meetingRoleOf ? meetingRoleOf(rec) : null;
+  const viewOnly = !!myRole && myRole.attendee && !myRole.organizer && !myRole.chair && !myRole.coChair;
   const tab = sel.mtgTab || 'detail';
   const setTab = t=>setSel(v=>({...v,mtgTab:t}));
   const [markingHeld,setMarkingHeld]=useState(false);
@@ -8278,7 +8301,10 @@ function DvMeetingDetail({rec,back}){
      topic raised in the room -- until its Minutes are Approved or Closed.
      Such an item is marked as added in the meeting (lm_source). */
   const minutesLocked = !!minutes && (minutes.status==='Approved' || minutes.status==='Closed');
-  const canAddAgenda = rec.status==='Scheduled' || (rec.status==='Held' && !minutesLocked);
+  const canAddAgenda = !viewOnly && (rec.status==='Scheduled' || (rec.status==='Held' && !minutesLocked));
+  /* Scheduled-meeting changes: edit, mark Held, reschedule, cancel, reorder /
+     remove agenda items, record distribution, add attendees. */
+  const canRun = rec.status==='Scheduled' && !viewOnly;
   const addAgendaItem = async () => {
     const title = newAgendaTitle.trim();
     if(!title || !canAddAgenda) return;
@@ -8505,9 +8531,9 @@ function DvMeetingDetail({rec,back}){
         </div>
         <div className="cs-actions">
           <button type="button" className="cs-btn ghost lg" onClick={back}>Back to List</button>
-          {rec.status==='Scheduled' &&
+          {canRun &&
             <button type="button" className="cs-btn ghost lg" onClick={()=>setEditing(true)}><PenLine size={13}/>Edit</button>}
-          {rec.status==='Scheduled' &&
+          {canRun &&
             <button type="button" className="cs-btn green lg" disabled={markingHeld||!!heldBlock} onClick={markHeld}
               title={heldBlock||'Mark this meeting as held'}>
               <Check size={13}/>{markingHeld?'Marking…':'Mark as Held'}</button>}
@@ -8531,7 +8557,9 @@ function DvMeetingDetail({rec,back}){
     {rescheduling && <DvRescheduleOccModal rec={rec} onClose={()=>setRescheduling(false)}/>}
     {cancelling && <DvCancelOccModal rec={rec} onClose={()=>setCancelling(false)}/>}
 
-    {rec.status==='Scheduled' && missingWhen.length>0 &&
+    {viewOnly && <Note k="info">You are an <b>attendee</b> of this meeting: you can see everything, but only
+      its Organizer, Chair or Co-Chair can change it, mark it Held, or write and approve its Minutes.</Note>}
+    {canRun && missingWhen.length>0 &&
       <Note k="warn">This meeting can’t be marked Held until its {missingWhen.join(', ').replace(/, ([^,]*)$/,' and $1')}
         {missingWhen.length===1?' is':' are'} entered. Use <b>Edit</b> to add {missingWhen.length===1?'it':'them'}.</Note>}
     {rec.status==='Scheduled' && !rec.agenda.length &&
@@ -8608,7 +8636,7 @@ function DvMeetingDetail({rec,back}){
       </div>
 
       <div className="cs-side mtgd-side">
-        {rec.status==='Scheduled' && <section className="card mtgd-actions" aria-labelledby="mtgd-act">
+        {canRun && <section className="card mtgd-actions" aria-labelledby="mtgd-act">
           <div className="mtgd-card-top">
             <span className="cs-icon green" aria-hidden="true"><Check size={15}/></span>
             <h2 id="mtgd-act">Actions</h2>
@@ -8840,8 +8868,9 @@ function DvMeetingDetail({rec,back}){
           {covered} of {rec.agenda.length} covered</Tag>}
         {rec.status==='Scheduled' && (rec.agendaSent
           ? <Tag c="green">Distributed {fmtDS(rec.agendaSent)}</Tag>
-          : <Btn k="sm" disabled={sendingAgenda||!rec.agenda.length} onClick={sendAgenda}>
-              {sendingAgenda?'Recording…':'Record distribution'}</Btn>)}
+          : canRun ? <Btn k="sm" disabled={sendingAgenda||!rec.agenda.length} onClick={sendAgenda}>
+              {sendingAgenda?'Recording…':'Record distribution'}</Btn>
+            : <Tag c="grey">Not distributed yet</Tag>)}
         {canAddAgenda &&
           <Btn k="sm" onClick={()=>setAddingAgenda(v=>!v)}>{addingAgenda?'Close':'+ Add item'}</Btn>}
       </div>
@@ -8862,7 +8891,7 @@ function DvMeetingDetail({rec,back}){
             No Agenda Item on this occurrence. A Meeting cannot proceed without one.</Empty></div>
         : <div className="t-wrap"><table className="data">
             <thead><tr><th style={{width:50}}>#</th><th>Topic</th><th>Presenter</th>
-              <th>Status</th>{rec.status==='Scheduled' && <th></th>}</tr></thead>
+              <th>Status</th>{canRun && <th></th>}</tr></thead>
             <tbody>{rec.agenda.slice().sort((a,b)=>(a.seq||0)-(b.seq||0)).map((a,i,arr)=>
               <tr key={a.id}>
                 <td className="cs-mono dim">{a.seq??i+1}</td>
@@ -8873,7 +8902,7 @@ function DvMeetingDetail({rec,back}){
                   ? <Tag c={a.covered==='Yes'?'green':a.covered==='No'?'red':'grey'}>
                       {a.covered==='Yes'?'Covered':a.covered==='No'?'Not covered':'Not recorded'}</Tag>
                   : a.ownerPositionId ? <Tag c="green">Ready</Tag> : <Tag c="amber">Awaiting owner</Tag>}</td>
-                {rec.status==='Scheduled' && <td style={{textAlign:'right',whiteSpace:'nowrap'}}>
+                {canRun && <td style={{textAlign:'right',whiteSpace:'nowrap'}}>
                   <Btn k="sm" disabled={agendaBusyId||i===0} onClick={()=>moveAgendaItem(a,-1)}>↑</Btn>
                   <Btn k="sm" disabled={agendaBusyId||i===arr.length-1} onClick={()=>moveAgendaItem(a,1)}>↓</Btn>
                   <Btn k="sm" disabled={agendaBusyId} onClick={()=>removeAgendaItem(a.id)}>
@@ -8893,10 +8922,10 @@ function DvMeetingDetail({rec,back}){
           {requiredPresent} of {required.length} Required present</Tag>}
         {quorum.state!=='none' && quorum.state!=='pending' &&
           <Tag c={QUORUM_TAG[quorum.state][0]}>{QUORUM_TAG[quorum.state][1]}</Tag>}
-        {rec.status==='Scheduled' &&
+        {canRun &&
           <Btn k="sm" onClick={()=>setAddingAtt(v=>!v)}>{addingAtt?'Close':'+ Add attendee'}</Btn>}
       </div>
-      {rec.status==='Scheduled' && addingAtt && <div className="mtgd-addatt">
+      {canRun && addingAtt && <div className="mtgd-addatt">
         <div style={{flex:'1 1 260px',minWidth:0}}>
           <PositionSelect value={newAtt.positionId} onChange={v=>setNewAtt(x=>({...x,positionId:v}))}
             opts={DV_POS_LIST.filter(p=>!rec.attendees.some(a=>a.positionId===p.id))}
@@ -8934,10 +8963,11 @@ function DvMeetingDetail({rec,back}){
                   ? <div style={{display:'flex',alignItems:'center',gap:6}}>
                       <Tag c={a.present==='Present'?'green':a.present==='Absent'?'red':'grey'}>
                         {a.present||'Not Yet Recorded'}</Tag>
+                      {!viewOnly && <>
                       <Btn k="sm" disabled={attSavingId===a.id||a.present==='Present'}
                         onClick={()=>setAttendance(a.id,'Present')}>Present</Btn>
                       <Btn k="sm" disabled={attSavingId===a.id||a.present==='Absent'}
-                        onClick={()=>setAttendance(a.id,'Absent')}>Absent</Btn>
+                        onClick={()=>setAttendance(a.id,'Absent')}>Absent</Btn></>}
                     </div>
                   : <Tag c={a.present==='Present'?'green':a.present==='Absent'?'red':'grey'}>
                       {a.present&&a.present!=='Not Yet Recorded'?a.present:'Pending'}</Tag>}</td>
@@ -8989,7 +9019,7 @@ function DvMeetingDetail({rec,back}){
           decisions={dvDecisions.filter(d=>d.agendaItemId && agendaById.has(d.agendaItemId))}
           quorum={quorum} writeupHours={meetingLimits(rec, S).momWriteupHours}
           approvalHours={meetingLimits(rec, S).momApprovalHours} setupName={dvTpl(rec.templateId)}
-          onDocsChanged={reloadDocs}/>}
+          onDocsChanged={reloadDocs} viewOnly={viewOnly}/>}
     </>}
 
     {tab==='grid' && <>

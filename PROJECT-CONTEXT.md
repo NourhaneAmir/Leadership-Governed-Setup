@@ -10050,6 +10050,36 @@ Per an explicit ask, with a screenshot of the Select Setup grid.
 - Checks: both apps build; lint 55, same as HEAD; `no-undef` clean. The `Combo`
   import line is not touched by `4ca0036`. Not browser-checked, not pushed.
 
+### 05 Oct: attendees are view-only on a meeting (Leadership only)
+
+Per an explicit ask: attendees can't edit the Minutes, mark the meeting Held,
+edit the meeting, or approve the Minutes. Until now the live meeting page
+checked no role at all. `acting()` is the demo's "every role" stub and always
+answers true.
+
+- **Rule:** `viewOnly` = the signed-in user is an attendee (or an attendee's
+  delegate) of THIS meeting and is **not** its Organizer, Chair or Co-Chair.
+  It comes from `meetingRoleOf(rec)` (the Work Queue's helper, now on the
+  context), whose Positions are matched by id through `myPositionIds`.
+  **Anyone else is unchanged**, including users with no role on the meeting
+  (admins, governance). Say if non-participants should be view-only too.
+- **Meeting page (`DvMeetingDetail`):** a new `canRun` (Scheduled and not
+  view-only) gates Edit, Mark as Held (header and side Actions), Reschedule,
+  Cancel, Record distribution, agenda reorder / remove, and + Add attendee.
+  `canAddAgenda` excludes view-only too. The Attendance tab's Present /
+  Absent buttons are hidden. View-only users see an info note saying who can
+  act. The "use Edit to add the time" warning shows only to someone who can.
+- **Minutes (`DvMinutesBody`, new `viewOnly` prop):** `editable` = drafting
+  and not view-only. That covers notes, coverage, decisions and tasks on items,
+  and confidentiality. Submit, Approve / Return (`chairActs`) and Close
+  (`canClose`) are hidden. The review layout's sign card becomes "Awaiting
+  approval — with the Chair". The how-to-fix warnings show only to editors.
+- ⚠️ **Not changed:** the Audit Grid tab (`DvGridBody`) and the decision /
+  Work Log screens outside the meeting page. Hiding is app-side; Dataverse
+  privileges are unchanged.
+- Checks: both apps build; lint 55, same as HEAD; `no-undef` clean. Not
+  browser-checked, not pushed.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap
