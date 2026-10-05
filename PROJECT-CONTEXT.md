@@ -9573,6 +9573,62 @@ Detail Overview. Most of it already matched the 01 Oct restyle; changed:
   as usual (1 `lm_TeamChannel@odata.bind`, no `lm_attachmentfile`, DT New, one
   SharePoint registry). Not browser-checked (needs Dataverse). Pushed to
   Leadership (2), then to main on the user's ask — the same bundle.
+### 05 Oct: Schedule Meeting — choosing Custom kept the Setup's metadata (Leadership only)
+
+Reported with a screenshot: *"when i choose a template then move to custom the
+system cash the metadata of the template so i want when i choose custom to
+reset all the filters, fields and dropdowns"*.
+
+**The cause, exactly.** The Setup-detail effect in `ScreenNewMeeting` resets the
+inherited fields **only on its non-custom path**:
+
+```js
+useEffect(()=>{
+  if(custom || !f.setup){ setTplDetail(null); setTplLoading(false); return; }  // <- early return
+  ...
+  setF(x=>({...x, tplUnitKey:'', dvBusinessUnitId:'', ... agenda:['']}));      // <- never reached
+},[custom, f.setup]);
+```
+
+Switching to Custom therefore dropped `tplDetail` — so the *cards* looked
+right — while everything the Setup had written into `f` stayed: **Chair,
+Organizer, Attendees, Business Unit / Region, Department, agenda items, the
+cadence date and the time zone.** `pickCustom` itself only did
+`setCustom(true); set('setup','')`. Anything the user did not re-type was then
+saved onto the Custom meeting.
+
+**The fix.** The initial form object is now a named `blankForm()` — a function,
+since it reads `me` and `TODAY` — used *both* as the initial state and by
+`pickCustom`, so the two cannot drift into different ideas of "empty".
+`pickCustom` resets `f` wholesale plus `cls`, `chan`, `inLinks`, `newLink`,
+`linkReports`, `skipCarry` and `tplDetail`.
+
+⚠️ **Reset wholesale, not a hand-listed subset.** A field added to the Setup
+path later would otherwise have to be remembered in `pickCustom` too, and would
+leak silently the first time someone forgot — which is how this bug existed at
+all. Verified mechanically rather than by eye: every key written into `f`
+anywhere in the screen (through the `...x` updater or `set(k,v)`) is one of
+`blankForm()`'s **31** keys, so nothing escapes the replacement.
+
+⚠️ **Only on the TRANSITION into Custom** (`if(custom) return;`). The card
+stays clickable while already selected, and wiping a name and purpose someone
+had just typed because they clicked the card they were already on would be its
+own bug.
+
+`cls` goes back to its **default**, not to blank — a Custom Meeting is a
+Business Meeting until said otherwise, which is what the form opens on.
+
+**Not fixed, and not reported:** Setup A → Setup B leaves `tz` behind when the
+new Setup's unit does not set one (`applyUnit` falls back to `x.tz`), and
+leaves `inLinks` / `chan` / `linkReports` standing. Much smaller — a Setup
+supplies its own classification and people, so nothing visibly wrong appears —
+but it is the same shape of leak.
+
+Leadership builds; oxlint clean apart from the two pre-existing unused-catch
+warnings. ⚠️ **Verified statically, not clicked through** — the screen needs
+live Dataverse to reach the Setup cards. Not committed at the time of writing,
+not pushed.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap

@@ -10329,7 +10329,10 @@ function ScreenNewMeeting(){
   const chosenChannel = (channels||[]).find(c=>c.id===chan.id) || null;
   const onClose=()=>go('mtg');
   const [setupQ,setSetupQ]=useState('');
-  const [f,setF]=useState({setup:'', tplUnitKey:'', name:'', purpose:'', bu:'AHJ',
+  /* The pristine form. A FUNCTION, not a constant, because it reads `me` and
+     TODAY -- and named once so the initial state and the Custom reset below
+     cannot drift into two different ideas of "empty". */
+  const blankForm = () => ({setup:'', tplUnitKey:'', name:'', purpose:'', bu:'AHJ',
     date:addDays(TODAY,5), start:'09:00', end:'10:00', mode:'Online', location:'',
     adhoc:'Governance', restricted:false, dept:P(me).dept, stage:'Business Unit',
     chair:'u2', facilitator:'u3', recorder:null,
@@ -10340,6 +10343,7 @@ function ScreenNewMeeting(){
        Custom Ad Hoc Meeting. */
     dvBusinessUnitId:'', dvRegionId:'', dvDepartmentId:'',
     dvChairPositionId:'', dvFacilitatorPositionId:'', dvAttend:[], tz:''});
+  const [f,setF]=useState(blankForm);
   const [saving,setSaving]=useState(false);
   const [tplDetail,setTplDetail]=useState(null);
   const [tplLoading,setTplLoading]=useState(false);
@@ -10653,7 +10657,37 @@ function ScreenNewMeeting(){
     : (tplDetail?.parent?.lm_meetingtemplatename || dvTpl(f.setup) || '');
   const showForm = custom || (f.setup && !tplLoading);
   const pickSetup = id => { setCustom(false); if(id!==f.setup) set('setup', id); };
-  const pickCustom = () => { setCustom(true); set('setup',''); };
+  /* ⚠️ Switching to Custom CLEARS the form (reported 05 Oct: "the system
+     cash the metadata of the template").
+
+     The Setup-detail effect below resets the inherited fields only on its
+     non-custom path -- it returns early when `custom` is true, so it dropped
+     tplDetail while leaving everything the Setup had written in `f`: its
+     Chair, Organizer, Attendees, Business Unit / Region, Department, agenda,
+     cadence date and time zone. A Custom Meeting then opened pre-filled with
+     another Setup's people and placement, and anything not re-typed was saved
+     that way.
+
+     Everything is reset, not a hand-listed subset: a field added to the Setup
+     path later would otherwise have to be remembered here too, and would
+     silently leak the first time someone forgot. `cls` goes back to its own
+     default rather than blank -- a Custom Meeting is a Business Meeting until
+     said otherwise, which is what the form opens on.
+
+     ⚠️ Only on the TRANSITION into Custom. The card stays clickable while
+     selected, and wiping a name and purpose someone had already typed because
+     they clicked the card they were on would be its own bug. */
+  const pickCustom = () => {
+    if(custom) return;
+    setCustom(true);
+    setF(blankForm());
+    setCls({type:'Business Meeting', classification:'', categoryId:''});
+    setChan({team:'', id:''});
+    setInLinks([]); setNewLink({name:'', url:''});
+    setLinkReports([]);
+    setSkipCarry(new Set());
+    setTplDetail(null); setTplLoading(false);
+  };
   const initials = t => String(t||'?').split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase();
   const members = [
     ...(f.dvChairPositionId ? [{id:f.dvChairPositionId, role:'Chair'}] : []),
