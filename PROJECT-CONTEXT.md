@@ -9698,6 +9698,32 @@ of the meeting.
   - **Not posted for real** (needs the live app and Teams). Not committed,
     not pushed.
 
+### 05 Oct: locked Not Applicable questions are removed from the Grid (Leadership only)
+
+Per an explicit ask, with a screenshot of AG-01 / AG-02 shown as "🔒 Not
+Applicable" on a meeting with no TOR: questions that cannot apply should be
+removed from the Audit Grid and from the question count.
+
+- **Which:** only the **locked** Not Applicable rows (`r.locked`). Today that
+  means AG-01 and AG-02 when the meeting has no TOR / Policy link (01 Oct
+  rule). Ordinary Not Applicable rows (no Tasks yet, not submitted, …) still
+  show: a person can answer them manually.
+- **`gridTotals()`:** `total = AG_ACTIVE.length − locked`, so a locked
+  question no longer lowers **coverage**, and `na` no longer counts it. The
+  score was already unaffected. A new `locked` count is returned. Approval
+  stores this `total`, so published Grids follow. Committee Scores' live
+  coverage too.
+- **The Grid tab (`DvGridBody`):** locked rows are not drawn, a category left
+  empty is hidden, and each category's "N of M applicable" excludes them.
+  One dim line under the header says "AG-01 and AG-02 are left out of this
+  Grid: no TOR or Policy link is set on this meeting."
+- Not changed: the seeded demo Grid, the Committee Scores question catalogue
+  (the global list of questions), and already approved Grids' stored totals.
+- Checks: both apps build; lint 55; `no-undef` clean. `gridTotals` run in
+  Node (two locked → total 13 and coverage on 13, not in the N/A count, score
+  unchanged; none locked → 15 as before). Not browser-checked. Not committed,
+  not pushed.
+
 ### 05 Oct: AG-17 is always calculated — provisional until the Grid is submitted (Leadership only)
 
 Per an explicit ask, with a screenshot of AG-17 reading Not Applicable ("The
