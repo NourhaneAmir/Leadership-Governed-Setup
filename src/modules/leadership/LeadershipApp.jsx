@@ -1526,15 +1526,26 @@ function liveScoreGrid(occ, minutes, quorumPct, torLink, accred, S, grid, allOcc
 
   /* AG-17 (01 Oct): Grid opened (createdon -- it is created when the MOM
      closes) -> submitted for Chair approval (lm_submitedat, DT New only). */
+  /* 05 Oct (user's ask): it is calculated automatically -- never left to a
+     manual answer. Before submission it is scored PROVISIONALLY, from the
+     opening to now (the score if submitted now); Submit stamps lm_submitedat
+     and that fixes it. */
+  const ag17 = h => h<=LIM.gridSubmitHours?5 : h<=LIM.gridSubmitHours*2?2:0;
+  const gridOpen = grid && (grid.state==='Pending Organizer Review' || grid.state==='Returned for Revision');
   if(!grid) push('AG-17','na',null,null,'No Audit Grid exists for this meeting yet.');
-  else if(!grid.submittedAt) push('AG-17','na',null,null,
-    grid.state==='Pending Organizer Review' || grid.state==='Returned for Revision'
-      ? 'The Grid has not been submitted yet — it is measured once it is.'
-      : 'This Grid’s submission time was not recorded (submitted before it was tracked, or where lm_submitedat does not exist).');
   else if(!grid.created) push('AG-17','na',null,null,'The Grid’s opening time is not available.');
+  else if(!grid.submittedAt && gridOpen){
+    const h = Math.max(0, hoursBetween(grid.created, new Date().toISOString()));
+    push('AG-17','auto', ag17(h),
+      `Not submitted yet — ${h} hour${h===1?'':'s'} since the Grid opened (${limTxt('gridSubmitHours')}). `
+      + 'This is the score if the Grid is submitted now; it is fixed when you submit.');
+    R[R.length-1].provisional = true;
+  }
+  else if(!grid.submittedAt) push('AG-17','na',null,null,
+    'This Grid’s submission time was not recorded (submitted before it was tracked, or where lm_submitedat does not exist).');
   else{
     const h = hoursBetween(grid.created, grid.submittedAt);
-    push('AG-17','auto', h<=LIM.gridSubmitHours?5 : h<=LIM.gridSubmitHours*2?2:0,
+    push('AG-17','auto', ag17(h),
       `Submitted ${h} hour${h===1?'':'s'} after the Grid opened (${limTxt('gridSubmitHours')}).`);
   }
 
@@ -7536,7 +7547,8 @@ function DvGridQuestion({r,editable,savingId,onScore,onEvidence,onClear}){
   const busy = savingId===r.id;
   const evTooLong = draft.trim().length>GRID_EVIDENCE_MAX;
 
-  const statusTag = r.state==='retired' ? <Tag c="grey">Retired</Tag>
+  const statusTag = r.provisional ? <Tag c="amber">Provisional · fixed on submission</Tag>
+    : r.state==='retired' ? <Tag c="grey">Retired</Tag>
     : r.state==='na' ? <Tag c="grey">Not Applicable</Tag>
     : r.state==='blank' ? <Tag c="amber">Awaiting a manual score</Tag>
     : r.state==='manual' ? <Tag c="purple">Manually scored</Tag>
@@ -7575,8 +7587,9 @@ function DvGridQuestion({r,editable,savingId,onScore,onEvidence,onClear}){
         <div style={{fontSize:12,color:'var(--muted)',marginBottom:6}}>{r.q.rule}</div>
         {r.ev && <div style={{fontSize:12,marginBottom:8}}><b>Computed from:</b> {r.ev}</div>}
         {r.state==='auto' && <>
-          <Note k="lock" ic="🔒">An auto-scored value cannot be changed by any user. An evidence note may
-            still be attached.</Note>
+          <Note k="lock" ic="🔒">{r.provisional
+            ? 'Calculated automatically and updated live until the Grid is submitted; the submission time then fixes it. It cannot be changed by any user. An evidence note may still be attached.'
+            : 'An auto-scored value cannot be changed by any user. An evidence note may still be attached.'}</Note>
           {editable
             ? <Field label="Evidence note (optional)" hint={`Max ${GRID_EVIDENCE_MAX} characters.`}
                 err={evTooLong?`${draft.trim().length} characters — ${GRID_EVIDENCE_MAX} max.`:null}>
