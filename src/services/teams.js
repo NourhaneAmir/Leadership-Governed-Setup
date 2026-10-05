@@ -17,9 +17,16 @@
    carry a shared_teams connection reference with dataSources ["teams"]. The
    message is posted as the signed-in user (their own Teams connection).
 
-   ⚠️ The Power Apps data runtime is a singleton that keeps the FIRST registry
-   any getClient() receives (see sharepoint.js), so the entry is added INTO
-   that shared object rather than handed over as a copy.
+   ⚠️ The "teams" entry MUST be in the generated registry file
+   (apps/leadership/.power/schemas/appschemas/dataSourcesInfo.ts) when the
+   app starts. The runtime's RuntimeDataSourceService.initialize() copies the
+   registry's KEYS into its own object once, so an entry added at run time is
+   never found -- "Data source not found: Unable to find data source: teams in
+   data sources info" (first live try, 05 Oct). Actions added to an EXISTING
+   entry are found (entries are shared by reference), which is why
+   sharepoint.js can add its file actions to "documents" -- and why the code
+   below only tops up the apis of an entry that is already there. The entry
+   holds just these two actions, copied from the CLI-generated registry.
    ========================================================================= */
 import { getClient } from '@microsoft/power-apps/data';
 import { dataSourcesInfo } from '@generated/../../.power/schemas/appschemas/dataSourcesInfo';
