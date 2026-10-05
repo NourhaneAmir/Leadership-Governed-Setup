@@ -9985,6 +9985,24 @@ Push steps followed as written in §0:
 count alone, and one of them is the known way a broken bundle reaches an app.
 The count is the question, never the answer.
 
+### 05 Oct: Schedule Meeting — Cancel / Schedule Meeting at the foot of the page (Leadership only)
+
+Per an explicit ask, with a screenshot: the two buttons sat in the page header,
+far from where the form is finished.
+
+- They are removed from the header (`cs-head-top` keeps the title and
+  subtitle) and placed in a full-width bar, **`.cs-form-foot`**, after the two
+  columns. The bar's left side reads "Still needed: …" (the same `why` list
+  the side card shows) or "Ready to schedule." / "Saving the meeting…". The
+  right side has the same two buttons, same handlers and the same disabled
+  rule and tooltip.
+- `.cs-form-foot` (`leadership-design.css`, under `.cs-root`) is generic, for
+  reuse by other long forms. On a phone the buttons take the full width,
+  right-aligned.
+- Checks: both apps build; lint 55, the same as HEAD (the baseline moved from
+  56 with the parallel session's commits); `no-undef` clean. Not
+  browser-checked, not pushed.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap

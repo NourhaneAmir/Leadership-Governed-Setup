@@ -10868,12 +10868,9 @@ function ScreenNewMeeting(){
           <p className="cs-sub">{custom
             ? 'A Custom Ad Hoc Meeting — for where no approved Setup exists. It is scheduled immediately and sent to Taxonomy with a No-Setup flag.'
             : 'Create a meeting from an approved Setup — it inherits the Setup’s classification, people and agenda.'}</p></div>
-        <div className="cs-actions">
-          <button type="button" className="cs-btn ghost lg" onClick={onClose} disabled={saving}>Cancel</button>
-          <button type="button" className="cs-btn primary lg" onClick={save} disabled={!ok||saving}
-            title={ok ? 'Schedule this meeting' : 'Still needed: '+why.join(', ')}>
-            <CalendarDays size={13}/>{saving?'Saving…':'Schedule Meeting'}</button>
-        </div>
+        {/* Cancel / Schedule Meeting moved to the foot of the page (05 Oct,
+            user's ask): the form is filled top to bottom, so the actions sit
+            where the user finishes. */}
       </div>
     </div>
 
@@ -11312,6 +11309,20 @@ function ScreenNewMeeting(){
               <p className="cs-card-note">{why.join(' · ')}</p>
             </section>
           : null}
+      </div>
+    </div>
+
+    <div className="cs-form-foot">
+      <span className="cs-form-foot-note">
+        {saving ? 'Saving the meeting…'
+          : ok ? 'Ready to schedule.'
+          : showForm && why.length ? <>Still needed: <b>{why.join(', ')}</b></> : null}
+      </span>
+      <div className="cs-actions">
+        <button type="button" className="cs-btn ghost lg" onClick={onClose} disabled={saving}>Cancel</button>
+        <button type="button" className="cs-btn primary lg" onClick={save} disabled={!ok||saving}
+          title={ok ? 'Schedule this meeting' : 'Still needed: '+why.join(', ')}>
+          <CalendarDays size={13}/>{saving?'Saving…':'Schedule Meeting'}</button>
       </div>
     </div>
   </div>;

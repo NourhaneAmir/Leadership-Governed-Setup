@@ -917,6 +917,16 @@
 .lp-soon-tag svg{ flex:0 0 auto; color:#F6E7CC }
 .nav-i.lp-soon:hover .lp-soon-tag{ background:linear-gradient(180deg, #96713E 0%, #77572D 100%) }
 
+/* ---------- Form footer (05 Oct, Schedule Meeting first) ---------------- */
+/* The page's own actions, at the end where the form is finished. */
+.cs-root .cs-form-foot{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;
+  padding:14px 18px; border:1px solid var(--cs-border); border-radius:16px;
+  background:linear-gradient(180deg,#fff 0%,var(--cs-gold-100) 100%); box-shadow:var(--cs-shadow-sm) }
+.cs-root .cs-form-foot-note{ flex:1 1 260px; min-width:0; font:400 12.5px var(--cs-body-font); color:var(--cs-muted) }
+.cs-root .cs-form-foot-note b{ font-weight:600; color:var(--cs-text) }
+.cs-root .cs-form-foot .cs-actions{ margin-left:auto }
+@media (max-width:560px){ .cs-root .cs-form-foot .cs-actions{ width:100%; justify-content:flex-end } }
+
 /* ---------- Pager (04 Oct, Work Queue first) ---------------------------- */
 .cs-root .cs-pager{ display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;
   padding:10px 16px; border-top:1px solid var(--cs-border) }
