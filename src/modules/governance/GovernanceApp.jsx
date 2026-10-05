@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useLayoutEffect, useRef, createContext, useContext } from 'react';
 import { createPortal } from 'react-dom';
-import { ClipboardList, ListChecks, ArrowUpRight, FileText, CalendarDays, Check, MoreHorizontal } from 'lucide-react';
+import { ClipboardList, ListChecks, ArrowUpRight, FileText, CalendarDays, Check, MoreHorizontal, Pencil } from 'lucide-react';
 import { fetchRegions, fetchBusinessUnits, fetchDepartments, fetchFunctions, fetchProcesses, fetchKpis, fetchSections, fetchPositions, departmentBuIndex, fetchTeamsChannels, fetchMicrosoftGroupMembers, fetchMeetingCategories, fetchCurrentUser, saveReportTemplateToDataverse, saveMeetingTemplateToDataverse, updateReportTemplateToDataverse, updateMeetingTemplateToDataverse, updateReportTemplateStatus, updateMeetingTemplateStatus, fetchReportTemplatesList, fetchMeetingTemplatesList, fetchReportTemplateDetail, fetchMeetingTemplateDetail, fetchMeetingOccurrencesByTemplate, fetchReportOccurrencesByTemplate, TEMPLATE_STATUS_LABEL,
   logSetupActivity, logSetupActivityBatch, fetchSetupActivity, uploadReportTemplateFile,
   decodeDayOfWeeksMulti, DAY_OF_WEEKS_CAP, REPORT_SCHEDULE_COLS } from '../../services/dataverse.js';
@@ -2405,11 +2405,14 @@ function DerivedName({s,set}){
 /* ---- the hand-written Meeting name (06 Oct) -------------------------------
    Shown only while the Chairman is Hazem Darweesh Zagzoug. Editable by the
    Setup's creator (anyone, on a Setup not yet saved to Dataverse). */
+/* The Setup's creator (anyone, on a Setup not yet saved to Dataverse). */
+const isSetupCreator=(s,currentUser)=>!s._dataverseId || !s.createdById
+  || (!!currentUser?.systemUserId && currentUser.systemUserId===s.createdById);
+
 function CustomMeetingName({s,set}){
   const {currentUser}=use();
   if(!customNameAllowed(s)) return null;
-  const mine=!s._dataverseId || !s.createdById
-    || (!!currentUser?.systemUserId && currentUser.systemUserId===s.createdById);
+  const mine=isSetupCreator(s,currentUser);
   const auto=autoName(s);
   return <Field id="f-customName" label="Meeting name"
     hint={mine
@@ -2419,6 +2422,41 @@ function CustomMeetingName({s,set}){
     <input id="f-customName" type="text" value={s.customName||''} readOnly={!mine} placeholder={auto||'Meeting name'}
       onChange={e=>set({customName:e.target.value, customNameChairs:chairKey(s)})}/>
   </Field>;
+}
+
+/* The page title of a Setup, with a pencil beside it (06 Oct, user's ask)
+   while the Chairman is Hazem Darweesh Zagzoug and the user created the
+   Setup -- the same rule as CustomMeetingName, edited in place: Enter or
+   leaving the box keeps it, Esc cancels, an empty box means the automatic
+   name. */
+function SetupTitle({s,set,fallback}){
+  const {currentUser}=use();
+  const [editing,setEditing]=useState(false);
+  const [draft,setDraft]=useState('');
+  const canEdit=customNameAllowed(s) && isSetupCreator(s,currentUser);
+  const name=derivedName(s)||fallback;
+  if(!canEdit || !editing) return <h1 style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+    <span>{name}</span>
+    {canEdit && <button type="button" title="Edit the meeting name" aria-label="Edit the meeting name"
+      onClick={()=>{ setDraft(s.customName||derivedName(s)||''); setEditing(true); }}
+      style={{background:'none',border:'none',padding:4,cursor:'pointer',color:'inherit',opacity:.65,
+              display:'inline-flex',borderRadius:6}}>
+      <Pencil size={18}/></button>}
+  </h1>;
+  const done=keep=>{
+    if(keep){
+      const v=draft.trim();
+      set({customName: v && v!==autoName(s) ? v : '', customNameChairs: chairKey(s)});
+    }
+    setEditing(false);
+  };
+  return <h1 style={{display:'flex',alignItems:'center',gap:8}}>
+    <input autoFocus type="text" value={draft} placeholder={autoName(s)||'Meeting name'}
+      aria-label="Meeting name" onChange={e=>setDraft(e.target.value)}
+      onKeyDown={e=>{ if(e.key==='Enter') done(true); else if(e.key==='Escape') done(false); }}
+      onBlur={()=>done(true)}
+      style={{font:'inherit',flex:1,minWidth:0,padding:'2px 8px'}}/>
+  </h1>;
 }
 
 /* ---- a multi-select the scope multiplies over --------------------------- */
@@ -2992,7 +3030,8 @@ function Wizard({rec,steps,renderStep,onClose}){
     <div className="crumb"><a onClick={onClose}>Setup Register</a> › <b>{derivedName(s)||'New Setup'}</b></div>
     <div className="ph ph-row">
       <div style={{flex:1}}>
-        <h1>{derivedName(s)||(s.kind==='Report Template'?'New Report Template Setup':'New Committee / Meeting Setup')}</h1>
+        <SetupTitle s={s} set={set}
+          fallback={s.kind==='Report Template'?'New Report Template Setup':'New Committee / Meeting Setup'}/>
         <div className="sub">{s.kind}{published?` · version ${s.version}`:''} ·
           <StatusPill s={s.status}/></div>
       </div>
