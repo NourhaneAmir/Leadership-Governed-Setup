@@ -999,3 +999,16 @@
 .cs-mtgd .mtgd-li-t b{ font:600 11.5px var(--cs-sans); color:var(--cs-text); overflow-wrap:anywhere }
 .cs-mtgd .mtgd-li-t span{ font:400 10px var(--cs-body-font); color:var(--cs-muted); overflow-wrap:anywhere }
 .cs-mtgd .mtgd-all-sub{ margin-top:12px; padding-top:10px; border-top:1px solid var(--cs-border) }
+
+/* ---------- Post the Minutes to Teams (05 Oct, PostToTeams.jsx) ----------
+   The dialog is portalled to <body>, outside .cs-root, so these rules are not
+   scoped and use theme.css's tokens. The preview approximates a Teams post. */
+.tm-lbl{ margin:12px 0 5px; font-size:10px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--faint) }
+.tm-preview{
+  max-height:340px; overflow:auto; padding:12px 14px; border:1px solid var(--border); border-left:3px solid #5B5FC7;
+  border-radius:8px; background:#fff; font-size:13px; line-height:1.55; color:var(--ink); overflow-wrap:anywhere;
+}
+.tm-preview p{ margin:0 0 8px }
+.tm-preview ol, .tm-preview ul{ margin:0 0 8px; padding-left:20px; display:flex; flex-direction:column; gap:5px }
+.tm-preview a{ color:#5B5FC7 }
+.tm-at{ color:#5B5FC7; font-weight:600; background:rgba(91,95,199,.10); border-radius:4px; padding:0 3px }

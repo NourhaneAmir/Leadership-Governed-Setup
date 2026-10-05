@@ -30,6 +30,9 @@ import { OpenRecord } from './recordLinks.jsx';
 import { ScreenHierarchy } from './screens/Hierarchy.jsx';
 import { ScreenComms } from './screens/Communication.jsx';
 import { ScreenBuildReport, NewTaskForm } from './screens/BuildReport.jsx';
+/* Post approved Minutes to Teams (05 Oct) -- its own line, untouched by the
+   deploy-time revert of 4ca0036. */
+import { PostMinutesToTeams } from './screens/PostToTeams.jsx';
 import { PEOPLE, P, RPT_SETUPS, RS, DIAG, DiagChip, PROC_REG, PR, BI_REPORTS, BIR, KPI_CAT, KPIC, findKpi, bdDims, achFor, achPct, achCls, CITE_KINDS, citeKind, citeId, citeCls, canSeeReport, rptCfg, rptTagC, matchesQuery, CiteCard,
   STRAT, ST, PM_ENTRIES, PME, ISSUES, ISS, rptName } from './domain.jsx';
 import { Tag, Btn, Note, OD, Bar, Field, Empty, Stat, KVBlock, Rail,
@@ -6841,6 +6844,9 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
      Stage 4 items, which export as title + "withheld" for anyone who cannot
      read them here. Decisions are read fresh so the file carries the latest. */
   const [exporting,setExporting]=useState(false);
+  /* Post the approved Minutes to the meeting's Teams channel (05 Oct) --
+     the Organizer only, once the Chair has approved. */
+  const [teamsOpen,setTeamsOpen]=useState(false);
   const holderOr = id => (id && DV_POS_HOLDER[id]) || posName(id) || null;
   /* The Word model, shared by "Export to Word" and the SharePoint copy (04 Oct).
      `over` replaces Minutes fields that the screen has not re-read yet (the
@@ -6856,7 +6862,10 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
       let tasks = null;
       try{ tasks = await fetchTasksForMeeting(rec.id, rec.agenda.map(a=>a.id)); }
       catch(e){ console.warn('[minutesExport] tasks could not be read; exporting without them:', e); }
-      const taskRow = t => ({ name:t.name, code:t.code, assignee:t.assigneeName,
+      /* assigneeId and description feed the Teams post (05 Oct); the Word
+         writer ignores them. */
+      const taskRow = t => ({ name:t.name, code:t.code, assignee:t.assigneeName, assigneeId:t.assigneeId||null,
+        description:t.description||null,
         due: t.due ? fmtDS(t.due) : null, status:t.status, priority:t.priority });
       const agendaIds = new Set(rec.agenda.map(a=>a.id));
       const userName = id => attendeeUsers.find(u=>u.userId===id)?.name || null;
@@ -7022,6 +7031,10 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
         <div style={{flex:1}}/>
         <button type="button" className="cs-btn ghost lg" disabled={exporting} onClick={exportWord}>
           <Download size={13}/>{exporting ? 'Exporting…' : 'Export to Word'}</button>
+        {(approved || closed) && isFacilitator &&
+          <button type="button" className="cs-btn primary lg" onClick={()=>setTeamsOpen(true)}
+            title="Post these Minutes, the task owners and the Word file to the meeting's Teams channel">
+            <MessageSquare size={13}/>Post to Teams</button>}
       </div>
 
       <div className="cs-two-col mtgd-cols">
@@ -7166,6 +7179,8 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
           await run('return', ()=>returnMeetingMinutes(minutes.id, reason),
             'Returned to the Recorder','The reason is recorded and every Output stays Draft.');
         }}/>}
+      {teamsOpen && <PostMinutesToTeams rec={rec} toast={toast}
+        buildModel={()=>buildMinutesModel({}, true)} onClose={()=>setTeamsOpen(false)}/>}
     </>;
   }
 

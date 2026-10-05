@@ -1014,6 +1014,9 @@ export async function fetchTeamsChannels(){
       folder:   std && seg.length > 3 ? seg.slice(3).join('/') : null,
       siteLink: r.and_sharepointsitelink ?? null,
       folderLink: r.and_rootfolderlink ?? null,
+      /* Microsoft Teams ids -- what a channel post needs (05 Oct). */
+      teamObjectId: r.and_teamobjectid || null,
+      channelObjectId: r.and_channelobjectid || null,
     };
   });
 }
@@ -2243,6 +2246,30 @@ export async function fetchAssignableUsers(){
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/** Users by systemuser id, with what a Teams @mention needs (05 Oct): the
+ *  Microsoft Entra object id, else the sign-in name / email. Chunked, as an
+ *  OData filter has a length limit. A failed chunk is skipped, so a person
+ *  is then named without an @mention rather than stopping the caller. */
+export async function fetchUsersByIds(ids = []){
+  const list = [...new Set((ids || []).filter(Boolean))];
+  const out = [];
+  for(let i = 0; i < list.length; i += 25){
+    const chunk = list.slice(i, i + 25);
+    try{
+      const res = await SystemusersService.getAll({
+        select: ['systemuserid', 'fullname', 'internalemailaddress', 'domainname', 'azureactivedirectoryobjectid'],
+        filter: chunk.map(id => `systemuserid eq ${id}`).join(' or '),
+      });
+      for(const r of (res?.data ?? [])) out.push({
+        id: r.systemuserid, name: r.fullname || null,
+        email: r.internalemailaddress || null, upn: r.domainname || null,
+        aadId: r.azureactivedirectoryobjectid || null,
+      });
+    }catch(e){ console.warn('[dataverse] fetchUsersByIds() chunk failed:', e); }
+  }
+  return out;
+}
+
 export async function fetchStrategyPocs(){
   const res = await Stf_strategypocsService.getAll({
     select: ['stf_strategypocid','stf_pocname','stf_pocdescription','stf_pocstatus',
@@ -2583,6 +2610,8 @@ function taskFromRow(r){
         priority: r['hx_priority' + FV] || TASK_PRIORITY[r.hx_priority] || null,
         start: isoDay(r.hx_startdate),
         due: isoDay(r.hx_duedate),
+        /* the assignee's systemuser id -- a Teams @mention resolves it (05 Oct) */
+        assigneeId: r._hx_assignee_value || null,
         assigneeName: r['_hx_assignee_value' + FV] || null,
         accountableName: r['_hx_accountable_value' + FV] || null,
         leadershipPractice: r['_cr18c_relatedleadershippractice_value' + FV] || null,

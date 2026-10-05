@@ -67,6 +67,14 @@
       ],
       "authenticationType": "Oauth",
       "dataSets": {}
+    },
+    "c17b71ab-8149-4a3b-8986-38734a872a62": {
+      "id": "/providers/Microsoft.PowerApps/apis/shared_teams",
+      "displayName": "Microsoft Teams",
+      "dataSources": [
+        "teams"
+      ],
+      "dataSets": {}
     }
   },
   "databaseReferences": {
