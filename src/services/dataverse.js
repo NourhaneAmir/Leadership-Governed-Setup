@@ -3658,7 +3658,10 @@ export async function fetchMeetingTemplateDetail(id){
       // select entirely until 23 Sep -- the write side had nowhere to read
       // its own value back from, on top of never writing it either.
       '_lm_meetingchairman_value','_lm_meetingcochairman_value','_lm_meetingorganizerfacilitator_value',
-      '_lm_teamchannel_value'],
+      '_lm_teamchannel_value',
+      /* Who created the Setup -- only they may write its name by hand
+         (06 Oct, see customNameAllowed() in GovernanceApp.jsx). */
+      '_createdby_value'],
   });
   const parent = parentRes?.data;
   if(!parent) throw new Error(`Meeting Template ${id} not found`);

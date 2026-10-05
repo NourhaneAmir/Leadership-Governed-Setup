@@ -606,7 +606,29 @@ const scopeToken=s=>{ const keys=scopeKeys(s); return keys.length===1 ? nameToke
    gets. Matched normalised (spaces/hyphens stripped, case-insensitive)
    since the exact Dataverse label spelling isn't pinned down here. */
 const isAdHocCategory=s=>squash(s.reportCategory).toLowerCase()==='adhoc';
+/* A hand-written Meeting name (06 Oct, user's rule). Allowed only while the
+   Chairman's current employee is Hazem Darweesh Zagzoug (matched on the
+   Position's holder name), and only the person who created the Setup may
+   write it. It holds until the Chairman changes: chairKey() is stamped with
+   the name, and any change to the Chairman clears it (see Wizard's set()),
+   so the automatic name comes back. */
+const CUSTOM_NAME_CHAIR_HOLDER='hazem darweesh zagzoug';
+const normPerson=w=>(w||'').toLowerCase().replace(/\s+/g,' ').trim();
+const chairKey=s=>Array.from(new Set(scopeKeys(s).map(k=>unitOf(s,k)?.chairman).filter(Boolean))).sort().join(',');
+function customNameAllowed(s){
+  if(s.kind==='Report Template') return false;
+  return scopeKeys(s).some(k=>{
+    const c=unitOf(s,k)?.chairman;
+    const p=c && POSITIONS.find(x=>x.id===c);
+    return !!p && normPerson(p.holder)===CUSTOM_NAME_CHAIR_HOLDER;
+  });
+}
+const hasCustomName=s=>!!(s.customName||'').trim() && customNameAllowed(s) && s.customNameChairs===chairKey(s);
+/* The name the Setup produces on its own, ignoring a hand-written one. */
+const autoName=s=>derivedName({...s, customName:''});
+
 function derivedName(s){
+  if(hasCustomName(s)) return s.customName.trim();
   const pre=STAGE_PREFIX[STAGES.indexOf(s.stage)]||'';
   const subj=subjectOf(s);
   const fallbackStageWord=FALLBACK_STAGE_WORD[STAGES.indexOf(s.stage)]||'';
@@ -2380,6 +2402,25 @@ function DerivedName({s,set}){
   </Field>;
 }
 
+/* ---- the hand-written Meeting name (06 Oct) -------------------------------
+   Shown only while the Chairman is Hazem Darweesh Zagzoug. Editable by the
+   Setup's creator (anyone, on a Setup not yet saved to Dataverse). */
+function CustomMeetingName({s,set}){
+  const {currentUser}=use();
+  if(!customNameAllowed(s)) return null;
+  const mine=!s._dataverseId || !s.createdById
+    || (!!currentUser?.systemUserId && currentUser.systemUserId===s.createdById);
+  const auto=autoName(s);
+  return <Field id="f-customName" label="Meeting name"
+    hint={mine
+      ? <>The Chairman is Hazem Darweesh Zagzoug, so the name can be written by hand. Leave it empty to use
+          the automatic name{auto?<> “{auto}”</>:''}. Changing the Chairman puts the automatic name back.</>
+      : 'Only the person who created this Setup can change its name.'}>
+    <input id="f-customName" type="text" value={s.customName||''} readOnly={!mine} placeholder={auto||'Meeting name'}
+      onChange={e=>set({customName:e.target.value, customNameChairs:chairKey(s)})}/>
+  </Field>;
+}
+
 /* ---- a multi-select the scope multiplies over --------------------------- */
 const Pick=({on,label,sub,onToggle})=>
   <button type="button" className={'pick'+(on?' on':'')} aria-pressed={on} onClick={onToggle}>
@@ -2934,6 +2975,10 @@ function Wizard({rec,steps,renderStep,onClose}){
   const [confirmPublish,setConfirmPublish]=useState(false);
   const set=patch=>setS(x=>{
     const next={...x,...patch};
+    /* The Chairman changed -> the automatic name comes back (06 Oct). */
+    if((next.customName||'').trim() && next.customNameChairs!==chairKey(next)){
+      next.customName=''; next.customNameChairs='';
+    }
     if(isNewRef.current) A.promoteDraft(next);
     return next;
   });
@@ -3031,6 +3076,7 @@ function MeetingWizard({rec,onClose}){
                      units:syncUnits(ns)});}}/></Field>
           <MeetingClassField s={s} set={set} accred={accred} tot={tot} locked={locked}/>
           <MeetingCategoryField s={s} set={set} accred={accred}/>
+          <CustomMeetingName s={s} set={set}/>
           <DerivedName s={s} set={set}/>
           {locked?<Note k="lock" ic="—">Setup Type is locked. Everything else may be changed, and
             publishing will create version {s.version+1}.</Note>:null}
@@ -3060,6 +3106,7 @@ function MeetingWizard({rec,onClose}){
           <div className="sub">Everything up to here is shared. This page holds only what changes from one
             place to the next — where it is discussed, who chairs it, who organises it, and who attends.
             Set one section up and copy it across the rest.</div>
+          <CustomMeetingName s={s} set={set}/>
         </div>}
 />;
 
@@ -4237,7 +4284,18 @@ const attendeeToRow=a=>a._lm_microsoftgroup_value
   : { id:uid('cm'), position:a._lm_attendeeposition_value||null,
       type:a.lm_attendeetype===2?'Supportive':'Core' };
 
+/* Re-opening a saved Setup (06 Oct): a saved name that differs from the
+   automatic one was written by hand, so it is kept as the custom name, tied
+   to the Chairman it was saved with. Whether it applies is still decided by
+   customNameAllowed() -- the Chairman must be Hazem Darweesh Zagzoug. */
 function dataverseMeetingToSetup(detail){
+  const setup=dataverseMeetingToSetupBase(detail);
+  const saved=(detail.parent?.lm_meetingtemplatename||'').trim();
+  const custom = saved && saved!=='(untitled)' && saved!==autoName(setup);
+  return {...setup, createdById:detail.parent?._createdby_value||null,
+    customName: custom ? saved : '', customNameChairs: custom ? chairKey(setup) : ''};
+}
+function dataverseMeetingToSetupBase(detail){
   const p=detail.parent;
   const buUnits=(detail.businessUnits||[]).map(bu=>({
     id:'dvu-'+bu.lm_meetingtemplatebusinessunitsid, key:bu._lm_businessunit_value,
@@ -5659,6 +5717,7 @@ function App({onSwitch}){
     const copy={...src, id:nid, status:'Draft', version:0, updated:nowStamp(),
       _dataverseId:undefined,
       qualifier:((src.qualifier||'')+' copy').trim(),
+      customName:'', customNameChairs:'', createdById:null,
       regions:(src.regions||[]).slice(),
       businessUnits:(src.businessUnits||[]).slice(),
       lines:(src.lines||[]).map(l=>({...l,id:uid('ln')})),
