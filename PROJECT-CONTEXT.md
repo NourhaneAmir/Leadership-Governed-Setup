@@ -10355,6 +10355,13 @@ with the link"). Not built or run by us; nothing in the apps changed.
   from the HTTP request — Outlook IDs contain `/` and `+`; the URIs now wrap the
   id in `encodeUriComponent()`. A JSON `ErrorItemNotFound` would instead mean a
   mailbox mismatch.
+- **Clearing the event ID after a cancel (user's ask):** in C9's
+  *Synchronized* Update a row only, set Outlook Event Id to the **expression**
+  `null` (typed text saves the word "null"; an empty field is skipped).
+  The *Failed* copy keeps the ID so the cancel can be retried. Clearing it
+  doesn't re-trigger the flow (the trigger watches only `lm_meetingstatus`);
+  a later run would skip C6 and C7 would find nothing, since the cancelled
+  event is gone from the calendar. Added to the guide as version 4.
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap
