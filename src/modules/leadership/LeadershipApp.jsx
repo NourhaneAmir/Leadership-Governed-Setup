@@ -15,6 +15,7 @@ import { ymd, TODAY, PERIOD, HOLIDAYS, isNonWorking, isWeekend,
 import { Ctx, use } from './store.jsx';
 import { exportMinutesDocx, minutesDocxBase64, minutesFileName } from '../../services/minutesExport.js';
 import { uploadMinutesFile, pathFromUrl } from '../../services/sharepoint.js';
+import { isConnectionError, askToReconnect, reloadForConsent } from '../../services/connectionPrompt.js';
 /* Attach an existing Task to a Minutes agenda item (04 Oct). Its own import
    statement on purpose: the deploy-time revert of 4ca0036 rewrites the big
    dataverse.js import above, and a name added there can silently vanish
@@ -1357,11 +1358,31 @@ function quorumLine(qr){
    answer them manually (applyManualOverrides). */
 /* The three time limits for ONE meeting (01 Oct): the occurrence's own value,
    else its Setup's, else Governance Settings' global default. Hours. */
-function meetingLimits(occ, S){
+/* The periods actually SET on the meeting, its Setup or Governance Settings
+   (null where none is). The Audit Grid uses this to say when it scored
+   against a default. */
+function meetingLimitsSet(occ, S){
   const tpl = occ?.templateId ? dvTplDetail(occ.templateId) : null;
   const pick = k => occ?.[k] ?? tpl?.[k] ?? S?.[k] ?? null;
   return { momWriteupHours: pick('momWriteupHours'), momApprovalHours: pick('momApprovalHours'),
            gridSubmitHours: pick('gridSubmitHours') };
+}
+/* The periods in force (05 Oct, user's rule): what is set, else the defaults
+   -- MOM write-up 24h, MOM approval 24h, Audit Grid submission 48h -- so
+   every Minutes and Grid countdown shows, and the calendar's MOM-due items
+   and the overdue lists count every meeting. */
+const MEETING_DEFAULT_LIMITS = { momWriteupHours:24, momApprovalHours:24, gridSubmitHours:48 };
+function meetingLimits(occ, S){
+  const set = meetingLimitsSet(occ, S);
+  return Object.fromEntries(Object.keys(MEETING_DEFAULT_LIMITS)
+    .map(k => [k, set[k] ?? MEETING_DEFAULT_LIMITS[k]]));
+}
+
+/* "2 days left" / "5h left" / "+1 day overdue" for a deadline stamp. */
+function timeLeftLabel(due){
+  const h = hoursBetween(nowStamp(), due);
+  if(h < 0){ const o = -h; return o >= 24 ? `+${Math.ceil(o/24)} day${Math.ceil(o/24)===1?'':'s'} overdue` : `+${o}h overdue`; }
+  return h >= 24 ? `${Math.floor(h/24)} day${Math.floor(h/24)===1?'':'s'} left` : `${h}h left`;
 }
 
 /* Grid scoring only (04 Oct, user's ask: "every automatic question scores
@@ -1371,13 +1392,13 @@ function meetingLimits(occ, S){
    The trace says when a default was used. meetingLimits() itself is unchanged,
    so the Calendar's MOM-due items and the other deadline screens still show
    only periods that were really set. */
-const GRID_DEFAULT_LIMITS = { momWriteupHours:24, momApprovalHours:24, gridSubmitHours:48 };
+const GRID_DEFAULT_LIMITS = MEETING_DEFAULT_LIMITS;
 
 /* `tasks` (05 Oct): this meeting's Tasks from fetchTasksForMeeting() --
    an array; null where Tasks cannot link to a meeting (IT); undefined while
    they are still being read. Scores AG-13. */
 function liveScoreGrid(occ, minutes, quorumPct, torLink, accred, S, grid, allOccs, decisions, tasks){
-  const SET = meetingLimits(occ, S);
+  const SET = meetingLimitsSet(occ, S);
   const LIM = {}, DEF = {};
   for(const k of Object.keys(GRID_DEFAULT_LIMITS)){
     DEF[k] = SET[k]==null;
@@ -2491,6 +2512,31 @@ function dvWorkItems(meetingOccs, roleOf){
    ========================================================================= */
 const KEY='andalusia_lp_v07';
 
+/* "Allow <connector> again" (05 Oct, user's ask): a Teams or SharePoint call
+   that fails for a connection reason raises this instead of an error message.
+   Its button reopens the app in the Power Apps player, which shows the Allow
+   dialog for any connection not allowed yet. See connectionPrompt.js. */
+function ReconnectPrompt(){
+  const [connector,setConnector]=useState(null);
+  const [going,setGoing]=useState(false);
+  useEffect(()=>{
+    const on = e => setConnector(e?.detail?.connector || 'this connection');
+    window.addEventListener('lp-reconnect', on);
+    return ()=>window.removeEventListener('lp-reconnect', on);
+  },[]);
+  if(!connector) return null;
+  return <Modal title={`Allow ${connector} again`} onClose={()=>setConnector(null)}
+    sub="The app needs your permission to use it."
+    footer={<>
+      <Btn onClick={()=>setConnector(null)} disabled={going}>Not now</Btn>
+      <Btn k="pri" disabled={going} onClick={async()=>{ setGoing(true); await reloadForConsent(); }}>
+        {going ? 'Reopening…' : 'Reload and allow'}</Btn></>}>
+    <p style={{margin:0}}>The app couldn't reach <b>{connector}</b> with your account. Reload the app, choose
+      <b> Allow</b> when Power Apps asks for permission to use {connector}, then try again.</p>
+    <p className="t-sub" style={{margin:'10px 0 0'}}>Nothing you entered is lost: what was already saved stays saved.</p>
+  </Modal>;
+}
+
 function App({onSwitch}){
   const [db,setDb]     = useState(()=>{ try{ const s=localStorage.getItem(KEY);
                                           return s?JSON.parse(s):seed(); }catch(e){ return seed(); } });
@@ -3204,6 +3250,7 @@ function App({onSwitch}){
 
   return <Ctx.Provider value={ctx}>
     <TopBar/>
+    <ReconnectPrompt/>
     <div className={'shell'+(navOpen?'':' lp-nav-closed')}>
       <Side/>
       {/* `wide` on the registry entry drops the 1380px reading cap — for dense
@@ -6924,6 +6971,9 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
       if(onDocsChanged) await onDocsChanged();
     }catch(e){
       console.warn('[minutes → SharePoint] failed:', e);
+      /* A connection problem asks the user to allow SharePoint again instead
+         of showing the error (05 Oct). */
+      if(isConnectionError(e)){ askToReconnect('SharePoint'); return; }
       toast('Word file not saved', `The Minutes were ${stage==='approve'?'approved':'submitted'}, but the Word file could not be saved to SharePoint: `
         + (e?.message || 'unknown error') + '. Use Export to Word and upload it by hand.', 'warn');
     }finally{ setSavingDoc(false); }
@@ -7085,7 +7135,6 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
   const pendingWrite = drafting && !minutes.submittedAt;
   const due = writeupHours!=null && rec.date && rec.end ? addHours(rec.date+' '+rec.end, writeupHours) : null;
   const late = !!due && pendingWrite && due < nowStamp();
-  const daysLate = late ? Math.max(1, Math.ceil((Date.now()-new Date(due.replace(' ','T')).getTime())/864e5)) : 0;
   const DONE_OUT = new Set(['Completed','Closed','Cancelled','Rejected','Done','Approved','Implemented']);
   const outTasks = tasks || [];
   const outputs = [
@@ -7146,9 +7195,7 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
     const apDue = awaitingChair && approvalHours!=null && minutes.submittedAt ? addHours(minutes.submittedAt, approvalHours) : null;
     const apLeftH = apDue ? hoursBetween(nowStamp(), apDue) : null;
     const apLate = apLeftH!=null && apLeftH < 0;
-    const apLabel = apLeftH==null ? null
-      : apLate ? `+${Math.abs(apLeftH)>=24 ? Math.ceil(Math.abs(apLeftH)/24)+' day'+(Math.ceil(Math.abs(apLeftH)/24)===1?'':'s') : Math.abs(apLeftH)+'h'} overdue`
-      : apLeftH>=24 ? `${Math.floor(apLeftH/24)} day${Math.floor(apLeftH/24)===1?'':'s'} left` : `${apLeftH}h left`;
+    const apLabel = apDue ? timeLeftLabel(apDue) : null;
     const durMin = rec.start && rec.end ? (()=>{ const [a,c]=rec.start.split(':').map(Number), [d,f]=rec.end.split(':').map(Number);
       return (d*60+f)-(a*60+c); })() : null;
     const submitter = organizerName;
@@ -7348,11 +7395,11 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
     {pendingWrite && due && <div className={'mom-te'+(late?' late':'')}>
       <span className="mom-te-ic"><Clock size={15}/></span>
       <div className="mom-te-t">
-        <b>{late ? 'MOM Write-Up Period Exceeded' : 'MOM write-up period'}</b>
+        <b>{late ? 'MOM Write-Up Period Exceeded' : 'MOM Write-Up Period Active'}</b>
         <span>AG-16 / OD-09a: the Minutes must be submitted within <strong>{writeupHours} hours</strong> of
           the meeting ending. Meeting held {fmtD(rec.date)} — deadline {late?'was':'is'} {fmtDT(due)}.</span>
       </div>
-      <span className="mom-te-c">{late ? `+${daysLate} day${daysLate===1?'':'s'}` : 'On time'}</span>
+      <span className="mom-te-c">{timeLeftLabel(due)}</span>
     </div>}
 
     <div className="card mom-bar">
@@ -7853,7 +7900,21 @@ function DvGridBody({rec,grid,olderVersions,minutes,quorumPct,torLink,accred,S,p
       toast('Not saved','Opening a correction version failed. Check the console for details.','err'); }
   };
 
+  /* Grid submission countdown (05 Oct): from the Grid opening (MOM closed) to
+     the period in force -- the meeting's, its Setup's or the 48h default. */
+  const gridHours = meetingLimits(rec, S).gridSubmitHours;
+  const gridDue = editable && grid.created && gridHours!=null ? addHours(grid.created, gridHours) : null;
+  const gridLate = !!gridDue && gridDue < nowStamp();
   return <>
+    {gridDue && <div className={'cs-mtgd-te mom-te'+(gridLate?' late':'')}>
+      <span className="mom-te-ic"><Clock size={15}/></span>
+      <div className="mom-te-t">
+        <b>{gridLate ? 'Audit Grid Submission Period Exceeded' : 'Audit Grid Submission Period Active'}</b>
+        <span>AG-17: the Organizer must submit the Grid within <strong>{gridHours} hours</strong> of it opening.
+          Opened {fmtISODT(grid.created)} — deadline {gridLate?'was':'is'} {fmtDT(gridDue)}.</span>
+      </div>
+      <span className="mom-te-c">{timeLeftLabel(gridDue)}</span>
+    </div>}
     <div className="card">
       <div style={{display:'flex',alignItems:'center',gap:9,marginBottom:12,flexWrap:'wrap'}}>
         <Tag c={grid.state==='Approved'?'green':grid.state==='Void'?'grey':'amber'}>{grid.state||'—'}</Tag>
@@ -10561,6 +10622,10 @@ function ScreenNewMeeting(){
   /* Custom Ad Hoc (01 Oct): its own Type / Classification / Category, and its
      input reports as pasted links only (name + URL, lm_fileurl). */
   const [cls,setCls]=useState({type:'Business Meeting', classification:'', categoryId:''});
+  /* A Custom meeting's own time limits (05 Oct), in hours -- the defaults the
+     user set: MOM write-up 24, MOM approval 24, Audit Grid submission 48. */
+  const [lim,setLim]=useState({ momWriteupHours:'24', momApprovalHours:'24', gridSubmitHours:'48' });
+  const limBad = Object.values(lim).some(v => !/^\d{1,4}$/.test(String(v).trim()) || Number(v) < 1);
   const [inLinks,setInLinks]=useState([]);            // [{name, url}]
   const [newLink,setNewLink]=useState({name:'', url:''});
   const [categories,setCategories]=useState(null);    // null = reading
@@ -10843,7 +10908,7 @@ function ScreenNewMeeting(){
   const stageCode = MEETING_OCC_STAGE_KEY[f.stage] || null;
   const categoryOpts = (categories||[]).filter(c => c.stageCode===stageCode
     && (accredCustom ? !c.typeCode : (!!cls.classification && MEETING_CATEGORY[c.typeCode]===cls.classification)));
-  const classOk = !custom || (cls.type && (accredCustom || cls.classification)
+  const classOk = !custom || (!limBad && cls.type && (accredCustom || cls.classification)
     && (categoryOpts.length===0 || !!cls.categoryId));
   const linkErr = !newLink.url.trim() ? null
     : !/^https:\/\//i.test(newLink.url.trim()) ? 'Paste the full link, starting with https://'
@@ -10903,6 +10968,8 @@ function ScreenNewMeeting(){
         /* The TOR / Policy link as shown on the form -- the Setup's, edited or
            cleared, or one typed for a Custom meeting (05 Oct). */
         torLink: torTrim || undefined,
+        ...(custom ? { momWriteupHours:Number(lim.momWriteupHours), momApprovalHours:Number(lim.momApprovalHours),
+                       gridSubmitHours:Number(lim.gridSubmitHours) } : {}),
         ...(custom ? { setupType:cls.type,
                        classification: accredCustom ? undefined : (cls.classification||undefined),
                        meetingCategoryId: cls.categoryId||undefined,
@@ -11244,6 +11311,17 @@ function ScreenNewMeeting(){
                   onChange={e=>setCls(x=>({...x, categoryId:e.target.value}))}>
                   <option value="">{categoryOpts.length?'Select…':'—'}</option>
                   {categoryOpts.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
+            </div>}
+
+            {custom && <div className="f-row3">
+              {[['momWriteupHours','MOM write-up period','Meeting end → Minutes submitted (AG-16).'],
+                ['momApprovalHours','MOM approval period','Minutes submitted → Chair approves (AG-05).'],
+                ['gridSubmitHours','Audit Grid submission period','Grid opens → Organizer submits it (AG-17).']].map(([k,l,h])=>{
+                const v = String(lim[k]).trim(), bad = !/^\d{1,4}$/.test(v) || Number(v) < 1;
+                return <Field key={k} label={l+' (hours)'} req hint={bad ? null : h} err={bad ? 'A whole number of hours, 1 or more.' : null}>
+                  <input type="number" min={1} step={1} value={lim[k]} inputMode="numeric"
+                    onChange={e=>setLim(x=>({...x,[k]:e.target.value}))}/></Field>;
+              })}
             </div>}
 
             {custom && <div className="f-row">

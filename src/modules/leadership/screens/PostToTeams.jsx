@@ -24,6 +24,7 @@ import { Modal, Btn, Note, Field } from '../../../shared/ui.jsx';
 import { fetchTeamsChannels, fetchMeetingTemplateDetail, fetchUsersByIds,
          getMeetingMinutesDocument } from '../../../services/dataverse.js';
 import { teamsMentionToken, postToTeamsChannel } from '../../../services/teams.js';
+import { isConnectionError, askToReconnect } from '../../../services/connectionPrompt.js';
 
 const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const clip = (s, n) => { const t = String(s || '').trim().replace(/\s+/g,' '); return t.length > n ? t.slice(0, n - 1) + '…' : t; };
@@ -158,6 +159,9 @@ export function PostMinutesToTeams({ rec, buildModel, onClose, toast }){
         + (missed ? `. ${missed} owner${missed === 1 ? '' : 's'} could not be @mentioned and ${missed === 1 ? 'is' : 'are'} named instead.` : '.'), 'ok');
     }catch(e){
       console.warn('[teams] post failed:', e);
+      /* A connection problem asks the user to allow Teams again instead of
+         showing the error (05 Oct). */
+      if(isConnectionError(e)){ askToReconnect('Microsoft Teams'); return; }
       setErr('Teams did not accept the post: ' + (e?.message || 'unknown error')
         + '. If this is the first time, allow the app to use Microsoft Teams when asked, then try again.');
     }finally{ setPosting(false); }
