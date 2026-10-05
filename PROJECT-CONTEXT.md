@@ -10170,6 +10170,45 @@ Chairman, Co-Chairman, Facilitator or an Attendee.
 - Checks: both apps build; lint 55, same as HEAD; `no-undef` clean. Not
   browser-checked, not pushed.
 
+### 05 Oct: a reminder flow for meetings with no time — build guide published (Power Automate, DT New)
+
+Per an explicit ask: detect the Scheduled meetings that still need a time from
+their Organizer, email each Organizer their list, and get the invitation and
+the calendar entry out once the times are set. Guide with paste-ready
+filters / expressions and per-step ticks:
+**https://claude.ai/artifact/9TqS9ZrFfeKuorbmm28MXg** (private). Not built or
+run by us — the user builds it; nothing in the apps changed.
+
+- **Flow A — "Leadership Practice - Meetings Missing Times Reminder"**
+  (Recurrence Sun–Thu 07:00 Arab Standard Time): List rows on Meeting
+  Occurrences, filter
+  `lm_meetingstatus eq 1 and lm_date ge <today> and lm_date lt <today+14> and (lm_starttime eq null or lm_endtime eq null)`,
+  Expand
+  `lm_FacilitatorPosition($select=cr603_name,hr_fullnameofcurrentemployee;$expand=hr_CurrentEmployee($select=hr_useremail,hr_fullname))`;
+  a Select of clean rows; `union()` of the Organizer emails; one Office 365
+  Outlook email per Organizer (HTML table + app link + "Edit → Start/End →
+  Save"); rows with no reachable Organizer go to a **fallback address** the
+  user picks. Optional Teams Flow-bot post. The nested `$expand` is the step
+  most likely to need a fallback (not tested in a run).
+- **Flow B — change to the user's invite flow:** trigger Added or Modified
+  on Meeting Occurrences, Select columns `lm_starttime,lm_endtime`, filter
+  `lm_meetingstatus eq 1 and lm_starttime ne null and lm_endtime ne null and (lm_syncstatus eq null or lm_syncstatus eq 2)`;
+  last step sets `lm_syncstatus` = 1 Synchronized and `lm_invitesentdate` =
+  today (3 Failed on error) so it sends once. Event start =
+  `lm_date` + `T` + `lm_starttime` + `:00`, time zone `lm_timezone`.
+- **Schema facts (DT New, read 05 Oct):** Organizer email path = meeting
+  `lm_FacilitatorPosition` → Position `hr_CurrentEmployee` (lookup
+  `hr_currentemployee`, relationship
+  `hr_cr603_organizationstructure_CurrentEmployee_hr_employee`) → employee
+  `hr_useremail` (sign-in; `hr_email` is personal). `lm_syncstatus`: 1
+  Synchronized, 2 Pending, 3 Failed.
+- **Data snapshot (05 Oct):** 17 Scheduled meetings without a time in the
+  next 14 days (25 from today on), on 7 Organizer Positions; **6 of the 7
+  Positions have no current employee**, so only "BI Team Leader-AHBS-1798"
+  (Bassam.Hamed@andalusiagroup.net) is reachable — the rest go to the
+  fallback until the holders are filled in on the Organization Structure.
+- **Not possible yet:** the app cannot open one specific meeting from a link,
+  so the email links to the app (offered: add deep-link support).
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap
