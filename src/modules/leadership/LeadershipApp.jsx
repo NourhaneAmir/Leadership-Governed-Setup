@@ -3580,9 +3580,9 @@ function ScreenWorkspace(){
           {noPositions && <p className="cs-sub" style={{color:'var(--cs-warning)'}}>No Position is linked to your
             account, so no meeting can be matched to you yet.</p>}</div>
         <div className="cs-actions">
-          {/* "New Report" removed from here on 03 Oct (user's ask); Reports / Plans keeps its own. */}
-          <button type="button" className="cs-btn primary lg" onClick={()=>go('mtg')}>
-            <Plus size={13}/>New Committee Meeting</button>
+          {/* "New Report" removed from here on 03 Oct (user's ask); Reports / Plans keeps its own.
+              "New Committee Meeting" removed from here on 06 Oct (user's ask); Meetings &
+              Committees keeps its own. */}
         </div>
       </div>
       <div className="cs-tabs" role="tablist" aria-label="Filter the work queue by area">
@@ -8923,12 +8923,8 @@ function DvMeetingDetail({rec,back}){
         </div>
         <div className="cs-actions">
           <button type="button" className="cs-btn ghost lg" onClick={back}>Back to List</button>
-          {canRun &&
-            <button type="button" className="cs-btn ghost lg" onClick={()=>setEditing(true)}><PenLine size={13}/>Edit</button>}
-          {canRun &&
-            <button type="button" className="cs-btn green lg" disabled={markingHeld||!!heldBlock} onClick={markHeld}
-              title={heldBlock||'Mark this meeting as held'}>
-              <Check size={13}/>{markingHeld?'Marking…':'Mark as Held'}</button>}
+          {/* Edit and Mark as Held live only in the Overview's Actions card
+              (06 Oct, user's ask) -- one Mark as Held, not two. */}
         </div>
       </div>
       <nav className="cs-tabs" role="tablist" aria-label="Meeting sections">
@@ -9036,6 +9032,8 @@ function DvMeetingDetail({rec,back}){
           <button type="button" className="cs-btn green lg" disabled={markingHeld||!!heldBlock} onClick={markHeld}
             title={heldBlock||'Mark this meeting as held'}>
             <Check size={13}/>{markingHeld?'Marking…':'Mark as Held'}</button>
+          <button type="button" className="cs-btn ghost lg" onClick={()=>setEditing(true)}>
+            <PenLine size={13}/>Edit</button>
           <button type="button" className="cs-btn ghost lg" onClick={()=>setRescheduling(true)}>
             <CalendarDays size={13}/>Reschedule</button>
           <button type="button" className="cs-btn danger lg" onClick={()=>setCancelling(true)}>
