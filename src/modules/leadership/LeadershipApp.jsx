@@ -13071,17 +13071,20 @@ function ScreenDecisions(){
     <div className="cs-stats">
       <div className="cs-stat acc-gold"><div className="cs-stat-lbl">Decisions</div>
         <div className="cs-stat-val">{dvDecisions.length}</div><div className="cs-stat-meta">logged</div></div>
-      <div className="cs-stat acc-green"><div className="cs-stat-lbl">From a report</div>
-        <div className="cs-stat-val">{fromReport.length}</div><div className="cs-stat-meta">taken on a section</div></div>
+      {/* "From a report" count hidden with the report link (06 Oct, user's ask). */}
+      {SHOW_DECISION_REPORT_LINK && <div className="cs-stat acc-green"><div className="cs-stat-lbl">From a report</div>
+        <div className="cs-stat-val">{fromReport.length}</div><div className="cs-stat-meta">taken on a section</div></div>}
       <div className="cs-stat acc-amber"><div className="cs-stat-lbl">From a meeting</div>
         <div className="cs-stat-val">{fromMeeting.length}</div><div className="cs-stat-meta">taken on an agenda item</div></div>
       <div className="cs-stat acc-alert"><div className="cs-stat-lbl">Not linked</div>
-        <div className="cs-stat-val">{unlinked.length}</div><div className="cs-stat-meta">no report or meeting yet</div></div>
+        <div className="cs-stat-val">{unlinked.length}</div><div className="cs-stat-meta">{SHOW_DECISION_REPORT_LINK?'no report or meeting yet':'no meeting yet'}</div></div>
     </div>
 
     <div className="cs-chips" role="group" aria-label="Filter Decisions by where they were taken">
+      {/* "From a report" chip hidden with the report link (06 Oct, user's ask) --
+          SHOW_DECISION_REPORT_LINK brings it back. */}
       {[['All','All',Layers],['report','From a report',FileText],['meeting','From a meeting',Users],
-        ['none','Not linked',CircleAlert]].map(([k,l,Ic])=>
+        ['none','Not linked',CircleAlert]].filter(([k])=>SHOW_DECISION_REPORT_LINK || k!=='report').map(([k,l,Ic])=>
         <button key={k} type="button" aria-pressed={fSrc===k}
           className={'cs-chip'+(fSrc===k?' on':'')} onClick={()=>setFSrc(k)}>
           <Ic size={11} aria-hidden="true"/>{l}</button>)}
@@ -13277,10 +13280,11 @@ function WorkLogDecisionModal({onClose, decision}){
 
     {f.where==='meeting' && <div className="f-row">
       <Field label="Meeting" req>
-        <select value={f.meetingId} onChange={e=>setF(x=>({...x, meetingId:e.target.value, agendaItemId:''}))}>
-          <option value="">{meetings.length?'Select…':'No meetings with an agenda loaded'}</option>
-          {meetings.map(o=><option key={o.id} value={o.id}>{o.name}{o.date?` — ${fmtDS(o.date)}`:''}</option>)}
-        </select></Field>
+        {/* Searchable (06 Oct, user's ask): type part of the name or the date. */}
+        <Combo value={f.meetingId} onChange={id=>setF(x=>({...x, meetingId:id||'', agendaItemId:''}))}
+          all={meetings.length?'Select…':'No meetings with an agenda loaded'} placeholder="Search meetings…"
+          disabled={!meetings.length}
+          opts={meetings.map(o=>({id:o.id, name:o.name, sub:o.date?fmtDS(o.date):undefined}))}/></Field>
       <Field label="Agenda item" req>
         <select value={f.agendaItemId} disabled={!meeting} onChange={e=>set('agendaItemId',e.target.value)}>
           <option value="">{meeting?'Select…':'Choose a meeting first'}</option>
