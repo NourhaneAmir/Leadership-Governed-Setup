@@ -12294,7 +12294,7 @@ function csDownloadCsv(filename, rows){
 }
 
 function ScreenGrid(){
-  const {dvMeetingOccs,dvGridInstances,openMeeting,dvMinutes=[],dvDecisions=[],S,dvTick}=use();
+  const {dvMeetingOccs,dvGridInstances,openMeeting,dvMinutes=[],dvDecisions=[],S,dvTick,isMyMeeting}=use();
   const occById = useMemo(()=>{
     const m=new Map(); dvMeetingOccs.forEach(o=>m.set(o.id,o)); return m;
   },[dvMeetingOccs]);
@@ -12440,9 +12440,16 @@ function ScreenGrid(){
             const [bc,bl]=CS_BADGE[g.state]||['void',g.state||'—'];
             const toScore = CS_TABS[0].test(g), toReview = CS_TABS[1].test(g);
             const band = pctColour(cov);
-            const open = ()=>openMeeting(o.id,'grid');
-            return <tr key={g.id} className="cs-row" tabIndex={0} onClick={open}
-                onKeyDown={e=>{ if(e.key==='Enter'){ e.preventDefault(); open(); } }}>
+            /* 06 Oct (user's rule): a meeting I hold no role in (Chair, Co-Chair,
+               Organizer, Attendee / delegate) can't be opened from here -- the row
+               stays listed but is not clickable. */
+            const mine = isMyMeeting ? isMyMeeting(o) : false;
+            const open = ()=>{ if(mine) openMeeting(o.id,'grid'); };
+            return <tr key={g.id} className={'cs-row'+(mine?'':' cs-row-locked')}
+                tabIndex={mine?0:undefined} onClick={mine?open:undefined}
+                style={mine?undefined:{cursor:'default'}}
+                title={mine?undefined:'You have no role in this meeting, so it can’t be opened.'}
+                onKeyDown={mine?e=>{ if(e.key==='Enter'){ e.preventDefault(); open(); } }:undefined}>
               <td><div className="cs-committee">
                 <span className="cs-committee-ic" aria-hidden="true"><Shield size={13}/></span>
                 <div><div className="cs-name">{c.name}</div><div className="cs-name-sub">{c.cls}</div></div>
@@ -12464,9 +12471,12 @@ function ScreenGrid(){
               <td>{g.state==='Approved'
                 ? <span className={'cs-score c-'+pctColour(g.score)}>{g.score}%</span>
                 : <span className="cs-pending">Pending Review</span>}</td>
-              <td><button type="button" className={'cs-btn'+(toScore?' outline':'')}
-                  onClick={e=>{ e.stopPropagation(); open(); }}>
-                {toScore?'Score':toReview?'Review':'View'}</button></td>
+              <td>{mine
+                ? <button type="button" className={'cs-btn'+(toScore?' outline':'')}
+                    onClick={e=>{ e.stopPropagation(); open(); }}>
+                    {toScore?'Score':toReview?'Review':'View'}</button>
+                : <span className="cs-cov-sub" style={{display:'inline-flex',alignItems:'center',gap:4,whiteSpace:'nowrap'}}>
+                    <Lock size={12} aria-hidden="true"/>No role</span>}</td>
             </tr>;})}
           </tbody></table></div>}
     </section>
