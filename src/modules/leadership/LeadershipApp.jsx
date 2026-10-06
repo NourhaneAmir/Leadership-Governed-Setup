@@ -3683,7 +3683,7 @@ function ScreenWorkspace(){
               </button>)}</div>}
         </section>
 
-        <section className="cs-card" aria-labelledby="wa-month">
+        {SHOW_MONTH_CARD && <section className="cs-card" aria-labelledby="wa-month">
           <div className="cs-card-top"><div className="cs-card-title-grp">
             <span className="cs-icon amber" aria-hidden="true"><Activity size={16}/></span>
             <h2 className="cs-card-title" id="wa-month">This Month</h2></div></div>
@@ -3694,7 +3694,7 @@ function ScreenWorkspace(){
             <div className="cs-qs"><span>Agenda Fully Recorded</span>
               <span className="cs-qs-v">{agendaRecorded} / {meetingsHeld}</span></div>
           </div>
-        </section>
+        </section>}
       </div>
     </div>
 
@@ -6139,7 +6139,7 @@ function ScreenMeetings(){
         ['Stage', MTG_STAGE_FILTERS.find(x=>x.v===fStage)?.label || 'Any stage'],
         ['My role', MTG_ROLE_FILTERS.find(x=>x.v===fRole)?.label || 'Any role'],
         ...(q.trim() ? [['Search', q.trim()]] : []),
-        ['Related meetings', `${rows.length} (only meetings where you hold a role)`],
+        ['Related meetings', `${rows.length} meeting${rows.length===1?'':'s'}`],
       ];
       const notes = [];
       if(taskRows===null) notes.push('Tasks could not be read for these meetings, so the Tasks sheet is empty.');
@@ -8310,6 +8310,9 @@ const SHOW_ATTENTION_CARD = false;
    decision was taken -- hidden (06 Oct, user's ask), code kept. While hidden,
    a decision is linked to a meeting agenda item only. */
 const SHOW_DECISION_REPORT_LINK = false;
+/* My Workspace's "This Month" card (Meetings Held / Agenda Fully Recorded) --
+   removed from the screen (06 Oct, user's ask), code kept. */
+const SHOW_MONTH_CARD = false;
 /* The Documents tab's "Link a report directly" card (an ad hoc meeting's
    picker of any Report Occurrence) is hidden too (05 Oct, user's ask). Its
    code and ReportLinkPicker are unchanged: set to true to bring it back. */
@@ -11535,8 +11538,11 @@ function ScreenNewMeeting(){
                   const v=e.target.value;
                   // Switching Stage clears the scope that no longer applies, and
                   // the Department with it, since it is narrowed by that scope.
+                  /* 06 Oct (user's ask): a new organizational structure also clears the
+                     Attendees and every agenda item's owner -- the items themselves stay. */
                   setF(x=>({...x, stage:v, dvBusinessUnitId:'', dvRegionId:'',
-                                    dvDepartmentId:'', dvChairPositionId:'', dvFacilitatorPositionId:''}));
+                                    dvDepartmentId:'', dvChairPositionId:'', dvFacilitatorPositionId:'',
+                                    dvAttend:[], agendaOwners:(x.agenda||['']).map(()=>'')}));
                 }}>
                 {/* The 4th stage is labelled Top Management (03 Oct); its value stays
                     'ExCom', the key MEETING_OCC_STAGE_KEY maps to stage 4. */}
@@ -11550,7 +11556,7 @@ function ScreenNewMeeting(){
                       const rn=bu?dvRegion(bu.region):null;
                       // Picking scope pre-selects the time zone that scope sits in.
                       setF(x=>({...x, dvBusinessUnitId:id, dvDepartmentId:'', dvChairPositionId:'',
-                                      dvFacilitatorPositionId:'', dvAttend:[],
+                                      dvFacilitatorPositionId:'', dvAttend:[], agendaOwners:(x.agenda||['']).map(()=>''),
                                       tz:rn?tzForRegionName(rn):x.tz}));
                     }}>
                       <option value="">{DV_BU_LIST.length?'Select…':'No Business Units loaded'}</option>
@@ -11563,7 +11569,7 @@ function ScreenNewMeeting(){
                         const id=e.target.value;
                         const rg=DV_REGION_LIST.find(r=>r.id===id);
                         setF(x=>({...x, dvRegionId:id, dvDepartmentId:'', dvChairPositionId:'',
-                                        dvFacilitatorPositionId:'', dvAttend:[],
+                                        dvFacilitatorPositionId:'', dvAttend:[], agendaOwners:(x.agenda||['']).map(()=>''),
                                         tz:rg?tzForRegionName(rg.name):x.tz}));
                       }}>
                         <option value="">{DV_REGION_LIST.length?'Select…':'No Regions loaded'}</option>
