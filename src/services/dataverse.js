@@ -4925,7 +4925,14 @@ export async function fetchReportOccurrencesByTemplate(templateId){
  *        'Required' or 'Optional', written to lm_type; defaults to Required.
  * @returns {Promise<{id:string|null, errors:{table:string,error:any}[]}>}
  */
+/* No meeting on a Friday (06 Oct, user's rule): the working week is Saturday
+   to Thursday. Checked here as well as on the forms, so no screen can save one. */
+const isFridayDate = d => !!d && new Date(String(d).slice(0,10)+'T00:00:00').getDay() === 5;
+const FRIDAY_ERROR = () => new Error('A meeting cannot be on a Friday -- the working week is Saturday to Thursday.');
+
 export async function createMeetingOccurrence(payload){
+  if(isFridayDate(payload?.date))
+    return { id: null, errors: [{ table:'lm_meetingoccurrences', error: FRIDAY_ERROR() }] };
   const errors = [];
 
   const parent = {
@@ -5077,6 +5084,8 @@ export async function updateMeetingOccurrenceAttendance(attendeeId, present){
  * @param {string} [payload.link]
  */
 export async function updateMeetingOccurrence(id, payload){
+  if(isFridayDate(payload?.date))
+    return { id: null, errors: [{ table:'lm_meetingoccurrences', error: FRIDAY_ERROR() }] };
   try{
     const result = await Lm_meetingoccurrencesService.update(id, {
       lm_date: payload.date || null,

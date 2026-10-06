@@ -6139,7 +6139,7 @@ function ScreenMeetings(){
         ['Stage', MTG_STAGE_FILTERS.find(x=>x.v===fStage)?.label || 'Any stage'],
         ['My role', MTG_ROLE_FILTERS.find(x=>x.v===fRole)?.label || 'Any role'],
         ...(q.trim() ? [['Search', q.trim()]] : []),
-        ['Meetings', `${rows.length} (only meetings where you hold a role)`],
+        ['Related meetings', `${rows.length} (only meetings where you hold a role)`],
       ];
       const notes = [];
       if(taskRows===null) notes.push('Tasks could not be read for these meetings, so the Tasks sheet is empty.');
@@ -6641,6 +6641,7 @@ function DvEditOccModal({rec,onClose}){
      before the meeting can be marked Held. A date that exists stays locked. */
   const noDate = !rec.date;
   const [saving,setSaving]=useState(false);
+  const [friPick,setFriPick]=useState('');
   const set=(k,v)=>setF(x=>({...x,[k]:v}));
   const badTime = f.start && f.end && f.end<=f.start;
   const needsLink     = f.mode==='Online' || f.mode==='Hybrid';
@@ -6679,8 +6680,8 @@ function DvEditOccModal({rec,onClose}){
     <div className="f-row3">
       {noDate
         ? <Field label="Date" req hint="This occurrence has no date yet. Once saved, it can only be changed with Reschedule."
-            err={offDay ? `${dayName(f.date)} is not a working day (the working week is Saturday to Thursday). Choose another date.` : null}>
-            <input type="date" value={f.date} onChange={e=>set('date',e.target.value)}/></Field>
+            err={friPick ? `${dayName(friPick)} ${fmtD(friPick)} is not a working day (the working week is Saturday to Thursday). Choose another date.` : offDay ? `${dayName(f.date)} is not a working day (the working week is Saturday to Thursday). Choose another date.` : null}>
+            <input type="date" value={f.date} onChange={e=>pickWorkingDate(e.target.value, v=>set('date',v), setFriPick)}/></Field>
         : <Field label="Date"
         hint={rec.status==='Scheduled' ? 'To move this meeting to another day, use Reschedule.' : null}>
         <input type="text" value={rec.date ? `${dayName(rec.date)}, ${fmtD(rec.date)}` : '—'}
@@ -6710,6 +6711,16 @@ function DvEditOccModal({rec,onClose}){
    never a stale Scheduled row left sitting on the wrong date. The Agenda's
    coverage and any Attendance already recorded stay behind on the original;
    only the content itself (titles, owners, positions) carries forward. */
+/* A Friday is never kept as a meeting date (06 Oct, user's rule): picking one
+   leaves the date EMPTY -- so the form says a date is still needed and its
+   Schedule / Reschedule / Save stays disabled -- and remembers the Friday
+   only to say why. createMeetingOccurrence / updateMeetingOccurrence refuse a
+   Friday too, whichever screen calls them. */
+function pickWorkingDate(v, setDate, setFriPick){
+  if(v && isWeekend(v)){ setFriPick(v); setDate(''); }
+  else { setFriPick(''); setDate(v); }
+}
+
 /* The rescheduled occurrence's name carries its NEW date (01 Oct), and the
    date goes LAST (06 Oct, user's ask): "Meeting name - d/M". Names arrive
    already in that form (meetingNameDateLast() on read turns the generator's
@@ -6732,6 +6743,7 @@ function DvRescheduleOccModal({rec,onClose}){
   const [f,setF]=useState({date:'', start:rec.start||'', end:rec.end||'',
     mode:rec.mode||'Physical', location:rec.location||'', link:rec.link||''});
   const [saving,setSaving]=useState(false);
+  const [friPick,setFriPick]=useState('');
   const set=(k,v)=>setF(x=>({...x,[k]:v}));
 
   const weekend = isWeekend(f.date);
@@ -6801,10 +6813,11 @@ function DvRescheduleOccModal({rec,onClose}){
       <Btn k="pri" disabled={!ok||saving} onClick={save}>{saving?'Rescheduling…':'Reschedule'}</Btn></>}>
     <div className="f-row3">
       <Field label="New date" req
-        err={weekend ? `${dayName(f.date)} is not a working day (the working week is Saturday to Thursday). Choose another date.`
+        err={friPick ? `${dayName(friPick)} ${fmtD(friPick)} is not a working day (the working week is Saturday to Thursday). Choose another date.`
+          : weekend ? `${dayName(f.date)} is not a working day (the working week is Saturday to Thursday). Choose another date.`
           : sameDate ? 'Choose a date different from the current one.'
           : nw ? 'This is a configured public holiday.' : null}>
-        <input type="date" value={f.date} onChange={e=>set('date',e.target.value)}/></Field>
+        <input type="date" value={f.date} onChange={e=>pickWorkingDate(e.target.value, v=>set('date',v), setFriPick)}/></Field>
       <Field label="Start" req><input type="time" value={f.start} onChange={e=>set('start',e.target.value)}/></Field>
       <Field label="End" req err={badTime?'The end time must be after the start time.':null}>
         <input type="time" value={f.end} onChange={e=>set('end',e.target.value)}/></Field>
@@ -10859,6 +10872,7 @@ function ScreenNewMeeting(){
   const [cls,setCls]=useState({type:'Business Meeting', classification:'', categoryId:''});
   /* A Custom meeting's own time limits (05 Oct), in hours -- the defaults the
      user set: MOM write-up 24, MOM approval 24, Audit Grid submission 48. */
+  const [friPick,setFriPick]=useState('');
   const [lim,setLim]=useState({ momWriteupHours:'24', momApprovalHours:'24', gridSubmitHours:'48' });
   const limBad = Object.values(lim).some(v => !/^\d{1,4}$/.test(String(v).trim()) || Number(v) < 1);
   const [inLinks,setInLinks]=useState([]);            // [{name, url}]
@@ -11360,7 +11374,7 @@ function ScreenNewMeeting(){
     custom && limBad ? need('valid time-limit periods','periods') : null,
     !custom && f.setup && tplUnits.length>1 && !f.tplUnitKey ? need('the Business Unit / Region','unit') : null,
     !scopeOk ? need('the scope','scope') : null,
-    !f.date ? need('a date','date') : null,
+    !f.date ? need(friPick ? 'a working day (not Friday)' : 'a date','date') : null,
     offDay ? need('a working day (not Friday)','date') : null,
     !f.dvChairPositionId ? need('a Chair','chair') : null,
     !f.dvFacilitatorPositionId ? need('an Organizer','organizer') : null,
@@ -11616,8 +11630,9 @@ function ScreenNewMeeting(){
                 hint={moved
                   ? `${dayName(f.date)} is a non-working day. This occurrence will be booked on ${fmtD(bookedDate)} — the series is unchanged.`
                   : 'The working week is Saturday to Thursday.'}
-                err={offDay ? `${dayName(f.date)} is not a working day (the working week is Saturday to Thursday). Choose another date.` : null}>
-                <input type="date" value={f.date} onChange={e=>set('date',e.target.value)}/></Field>
+                err={friPick ? `${dayName(friPick)} ${fmtD(friPick)} is not a working day (the working week is Saturday to Thursday). Choose another date.`
+                  : offDay ? `${dayName(f.date)} is not a working day (the working week is Saturday to Thursday). Choose another date.` : null}>
+                <input type="date" value={f.date} onChange={e=>pickWorkingDate(e.target.value, v=>set('date',v), setFriPick)}/></Field>
               <Field label="Start" req><input type="time" value={f.start}
                 onChange={e=>set('start',e.target.value)}/></Field>
               <Field label="End" req><input type="time" value={f.end}

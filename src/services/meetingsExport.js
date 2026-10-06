@@ -132,7 +132,14 @@ export async function meetingsToXlsx(data, meta){
   if(meta.exportedBy) kv('Exported by', meta.exportedBy);
   for(const [k, v] of (meta.view || [])) kv(k, v);
   about.addRow([]);
-  for(const name of Object.keys(MEETINGS_SHEETS)) kv(name, `${(data[name] || []).length} row(s)`);
+  /* Counts in words (06 Oct, user's ask): "7 meetings", "0 tasks" -- not rows. */
+  const NOUN = { Meetings:['meeting','meetings'], 'Agenda Items':['agenda item','agenda items'],
+                 Attendees:['attendee','attendees'], Decisions:['decision','decisions'], Tasks:['task','tasks'] };
+  const LABEL = { Meetings:'Total meetings' };
+  for(const name of Object.keys(MEETINGS_SHEETS)){
+    const n = (data[name] || []).length, [one, many] = NOUN[name] || ['row','rows'];
+    kv(LABEL[name] || name, `${n} ${n === 1 ? one : many}`);
+  }
   if(meta.notes?.length){
     about.addRow([]);
     kv('Notes', meta.notes.join('\n'));
