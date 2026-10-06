@@ -106,6 +106,36 @@ a:hover{text-decoration:underline}
 .lp-switch-ic{font-size:12px}
 .lp-user{display:flex;align-items:center;gap:8px;background:transparent;border:1px solid rgba(255,255,255,.18);border-radius:8px;padding:3px 8px 3px 4px;color:#fff;font-family:inherit}
 .lp-user:hover{background:rgba(255,255,255,.12)}
+/* ---------- notification center (06 Oct) ---------- */
+.lp-notif{position:relative;display:flex;align-items:center}
+.lp-bell{position:relative;display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:8px;
+  background:transparent;border:1px solid rgba(255,255,255,.18);color:#fff;cursor:pointer}
+.lp-bell:hover,.lp-bell.on{background:rgba(255,255,255,.12)}
+.lp-bell:focus-visible{outline:2px solid var(--teal-l);outline-offset:2px}
+.lp-bell-n{position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;
+  background:var(--red);color:#fff;font-size:10.5px;font-weight:700;line-height:18px;text-align:center;box-shadow:0 0 0 2px var(--teal-dd)}
+.lp-notif-panel{position:absolute;top:calc(100% + 8px);right:0;z-index:60;width:min(360px,calc(100vw - 24px));
+  max-height:min(70vh,520px);display:flex;flex-direction:column;background:var(--panel);color:var(--ink);
+  border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 32px rgba(33,28,30,.18);overflow:hidden}
+.lp-notif-h{display:flex;align-items:center;justify-content:space-between;padding:11px 14px;border-bottom:1px solid var(--border);
+  background:var(--surface);font-size:13.5px}
+.lp-notif-c{min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:var(--red-bg);color:var(--red);
+  font-size:11px;font-weight:700;line-height:20px;text-align:center}
+.lp-notif-list{overflow-y:auto}
+.lp-notif-empty{display:flex;align-items:center;gap:8px;padding:22px 14px;color:var(--muted);font-size:13px}
+.lp-notif-i{padding:12px 14px;border-bottom:1px solid var(--border);border-left:3px solid var(--teal)}
+.lp-notif-i:last-child{border-bottom:none}
+.lp-notif-i.late{border-left-color:var(--red)}
+.lp-notif-k{display:flex;align-items:center;gap:5px;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.lp-notif-i.late .lp-notif-k b{color:var(--red)}
+.lp-notif-t{display:block;margin:4px 0 1px;padding:0;background:none;border:none;text-align:left;font:inherit;font-size:13.5px;
+  font-weight:700;color:var(--ink);cursor:pointer}
+.lp-notif-t:hover{text-decoration:underline}
+.lp-notif-s{font-size:12px;color:var(--ink-2)}
+.lp-notif-f{display:flex;align-items:flex-end;gap:8px;margin-top:9px;flex-wrap:wrap}
+.lp-notif-f label{display:flex;flex-direction:column;gap:3px;font-size:10.5px;font-weight:600;color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+.lp-notif-f input{width:108px;padding:5px 7px;border:1px solid var(--border-d);border-radius:7px;font:inherit;font-size:13px;color:var(--ink);background:#fff}
+.lp-notif-err{margin-top:6px;font-size:12px;color:var(--red)}
 .lp-user-av{width:26px;height:26px;border-radius:50%;flex:0 0 26px;background:var(--grad-gold);color:#2A1E0F;font-size:10.5px;font-weight:700;display:flex;align-items:center;justify-content:center;letter-spacing:.02em}
 .lp-user-name{display:flex;flex-direction:column;align-items:flex-start;line-height:1.25;font-size:12.5px;font-weight:600;white-space:nowrap}
 .lp-user-sub{font-size:10.5px;font-weight:500;opacity:.6}

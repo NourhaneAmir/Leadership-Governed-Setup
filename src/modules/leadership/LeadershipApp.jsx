@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { Activity, ArrowUpRight, BarChart3, CalendarDays, CheckSquare, ClipboardCheck, ClipboardList, CircleAlert,
          Download, FileText, Gauge, Layers, LineChart, Lock, Menu, MessageSquare, MessagesSquare, Network, PenLine, Plus, RotateCcw, Shield, Eye,
          Users, UsersRound, X, Briefcase, Target, Clock, MapPin, Check, CircleX, ListOrdered, UserCheck,
-         Upload, Paperclip, ListChecks, Send }
+         Upload, Paperclip, ListChecks, Send, Bell }
   from 'lucide-react';
 import './leadership-design.css';
 /* Dates, the working calendar and number formatting now live in src/shared so
@@ -42,6 +42,7 @@ import { fetchMeetingOccurrences, fetchReportOccurrences, createMeetingOccurrenc
          createReportOccurrence, updateReportOccurrenceFile, uploadReportOccurrenceFile,
          fetchTeamsChannels, channelDestinationPath,
          updateMeetingOccurrenceStatus, updateMeetingOccurrenceAttendance, updateMeetingOccurrence,
+         updateMeetingOccurrenceTimes,
          cancelMeetingOccurrence, recordAgendaDistribution, createMeetingOccurrenceAgendaItem,
          archiveMeetingOccurrenceAgendaItem, updateMeetingOccurrenceAgendaSequence,
          fetchMeetingOccurrenceDepartments, fetchMeetingOccurrenceLinkedReports, fetchMeetingTemplateInputReports,
@@ -80,7 +81,7 @@ import { fetchTeamsChannels as readTeamsChannels } from '../../services/datavers
 
 /* =========================================================================
    REFERENCE DATA + SEED
-   Working week Sun–Thu.
+   Working week Sat–Thu (only Friday off, 06 Oct).
    ========================================================================= */
 
 /* lm_fileurl on lm_reportoccurrences is a Dataverse text column, widened to
@@ -1770,6 +1771,96 @@ function Side(){
   </nav>;
 }
 
+/* =========================================================================
+   NOTIFICATION CENTER (06 Oct, user's ask) -- a bell in the top bar, on every
+   screen. Today it holds one kind of notice: a meeting I ORGANISE that is
+   still Scheduled, falls on the next working day, today or earlier, and has no Start or End
+   time. The Organizer types the exact time and saves it right in the panel
+   (updateMeetingOccurrenceTimes -- only the two times are written), which
+   also lets the invite flow send the invitation. Built so other notices
+   (Minutes due, approval waiting) can be added to `items` later.
+   ========================================================================= */
+function NotificationBell(){
+  const {dvMeetingOccs=[],meetingRoleOf,openMeeting}=use();
+  const [open,setOpen]=useState(false);
+  const ref=useRef(null);
+  const tomorrow=addDays(TODAY,1);
+  /* Up to the NEXT WORKING DAY (Sat–Thu week): on a Thursday that is
+     Saturday, so Saturday's meetings show on Thursday. */
+  const cutoff=nextWorkingDay(TODAY);
+  const items=useMemo(()=>dvMeetingOccs
+    .filter(o=>o.status==='Scheduled' && o.date && o.date<=cutoff && (!o.start || !o.end)
+      && !!meetingRoleOf && meetingRoleOf(o).organizer)
+    .sort((a,b)=>a.date.localeCompare(b.date) || (a.name||'').localeCompare(b.name||'')),
+  [dvMeetingOccs,meetingRoleOf,cutoff]);
+  useEffect(()=>{
+    if(!open) return;
+    const away=e=>{ if(ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const esc=e=>{ if(e.key==='Escape') setOpen(false); };
+    document.addEventListener('mousedown',away); document.addEventListener('keydown',esc);
+    return ()=>{ document.removeEventListener('mousedown',away); document.removeEventListener('keydown',esc); };
+  },[open]);
+  const n=items.length;
+  return <div className="lp-notif" ref={ref}>
+    <button type="button" className={'lp-bell'+(open?' on':'')} aria-haspopup="dialog" aria-expanded={open}
+      aria-label={n ? `Notifications, ${n} need${n===1?'s':''} you` : 'Notifications'}
+      title={n ? `${n} meeting${n===1?'':'s'} need${n===1?'s':''} an exact time` : 'Notifications'}
+      onClick={()=>setOpen(v=>!v)}>
+      <Bell size={17}/>{n>0 && <span className="lp-bell-n">{n>9?'9+':n}</span>}
+    </button>
+    {open && <div className="lp-notif-panel" role="dialog" aria-label="Notifications">
+      <div className="lp-notif-h"><b>Notifications</b>{n>0 && <span className="lp-notif-c">{n}</span>}</div>
+      {n===0
+        ? <div className="lp-notif-empty"><Check size={16}/>Nothing needs you right now.</div>
+        : <div className="lp-notif-list">
+            {items.map(o=><TimeNotice key={o.id} o={o} tomorrow={tomorrow}
+              onOpen={()=>{ setOpen(false); openMeeting(o.id); }}/>)}
+          </div>}
+    </div>}
+  </div>;
+}
+
+function TimeNotice({o,tomorrow,onOpen}){
+  const {toast,refreshOccurrences}=use();
+  const [start,setStart]=useState(o.start||'');
+  const [end,setEnd]=useState(o.end||'');
+  const [saving,setSaving]=useState(false);
+  const bad = !!start && !!end && end<=start;
+  const ok = !!start && !!end && !bad;
+  const daysLate = o.date<TODAY ? Math.round((new Date(TODAY+'T00:00:00')-new Date(o.date+'T00:00:00'))/864e5) : 0;
+  const when = o.date===tomorrow ? 'Tomorrow' : o.date===TODAY ? 'Today'
+             : o.date>TODAY ? `Next working day · ${dayName(o.date)}`
+             : `Overdue · ${daysLate} day${daysLate===1?'':'s'}`;
+  const scope = dvBu(o.businessUnitId) || dvRegion(o.regionId);
+  const save = async () => {
+    setSaving(true);
+    try{
+      const {id,errors} = await updateMeetingOccurrenceTimes(o.id, {start, end});
+      if(!id){
+        console.warn('[dataverse] updateMeetingOccurrenceTimes() failed:', errors);
+        toast('Not saved','The time could not be saved. Check the console for details.','err');
+        return;
+      }
+      toast('Time saved', `${o.name}: ${start} – ${end}.`, 'ok');
+      await refreshOccurrences();
+    }catch(e){
+      console.warn('[dataverse] updateMeetingOccurrenceTimes() threw unexpectedly:', e);
+      toast('Not saved','The time could not be saved. Check the console for details.','err');
+    }finally{ setSaving(false); }
+  };
+  return <div className={'lp-notif-i'+(o.date<TODAY?' late':'')}>
+    <div className="lp-notif-k"><Clock size={13}/>Set the exact time · <b>{when}</b></div>
+    <button type="button" className="lp-notif-t" onClick={onOpen} title="Open this meeting">{o.name}</button>
+    <div className="lp-notif-s">{[`${dayName(o.date)}, ${fmtD(o.date)}`, scope].filter(Boolean).join(' · ')}</div>
+    <div className="lp-notif-f">
+      <label>Start<input type="time" value={start} onChange={e=>setStart(e.target.value)} aria-label={`Start time, ${o.name}`}/></label>
+      <label>End<input type="time" value={end} onChange={e=>setEnd(e.target.value)} aria-label={`End time, ${o.name}`}/></label>
+      <button type="button" className="btn pri sm" disabled={!ok||saving} onClick={save}>{saving?'Saving…':'Save'}</button>
+    </div>
+    {bad && <div className="lp-notif-err">The end time must be after the start time.</div>}
+  </div>;
+}
+
 function TopBar(){
   const {navOpen,setNavOpen,currentUser} = use();
   const position=DV_POS_LIST.find(p=>currentUser?.fullName && p.holder &&
@@ -1790,6 +1881,7 @@ function TopBar(){
         (Business intelligence) treats as no filter. */}
     <div className="tb-sp"/>
     <span className="tb-scope">{fmtD(TODAY)}</span>
+    <NotificationBell/>
     <button type="button" className="lp-user" title={`${userLabel} · ${userTitle}`}>
       <span className="lp-user-av">{userInitials}</span>
       <span className="lp-user-name">{userLabel}<span className="lp-user-sub">{userTitle}</span></span>
@@ -1807,12 +1899,14 @@ const RANGES = [
   {id:'next',  label:'Next Week'},
 ];
 function rangeBounds(id){
-  const dow = new Date(TODAY+'T00:00:00').getDay();          /* working week Sun–Thu */
+  /* The week runs Saturday to Friday (06 Oct): the working week is Sat–Thu,
+     so "This Week" starts on the Saturday on or before today. */
+  const dow = new Date(TODAY+'T00:00:00').getDay();
   if(id==='today') return [TODAY,TODAY];
   if(id==='tmrw')  return [addDays(TODAY,1),addDays(TODAY,1)];
-  const sun = addDays(TODAY,-dow);
-  if(id==='week')  return [sun,addDays(sun,6)];
-  return [addDays(sun,7),addDays(sun,13)];
+  const sat = addDays(TODAY,-((dow+1)%7));
+  if(id==='week')  return [sat,addDays(sat,6)];
+  return [addDays(sat,7),addDays(sat,13)];
 }
 
 function CalendarWebpart({items,title,kinds,emptyText}){
@@ -6573,7 +6667,7 @@ function DvRescheduleOccModal({rec,onClose}){
     <div className="f-row3">
       <Field label="New date" req
         err={weekend
-          ? `${dayName(f.date)} is a weekend — the working week is Sunday to Thursday. Choose another day.`
+          ? `${dayName(f.date)} is a weekend — the working week is Saturday to Thursday. Choose another day.`
           : sameDate ? 'Choose a date different from the current one.'
           : nw ? 'This is a configured public holiday.' : null}>
         <input type="date" value={f.date} onChange={e=>set('date',e.target.value)}/></Field>
@@ -10366,7 +10460,7 @@ function EditOccModal({occ,onClose}){
       <Field label="Date" req
         hint={moved
           ? `${dayName(f.date)} is a non-working day. This occurrence will move to ${fmtD(bookedDate)} — the series is unchanged.`
-          : 'The working week is Sunday to Thursday.'}>
+          : 'The working week is Saturday to Thursday.'}>
         <input type="date" value={f.date} onChange={e=>set('date',e.target.value)}/></Field>
       <Field label="Start" req><input type="time" value={f.start} onChange={e=>set('start',e.target.value)}/></Field>
       <Field label="End" req err={badTime?'The end time must be after the start time.':null}>
@@ -11349,7 +11443,7 @@ function ScreenNewMeeting(){
               <Field label="Date" req
                 hint={moved
                   ? `${dayName(f.date)} is a non-working day. This occurrence will be booked on ${fmtD(bookedDate)} — the series is unchanged.`
-                  : 'The working week is Sunday to Thursday.'}>
+                  : 'The working week is Saturday to Thursday.'}>
                 <input type="date" value={f.date} onChange={e=>set('date',e.target.value)}/></Field>
               <Field label="Start" req><input type="time" value={f.start}
                 onChange={e=>set('start',e.target.value)}/></Field>

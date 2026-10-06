@@ -23,7 +23,9 @@ export const TODAY = ymd(new Date());
 export const PERIOD = TODAY.slice(0,7);
 
 /* ---- non-working days (OD-30) ------------------------------------------ */
-export const WEEKEND = [5,6];              // Fri, Sat — working week is Sun–Thu
+/* 06 Oct (user): the working week is SIX days, Saturday to Thursday -- only
+   Friday is off. It was Fri + Sat (Sun–Thu) before. */
+export const WEEKEND = [5];                // Fri — working week is Sat–Thu
 export const HOLIDAYS = ['2026-07-05','2026-08-24'];
 export const isNonWorking = d => WEEKEND.includes(new Date(d+'T00:00:00').getDay()) || HOLIDAYS.includes(d);
 /* Weekend and public holiday are treated identically for auto-booking: an
@@ -41,8 +43,8 @@ export const nextWorkingDay = d => { let x=new Date(d+'T00:00:00');
   return ymd(x); };
 
 /* Every governance lead time and review period is counted in WORKING days, not
-   calendar days — the working week is Sunday to Thursday, so a deadline counted
-   in calendar days across a Friday or Saturday lands up to two days early and
+   calendar days — the working week is Saturday to Thursday, so a deadline counted
+   in calendar days across a Friday lands a day early and
    silently mis-scores AG-03 and AG-15. The prototype spec says only "days";
    the BRD is explicit that the agenda lead time and the report review period
    are two WORKING days, so that is the reading applied here.

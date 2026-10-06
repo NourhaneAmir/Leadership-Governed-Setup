@@ -5041,6 +5041,24 @@ export async function updateMeetingOccurrence(id, payload){
   }
 }
 
+/** Sets only the Start / End time of a Meeting Occurrence (06 Oct) -- for the
+ *  top bar's notification center, where the Organizer fills in the exact time
+ *  of a meeting that is due. Nothing else on the row is touched (the full
+ *  updateMeetingOccurrence() also rewrites mode, location and link).
+ *  Times are 'HH:MM', the same as everywhere else. */
+export async function updateMeetingOccurrenceTimes(id, { start, end }){
+  try{
+    const result = await Lm_meetingoccurrencesService.update(id, {
+      lm_starttime: start || null,
+      lm_endtime: end || null,
+    });
+    assertSuccess(result);
+    return { id, errors: [] };
+  }catch(e){
+    return { id: null, errors: [{ table:'lm_meetingoccurrences', error:e }] };
+  }
+}
+
 /** Cancels a live Meeting Occurrence -- status to Cancelled plus the reason,
  *  in one patch. No governance record (Minutes, Grid) gets created for a
  *  cancelled occurrence. */
