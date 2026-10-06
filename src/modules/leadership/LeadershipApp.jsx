@@ -13164,7 +13164,7 @@ function ScreenDecisions(){
    "Where was it taken" picks a report and one of its sections, or a meeting and
    one of its agenda items; the same two lookups DecisionLink.jsx writes. */
 function WorkLogDecisionModal({onClose, decision}){
-  const {toast,refreshOccurrences,dvReportOccs,dvMeetingOccs}=use();
+  const {toast,refreshOccurrences,dvReportOccs,dvMeetingOccs,isMyMeeting}=use();
   const linkOnly = !!decision;
   const [f,setF]=useState({name:'',decisionTaken:'',expectedOutput:'',managerNote:'',evidenceUrl:'',
     status:'Pending',
@@ -13186,7 +13186,9 @@ function WorkLogDecisionModal({onClose, decision}){
   },[f.reportId]);
 
   const reports  = (dvReportOccs||[]).slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
-  const meetings = (dvMeetingOccs||[]).filter(o=>(o.agenda||[]).length)
+  /* Only meetings I hold a role in (06 Oct, user's ask) -- Chair, Co-Chair,
+     Organizer, Attendee or delegate (isMyMeeting) -- that have agenda items. */
+  const meetings = (dvMeetingOccs||[]).filter(o=>(o.agenda||[]).length && (isMyMeeting ? isMyMeeting(o) : false))
     .slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   const meeting  = meetings.find(o=>o.id===f.meetingId);
   const target = f.where==='report' ? (f.sectionId ? {sectionId:f.sectionId} : null)
