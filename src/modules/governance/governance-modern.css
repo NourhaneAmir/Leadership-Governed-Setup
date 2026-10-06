@@ -99,7 +99,8 @@
   display:flex; flex-direction:column; align-items:flex-start; line-height:1.25;
   font-size:12.5px; font-weight:600; white-space:nowrap;
 }
-.gov-root .gov-user-sub{ font-size:10.5px; font-weight:500; opacity:.6 }
+.gov-root .gov-user-sub{ font-size:10.5px; font-weight:500; opacity:.6;
+  max-width:240px; overflow:hidden; text-overflow:ellipsis }   /* a Position name can be long */
 
 /* module-switch item, bottom of sidebar */
 .gov-root .gov-side-sp{ flex:1 }

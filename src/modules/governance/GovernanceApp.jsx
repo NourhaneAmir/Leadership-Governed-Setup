@@ -6254,14 +6254,30 @@ function App({onSwitch}){
   /* Initials from the real person once we know them, from the role label
      otherwise (nothing to personalise with before that resolves). */
   const initialsFrom=t=>t.trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase();
-  const initials=initialsFrom(currentUser?.fullName || ROLES[role].label);
-  const userLabel=currentUser?.fullName || ROLES[role].label;
+  /* The signed-in user's Position(s), from the Organization Structure table
+     (cr603_organizationstructures, already read into POSITIONS by
+     fetchPositions) -- the rows whose current holder is this systemuser.
+     Their name comes from the same row (hr_fullnameofcurrentemployee), the
+     sign-in name only when no row is theirs. (06 Oct, user's ask.) */
+  const myPositions=currentUser?.systemUserId
+    ? POSITIONS.filter(p=>p.holderUserId && p.holderUserId===currentUser.systemUserId)
+    : [];
+  const orgName=myPositions.find(p=>p.holder)?.holder || null;
+  const posNames=[...new Set(myPositions.map(p=>p.name).filter(Boolean))];
+  const initials=initialsFrom(orgName || currentUser?.fullName || ROLES[role].label);
+  const userLabel=orgName || currentUser?.fullName || ROLES[role].label;
+  const userSub=posNames.length
+    ? posNames[0]+(posNames.length>1?` +${posNames.length-1}`:'')
+    : currentUser
+      ? (currentUser.linked?'No position in the Organization Structure':'Not linked to Dataverse')
+      : ROLES[role].label;
   const userTitle=currentUser
-    ? `${currentUser.fullName||'Signed in'}${currentUser.email?` · ${currentUser.email}`:''}\n`+
+    ? `${userLabel}${currentUser.email?` · ${currentUser.email}`:''}\n`+
+      (posNames.length?`Position${posNames.length>1?'s':''}: ${posNames.join(', ')}\n`:'')+
       (currentUser.linked
         ? `Linked to Dataverse user ${currentUser.systemUserId}`
         : 'No matching Dataverse user record found for this account.')+
-      `\n${ROLES[role].note}`
+      `\n${ROLES[role].label}: ${ROLES[role].note}`
     : ROLES[role].note;
   const canWrite=ROLES[role].write;
 
@@ -6286,9 +6302,7 @@ function App({onSwitch}){
           <span className="gov-user-av">{initials}</span>
           <span className="gov-user-name">
             {userLabel}
-            <span className="gov-user-sub">{currentUser
-              ? (currentUser.linked?ROLES[role].label:'Not linked to Dataverse')
-              : ROLES[role].label}</span>
+            <span className="gov-user-sub">{userSub}</span>
           </span>
         </button>
       </div>

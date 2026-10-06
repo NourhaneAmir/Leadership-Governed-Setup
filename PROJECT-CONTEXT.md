@@ -10579,6 +10579,25 @@ Per an explicit ask. The user chose, when asked:
 - **Checks:** both apps build; Governance lint 19 (unchanged); `no-undef`
   clean. Not browser-checked, not pushed.
 
+### 06 Oct: Governance — top-bar user from the Organization Structure, with their Position (Governance only)
+
+Per an explicit ask (screenshot of the top-bar user chip).
+- **Source:** the user is read from `cr603_organizationstructures`, via the
+  `POSITIONS` that `fetchPositions()` already loads.
+  - `myPositions` is every row whose `holderUserId` is
+    `currentUser.systemUserId`.
+  - The name is that row's `hr_fullnameofcurrentemployee` (`holder`), or the
+    sign-in name if no row matches.
+- **Second line:** the Position name, plus "+N" when the user holds several.
+  - All Positions are listed in the tooltip.
+  - With no matching row, it says "No position in the Organization
+    Structure" (or "Not linked to Dataverse").
+  - The role label (Setup Author / Administrator) moved to the tooltip; the
+    "Author only / Can approve" chip still shows it.
+- `.gov-user-sub` is capped at 240px with an ellipsis.
+- **Checks:** Governance builds; lint 19; `no-undef` clean. Not
+  browser-checked, not pushed.
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap
