@@ -10,7 +10,7 @@ import './leadership-design.css';
 import { ymd, TODAY, PERIOD, HOLIDAYS, isNonWorking, isWeekend,
          dayName, nextWorkingDay, shiftWorkingDays,
          MONTHS, fmtD, fmtDS, fmtDT, fmtP, daysBetween, hoursBetween,
-         addDays, addHours, nowStamp, money, pct, uid,
+         addDays, addHours, nowStamp, money, pct, uid, fmtTime12, fmtTimeRange, fmtDuration,
          band, scoreColour, pctColour } from '../../shared/format.js';
 import { Ctx, use } from './store.jsx';
 import { exportMinutesDocx, minutesDocxBase64, minutesFileName } from '../../services/minutesExport.js';
@@ -1941,7 +1941,7 @@ function CalendarWebpart({items,title,kinds,emptyText}){
               {i.date===TODAY && <Tag c="amber">Today</Tag>}
               {i.date<TODAY && i.kind==='Report' && i.status!=='Approved' && <Tag c="red">Overdue</Tag>}
             </div>
-            <div className="m">{fmtD(i.date)}{i.time?' · '+i.time:''} · {i.sub}</div>
+            <div className="m">{fmtD(i.date)}{i.time?' · '+fmtTime12(i.time):''} · {i.sub}</div>
           </div>
           <Tag c={i.kind==='Report'?'blue':i.kind==='Decision'?'amber':'teal'}>{i.kind}</Tag>
         </div>)}
@@ -2145,7 +2145,7 @@ function ScreenCalendar(){
     <div className="sched-r" onClick={()=>open(i)}>
       <div className={'sched-ic '+KIND_SLOT[calIconKind(i.kind)]}>{KIND_ICON[calIconKind(i.kind)]}</div>
       <div className="sched-t"><div className="n">{i.restricted&&'🔒 '}{i.title}</div>
-        <div className="m">{fmtD(i.date)}{i.time?' · '+i.time:''} · {i.sub}</div></div>
+        <div className="m">{fmtD(i.date)}{i.time?' · '+fmtTime12(i.time):''} · {i.sub}</div></div>
       <Tag c={calTagColour(i.kind)}>{i.kind==='MOM'?'MOM':i.kind}</Tag>
     </div>;
 
@@ -2235,7 +2235,7 @@ function ScreenCalendar(){
               {isNonWorking(d)&&!out && <span className="nw">NON-WORKING</span>}</div>
             {evs.map((i,n)=><div key={i.kind+i.id+n} className={'cal-e '+calGridCls(i)} onClick={()=>open(i)}
                 title={i.title+' · '+i.sub}>
-              {i.restricted?'🔒 ':''}{i.time?i.time+' ':''}{i.title}</div>)}
+              {i.restricted?'🔒 ':''}{i.time?fmtTime12(i.time)+' ':''}{i.title}</div>)}
           </div>;})}
       </div>
       <div style={{display:'flex',gap:15,flexWrap:'wrap',marginTop:11,fontSize:11.5,color:'var(--muted)'}}>
@@ -2540,6 +2540,62 @@ function dvMomDueCalItem(o, hours){
    ("the ones you chair, co-chair, organize or attend"). Minutes stays
    Organizer-only: writing up the meeting is one person's job, not the
    chair's. */
+/* "Awaiting My Action" (06 Oct, user's list). Exactly the things that wait
+   on ME, by my role on each meeting:
+     Organizer -- set the exact time (Scheduled, no Start / End);
+               -- mark it Held (Scheduled and its time has passed);
+               -- write and submit the Minutes (Held, Minutes not submitted);
+               -- revise and resubmit the Minutes (returned by the Chair);
+               -- close the Minutes (approved by the Chair).
+     Chairman  -- approve the Minutes (submitted, waiting on the Chair);
+               -- approve the Audit Grid (Submitted for Approval).
+   Same row shape as dvWorkItems; `tab` opens the meeting on the right tab and
+   `status` names the state for the Status column. */
+function dvMyActions(meetingOccs, roleOf, minutesList, grids, S){
+  const out = [];
+  const now = nowStamp();                                   // 'YYYY-MM-DD HH:MM'
+  const mk = (o, area, action, tab, status, date, urgent) => out.push({
+    area, rid:o.id, title:o.name, action, tab, status,
+    sub:[action, o.date?fmtD(o.date):null, o.start?fmtTime12(o.start):null].filter(Boolean).join(' · '),
+    owner:null, date:date||o.date||null, urgent:!!urgent, screen:'mtg', _dv:true, _rec:o, bucket:'due' });
+  for(const o of meetingOccs){
+    const r = roleOf ? roleOf(o) : null;
+    if(!r || (!r.organizer && !r.chair)) continue;
+    const m = (minutesList||[]).find(x=>x.occurrenceId===o.id) || null;
+    const lim = meetingLimits(o, S);
+    if(o.status==='Scheduled' && r.organizer){
+      if(o.date && (!o.start || !o.end))
+        mk(o,'Meeting','Set the exact time','detail','Needs a time',o.date,o.date<=nextWorkingDay(TODAY));
+      const over = o.date && (o.date<TODAY || (o.date===TODAY && !!o.end && o.date+' '+o.end<now));
+      if(over) mk(o,'Meeting','Mark the meeting as Held','detail','Not marked Held',o.date,true);
+    }
+    if(o.status!=='Held') continue;
+    const returned = !!m && m.status==='Draft' && !!m.returnReason;
+    const awaitingChair = !!m && m.status==='Draft' && !!m.submittedAt && !returned;
+    if(r.organizer){
+      if(!m || (m.status==='Draft' && !m.submittedAt && !returned)){
+        const due = o.date && o.end && lim.momWriteupHours!=null ? addHours(o.date+' '+o.end, lim.momWriteupHours) : null;
+        mk(o,'Minutes','Write and submit the Minutes','minutes','Minutes to write',
+           due ? due.slice(0,10) : o.date, !!due && due<now);
+      }
+      if(returned) mk(o,'Minutes','Revise and resubmit the returned Minutes','minutes','Returned',o.date,true);
+      if(m && m.status==='Approved') mk(o,'Minutes','Close the approved Minutes','minutes','Ready to close',o.date,false);
+    }
+    if(r.chair){
+      if(awaitingChair){
+        const due = lim.momApprovalHours!=null ? addHours(m.submittedAt, lim.momApprovalHours) : null;
+        mk(o,'Minutes','Approve the Minutes','minutes','Awaiting your approval',
+           due ? due.slice(0,10) : o.date, !!due && due<now);
+      }
+      const g = (grids||[]).filter(x=>x.occurrenceId===o.id && x.state!=='Void')
+        .sort((a,b)=>(b.version||0)-(a.version||0))[0];
+      if(g && g.state==='Submitted for Approval')
+        mk(o,'Audit Grid','Approve the Audit Grid','grid','Awaiting your approval',o.date,false);
+    }
+  }
+  return out;
+}
+
 function dvWorkItems(meetingOccs, roleOf){
   const due=[], review=[], finish=[];
   const mk=(bucket,area,rec,title,sub,action,date,urgent)=>
@@ -2552,7 +2608,7 @@ function dvWorkItems(meetingOccs, roleOf){
     const seesMeeting = role.chair || role.coChair || role.organizer || role.attendee;
     const mkMeeting = (...a) => { if(seesMeeting) mk(...a); };
     const mkMinutes = (...a) => { if(role.organizer) mk(...a); };
-    const when=[o.date?fmtD(o.date):null, o.start].filter(Boolean).join(' · ');
+    const when=[o.date?fmtD(o.date):null, o.start?fmtTime12(o.start):null].filter(Boolean).join(' · ');
     const scope=dvBu(o.businessUnitId)||dvRegion(o.regionId);
     const sub=[when, scope].filter(Boolean).join(' · ');
     if(o.status==='Scheduled'){
@@ -3417,7 +3473,7 @@ function CsPager({page,pages,onPage,first,last,total,label}){
 
 function ScreenWorkspace(){
   const {work,cal:calAll,go,openMeeting,openDvRec,myMeetingOccs:dvMeetingOccs,isMyMeeting,
-         dvLookup} = use();
+         dvLookup,meetingRoleOf,dvMinutes=[],dvGridInstances=[],S} = use();
   /* Only my meetings (01 Oct): calendar meeting / MOM-due items whose meeting
      is mine. `dvMeetingOccs` here IS the "my meetings" list (renamed on
      destructure) so the activity figures below count mine too.
@@ -3460,10 +3516,12 @@ function ScreenWorkspace(){
     {id:'mine',   label:'Awaiting My Action'},
   ];
 
-  let rows = tab==='All' ? tagged : tagged.filter(w=>w.area===tab);
+  /* "Awaiting My Action" is its own list (06 Oct): see dvMyActions(). */
+  const myActions = dvMyActions(dvMeetingOccs, meetingRoleOf, dvMinutes, dvGridInstances, S);
+  const base = quick==='mine' ? myActions : tagged;
+  let rows = tab==='All' ? base : base.filter(w=>w.area===tab);
   if(quick==='urgent') rows = rows.filter(w=>w.urgent);
   else if(quick==='today') rows = rows.filter(w=>w.date===TODAY);
-  else if(quick==='mine') rows = rows.filter(w=>w.bucket!=='review');
   const wqNeedle = wq.trim().toLowerCase();
   if(wqNeedle) rows = rows.filter(w=>matchesQuery(wqNeedle,[w.title, w.sub, w.action, w.area]));
   rows = [...rows].sort((a,b)=>(a.date||'9999').localeCompare(b.date||'9999'));
@@ -3473,8 +3531,8 @@ function ScreenWorkspace(){
   const pageStart = (curPage-1)*WQ_PAGE;
   const pageRows = rows.slice(pageStart, pageStart+WQ_PAGE);
 
-  const statusOf = w =>
-    w.bucket==='review' ? (w.area==='Report'?'Under Review':w.area==='Decision'?'Pending':'In Review')
+  const statusOf = w => w.status ? w.status
+    : w.bucket==='review' ? (w.area==='Report'?'Under Review':w.area==='Decision'?'Pending':'In Review')
     : w.bucket==='finish' ? 'Needs Completion'
     : w.area==='Meeting' ? 'Scheduled' : 'Pending';
   /* Every row's button reads "View" (06 Oct, user's ask) -- it was Prepare /
@@ -3503,9 +3561,12 @@ function ScreenWorkspace(){
   const AREA_PILL = {'Report':'', 'Meeting':'green', 'Minutes':'blue',
                      'Audit Grid':'purple', 'Decision':'amber', 'Task':'adhoc'};
   const STATUS_BADGE = {'Scheduled':'scheduled', 'In Review':'pending', 'Under Review':'pending',
-                        'Pending':'draft', 'Needs Completion':'returned'};
-  const openItem = w => w._dv
-    ? openDvRec(w.area==='Report'?'Report':'Meeting', w._rec)
+                        'Pending':'draft', 'Needs Completion':'returned',
+                        /* Awaiting My Action states (06 Oct) */
+                        'Needs a time':'pending', 'Not marked Held':'returned', 'Minutes to write':'draft',
+                        'Returned':'returned', 'Ready to close':'approved', 'Awaiting your approval':'pending'};
+  const openItem = w => w._dv && w.tab ? openMeeting(w._rec.id, w.tab)
+    : w._dv ? openDvRec(w.area==='Report'?'Report':'Meeting', w._rec)
     : w.screen==='mtg' ? openMeeting(w.rid,w.tab||'detail') : go(w.screen,w.rid);
   const pendingCt = tagged.filter(w=>w.bucket!=='review').length;
   const reviewCt  = tagged.filter(w=>w.bucket==='review').length;
@@ -3521,7 +3582,7 @@ function ScreenWorkspace(){
         <div className="cs-actions">
           {/* "New Report" removed from here on 03 Oct (user's ask); Reports / Plans keeps its own. */}
           <button type="button" className="cs-btn primary lg" onClick={()=>go('mtg')}>
-            <Plus size={13}/>New Meeting</button>
+            <Plus size={13}/>New Committee Meeting</button>
         </div>
       </div>
       <div className="cs-tabs" role="tablist" aria-label="Filter the work queue by area">
@@ -6045,7 +6106,7 @@ function ScreenMeetings(){
         meeting:o.name, setup:dvTpl(o.templateId)||(o.adhocType?'Ad Hoc — '+o.adhocType:'Ad Hoc'),
         setupType:setupTypeOf(o)||'', department:dvDept(o.departmentId)||'',
         scope:dvBu(o.businessUnitId)||dvRegion(o.regionId)||'Group-wide', stage:stageOf(o)||'',
-        date:o.date||'', start:o.start||'', end:o.end||'', mode:o.mode||'',
+        date:o.date||'', start:o.start?fmtTime12(o.start):'', end:o.end?fmtTime12(o.end):'', mode:o.mode||'',
         agendaCount:o.agenda.length, agendaCovered:o.agenda.filter(a=>a.covered==='Yes').length,
         attendeeCount:o.attendees.length, presentCount:o.attendees.filter(a=>a.present==='Present').length,
         chair:dvPos(o.chairPositionId)||'', organizer:dvPos(o.facilitatorPositionId)||'', status:o.status||'' }));
@@ -6117,7 +6178,7 @@ function ScreenMeetings(){
           {/* "Ad Hoc from Setup" removed from here (01 Oct, user's ask). The
               Schedule Meeting page and its 'adhoc' mode are unchanged. */}
           <button type="button" className="cs-btn primary lg" onClick={()=>go('newmtg','custom')}>
-            <Plus size={13}/>New Meeting</button>
+            <Plus size={13}/>New Committee Meeting</button>
         </div>
       </div>
       <div className="cs-tabs" role="tablist" aria-label="Filter Meetings by stage">
@@ -6189,7 +6250,7 @@ function ScreenMeetings(){
             : rows.length===0
               ? <div className="cs-empty">
                   {list.length===0
-                    ? 'No Meeting Occurrence exists yet. Use New Meeting to create one.'
+                    ? 'No Meeting Occurrence exists yet. Use New Committee Meeting to create one.'
                     : q.trim()
                       ? `No Meeting Occurrence matches “${q.trim()}” in this tab.`
                       : 'No Meeting Occurrence matches this tab and filter.'}</div>
@@ -6215,7 +6276,7 @@ function ScreenMeetings(){
                       <td><div className="cs-name" style={{fontWeight:500}}>{scope}</div>
                         {o.stage?<div className="cs-name-sub">{o.stage.replace(/^Stage (\d) /,'$1 · ')}</div>:null}</td>
                       <td><span className="cs-mono">{o.date?fmtDS(o.date):'—'}</span>
-                        {o.start||o.end?<div className="cs-cov-sub cs-mono muted">{[o.start,o.end].filter(Boolean).join(' – ')}</div>:null}
+                        {o.start||o.end?<div className="cs-cov-sub cs-mono muted">{fmtTimeRange(o.start,o.end)}</div>:null}
                         {o.rescheduledFromId && <span className="cs-badge today" style={{marginTop:3}}>Rescheduled</span>}</td>
                       <td><span className="cs-mono muted">{o.mode||'—'}</span></td>
                       <td>{o.agenda.length
@@ -6257,7 +6318,7 @@ function ScreenMeetings(){
             <button key={o.id} type="button" className={'cs-week-item'+(i===0?' next':'')}
                 onClick={()=>openMeeting(o.id,'detail')}>
               <span><div className="cs-week-t">{o.name}</div>
-                <div className="cs-week-s">{[fmtDS(o.date), o.start, o.location||o.mode,
+                <div className="cs-week-s">{[fmtDS(o.date), o.start?fmtTime12(o.start):null, o.location||o.mode,
                   dvBu(o.businessUnitId)||dvRegion(o.regionId)].filter(Boolean).join(' · ')}</div></span>
               <span className="cs-week-tag">{o.date===TODAY
                 ? <span className="cs-badge today">Today</span>
@@ -6373,7 +6434,7 @@ function OccRow({o,past}){
   const a=setup?attendance(o,setup,S.delegatedAttend):null;
   return <tr className="click" onClick={()=>go('mtg',o.id)}>
     <td className="dim" style={{whiteSpace:'nowrap'}}>{fmtD(o.date)}
-      <div className="t-sub">{o.start}–{o.end}</div>
+      <div className="t-sub">{fmtTimeRange(o.start,o.end)}</div>
       {o.rescheduledFrom && <Tag c="amber">Rescheduled</Tag>}</td>
     <td><div className="t-main">{o.restricted&&'🔒 '}{occName(o)}</div>
       <div className="t-sub">{o.mode}{o.location?' · '+o.location:''}
@@ -6675,7 +6736,8 @@ function DvRescheduleOccModal({rec,onClose}){
   const needsLink     = f.mode==='Online' || f.mode==='Hybrid';
   const needsLocation = f.mode==='Physical' || f.mode==='Hybrid';
   const modeOk = (!needsLink || f.link.trim()) && (!needsLocation || f.location.trim());
-  const ok = !!f.date && !weekend && !sameDate && !badTime && !!f.start && !!f.end && modeOk;
+  /* Friday is allowed (06 Oct, user's ask) -- shown as a note, no longer an error. */
+  const ok = !!f.date && !sameDate && !badTime && !!f.start && !!f.end && modeOk;
 
   const save = async () => {
     setSaving(true);
@@ -6734,9 +6796,8 @@ function DvRescheduleOccModal({rec,onClose}){
       <Btn k="pri" disabled={!ok||saving} onClick={save}>{saving?'Rescheduling…':'Reschedule'}</Btn></>}>
     <div className="f-row3">
       <Field label="New date" req
-        err={weekend
-          ? `${dayName(f.date)} is a weekend — the working week is Saturday to Thursday. Choose another day.`
-          : sameDate ? 'Choose a date different from the current one.'
+        hint={weekend ? `${dayName(f.date)} is outside the working week (Saturday to Thursday) — the meeting is still moved to this day.` : null}
+        err={sameDate ? 'Choose a date different from the current one.'
           : nw ? 'This is a configured public holiday.' : null}>
         <input type="date" value={f.date} onChange={e=>set('date',e.target.value)}/></Field>
       <Field label="Start" req><input type="time" value={f.start} onChange={e=>set('start',e.target.value)}/></Field>
@@ -7232,7 +7293,7 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
       const model = {
         meeting: {
           name: rec.name, date: rec.date ? fmtD(rec.date) : null,
-          time: [rec.start, rec.end].filter(Boolean).join(' – ') || null,
+          time: fmtTimeRange(rec.start, rec.end) || null,
           mode: rec.mode, location: rec.location, link: rec.link, stage: rec.stage, status: rec.status,
           chair: holderOr(rec.chairPositionId), facilitator: holderOr(rec.facilitatorPositionId),
         },
@@ -7400,7 +7461,7 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
             <h2 className="mtgd-h">Meeting Information</h2>
             <div className="mom-rv-tiles">
               <div><b className="cs-mono">{rec.date ? fmtDS(rec.date) : '—'}</b><span>Date held</span></div>
-              <div><b className="cs-mono">{rec.start||'—'}</b><span>{durMin!=null && durMin>0 ? durMin+' minutes' : 'Start'}</span></div>
+              <div><b className="cs-mono">{rec.start?fmtTime12(rec.start):'—'}</b><span>{durMin!=null && durMin>0 ? fmtDuration(durMin) : 'Start'}</span></div>
               <div className={quorum?.state==='met'?'ok':quorum?.state==='missed'?'bad':''}>
                 <b className="cs-mono">{presentList.length}/{rec.attendees.length}</b>
                 <span>{quorum?.state==='met' ? 'Quorum met' : quorum?.state==='missed' ? 'Quorum not met'
@@ -7606,7 +7667,7 @@ function DvMinutesBody({rec,minutes,accred,grids,posName,onReload,tasks,onTasksC
           <div className="mom-ctx-grid">
             <div><label>Setup</label><b>{setupName || (rec.adhocType ? 'Ad hoc — '+rec.adhocType : rec.name)}</b></div>
             <div><label>Chair</label><b>{chairName||'—'}</b></div>
-            <div><label>Date held</label><b className="cs-mono">{rec.date ? fmtD(rec.date) : '—'}{rec.start ? ' · '+rec.start : ''}</b></div>
+            <div><label>Date held</label><b className="cs-mono">{rec.date ? fmtD(rec.date) : '—'}{rec.start ? ' · '+fmtTime12(rec.start) : ''}</b></div>
             <div><label>Attendance</label><b>
               {presentList.length} of {rec.attendees.length}
               {quorum?.state==='met' ? <span className="mom-ok"> (Quorum met)</span>
@@ -8904,8 +8965,8 @@ function DvMeetingDetail({rec,back}){
           </div>
           <div className="mtgd-tile">
             <Clock size={18} aria-hidden="true"/>
-            <b className="cs-mono">{rec.start||'—'}</b>
-            <span>{durMin!=null?durMin+' minutes':(rec.timezone||'Time')}</span>
+            <b className="cs-mono">{rec.start?fmtTime12(rec.start):'—'}</b>
+            <span>{durMin!=null?fmtDuration(durMin):(rec.timezone||'Time')}</span>
           </div>
           <div className="mtgd-tile">
             <MapPin size={18} aria-hidden="true"/>
@@ -8919,7 +8980,7 @@ function DvMeetingDetail({rec,back}){
             <span className="cs-icon gold" aria-hidden="true"><ListOrdered size={15}/></span>
             <h2 id="mtgd-agenda">Agenda Preview</h2>
             <span className="cs-mono muted mtgd-count">{rec.agenda.length} item{rec.agenda.length===1?'':'s'}
-              {durMin!=null?' · '+durMin+' min':''}</span>
+              {durMin!=null?' · '+fmtDuration(durMin):''}</span>
           </div>
           {rec.agenda.length===0 ? <Empty ic="📋">No Agenda Items yet.</Empty> : <>
             <ol className="mtgd-agenda">
@@ -9182,7 +9243,7 @@ function DvMeetingDetail({rec,back}){
       <div className="card-hd mtgd-hd">
         <span className="cs-icon gold" aria-hidden="true"><ListOrdered size={15}/></span>
         <h2>Meeting Agenda</h2>
-        <span className="cs-mono mtgd-count">{rec.agenda.length} item{rec.agenda.length===1?'':'s'}{durMin!=null?' · '+durMin+' min total':''}</span>
+        <span className="cs-mono mtgd-count">{rec.agenda.length} item{rec.agenda.length===1?'':'s'}{durMin!=null?' · '+fmtDuration(durMin)+' total':''}</span>
         {rec.status==='Held' && <Tag c={covered<rec.agenda.length?'amber':'green'}>
           {covered} of {rec.agenda.length} covered</Tag>}
         {rec.status==='Scheduled' && (rec.agendaSent
@@ -10070,8 +10131,8 @@ function MeetingDetail({rec,back}){
           </div>
           <div className="stat" style={{textAlign:'center'}}>
             <div style={{fontSize:18}}>🕐</div>
-            <div style={{fontWeight:700,fontSize:14,marginTop:4}}>{rec.start}</div>
-            <label style={{display:'block',marginTop:2}}>{durMin} MINUTES</label>
+            <div style={{fontWeight:700,fontSize:14,marginTop:4}}>{fmtTime12(rec.start)}</div>
+            <label style={{display:'block',marginTop:2}}>{fmtDuration(durMin).toUpperCase()}</label>
           </div>
           <div className="stat" style={{textAlign:'center'}}>
             <div style={{fontSize:18}}>📍</div>
@@ -10083,7 +10144,7 @@ function MeetingDetail({rec,back}){
         <div className="card">
           <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:2}}>
             <div className="wa-icon gold">📋</div><h2 style={{flex:1}}>Agenda Preview</h2>
-            <span className="csub" style={{marginBottom:0}}>{rec.agenda.length} items · {durMin} min</span>
+            <span className="csub" style={{marginBottom:0}}>{rec.agenda.length} items · {fmtDuration(durMin)}</span>
           </div>
           {rec.agenda.length===0 ? <Empty ic="📋">No Agenda Items yet.</Empty> : <>
             {rec.agenda.slice(0,5).map((a,i)=>
@@ -10320,7 +10381,7 @@ function MeetingDetail({rec,back}){
     {tab==='agenda' && <div className="card flush">
       <div className="card-hd" style={{display:'flex',alignItems:'center',gap:12}}>
         <div className="wa-icon gold">📋</div><h2 style={{flex:1}}>Meeting Agenda</h2>
-        <span className="csub" style={{marginBottom:0}}>{rec.agenda.length} items · {durMin} min total</span>
+        <span className="csub" style={{marginBottom:0}}>{rec.agenda.length} items · {fmtDuration(durMin)} total</span>
       </div>
       {rec.agendaSent
         ? <div style={{padding:'0 17px'}}><Note k="info">Agenda distributed {fmtD(rec.agendaSent)}
@@ -11048,7 +11109,10 @@ function ScreenNewMeeting(){
   /* An occurrence landing on a non-working day is NOT refused — it rolls forward
      to the next working day, that occurrence only, never the series. Weekend and
      public holiday behave the same way; isNonWorking() covers both. */
-  const bookedDate = f.date && isNonWorking(f.date) ? nextWorkingDay(f.date) : f.date;
+  /* Friday can be picked (06 Oct, user's ask): it is booked on that day. Only a
+     configured public holiday still rolls forward to the next working day. */
+  const offDay = !!f.date && isWeekend(f.date);
+  const bookedDate = f.date && isNonWorking(f.date) && !offDay ? nextWorkingDay(f.date) : f.date;
   const moved = !!f.date && bookedDate !== f.date;
 
   /* Mode decides which of the two destination fields apply. */
@@ -11310,7 +11374,7 @@ function ScreenNewMeeting(){
 
   return <div className="cs-root cs-newmtg">
     <div className="cs-head" style={{paddingBottom:16}}>
-      <div className="cs-crumb"><button type="button" onClick={onClose}>Meetings</button> › <b>New Meeting</b></div>
+      <div className="cs-crumb"><button type="button" onClick={onClose}>Meetings</button> › <b>New Committee Meeting</b></div>
       <div className="cs-head-top">
         <div><h1 className="cs-title">Schedule Meeting</h1>
           <p className="cs-sub">{custom
@@ -11535,6 +11599,7 @@ function ScreenNewMeeting(){
               <Field need="date" label="Date" req
                 hint={moved
                   ? `${dayName(f.date)} is a non-working day. This occurrence will be booked on ${fmtD(bookedDate)} — the series is unchanged.`
+                  : offDay ? `${dayName(f.date)} is outside the working week (Saturday to Thursday) — the meeting is still booked on this day.`
                   : 'The working week is Saturday to Thursday.'}>
                 <input type="date" value={f.date} onChange={e=>set('date',e.target.value)}/></Field>
               <Field label="Start" req><input type="time" value={f.start}
@@ -11914,7 +11979,7 @@ function MomDetail({rec,occ,back}){
               <label style={{display:'block',marginTop:2}}>DATE HELD</label></div>
             <div className="stat" style={{textAlign:'center'}}><div style={{fontSize:18}}>🕐</div>
               <div style={{fontWeight:700,fontSize:14,marginTop:4}}>{occ.start}</div>
-              <label style={{display:'block',marginTop:2}}>{durMin} MINUTES</label></div>
+              <label style={{display:'block',marginTop:2}}>{fmtDuration(durMin).toUpperCase()}</label></div>
             <div className="stat" style={{textAlign:'center'}}><div style={{fontSize:18}}>👥</div>
               <div style={{fontWeight:700,fontSize:14,marginTop:4}}>{a.num}/{a.den}</div>
               <label style={{display:'block',marginTop:2}}>QUORUM MET</label></div>

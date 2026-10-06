@@ -76,6 +76,23 @@ export const addDays=(d,n)=>{const t=new Date(d+'T00:00:00');t.setDate(t.getDate
 export const addHours=(dt,h)=>{ const t=new Date(dt.replace(' ','T')); t.setTime(t.getTime()+h*36e5);
   return ymd(t)+' '+String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0'); };
 export const nowStamp=()=>TODAY+' '+new Date().toTimeString().slice(0,5);
+/* Times and durations as people read them (06 Oct, user's ask).
+   fmtTime12('17:30') -> '5:30 PM'; anything that is not HH:MM is returned as is.
+   fmtDuration(80) -> '1:20 hour', 60 -> '1 hour', 135 -> '2:15 hours',
+   45 -> '45 minutes'. */
+export const fmtTime12 = t => {
+  const m = /^(\d{1,2}):(\d{2})/.exec(String(t||''));
+  if(!m) return t || '';
+  const h = +m[1], ap = h < 12 ? 'AM' : 'PM', h12 = h % 12 || 12;
+  return `${h12}:${m[2]} ${ap}`;
+};
+export const fmtTimeRange = (a, b) => [a, b].filter(Boolean).map(fmtTime12).join(' – ');
+export const fmtDuration = min => {
+  if(min == null || isNaN(min)) return '';
+  if(min < 60) return `${min} minute${min === 1 ? '' : 's'}`;
+  const h = Math.floor(min / 60), r = min % 60;
+  return `${r ? `${h}:${String(r).padStart(2,'0')}` : h} hour${h === 1 ? '' : 's'}`;
+};
 export const money=n=>n==null?'—':n.toLocaleString('en-US')+' SAR';
 export const pct=n=>(Math.round(n*10)/10)+'%';
 export const uid=p=>p+'-'+Math.random().toString(36).slice(2,8);
