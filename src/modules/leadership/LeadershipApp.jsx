@@ -3477,10 +3477,9 @@ function ScreenWorkspace(){
     w.bucket==='review' ? (w.area==='Report'?'Under Review':w.area==='Decision'?'Pending':'In Review')
     : w.bucket==='finish' ? 'Needs Completion'
     : w.area==='Meeting' ? 'Scheduled' : 'Pending';
-  const actionVerb = w => w.urgent ? 'Follow Up'
-    : w.area==='Meeting' ? 'Prepare' : w.area==='Report' ? 'Track' : w.area==='Decision' ? 'View'
-    : w.area==='Minutes' ? 'Follow Up' : w.area==='Audit Grid' ? 'Score' : w.area==='Task' ? 'Execute'
-    : 'Open';
+  /* Every row's button reads "View" (06 Oct, user's ask) -- it was Prepare /
+     Follow Up / Track / Score / Execute by area. What it opens is unchanged. */
+  const actionVerb = () => 'View';
 
   const upcoming = cal.filter(i=>i.date>=TODAY && i.status!=='Cancelled')
     .sort((a,b)=>(a.date+(a.time||'')).localeCompare(b.date+(b.time||''))).slice(0,4);
