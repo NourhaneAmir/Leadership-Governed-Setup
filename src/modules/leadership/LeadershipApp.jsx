@@ -3565,6 +3565,14 @@ function ScreenWorkspace(){
                         /* Awaiting My Action states (06 Oct) */
                         'Needs a time':'pending', 'Not marked Held':'returned', 'Minutes to write':'draft',
                         'Returned':'returned', 'Ready to close':'approved', 'Awaiting your approval':'pending'};
+  /* Accountable column (06 Oct, user's ask): for a meeting, MY role on it --
+     "Chairman · Organizer" etc. -- so it is clear why the row is mine. */
+  const myRoleText = w => {
+    if(!w._dv || w.area==='Report' || !w._rec || !meetingRoleOf) return '';
+    const r = meetingRoleOf(w._rec);
+    return [r.chair&&'Chairman', r.coChair&&'Co-Chairman', r.organizer&&'Organizer', r.attendee&&'Attendee']
+      .filter(Boolean).join(' · ');
+  };
   const openItem = w => w._dv && w.tab ? openMeeting(w._rec.id, w.tab)
     : w._dv ? openDvRec(w.area==='Report'?'Report':'Meeting', w._rec)
     : w.screen==='mtg' ? openMeeting(w.rid,w.tab||'detail') : go(w.screen,w.rid);
@@ -3647,7 +3655,9 @@ function ScreenWorkspace(){
                 <td><span className={'cs-type '+(AREA_PILL[w.area]??'adhoc')}>{w.area}</span></td>
                 <td><div className="cs-name">{w.title}</div><div className="cs-name-sub">{w.sub}</div></td>
                 <td>{w.owner ? <><div className="cs-name">{P(w.owner).name}</div>
-                    <div className="cs-name-sub">{P(w.owner).position}</div></> : '—'}</td>
+                    <div className="cs-name-sub">{P(w.owner).position}</div></>
+                  : myRoleText(w) ? <><div className="cs-name">You</div>
+                    <div className="cs-name-sub">{myRoleText(w)}</div></> : '—'}</td>
                 <td><span className={'cs-badge '+(STATUS_BADGE[st]||'draft')}><i/>{st}</span></td>
                 <td>{late ? <span className="cs-mono c-red">Overdue</span>
                   : <span className="cs-mono">{w.date?fmtDS(w.date):'—'}</span>}</td>
