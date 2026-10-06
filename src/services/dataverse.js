@@ -6860,3 +6860,143 @@ export async function fetchSetupActivity(kind, templateId){
     /* createdon is an ISO string, so a plain string sort is chronological. */
     .sort((a,b) => String(b.at).localeCompare(String(a.at)));
 }
+
+/* =========================================================================
+   Delete a Meeting Setup with everything that hangs off it (06 Oct, user's
+   ask -- Administrator only, Governance Setup register).
+
+   Two steps, so the Administrator confirms against real numbers:
+     planMeetingSetupDelete(id)  -- reads every related row, writes nothing;
+     runMeetingSetupDelete(plan) -- deletes them, deepest rows first, the
+                                    Setup itself last.
+
+   The user chose "delete the Meeting Occurrences too", so the plan covers:
+     each Occurrence's agenda, attendees, departments, linked documents,
+     Minutes (+ their notes and the confidential-viewer rows), Audit Grids
+     (+ answers); and the Setup's own units, attendees, agenda, departments,
+     supportive functions, linked reports, Stage 4 categories, activity trail.
+   Tasks and Decisions that point at a deleted Occurrence are NOT deleted --
+   they are work records in their own right; Dataverse clears their link.
+
+   Core tables are read strictly (rowsOrThrow): a failed read must stop the
+   delete, not be mistaken for "nothing there". Optional tables that may not
+   exist in every environment (viewer list, activity trail, Stage 4
+   categories) read leniently.
+   ========================================================================= */
+const DEL_CHUNK = 25;
+async function idsWhere(service, idField, key, ids, { strict=true } = {}){
+  const out = [];
+  const list = [...new Set((ids||[]).filter(Boolean))];
+  for(let i = 0; i < list.length; i += DEL_CHUNK){
+    const chunk = list.slice(i, i + DEL_CHUNK);
+    const filter = chunk.map(id => `${key} eq ${id}`).join(' or ');
+    let res;
+    try{ res = await service.getAll({ filter, select:[idField] }); }
+    catch(e){ if(strict) throw e; continue; }
+    const rows = strict ? rowsOrThrow(res) : (res?.success===false ? [] : (res?.data ?? []));
+    rows.forEach(r => r?.[idField] && out.push(r[idField]));
+  }
+  return [...new Set(out)];
+}
+
+/** Reads everything a delete of this Meeting Setup would remove. Writes nothing.
+ *  @returns {Promise<{templateId:string, occurrences:{id,name,date}[],
+ *            steps:{label:string, table:string, service:object, ids:string[]}[]}>} */
+export async function planMeetingSetupDelete(templateId){
+  const T = [templateId];
+  const step = (label, table, service, ids) => ({ label, table, service, ids });
+
+  const occRes = await Lm_meetingoccurrencesService.getAll({
+    filter: `_lm_meetingtemplate_value eq ${templateId}`,
+    select: ['lm_meetingoccurrenceid','lm_name','lm_date'],
+  });
+  const occurrences = rowsOrThrow(occRes).map(o => ({
+    id: o.lm_meetingoccurrenceid, name: o.lm_name || '(untitled meeting)', date: isoDay(o.lm_date) }));
+  const O = occurrences.map(o => o.id);
+  const occKey = '_lm_meetingoccurrence_value';
+
+  const [agendaIds, attIds, deptIds, docIds, minuteIds, gridIds] = await Promise.all([
+    idsWhere(Lm_meetingoccurrenceagendasService, 'lm_meetingoccurrenceagendaid', occKey, O),
+    idsWhere(Lm_meetingoccurrenceattendeesesService, 'lm_meetingoccurrenceattendeesid', occKey, O),
+    idsWhere(Lm_meetingoccurrencedepartmentfunctionsService, 'lm_meetingoccurrencedepartmentfunctionid', occKey, O),
+    idsWhere(Lm_meetingoccurrencelinkedreportsesService, 'lm_meetingoccurrencelinkedreportsid', occKey, O),
+    idsWhere(Lm_meetingminutesesService, 'lm_meetingminutesid', occKey, O),
+    idsWhere(Lm_auditgridinstancesService, 'lm_auditgridinstanceid', occKey, O),
+  ]);
+  const [noteIds, answerIds] = await Promise.all([
+    idsWhere(Lm_momnotesesService, 'lm_momnotesid', '_lm_meetingminutes_value', minuteIds),
+    idsWhere(Lm_auditgridanswersService, 'lm_auditgridanswerid', '_lm_auditgridinstance_value', gridIds),
+  ]);
+  const viewerIds = [...new Set([
+    ...await idsWhere(Lm_meetingminutesreviewerlistsService, 'lm_meetingminutesreviewerlistid', '_lm_momnotes_value', noteIds, { strict:false }),
+    ...await idsWhere(Lm_meetingminutesreviewerlistsService, 'lm_meetingminutesreviewerlistid', '_lm_meetingoccurrenceagenda_value', agendaIds, { strict:false }),
+  ])];
+
+  /* the Setup's own rows */
+  const tKey = '_lm_meetingtemplate_value';
+  const [buIds, regionIds, tAgendaIds, linesIds, supIds, linkedIds, topCatIds, activityIds, tAttIds] = await Promise.all([
+    idsWhere(Lm_meetingtemplatebusinessunitsesService, 'lm_meetingtemplatebusinessunitsid', tKey, T),
+    idsWhere(Lm_meetingtemplateregionsService, 'lm_meetingtemplateregionid', tKey, T),
+    idsWhere(Lm_meetingtemplateagendaitemsService, 'lm_meetingtemplateagendaitemid', tKey, T),
+    idsWhere(Lm_meetingtemplatedepartmentfunctionsService, 'lm_meetingtemplatedepartmentfunctionid', tKey, T),
+    idsWhere(Lm_meetingtemplatesupportivefunctionsesService, 'lm_meetingtemplatesupportivefunctionsid', tKey, T),
+    idsWhere(Lm_meetingtemplatelinkedreportsesService, 'lm_meetingtemplatelinkedreportsid', tKey, T),
+    idsWhere(Lm_topmanagementmeetingcategoriesService, 'lm_topmanagementmeetingcategoryid', tKey, T, { strict:false }),
+    idsWhere(Lm_setupactivitiesService, 'lm_setupactivityid', tKey, T, { strict:false }),
+    idsWhere(Lm_meetingattendeeslistsService, 'lm_meetingattendeeslistid', tKey, T),
+  ]);
+  /* per-unit Attendees, in case a row carries only its unit lookup */
+  const unitAttIds = [
+    ...await idsWhere(Lm_meetingattendeeslistsService, 'lm_meetingattendeeslistid', '_lm_meetingtemplateperbusinessunit_value', buIds),
+    ...await idsWhere(Lm_meetingattendeeslistsService, 'lm_meetingattendeeslistid', '_lm_meetingtemplateperregion_value', regionIds),
+  ];
+
+  return {
+    templateId, occurrences,
+    /* deletion order: deepest first, the Setup last */
+    steps: [
+      step('Confidential-item viewers', 'lm_meetingminutesreviewerlists', Lm_meetingminutesreviewerlistsService, viewerIds),
+      step('Minutes notes', 'lm_momnoteses', Lm_momnotesesService, noteIds),
+      step('Meeting Minutes', 'lm_meetingminuteses', Lm_meetingminutesesService, minuteIds),
+      step('Audit Grid answers', 'lm_auditgridanswers', Lm_auditgridanswersService, answerIds),
+      step('Audit Grids', 'lm_auditgridinstances', Lm_auditgridinstancesService, gridIds),
+      step('Meeting agenda items', 'lm_meetingoccurrenceagendas', Lm_meetingoccurrenceagendasService, agendaIds),
+      step('Meeting attendees', 'lm_meetingoccurrenceattendeeses', Lm_meetingoccurrenceattendeesesService, attIds),
+      step('Meeting departments', 'lm_meetingoccurrencedepartmentfunctions', Lm_meetingoccurrencedepartmentfunctionsService, deptIds),
+      step('Meeting documents', 'lm_meetingoccurrencelinkedreportses', Lm_meetingoccurrencelinkedreportsesService, docIds),
+      step('Meeting Occurrences', 'lm_meetingoccurrences', Lm_meetingoccurrencesService, O),
+      step('Setup attendees', 'lm_meetingattendeeslists', Lm_meetingattendeeslistsService, [...new Set([...tAttIds, ...unitAttIds])]),
+      step('Setup Business Units', 'lm_meetingtemplatebusinessunitses', Lm_meetingtemplatebusinessunitsesService, buIds),
+      step('Setup Regions', 'lm_meetingtemplateregions', Lm_meetingtemplateregionsService, regionIds),
+      step('Setup agenda items', 'lm_meetingtemplateagendaitems', Lm_meetingtemplateagendaitemsService, tAgendaIds),
+      step('Setup departments', 'lm_meetingtemplatedepartmentfunctions', Lm_meetingtemplatedepartmentfunctionsService, linesIds),
+      step('Supportive functions', 'lm_meetingtemplatesupportivefunctionses', Lm_meetingtemplatesupportivefunctionsesService, supIds),
+      step('Linked reports', 'lm_meetingtemplatelinkedreportses', Lm_meetingtemplatelinkedreportsesService, linkedIds),
+      step('Stage 4 categories', 'lm_topmanagementmeetingcategories', Lm_topmanagementmeetingcategoriesService, topCatIds),
+      step('Activity trail', 'lm_setupactivities', Lm_setupactivitiesService, activityIds),
+      step('Meeting Setup', 'lm_meetingtemplates', Lm_meetingtemplatesService, T),
+    ],
+  };
+}
+
+/** Deletes what planMeetingSetupDelete() found, in its order. Keeps going past
+ *  a failed row, but never deletes the Setup itself if anything before it
+ *  failed -- a half-deleted Setup stays visible so the delete can be re-run.
+ *  @param {(label:string, done:number, total:number)=>void} [onProgress]
+ *  @returns {Promise<{deleted:number, errors:{table:string,error:any}[], setupDeleted:boolean}>} */
+export async function runMeetingSetupDelete(plan, onProgress){
+  const errors = [];
+  let deleted = 0, setupDeleted = false;
+  const total = plan.steps.reduce((n, s) => n + s.ids.length, 0);
+  for(const s of plan.steps){
+    const isSetup = s.table === 'lm_meetingtemplates';
+    if(isSetup && errors.length) break;
+    for(const id of s.ids){
+      onProgress?.(s.label, deleted, total);
+      try{ assertSuccess(await s.service.delete(id)); deleted++; if(isSetup) setupDeleted = true; }
+      catch(e){ errors.push({ table:s.table, error:e }); }
+    }
+  }
+  onProgress?.('Done', deleted, total);
+  return { deleted, errors, setupDeleted };
+}

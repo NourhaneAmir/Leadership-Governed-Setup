@@ -10528,6 +10528,56 @@ Per an explicit ask. Choices confirmed with the user before building:
   About + 4 stage sheets, 26 columns, multi-line cells intact, empty stage
   noted. Not browser-checked, not pushed (Governance (2) would be the test
   target).
+- **Follow-up (`6e26e8b`):** columns cut to 21. Status, Version, Quorum %,
+  Unit Type and Covers are gone. "Meeting Setup" became **Committee Meeting
+  Name**, built by `committeeMeetingName()` from the user's Excel rule
+  (`BU_Region_Frequency`, or `Department[_Region]_Frequency`, then
+  `" | " Classification_Category`, blank if every input is blank). Several
+  Departments are joined with " & "; Stage 4 Categories with " / ".
+
+### 06 Oct: Governance — Administrator can delete a Meeting Setup with everything related (Governance only)
+
+Per an explicit ask. The user chose, when asked:
+- **Meeting Occurrences are deleted too**;
+- "administrator" means the **Administrator toggle** (`ROLES[role].approve`),
+  like Approve / Expire. This is a UI gate, not Dataverse security.
+
+- **Button:** "Delete" (danger) on the Setup detail header, Committee /
+  Meeting Setups only, Administrator on.
+- **`DeleteSetupModal`:** reads the plan first and shows rows per table, plus
+  a warning naming how many Occurrences go. It runs only after the user types
+  **DELETE**, shows progress, and can't be closed while running. On Close
+  after success, `A.forgetDeleted(id)` drops the local copy and its seeded
+  usage/audit rows, closes the detail and runs `refreshDvLists()`. A Setup
+  never saved to Dataverse is only removed locally.
+- **`dataverse.js`:**
+  - `planMeetingSetupDelete(templateId)` reads only. It returns
+    `{occurrences, steps[]}` in delete order:
+    - viewer rows (`lm_meetingminutesreviewerlists` by notes and by
+      occurrence agenda);
+    - MOM notes, Minutes, Grid answers, Grids;
+    - occurrence agenda / attendees / departments / linked docs;
+    - Occurrences;
+    - Setup attendees (by template, and per BU / Region row), BU rows,
+      Region rows, agenda, departments, supportive, linked reports, Stage 4
+      categories, `lm_setupactivities`;
+    - the template last.
+
+    Core reads use `rowsOrThrow`, so a failed read stops the delete.
+    Viewer list, Stage 4 categories and activities read leniently. Filters
+    are chunked 25 ids at a time (`idsWhere`).
+  - `runMeetingSetupDelete(plan, onProgress)` deletes with `assertSuccess`
+    and continues past a failed row. It **does not delete the template if
+    anything failed**, so the Setup stays in the register and a re-run picks
+    up the rest.
+  - **Tasks (`hx_taskses`) and Decisions (`wlog_decisions`) are NOT
+    deleted.** They are work records; Dataverse clears their occurrence
+    lookup. If a relationship is Restrict, that Occurrence's delete fails and
+    the template is kept.
+- **Environment:** Governance reads IT, so the delete covers IT rows only.
+  Occurrences Leadership created in DT New are untouched.
+- **Checks:** both apps build; Governance lint 19 (unchanged); `no-undef`
+  clean. Not browser-checked, not pushed.
 
 ## 6. Schema facts that are expensive to rediscover
 

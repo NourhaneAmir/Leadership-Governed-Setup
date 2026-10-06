@@ -6,6 +6,7 @@ import { fetchRegions, fetchBusinessUnits, fetchDepartments, fetchFunctions, fet
   decodeDayOfWeeksMulti, DAY_OF_WEEKS_CAP, REPORT_SCHEDULE_COLS } from '../../services/dataverse.js';
 import { FilePreview, canPreview } from '../../shared/FilePreview.jsx';
 import { exportMeetingSetups, committeeMeetingName } from '../../services/meetingSetupExport.js';
+import { planMeetingSetupDelete, runMeetingSetupDelete } from '../../services/dataverse.js';
 import './governance-modern.css';
 
 
@@ -5074,6 +5075,77 @@ const flushActivity = (localId, dvId, kind, version) => {
     .catch(e => console.warn('[dataverse] Setup activity write threw:', e));
 };
 
+/* ---- Delete a Meeting Setup and everything under it (06 Oct, user's ask) --
+   Administrator only. Reads the full delete plan first (planMeetingSetupDelete
+   writes nothing), shows the counts, and only runs after the Administrator
+   types DELETE. The user chose to delete the Meeting Occurrences too. */
+function DeleteSetupModal({rec,onClose,onDeleted}){
+  const [plan,setPlan]=useState(null);
+  const [readErr,setReadErr]=useState(null);
+  const [typed,setTyped]=useState('');
+  const [progress,setProgress]=useState(null);   // null | {label,done,total}
+  const [result,setResult]=useState(null);
+  const dvId=rec._dataverseId;
+  useEffect(()=>{
+    if(!dvId) return;
+    let cancelled=false;
+    planMeetingSetupDelete(dvId)
+      .then(p=>{ if(!cancelled) setPlan(p); })
+      .catch(e=>{ console.warn('[dataverse] reading the delete plan failed:', e);
+        if(!cancelled) setReadErr('What this Setup is linked to could not be read from Dataverse, so nothing can be deleted safely. Check the console for details.'); });
+    return ()=>{cancelled=true;};
+  },[dvId]);
+  const rows=plan?plan.steps.filter(s=>s.ids.length):[];
+  const total=rows.reduce((n,s)=>n+s.ids.length,0);
+  const running=!!progress&&!result;
+  const run=async()=>{
+    setProgress({label:'Starting',done:0,total});
+    const r=await runMeetingSetupDelete(plan,(label,done,tot)=>setProgress({label,done,total:tot}));
+    setResult(r);
+    if(r.errors.length) console.warn('[dataverse] Meeting Setup delete errors:', r.errors);
+  };
+  const canRun=(!dvId || (plan && !readErr)) && typed.trim().toUpperCase()==='DELETE' && !running && !result;
+  return <Modal title="Delete this Meeting Setup?" onClose={running?()=>{}:onClose}
+    sub="This permanently deletes the Setup and everything related to it. It cannot be undone."
+    footer={result
+      ? <Btn k="pri" onClick={result.setupDeleted?onDeleted:onClose}>Close</Btn>
+      : <><Btn onClick={onClose} disabled={running}>Keep it</Btn>
+          <Btn k="dgr" disabled={!canRun} onClick={dvId?run:()=>{onDeleted();}}>
+            {running?`Deleting… ${progress.done}/${progress.total}`:'Delete permanently'}</Btn></>}>
+    <div className="readonly"><b>{displayName(rec)}</b>
+      <div style={{fontSize:12,color:'var(--muted)',marginTop:4}}>
+        {rec.kind} · version {rec.version||'—'} · <StatusPill s={rec.status}/> · {scopeString(rec)}</div></div>
+    {!dvId
+      ? <Note k="info" ic="i">This Setup was never saved to Dataverse, so only this session's copy is removed.</Note>
+      : readErr ? <Note k="warn" ic="⚠">{readErr}</Note>
+      : !plan ? <div className="empty" style={{padding:16}}>Reading everything linked to this Setup…</div>
+      : <>
+          {plan.occurrences.length
+            ? <Note k="warn" ic="⚠"><b>{plan.occurrences.length} Meeting Occurrence{plan.occurrences.length>1?'s':''}</b> will
+                be deleted, with their minutes, attendance, Audit Grids and documents. Tasks and Decisions
+                raised in those meetings are kept, but lose their link to the meeting.</Note>
+            : <Note k="info" ic="i">No Meeting Occurrence has been created from this Setup.</Note>}
+          <table className="data" style={{marginTop:8}}><thead><tr><th>What</th><th style={{textAlign:'right'}}>Rows</th></tr></thead>
+            <tbody>{rows.map(s=><tr key={s.table}><td>{s.label}</td>
+              <td style={{textAlign:'right',fontVariantNumeric:'tabular-nums'}}>{s.ids.length}</td></tr>)}
+              <tr><td><b>Total</b></td><td style={{textAlign:'right'}}><b>{total}</b></td></tr></tbody></table>
+        </>}
+    {result
+      ? (result.setupDeleted
+          ? <Note k="teal" ic="✓">Deleted {result.deleted} row{result.deleted===1?'':'s'}, the Setup included.
+              {result.errors.length?` ${result.errors.length} row(s) could not be deleted — see the console.`:''}</Note>
+          : <Note k="warn" ic="⚠">{result.errors.length} row(s) could not be deleted, so the Setup itself was
+              kept and stays in the register. {result.deleted} related row(s) were deleted. Fix the cause (see the
+              console) and run Delete again — it picks up what is left.</Note>)
+      : running
+        ? <div style={{fontSize:12,color:'var(--muted)',marginTop:8}}>Deleting {progress.label}… do not close the app.</div>
+        : (dvId ? plan : true) && <label style={{display:'block',marginTop:12,fontSize:13}}>
+            Type <b>DELETE</b> to confirm
+            <input type="text" value={typed} onChange={e=>setTyped(e.target.value)} autoFocus
+              style={{display:'block',marginTop:6,width:'100%'}} placeholder="DELETE"/></label>}
+  </Modal>;
+}
+
 /* =========================================================================
    S5 — SETUP DETAIL AND ACTIVITY
    ========================================================================= */
@@ -5082,6 +5154,7 @@ function ScreenDetail({rec,onClose}){
   const [tab,setTab]=useState('summary');
   const [confirmApprove,setConfirmApprove]=useState(false);
   const [confirmExpire,setConfirmExpire]=useState(false);
+  const [confirmDelete,setConfirmDelete]=useState(false);
   const w=ROLES[role].write, canApprove=ROLES[role].approve;
   /* An Author may edit a Draft or an Under Review Setup, but not one that is
      already Active / Approved -- only an Administrator can reopen an
@@ -5162,8 +5235,14 @@ function ScreenDetail({rec,onClose}){
         ? <Btn k="dgr" onClick={()=>setConfirmExpire(true)}
             title="Expire this Setup — it stays readable but creates no new occurrences">Expire</Btn>
         : null}
+      {canApprove&&rec.kind==='Committee / Meeting'
+        ? <Btn k="dgr" onClick={()=>setConfirmDelete(true)}
+            title="Administrator only — permanently delete this Setup, its Meeting Occurrences and everything related">Delete</Btn>
+        : null}
       <Btn onClick={onClose}>Close</Btn>
     </div>
+    {confirmDelete?<DeleteSetupModal rec={rec} onClose={()=>setConfirmDelete(false)}
+      onDeleted={()=>A.forgetDeleted(rec.id)}/>:null}
 
     {rec.status==='Expired'
       ? <Note k="lock" ic="—">This Setup is Expired. It creates no new occurrences and cannot be
@@ -6136,6 +6215,20 @@ function App({onSwitch}){
         rec={...s};});
       toast('Setup expired','It creates no new occurrences and stays readable.','warn');
       writeStatusToDataverse(rec,'Expired','Expired');
+    },
+
+    /* After DeleteSetupModal removed a Setup from Dataverse: drop the local
+       copy and its seeded rows, and re-read the register list. Runs when the
+       Administrator closes the result dialog, and returns to the register. */
+    forgetDeleted:id=>{
+      mut(n=>{
+        n.setups=n.setups.filter(x=>x.id!==id);
+        n.usage=(n.usage||[]).filter(u=>u.setup!==id);
+        n.audit=(n.audit||[]).filter(a=>a.setup!==id);
+      });
+      toast('Setup deleted','The Meeting Setup and everything related to it were deleted.','warn');
+      setOpenId(null); setEditing(false);
+      refreshDvLists();
     },
   };
 
