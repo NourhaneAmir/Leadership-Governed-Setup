@@ -6645,18 +6645,22 @@ function DvEditOccModal({rec,onClose}){
    never a stale Scheduled row left sitting on the wrong date. The Agenda's
    coverage and any Attendance already recorded stay behind on the original;
    only the content itself (titles, owners, positions) carries forward. */
-/* The rescheduled occurrence's name carries its NEW date (01 Oct). Generated
-   names start with the day/month ("4/10 Digital Transformation ... - test");
-   older ones end with an ISO date ("... - 1 - 2026-09-06"). Whichever is there
-   is replaced in the same format; a name with neither gets the d/M prefix. */
+/* The rescheduled occurrence's name carries its NEW date (01 Oct), and the
+   date goes LAST (06 Oct, user's ask): "Meeting name - d/M". Names arrive
+   already in that form (meetingNameDateLast() on read turns the generator's
+   "4/10 Name" into "Name - 4/10"), so a trailing " - d/M" is replaced; a
+   leading d/M is still handled in case one slips through; an older ISO
+   suffix ("... - 1 - 2026-09-06") is replaced in kind; otherwise " - d/M" is
+   appended. */
 const rescheduledName = (name, iso) => {
   const n = String(name||'').trim();
   if(!iso) return n;
   const [y,m,d] = iso.split('-');
   const dm = `${Number(d)}/${Number(m)}`;
-  if(/^\d{1,2}\/\d{1,2}\s+/.test(n)) return n.replace(/^\d{1,2}\/\d{1,2}\s+/, dm+' ');
+  if(/\s-\s\d{1,2}\/\d{1,2}$/.test(n)) return n.replace(/\s-\s\d{1,2}\/\d{1,2}$/, ` - ${dm}`);
+  if(/^\d{1,2}\/\d{1,2}\s+/.test(n)) return `${n.replace(/^\d{1,2}\/\d{1,2}\s+/, '')} - ${dm}`;
   if(/\d{4}-\d{2}-\d{2}$/.test(n))   return n.replace(/\d{4}-\d{2}-\d{2}$/, `${y}-${m}-${d}`);
-  return n ? `${dm} ${n}` : dm;
+  return n ? `${n} - ${dm}` : dm;
 };
 function DvRescheduleOccModal({rec,onClose}){
   const {toast,refreshOccurrences,openMeeting}=use();

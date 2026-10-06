@@ -3980,7 +3980,7 @@ export async function fetchMeetingOccurrences(){
     const id = o.lm_meetingoccurrenceid;
     return {
       id,
-      name: o.lm_name || '(untitled meeting)',
+      name: meetingNameDateLast(o.lm_name) || '(untitled meeting)',
       date: isoDay(o.lm_date),
       start: o.lm_starttime || null,
       end: o.lm_endtime || null,
@@ -4841,6 +4841,17 @@ export async function saveReportOccurrenceContent(occurrenceId, { name, before =
   return { errors };
 }
 
+/** A meeting occurrence's name with its date LAST (06 Oct, user's ask):
+ *  "Meeting name - d/M", not "d/M Meeting name". The generator flow names
+ *  occurrences "4/10 Digital Transformation ..."; this moves a leading d/M to
+ *  the end when the name is read, so every screen shows the same form. A name
+ *  with no leading date (or an older ISO-suffixed one) is left as it is. */
+export const meetingNameDateLast = name => {
+  const n = String(name || '').trim();
+  const m = /^(\d{1,2}\/\d{1,2})\s+(.+)$/.exec(n);
+  return m ? `${m[2]} - ${m[1]}` : n;
+};
+
 /** Every Meeting Occurrence created from one Meeting Template -- filtered
  *  server-side, and far lighter than fetchMeetingOccurrences() (no agenda or
  *  attendee child rows), since this only needs to answer "is this Template
@@ -4853,7 +4864,7 @@ export async function fetchMeetingOccurrencesByTemplate(templateId){
   });
   return (res?.data ?? []).map(o => ({
     id: o.lm_meetingoccurrenceid,
-    name: o.lm_name || '(untitled meeting)',
+    name: meetingNameDateLast(o.lm_name) || '(untitled meeting)',
     date: isoDay(o.lm_date),
     status: MEETING_OCC_STATUS[o.lm_meetingstatus] || 'Scheduled',
     businessUnitId: o._lm_businessunit_value || null,
@@ -6911,7 +6922,7 @@ export async function planMeetingSetupDelete(templateId){
     select: ['lm_meetingoccurrenceid','lm_name','lm_date'],
   });
   const occurrences = rowsOrThrow(occRes).map(o => ({
-    id: o.lm_meetingoccurrenceid, name: o.lm_name || '(untitled meeting)', date: isoDay(o.lm_date) }));
+    id: o.lm_meetingoccurrenceid, name: meetingNameDateLast(o.lm_name) || '(untitled meeting)', date: isoDay(o.lm_date) }));
   const O = occurrences.map(o => o.id);
   const occKey = '_lm_meetingoccurrence_value';
 
