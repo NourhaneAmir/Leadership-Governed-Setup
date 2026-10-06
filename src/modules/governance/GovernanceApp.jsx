@@ -5,7 +5,7 @@ import { fetchRegions, fetchBusinessUnits, fetchDepartments, fetchFunctions, fet
   logSetupActivity, logSetupActivityBatch, fetchSetupActivity, uploadReportTemplateFile,
   decodeDayOfWeeksMulti, DAY_OF_WEEKS_CAP, REPORT_SCHEDULE_COLS } from '../../services/dataverse.js';
 import { FilePreview, canPreview } from '../../shared/FilePreview.jsx';
-import { exportMeetingSetups } from '../../services/meetingSetupExport.js';
+import { exportMeetingSetups, committeeMeetingName } from '../../services/meetingSetupExport.js';
 import './governance-modern.css';
 
 
@@ -4471,20 +4471,12 @@ function meetingSetupExportRows(s){
   const agenda = (s.agenda||[]).filter(a=>(a.text||'').trim());
   const shared = {
     _setupId: s._dataverseId || s.id,
-    setup: s.customName || s.name || displayName(s),
-    status: s.status || '',
-    version: typeof s.version==='number' ? s.version : '',
     setupType: s.setupType || '',
     classification: s.setupType==='Accreditation Committee' ? '' : (s.category || ''),
     category: catNames.join('\n'),
     frequency: s.frequency || '',
     schedule: s.frequency ? scheduleText(s.frequency, s) : '',
     mode: s.mode || '',
-    quorum: typeof s.quorum==='number' ? s.quorum : '',
-    covers: exec
-      ? (s.scopeKind==='region' ? (s.regions||[]).map(id=>nameOf(REGIONS,id))
-        : (s.businessUnits||[]).map(id=>nameOf(BUSINESS_UNITS,id))).filter(Boolean).join('\n')
-      : '',
     departments: (s.lines||[]).filter(l=>l.department)
       .map(l=>l.function ? `${l.department} › ${l.function}` : l.department).join('\n'),
     agendaCount: agenda.length,
@@ -4494,6 +4486,10 @@ function meetingSetupExportRows(s){
       .map(l=>`${l.templateName || nameOf(DV_REPORTS.current||[], l.template) || 'Report Template'} (${l.role||'Input'})`).join('\n'),
     tor: s.torLink || '',
   };
+  /* inputs of the Committee Meeting Name: every distinct Department, and a
+     Stage 4 Setup's several Categories, joined into one value each */
+  const nameDept = [...new Set((s.lines||[]).map(l=>l.department).filter(Boolean))].join(' & ');
+  const nameCat = catNames.join(' / ');
   const units = (s.units||[]).length ? s.units : [null];
   return units.map(u=>{
     const unitName = !u ? '' : lv==='bu' ? nameOf(BUSINESS_UNITS,u.key)
@@ -4503,7 +4499,12 @@ function meetingSetupExportRows(s){
     const team = u ? (u.team || teamOfChannel(u.channel)) : null;
     const chan = u?.channel ? nameOf(CHANNELS,u.channel) : null;
     return { ...shared,
-      unitType: !u ? '' : lv==='group' ? 'Group-wide' : (LEVEL_WORD[lv]||''),
+      committeeName: committeeMeetingName({
+        bu: lv==='bu' ? unitName : '',
+        region: lv==='bu' ? unitRegion : lv==='region' ? unitName : '',
+        department: nameDept, frequency: s.frequency,
+        classification: shared.classification, category: nameCat,
+      }),
       unit: unitName || '',
       unitRegion: unitRegion || '',
       chairman: personOf(u?.chairman),

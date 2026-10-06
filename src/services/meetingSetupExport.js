@@ -23,22 +23,31 @@ const cellText = v => {
   return t.length > CELL_MAX ? t.slice(0, CELL_MAX - 30) + '… [truncated to fit Excel]' : t;
 };
 
+/** The Committee Meeting Name, as the user's Excel rule builds it (06 Oct):
+ *    =IF(COUNTA([@[New Classification]]:[@Frequency])=0,"",
+ *       IF([@BU]<>"", [@BU]&"_"&[@Region]&"_"&[@Frequency],
+ *          [@Department]&IF([@Region]<>"","_"&[@Region],"")&"_"&[@Frequency])
+ *       &" | "&[@[New Classification]]&"_"&[@[New Category]])
+ *  Blank when every input is blank. */
+export function committeeMeetingName({ bu='', region='', department='', frequency='', classification='', category='' }){
+  const t = v => String(v ?? '').trim();
+  const [b, r, d, f, cl, ca] = [bu, region, department, frequency, classification, category].map(t);
+  if(![b, r, d, f, cl, ca].some(Boolean)) return '';
+  const head = b ? `${b}_${r}_${f}` : `${d}${r ? '_'+r : ''}_${f}`;
+  return `${head} | ${cl}_${ca}`;
+}
+
 /** The columns of every stage sheet, in order. `key` is the row field. */
 export const MEETING_SETUP_COLUMNS = [
-  { key:'setup',       header:'Meeting Setup',            width:42 },
-  { key:'status',      header:'Status',                   width:16 },
-  { key:'version',     header:'Version',                  width:9  },
+  { key:'committeeName', header:'Committee Meeting Name',  width:48 },
   { key:'setupType',   header:'Setup Type',               width:22 },
   { key:'classification', header:'Type / Classification', width:26 },
   { key:'category',    header:'Category',                 width:30 },
   { key:'frequency',   header:'Frequency',                width:15 },
   { key:'schedule',    header:'Schedule',                 width:24 },
   { key:'mode',        header:'Default Mode',             width:13 },
-  { key:'quorum',      header:'Quorum %',                 width:10 },
-  { key:'unitType',    header:'Unit Type',                width:14 },
   { key:'unit',        header:'Business Unit / Region',   width:28 },
   { key:'unitRegion',  header:'Region of the Unit',       width:18 },
-  { key:'covers',      header:'Covers (Stage 4)',         width:30 },
   { key:'chairman',    header:'Chairman',                 width:34 },
   { key:'coChairman',  header:'Co-Chairman',              width:34 },
   { key:'facilitator', header:'Facilitator',              width:34 },
