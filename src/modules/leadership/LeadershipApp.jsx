@@ -8059,6 +8059,9 @@ const SHOW_ATTACH_OCC = false;
    report picker (05 Oct) are hidden: inputs are links only for now. Set to
    true to bring them back. */
 const SHOW_LINK_REPORT = false;
+/* "Restrict visibility to participants" on ad hoc creation -- hidden for now
+   (06 Oct, user's ask), code kept. While hidden, f.restricted stays false. */
+const SHOW_RESTRICT_OPTION = false;
 /* The Documents tab's "Link a report directly" card (an ad hoc meeting's
    picker of any Report Occurrence) is hidden too (05 Oct, user's ask). Its
    code and ReportLinkPicker are unchanged: set to true to bring it back. */
@@ -11389,12 +11392,12 @@ function ScreenNewMeeting(){
                 : 'Optional. A link to the Terms of Reference or governing policy; the Audit Grid’s TOR questions apply only when one is set.'}>
               <input type="text" id="nm-tor" value={f.torLink} maxLength={850} placeholder="https://…"
                 onChange={e=>set('torLink',e.target.value)}/></Field>
-            <Field label="">
+            {SHOW_RESTRICT_OPTION && <Field label="">
               <label className="chk"><input type="checkbox" checked={f.restricted}
                 onChange={e=>set('restricted',e.target.checked)}/>
                 <span>Restrict visibility to participants — use for a one-to-one or skip-level Meeting.
                   The occurrence and its Minutes will be hidden from everyone else except permitted governance
-                  roles.</span></label></Field>
+                  roles.</span></label></Field>}
           </section>
 
           {/* ---- People ---- */}
