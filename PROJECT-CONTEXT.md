@@ -34,7 +34,7 @@ by the user from the guide (needs `lm_outlookeventid`).
 user: "any change in leadership execution i want the push to be for the both
 versions". "Build and push" for Leadership = commit, `git push`, build once
 (DT New + revert-`4ca0036` steps), push to Leadership (2) `d61c6237`, then
-copy `C:	mp\cad-exec-test\dist` into `C:	mp\cad-exec\dist`, re-check, push
+copy `C:\tmp\cad-exec-test\dist` into `C:\tmp\cad-exec\dist`, re-check, push
 to Leadership main `83db0ef8`. No separate "push it to the main app" needed.
 **Governance is unchanged:** test copy `786c1b14` only, main `4912152c` only
 when asked. The 01 Oct rule below still holds for Governance.
