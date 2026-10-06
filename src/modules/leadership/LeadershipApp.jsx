@@ -5957,8 +5957,10 @@ const MTG_STAGE_FILTERS = [
   {v:'Stage 3 Group Functional', label:'Stage 3 · Group Functional'},
   {v:'Stage 4 Top Management, COO & CEO', label:'Stage 4 · Top Management'},
 ];
+/* "Any of my roles" removed (06 Oct, user's ask): the list already holds only
+   my meetings, so it matched the same rows as "Any role". */
 const MTG_ROLE_FILTERS = [
-  {v:'', label:'Any role'}, {v:'mine', label:'Any of my roles'},
+  {v:'', label:'Any role'},
   {v:'attendee', label:'Attendee'}, {v:'chair', label:'Chairman'},
   {v:'coChair', label:'Co-Chairman'}, {v:'organizer', label:'Facilitator'},
 ];
