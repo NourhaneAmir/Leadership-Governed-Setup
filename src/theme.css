@@ -1549,3 +1549,20 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
   border:1px solid var(--teal); background:transparent; color:var(--teal-d) }
 .fv-link:hover{ background:var(--teal-l) }
 .det-sec-items .fv-link{ margin-left:6px }
+
+/* ---------- Schedule Meeting: "Still needed" items (06 Oct) ---------- */
+.lp-need-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.lp-need-item{width:100%;display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid var(--red-bd);
+  border-radius:8px;background:var(--red-bg);color:var(--ink);font:inherit;font-size:12.5px;font-weight:600;
+  text-align:left;cursor:pointer}
+.lp-need-item:hover{border-color:var(--red);background:#F3DCDC}
+.lp-need-item:focus-visible{outline:2px solid var(--red);outline-offset:2px}
+.lp-need-item svg{margin-left:auto;color:var(--red);flex:0 0 auto}
+.lp-need-dot{width:7px;height:7px;border-radius:50%;background:var(--red);flex:0 0 7px}
+.lp-need-t{flex:1;min-width:0}
+.lp-need-flash{border-radius:10px;box-shadow:0 0 0 3px rgba(178,58,58,.55),0 0 22px 6px rgba(178,58,58,.30);
+  transition:box-shadow .3s;animation:lpNeedPulse 1.2s ease-out 2}
+.lp-need-flash input,.lp-need-flash select,.lp-need-flash textarea{border-color:var(--red)!important}
+@keyframes lpNeedPulse{0%{box-shadow:0 0 0 0 rgba(178,58,58,.7),0 0 0 0 rgba(178,58,58,.4)}
+  100%{box-shadow:0 0 0 3px rgba(178,58,58,.55),0 0 22px 6px rgba(178,58,58,.30)}}
+@media (prefers-reduced-motion:reduce){.lp-need-flash{animation:none;transition:none}}

@@ -11263,23 +11263,47 @@ function ScreenNewMeeting(){
     ...f.dvAttend.map(a=>({id:a.positionId, role:a.type||'Required'})),
   ];
   const MEMBERS_SHOWN = 5;
-  const why = !ok ? [
-    !custom && !f.setup ? 'choose a Setup' : null,
-    custom && !f.name.trim() ? 'a meeting name' : null,
-    custom && !f.purpose.trim() ? 'a purpose' : null,
-    custom && !accredCustom && !cls.classification ? 'a Classification' : null,
-    custom && categoryOpts.length>0 && !cls.categoryId ? 'a Category' : null,
-    !custom && f.setup && tplUnits.length>1 && !f.tplUnitKey ? 'the Business Unit / Region' : null,
-    !scopeOk ? 'the scope' : null,
-    !f.dvChairPositionId ? 'a Chair' : null,
-    !f.dvFacilitatorPositionId ? 'an Organizer' : null,
-    !f.tz ? 'a time zone' : null,
-    !f.dvAttend.length ? 'at least one attendee' : null,
-    !(agenda.length+carryNow.length) ? 'at least one agenda item' : null,
-    agendaNoOwner ? `an owner for ${agendaNoOwner===1?'1 agenda item':agendaNoOwner+' agenda items'}` : null,
-    torErr ? 'a valid TOR / Policy link (or leave it empty)' : null,
-    !modeOk ? (needsLink && !f.link.trim() ? 'a meeting link' : 'a location') : null,
+  /* Each missing thing names the field it points at (06 Oct, user's ask): the
+     "Still needed" card lists them as buttons that scroll to that field and
+     mark it with a red glow (goToNeed). `sel` is a CSS selector -- a
+     data-need key on the Field / section, or the first agenda row with no
+     owner. */
+  const need = (label, key) => ({label, sel: key.startsWith('.') ? key : `[data-need="${key}"]`});
+  const whyItems = !ok ? [
+    !custom && !f.setup ? need('choose a Setup','setup') : null,
+    custom && !f.name.trim() ? need('a meeting name','name') : null,
+    custom && !f.purpose.trim() ? need('a purpose','purpose') : null,
+    custom && !accredCustom && !cls.classification ? need('a Classification','classification') : null,
+    custom && categoryOpts.length>0 && !cls.categoryId ? need('a Category','category') : null,
+    custom && limBad ? need('valid time-limit periods','periods') : null,
+    !custom && f.setup && tplUnits.length>1 && !f.tplUnitKey ? need('the Business Unit / Region','unit') : null,
+    !scopeOk ? need('the scope','scope') : null,
+    !f.date ? need('a date','date') : null,
+    !f.dvChairPositionId ? need('a Chair','chair') : null,
+    !f.dvFacilitatorPositionId ? need('an Organizer','organizer') : null,
+    !f.tz ? need('a time zone','tz') : null,
+    !f.dvAttend.length ? need('at least one attendee','attendees') : null,
+    !(agenda.length+carryNow.length) ? need('at least one agenda item','agenda') : null,
+    agendaNoOwner ? need(`an owner for ${agendaNoOwner===1?'1 agenda item':agendaNoOwner+' agenda items'}`,'.cs-agenda-row.no-owner') : null,
+    torErr ? need('a valid TOR / Policy link (or leave it empty)','tor') : null,
+    !modeOk ? need(needsLink && !f.link.trim() ? 'a meeting link' : 'a location','place') : null,
   ].filter(Boolean) : [];
+  const why = whyItems.map(w=>w.label);
+  /* Scroll to the field, put the cursor in it, and mark it red until it is
+     changed (or for 6 s). A plain DOM class: it is a passing highlight, not
+     state the form depends on. */
+  const goToNeed = sel => {
+    const el = document.querySelector(sel) || document.querySelector('[data-need="agenda"]');
+    if(!el) return;
+    el.scrollIntoView({behavior:'smooth', block:'center'});
+    el.classList.remove('lp-need-flash'); void el.offsetWidth; el.classList.add('lp-need-flash');
+    const clear = () => { el.classList.remove('lp-need-flash');
+      el.removeEventListener('input', clear); el.removeEventListener('change', clear); };
+    el.addEventListener('input', clear); el.addEventListener('change', clear);
+    setTimeout(clear, 6000);
+    const inp = el.querySelector('input:not([type=hidden]):not([disabled]),select:not([disabled]),textarea:not([disabled])');
+    if(inp) setTimeout(()=>{ try{ inp.focus({preventScroll:true}); }catch{ /* ignore */ } }, 400);
+  };
 
   return <div className="cs-root cs-newmtg">
     <div className="cs-head" style={{paddingBottom:16}}>
@@ -11299,7 +11323,7 @@ function ScreenNewMeeting(){
       <div className="cs-side" style={{gap:14}}>
 
         {/* ---- Select Setup ---- */}
-        <section className="cs-card" aria-labelledby="nm-setup">
+        <section className="cs-card" aria-labelledby="nm-setup" data-need="setup">
           <div className="cs-card-top" style={{marginBottom:4}}>
             <h2 className="cs-card-title" id="nm-setup">Select Setup</h2>
             <span className="cs-search">
@@ -11386,15 +11410,15 @@ function ScreenNewMeeting(){
               <div className="cs-info" style={{marginBottom:12}}><Lock size={13} aria-hidden="true"/>
                 <span>Locked by Taxonomy for this occurrence: the controlled name, Setup Type, classification,
                   TOR reference and quorum threshold. Everything else below can be adjusted for this occurrence only.</span></div>}
-            <Field label="Meeting title" req={custom}
+            <Field need="name" label="Meeting title" req={custom}
               hint={custom ? null : 'The Setup’s controlled name — it cannot be changed here.'}>
               <input type="text" value={title} disabled={!custom}
                 onChange={e=>set('name',e.target.value)} placeholder="e.g. Sterilisation incident review"/></Field>
-            {custom && <Field label="Purpose" req hint="Not stored — the occurrence table has no Purpose column.">
+            {custom && <Field need="purpose" label="Purpose" req hint="Not stored — the occurrence table has no Purpose column.">
               <textarea value={f.purpose} onChange={e=>set('purpose',e.target.value)}/></Field>}
 
             {!custom && tplUnits.length>1 &&
-              <Field label="Business Unit / Region" req
+              <Field need="unit" label="Business Unit / Region" req
                 hint="This Setup is approved for more than one place — choose which one this occurrence belongs to.">
                 <select value={f.tplUnitKey} onChange={e=>applyUnit(tplUnits.find(u=>u.key===e.target.value)||null)}>
                   <option value="">Select…</option>
@@ -11422,7 +11446,7 @@ function ScreenNewMeeting(){
                 {['Business Unit','Region','Group','ExCom'].map(s=>
                   <option key={s} value={s}>{s==='ExCom' ? 'Top Management' : s}</option>)}</select></Field>
               {stageBU
-                ? <Field label="Business Unit" req hint="Shown as Business Unit — Region.">
+                ? <Field need="scope" label="Business Unit" req hint="Shown as Business Unit — Region.">
                     <select value={f.dvBusinessUnitId} onChange={e=>{
                       const id=e.target.value;
                       const bu=DV_BU_LIST.find(b=>b.id===id);
@@ -11437,7 +11461,7 @@ function ScreenNewMeeting(){
                         return <option key={b.id} value={b.id}>{rn?`${b.name} — ${rn}`:b.name}</option>; })}
                     </select></Field>
                 : stageRegion
-                  ? <Field label="Region" req>
+                  ? <Field need="scope" label="Region" req>
                       <select value={f.dvRegionId} onChange={e=>{
                         const id=e.target.value;
                         const rg=DV_REGION_LIST.find(r=>r.id===id);
@@ -11459,11 +11483,11 @@ function ScreenNewMeeting(){
               {accredCustom
                 ? <Field label="Classification" hint="An Accreditation Committee has no Classification.">
                     <input type="text" value="—" disabled/></Field>
-                : <Field label="Classification" req hint="Narrows the Category list.">
+                : <Field need="classification" label="Classification" req hint="Narrows the Category list.">
                     <select value={cls.classification} onChange={e=>setCls(x=>({...x, classification:e.target.value, categoryId:''}))}>
                       <option value="">Select…</option>
                       {Object.values(MEETING_CATEGORY).map(c=><option key={c}>{c}</option>)}</select></Field>}
-              <Field label="Category" req={categoryOpts.length>0}
+              <Field need="category" label="Category" req={categoryOpts.length>0}
                 hint={categories===null ? 'Reading Categories…'
                   : !accredCustom && !cls.classification ? 'Choose a Classification first.'
                   : categoryOpts.length ? `Categories for ${f.stage} · ${accredCustom?'Accreditation Committee':cls.classification}.`
@@ -11479,7 +11503,7 @@ function ScreenNewMeeting(){
                 ['momApprovalHours','MOM approval period','Minutes submitted → Chair approves (AG-05).'],
                 ['gridSubmitHours','Audit Grid submission period','Grid opens → Organizer submits it (AG-17).']].map(([k,l,h])=>{
                 const v = String(lim[k]).trim(), bad = !/^\d{1,4}$/.test(v) || Number(v) < 1;
-                return <Field key={k} label={l+' (hours)'} req hint={bad ? null : h} err={bad ? 'A whole number of hours, 1 or more.' : null}>
+                return <Field key={k} need={bad ? 'periods' : undefined} label={l+' (hours)'} req hint={bad ? null : h} err={bad ? 'A whole number of hours, 1 or more.' : null}>
                   <input type="number" min={1} step={1} value={lim[k]} inputMode="numeric"
                     onChange={e=>setLim(x=>({...x,[k]:e.target.value}))}/></Field>;
               })}
@@ -11505,7 +11529,7 @@ function ScreenNewMeeting(){
             {custom && channelsErr && <Note k="warn">Teams and channels could not be read from Dataverse.</Note>}
 
             <div className="f-row3">
-              <Field label="Date" req
+              <Field need="date" label="Date" req
                 hint={moved
                   ? `${dayName(f.date)} is a non-working day. This occurrence will be booked on ${fmtD(bookedDate)} — the series is unchanged.`
                   : 'The working week is Saturday to Thursday.'}>
@@ -11521,18 +11545,18 @@ function ScreenNewMeeting(){
               <Field label="Mode"><select value={f.mode} onChange={e=>set('mode',e.target.value)}>
                 {['Online','Physical','Hybrid'].map(m=><option key={m}>{m}</option>)}</select></Field>
               {needsLocation
-                ? <Field label="Location" req hint="The room this Meeting is held in.">
+                ? <Field need="place" label="Location" req hint="The room this Meeting is held in.">
                     <input type="text" value={f.location} onChange={e=>set('location',e.target.value)}
                       placeholder="e.g. Room 4B — Building A"/></Field>
                 : null}
               {needsLink
-                ? <Field label="Meeting link" req hint="The joining URL attendees use.">
+                ? <Field need="place" label="Meeting link" req hint="The joining URL attendees use.">
                     <input type="text" value={f.link} onChange={e=>set('link',e.target.value)}
                       placeholder="https://teams.microsoft.com/l/meetup-join/…"/></Field>
                 : null}
             </div>
             <div className="f-row">
-              <Field label="Time zone" req>
+              <Field need="tz" label="Time zone" req>
                 <select value={f.tz} onChange={e=>set('tz',e.target.value)}>
                   <option value="">Select…</option>
                   {TIME_ZONES.map(t=><option key={t.id} value={t.id}>{t.label}</option>)}</select></Field>
@@ -11545,7 +11569,7 @@ function ScreenNewMeeting(){
               <Pills val={f.adhoc} onChange={v=>set('adhoc',v||'Governance')} opts={ADHOC_TYPES}/></Field>
             {/* Optional (05 Oct). The Audit Grid's TOR questions (AG-01 / AG-02)
                 apply only when the meeting has one. */}
-            <Field label="TOR / Policy link" err={torErr}
+            <Field need="tor" label="TOR / Policy link" err={torErr}
               hint={!custom && tplDetail?.parent?.lm_torpolicylink && torTrim===tplDetail.parent.lm_torpolicylink
                 ? 'From the Setup — change or clear it for this meeting only. The Audit Grid’s TOR questions use it.'
                 : 'Optional. A link to the Terms of Reference or governing policy; the Audit Grid’s TOR questions apply only when one is set.'}>
@@ -11566,11 +11590,11 @@ function ScreenNewMeeting(){
               {!custom ? <span className="cs-type adhoc">From Setup</span> : null}
             </div>
             <div className="f-row">
-              <Field label="Meeting Chair" req hint={scopeHint}>
+              <Field need="chair" label="Meeting Chair" req hint={scopeHint}>
                 <PositionSelect value={f.dvChairPositionId} onChange={v=>set('dvChairPositionId',v)}
                   opts={chairOpts} disabled={!scopeChosen}
                   placeholder={scopePlaceholder} emptyText="No Positions in this scope"/></Field>
-              <Field label="Organizer" req
+              <Field need="organizer" label="Organizer" req
                 hint="The Organizer owns the agenda items and writes up the Minutes.">
                 <PositionSelect value={f.dvFacilitatorPositionId} onChange={v=>set('dvFacilitatorPositionId',v)}
                   opts={chairOpts} disabled={!scopeChosen}
@@ -11593,12 +11617,13 @@ function ScreenNewMeeting(){
                   : fromSetup ? 'This Setup names no Department' : 'No Departments in this scope'}</option>
                 {deptOpts.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
               </select></Field>
+            <div data-need="attendees">
             <DvAttendeePicker value={f.dvAttend} onChange={v=>set('dvAttend',v)}
-              opts={chairOpts} scopeChosen={scopeChosen} scopeHint={scopeHint}/>
+              opts={chairOpts} scopeChosen={scopeChosen} scopeHint={scopeHint}/></div>
           </section>
 
           {/* ---- Agenda ---- */}
-          <section className="cs-card cs-mtg-form" aria-labelledby="nm-agenda">
+          <section className="cs-card cs-mtg-form" aria-labelledby="nm-agenda" data-need="agenda">
             <div className="cs-card-top" style={{marginBottom:10}}>
               {/* Required for every meeting, Custom included (the `ok` rule:
                   agenda.length + carryNow.length > 0). Marked like a required
@@ -11770,7 +11795,15 @@ function ScreenNewMeeting(){
         {!ok && showForm
           ? <section className="cs-card" aria-label="Still needed">
               <h2 className="cs-card-title" style={{marginBottom:6}}>Still needed</h2>
-              <p className="cs-card-note">{why.join(' · ')}</p>
+              <p className="cs-card-note" style={{marginBottom:8}}>Click one to go to it.</p>
+              <ul className="lp-need-list">
+                {whyItems.map(w=><li key={w.label}>
+                  <button type="button" className="lp-need-item" onClick={()=>goToNeed(w.sel)}>
+                    <span className="lp-need-dot" aria-hidden="true"/>
+                    <span className="lp-need-t">{w.label[0].toUpperCase()+w.label.slice(1)}</span>
+                    <ArrowUpRight size={13} aria-hidden="true"/>
+                  </button></li>)}
+              </ul>
             </section>
           : null}
       </div>

@@ -20,8 +20,9 @@ export const Note = ({k='info',ic,children}) =>
 export const OD   = ({id,closed}) => <span className={'od'+(closed?' closed':'')}>{closed?'✓ ':'⚠ '}{id}</span>;
 export const Bar  = ({v,c}) => <div className={'bar '+(c||'')}><i style={{width:Math.max(0,Math.min(100,v))+'%'}}/></div>;
 
-export const Field = ({label,req,hint,err,children}) =>
-  <div className="f">
+/* `need` (06 Oct): a key the Schedule Meeting "Still needed" list jumps to. */
+export const Field = ({label,req,hint,err,children,need}) =>
+  <div className="f" data-need={need}>
     {label && <label>{label}{req && <span className="req">*</span>}</label>}
     {children}
     {hint && !err && <div className="hint">{hint}</div>}
