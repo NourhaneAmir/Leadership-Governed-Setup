@@ -6345,7 +6345,7 @@ function ScreenMeetings(){
           </div>
         </section>
 
-        {attention.length>0 && <section className="cs-card" aria-labelledby="mtg-attn">
+        {SHOW_ATTENTION_CARD && attention.length>0 && <section className="cs-card" aria-labelledby="mtg-attn">
           <div className="cs-card-top"><div className="cs-card-title-grp">
             <span className="cs-icon amber" aria-hidden="true"><CircleAlert size={16}/></span>
             <h2 className="cs-card-title" id="mtg-attn">Attention</h2></div></div>
@@ -6644,7 +6644,9 @@ function DvEditOccModal({rec,onClose}){
   const needsLink     = f.mode==='Online' || f.mode==='Hybrid';
   const needsLocation = f.mode==='Physical' || f.mode==='Hybrid';
   const modeOk = (!needsLink || f.link.trim()) && (!needsLocation || f.location.trim());
-  const ok = !badTime && !!f.start && !!f.end && modeOk && (!noDate || !!f.date);
+  /* A Friday can't be given as the date (06 Oct). */
+  const offDay = noDate && !!f.date && isWeekend(f.date);
+  const ok = !badTime && !!f.start && !!f.end && modeOk && (!noDate || !!f.date) && !offDay;
 
   const save = async () => {
     setSaving(true);
@@ -6674,7 +6676,8 @@ function DvEditOccModal({rec,onClose}){
       <Btn k="pri" disabled={!ok||saving} onClick={save}>{saving?'Saving…':'Save'}</Btn></>}>
     <div className="f-row3">
       {noDate
-        ? <Field label="Date" req hint="This occurrence has no date yet. Once saved, it can only be changed with Reschedule.">
+        ? <Field label="Date" req hint="This occurrence has no date yet. Once saved, it can only be changed with Reschedule."
+            err={offDay ? `${dayName(f.date)} is not a working day (the working week is Saturday to Thursday). Choose another date.` : null}>
             <input type="date" value={f.date} onChange={e=>set('date',e.target.value)}/></Field>
         : <Field label="Date"
         hint={rec.status==='Scheduled' ? 'To move this meeting to another day, use Reschedule.' : null}>
@@ -6736,8 +6739,8 @@ function DvRescheduleOccModal({rec,onClose}){
   const needsLink     = f.mode==='Online' || f.mode==='Hybrid';
   const needsLocation = f.mode==='Physical' || f.mode==='Hybrid';
   const modeOk = (!needsLink || f.link.trim()) && (!needsLocation || f.location.trim());
-  /* Friday is allowed (06 Oct, user's ask) -- shown as a note, no longer an error. */
-  const ok = !!f.date && !sameDate && !badTime && !!f.start && !!f.end && modeOk;
+  /* A Friday is refused again (06 Oct, user's rule). */
+  const ok = !!f.date && !weekend && !sameDate && !badTime && !!f.start && !!f.end && modeOk;
 
   const save = async () => {
     setSaving(true);
@@ -6796,8 +6799,8 @@ function DvRescheduleOccModal({rec,onClose}){
       <Btn k="pri" disabled={!ok||saving} onClick={save}>{saving?'Rescheduling…':'Reschedule'}</Btn></>}>
     <div className="f-row3">
       <Field label="New date" req
-        hint={weekend ? `${dayName(f.date)} is outside the working week (Saturday to Thursday) — the meeting is still moved to this day.` : null}
-        err={sameDate ? 'Choose a date different from the current one.'
+        err={weekend ? `${dayName(f.date)} is not a working day (the working week is Saturday to Thursday). Choose another date.`
+          : sameDate ? 'Choose a date different from the current one.'
           : nw ? 'This is a configured public holiday.' : null}>
         <input type="date" value={f.date} onChange={e=>set('date',e.target.value)}/></Field>
       <Field label="Start" req><input type="time" value={f.start} onChange={e=>set('start',e.target.value)}/></Field>
@@ -8285,6 +8288,9 @@ const SHOW_LINK_REPORT = false;
 /* "Restrict visibility to participants" on ad hoc creation -- hidden for now
    (06 Oct, user's ask), code kept. While hidden, f.restricted stays false. */
 const SHOW_RESTRICT_OPTION = false;
+/* The "Attention" card on Meetings & Committees (MOM overdue / Agenda not yet
+   distributed) -- removed from the screen (06 Oct, user's ask), code kept. */
+const SHOW_ATTENTION_CARD = false;
 /* The Documents tab's "Link a report directly" card (an ad hoc meeting's
    picker of any Report Occurrence) is hidden too (05 Oct, user's ask). Its
    code and ReportLinkPicker are unchanged: set to true to bring it back. */
@@ -11109,8 +11115,10 @@ function ScreenNewMeeting(){
   /* An occurrence landing on a non-working day is NOT refused — it rolls forward
      to the next working day, that occurrence only, never the series. Weekend and
      public holiday behave the same way; isNonWorking() covers both. */
-  /* Friday can be picked (06 Oct, user's ask): it is booked on that day. Only a
-     configured public holiday still rolls forward to the next working day. */
+  /* A Friday is REFUSED (06 Oct, user's rule, replacing that morning's
+     "Friday bookable"): the date shows an error and the meeting can't be
+     scheduled until another day is picked; save() re-checks. A configured
+     public holiday still rolls forward to the next working day. */
   const offDay = !!f.date && isWeekend(f.date);
   const bookedDate = f.date && isNonWorking(f.date) && !offDay ? nextWorkingDay(f.date) : f.date;
   const moved = !!f.date && bookedDate !== f.date;
@@ -11154,7 +11162,7 @@ function ScreenNewMeeting(){
   const torErr = !torTrim ? null
     : !/^https:\/\//i.test(torTrim) ? 'Paste the full link, starting with https://'
     : torTrim.length>TOR_LINK_MAX ? `At most ${TOR_LINK_MAX} characters — this link has ${torTrim.length}.` : null;
-  const ok = !!f.date && (agenda.length+carryNow.length)>0 && !agendaNoOwner && !torErr && f.dvAttend.length>0 && scopeOk
+  const ok = !!f.date && !offDay && (agenda.length+carryNow.length)>0 && !agendaNoOwner && !torErr && f.dvAttend.length>0 && scopeOk
     && f.dvChairPositionId && f.dvFacilitatorPositionId && f.tz && modeOk
     && classOk
     && (custom
@@ -11167,6 +11175,9 @@ function ScreenNewMeeting(){
      same meeting on the calendar twice. The only difference is where the
      controlled name comes from and whether a Meeting Template is bound. */
   const save=async()=>{
+    if(f.date && isWeekend(f.date)){
+      toast('Not saved', `${dayName(f.date)} is not a working day — choose another date.`, 'err'); return;
+    }
     setSaving(true);
     try{
       const name = custom ? f.name.trim()
@@ -11346,6 +11357,7 @@ function ScreenNewMeeting(){
     !custom && f.setup && tplUnits.length>1 && !f.tplUnitKey ? need('the Business Unit / Region','unit') : null,
     !scopeOk ? need('the scope','scope') : null,
     !f.date ? need('a date','date') : null,
+    offDay ? need('a working day (not Friday)','date') : null,
     !f.dvChairPositionId ? need('a Chair','chair') : null,
     !f.dvFacilitatorPositionId ? need('an Organizer','organizer') : null,
     !f.tz ? need('a time zone','tz') : null,
@@ -11599,8 +11611,8 @@ function ScreenNewMeeting(){
               <Field need="date" label="Date" req
                 hint={moved
                   ? `${dayName(f.date)} is a non-working day. This occurrence will be booked on ${fmtD(bookedDate)} — the series is unchanged.`
-                  : offDay ? `${dayName(f.date)} is outside the working week (Saturday to Thursday) — the meeting is still booked on this day.`
-                  : 'The working week is Saturday to Thursday.'}>
+                  : 'The working week is Saturday to Thursday.'}
+                err={offDay ? `${dayName(f.date)} is not a working day (the working week is Saturday to Thursday). Choose another date.` : null}>
                 <input type="date" value={f.date} onChange={e=>set('date',e.target.value)}/></Field>
               <Field label="Start" req><input type="time" value={f.start}
                 onChange={e=>set('start',e.target.value)}/></Field>
