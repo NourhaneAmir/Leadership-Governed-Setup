@@ -1959,7 +1959,7 @@ function CalendarWebpart({items,title,kinds,emptyText}){
 const CAL_KINDS = [
   {id:'All',     label:'All',      colour:null},
   {id:'Meeting', label:'Meetings', colour:'green'},
-  {id:'Report',  label:'Reports',  colour:'teal'},
+  /* "Reports" chip removed (06 Oct, user's ask). */
   {id:'MOM',     label:'MOM Due',  colour:'purple'},
   {id:'Decision',label:'Decisions',colour:'red'},
 ];
@@ -8293,6 +8293,10 @@ const SHOW_RESTRICT_OPTION = false;
 /* The "Attention" card on Meetings & Committees (MOM overdue / Agenda not yet
    distributed) -- removed from the screen (06 Oct, user's ask), code kept. */
 const SHOW_ATTENTION_CARD = false;
+/* Decisions (Link / Log a Decision): "A report section" as the place a
+   decision was taken -- hidden (06 Oct, user's ask), code kept. While hidden,
+   a decision is linked to a meeting agenda item only. */
+const SHOW_DECISION_REPORT_LINK = false;
 /* The Documents tab's "Link a report directly" card (an ad hoc meeting's
    picker of any Report Occurrence) is hidden too (05 Oct, user's ask). Its
    code and ReportLinkPicker are unchanged: set to true to bring it back. */
@@ -13145,7 +13149,9 @@ function WorkLogDecisionModal({onClose, decision}){
   const linkOnly = !!decision;
   const [f,setF]=useState({name:'',decisionTaken:'',expectedOutput:'',managerNote:'',evidenceUrl:'',
     status:'Pending',
-    where: decision?.agendaItemId ? 'meeting' : decision?.sectionId ? 'report' : (linkOnly?'report':'none'),
+    where: decision?.agendaItemId ? 'meeting'
+      : SHOW_DECISION_REPORT_LINK && decision?.sectionId ? 'report'
+      : linkOnly ? (SHOW_DECISION_REPORT_LINK ? 'report' : 'meeting') : 'none',
     reportId:'', sectionId:'', meetingId:'', agendaItemId:''});
   const [saving,setSaving]=useState(false);
   const [secs,setSecs]=useState(null);               // sections of the chosen report, null while reading
@@ -13199,7 +13205,9 @@ function WorkLogDecisionModal({onClose, decision}){
   };
 
   return <Modal title={linkOnly?`Link “${decision.name}”`:'Log a Decision'} onClose={onClose}
-    sub={linkOnly ? 'Where was it taken? A decision holds one report section and one agenda item — choosing another moves it.'
+    sub={linkOnly ? (SHOW_DECISION_REPORT_LINK
+                      ? 'Where was it taken? A decision holds one report section and one agenda item — choosing another moves it.'
+                      : 'Where was it taken? Pick the meeting and its agenda item — choosing another moves it.')
                   : 'Record the decision, and where it was taken.'}
     footer={<><Btn onClick={onClose} disabled={saving}>Cancel</Btn>
       <Btn k="pri" disabled={!ok||saving} onClick={save}>{saving?'Saving…':linkOnly?'Link Decision':'Log Decision'}</Btn></>}>
@@ -13216,13 +13224,14 @@ function WorkLogDecisionModal({onClose, decision}){
     </>}
 
     <Field label="Where was it taken?">
-      <Pills opts={linkOnly ? ['A report section','A meeting agenda item']
-                            : ['Not linked','A report section','A meeting agenda item']}
+      <Pills opts={(linkOnly ? ['A report section','A meeting agenda item']
+                             : ['Not linked','A report section','A meeting agenda item'])
+                    .filter(o=>SHOW_DECISION_REPORT_LINK || o!=='A report section')}
         val={f.where==='report'?'A report section':f.where==='meeting'?'A meeting agenda item':'Not linked'}
         onChange={v=>setF(x=>({...x, where: v==='A report section'?'report':v==='A meeting agenda item'?'meeting':'none',
           reportId:'', sectionId:'', meetingId:'', agendaItemId:''}))}/></Field>
 
-    {f.where==='report' && <div className="f-row">
+    {SHOW_DECISION_REPORT_LINK && f.where==='report' && <div className="f-row">
       <Field label="Report" req>
         <select value={f.reportId} onChange={e=>setF(x=>({...x, reportId:e.target.value, sectionId:''}))}>
           <option value="">{reports.length?'Select…':'No reports loaded'}</option>
