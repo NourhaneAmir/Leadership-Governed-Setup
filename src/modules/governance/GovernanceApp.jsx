@@ -5,6 +5,7 @@ import { fetchRegions, fetchBusinessUnits, fetchDepartments, fetchFunctions, fet
   logSetupActivity, logSetupActivityBatch, fetchSetupActivity, uploadReportTemplateFile,
   decodeDayOfWeeksMulti, DAY_OF_WEEKS_CAP, REPORT_SCHEDULE_COLS } from '../../services/dataverse.js';
 import { FilePreview, canPreview } from '../../shared/FilePreview.jsx';
+import { exportMeetingSetups } from '../../services/meetingSetupExport.js';
 import './governance-modern.css';
 
 
@@ -4448,12 +4449,131 @@ function dataverseMeetingToSetupBase(detail){
   };
 }
 
+/* ---- Meeting Setups → Excel (06 Oct, user's ask) -------------------------
+   One row per Business Unit / Region of a Setup (one row for a group-wide
+   Setup), sorted onto ONE SHEET PER STAGE; agenda and attendees as numbered
+   lists in one cell. The workbook itself is written by meetingSetupExport.js. */
+const EXPORT_STAGE_SHEETS = ['Stage 1 BU Operational','Stage 2 Regional Functional',
+  'Stage 3 Group Functional','Stage 4 Top Management'];
+/* "Holder — Position", or just the Position when nobody holds it. */
+const personOf = id => {
+  if(!id) return '';
+  const pos = byId(POSITIONS,id);
+  if(!pos) return '(Position not in the loaded list)';
+  return pos.holder ? `${pos.holder} — ${pos.name}` : pos.name;
+};
+function meetingSetupExportRows(s){
+  const lv = stageLevel(s);
+  const exec = isExecMeeting(s);
+  const catNames = exec && (s.meetingCategories||[]).length
+    ? s.meetingCategories.map(id=>nameOf(MEETING_CATEGORIES,id)).filter(Boolean)
+    : [s.meetingCategoryName || nameOf(MEETING_CATEGORIES,s.meetingCategory)].filter(Boolean);
+  const agenda = (s.agenda||[]).filter(a=>(a.text||'').trim());
+  const shared = {
+    _setupId: s._dataverseId || s.id,
+    setup: s.customName || s.name || displayName(s),
+    status: s.status || '',
+    version: typeof s.version==='number' ? s.version : '',
+    setupType: s.setupType || '',
+    classification: s.setupType==='Accreditation Committee' ? '' : (s.category || ''),
+    category: catNames.join('\n'),
+    frequency: s.frequency || '',
+    schedule: s.frequency ? scheduleText(s.frequency, s) : '',
+    mode: s.mode || '',
+    quorum: typeof s.quorum==='number' ? s.quorum : '',
+    covers: exec
+      ? (s.scopeKind==='region' ? (s.regions||[]).map(id=>nameOf(REGIONS,id))
+        : (s.businessUnits||[]).map(id=>nameOf(BUSINESS_UNITS,id))).filter(Boolean).join('\n')
+      : '',
+    departments: (s.lines||[]).filter(l=>l.department)
+      .map(l=>l.function ? `${l.department} › ${l.function}` : l.department).join('\n'),
+    agendaCount: agenda.length,
+    agenda: agenda.map((a,i)=>`${i+1}. ${a.text.trim()}${a.owner ? ' — '+personOf(a.owner) : ''}`).join('\n'),
+    supportive: (s.supportive||[]).join('\n'),
+    linkedReports: (s.linkedTemplates||[])
+      .map(l=>`${l.templateName || nameOf(DV_REPORTS.current||[], l.template) || 'Report Template'} (${l.role||'Input'})`).join('\n'),
+    tor: s.torLink || '',
+  };
+  const units = (s.units||[]).length ? s.units : [null];
+  return units.map(u=>{
+    const unitName = !u ? '' : lv==='bu' ? nameOf(BUSINESS_UNITS,u.key)
+      : lv==='region' ? nameOf(REGIONS,u.key) : 'Group-wide';
+    const unitRegion = u && lv==='bu' ? nameOf(REGIONS, byId(BUSINESS_UNITS,u.key)?.region) : '';
+    const people = (u?.coreMembers||[]).filter(m=>m.kind==='group' ? m.group : m.position);
+    const team = u ? (u.team || teamOfChannel(u.channel)) : null;
+    const chan = u?.channel ? nameOf(CHANNELS,u.channel) : null;
+    return { ...shared,
+      unitType: !u ? '' : lv==='group' ? 'Group-wide' : (LEVEL_WORD[lv]||''),
+      unit: unitName || '',
+      unitRegion: unitRegion || '',
+      chairman: personOf(u?.chairman),
+      coChairman: personOf(u?.coChairman),
+      facilitator: personOf(u?.facilitator),
+      channel: [team, chan].filter(Boolean).join(' › '),
+      attendeeCount: people.length,
+      attendees: people.map((m,i)=>`${i+1}. ${m.kind==='group' ? m.group+' (Microsoft group)' : personOf(m.position)} — ${m.type||'Core'}`).join('\n'),
+    };
+  });
+}
+/* Sorts every Setup's rows onto its stage's sheet, in name order. */
+function meetingSetupExportSheets(setups){
+  const sheets = EXPORT_STAGE_SHEETS.map(name=>({ name, rows:[] }));
+  const noStage = { name:'Stage not set', rows:[] };
+  setups.slice().sort((a,b)=>String(a.customName||a.name||'').localeCompare(String(b.customName||b.name||'')))
+    .forEach(s=>{
+      const i = STAGES.indexOf(s.stage);
+      (i>=0 ? sheets[i] : noStage).rows.push(...meetingSetupExportRows(s));
+    });
+  return noStage.rows.length ? [...sheets, noStage] : sheets;
+}
+
 /* =========================================================================
    S1 — SETUP REGISTER
    ========================================================================= */
 const REG_PAGE_SIZE=20;
 function ScreenRegister(){
-  const {db,A,role,open,dvReports,dvMeetings,dvOpening}=use();
+  const {db,A,role,open,dvReports,dvMeetings,dvOpening,toast,currentUser}=use();
+  /* Export every Meeting Setup in the register to Excel (06 Oct): the ones
+     already open this session as they are, the rest read in full from
+     Dataverse -- four at a time, with progress. A Setup that cannot be read is
+     named on the workbook's About sheet instead of stopping the export. */
+  const [exportLabel,setExportLabel]=useState(null);
+  const exportMeetings=async()=>{
+    if(exportLabel) return;
+    setExportLabel('Preparing…');
+    try{
+      const local = db.setups.filter(s=>!s._seed && s.kind==='Committee / Meeting');
+      const opened = new Set(local.filter(s=>s._dataverseId).map(s=>s._dataverseId));
+      const toRead = dvMeetings.filter(r=>!opened.has(r.id));
+      const loaded = [], skipped = [];
+      let done = 0;
+      for(let i=0; i<toRead.length; i+=4){
+        const batch = toRead.slice(i, i+4);
+        const res = await Promise.all(batch.map(r=>fetchMeetingTemplateDetail(r.id)
+          .then(d=>dataverseMeetingToSetup(d))
+          .catch(e=>{ console.warn('[export] reading Meeting Setup '+r.id+' failed:', e);
+                      skipped.push((r.name||r.id)+' — could not be read from Dataverse'); return null; })));
+        loaded.push(...res.filter(Boolean));
+        done += batch.length;
+        setExportLabel(`Reading ${done} of ${toRead.length}…`);
+      }
+      const all = [...local, ...loaded];
+      if(!all.length){ toast('Nothing to export','There is no Meeting Setup in the register yet.','warn'); return; }
+      setExportLabel('Writing the workbook…');
+      const { filename } = await exportMeetingSetups(meetingSetupExportSheets(all), {
+        exportedAt: new Date().toLocaleString(),
+        exportedBy: currentUser?.fullName || undefined,
+        skipped,
+      });
+      toast(skipped.length ? 'Exported, with gaps' : 'Exported',
+        skipped.length ? `${filename} — ${skipped.length} Setup(s) could not be read; they are listed on its About sheet.`
+                       : `${filename} — ${all.length} Meeting Setup(s), one sheet per stage.`,
+        skipped.length ? 'warn' : 'ok');
+    }catch(e){
+      console.warn('[export] Meeting Setups export failed:', e);
+      toast('Export failed', 'The Meeting Setups could not be exported: '+(e?.message||'unknown error'), 'err');
+    }finally{ setExportLabel(null); }
+  };
   const w=ROLES[role].write, canApprove=ROLES[role].approve;
   const [fKind,setFKind]=useState('All'), [fType,setFType]=useState('All');
   const [fCat,setFCat]=useState('All'), [fStage,setFStage]=useState('All');
@@ -4592,6 +4712,9 @@ function ScreenRegister(){
       <div style={{flex:1}}><h1>Setup Register</h1>
         <div className="sub">Every governed Setup that execution records are created from. A Setup is
           authored, validated, published and versioned here — and expired, never deleted.</div></div>
+      <Btn onClick={exportMeetings} disabled={!!exportLabel}
+        title="Every Meeting Setup in the register, one Excel sheet per Stage">
+        {exportLabel || 'Export Meeting Setups'}</Btn>
       {w?<Btn onClick={()=>A.create('Committee / Meeting')}>New Committee / Meeting Setup</Btn>:null}
       {w?<Btn k="pri" onClick={()=>A.create('Report Template')}>New Report Template Setup</Btn>:null}
     </div>

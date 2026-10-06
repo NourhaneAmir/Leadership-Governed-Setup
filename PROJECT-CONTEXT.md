@@ -10491,6 +10491,44 @@ back (user chose "only the Chairman", matched "by the employee's name").
   be opened.", and the Score / Review / View button becomes "🔒 No role".
 - Other ways into a no-role meeting (e.g. Decisions) still open it view only.
 - Pushed to both Leadership apps (`index-y9Jr0zSS.js`).
+### 06 Oct: Governance — export every Meeting Setup to Excel, one sheet per Stage (Governance only)
+
+Per an explicit ask. Choices confirmed with the user before building:
+- every Meeting Setup in the register;
+- one row per Business Unit / Region;
+- agenda and attendees as numbered lists in one cell;
+- the button in the register header.
+
+- **Button:** "Export Meeting Setups" in the Setup Register header, for every
+  role (it only reads). It shows progress ("Reading 12 of 25…").
+- **Data (`GovernanceApp.jsx`):**
+  - Setups already in the session (`db.setups`, not `_seed`) are used as they
+    are. Every other `dvMeetings` row is read in full with
+    `fetchMeetingTemplateDetail` → `dataverseMeetingToSetup`, four at a time.
+    A failed read is listed on the About sheet, not fatal.
+  - `meetingSetupExportRows(s)` gives one row per unit (one for group-wide /
+    Stage 4). The columns: Setup, status, version, Setup Type, classification,
+    Category (all Stage 4 Categories), frequency + schedule (`scheduleText`),
+    mode, quorum, unit type, unit, the unit's Region, Stage 4 "Covers",
+    **Chairman / Co-Chairman / Facilitator** ("Holder — Position"),
+    Team › Channel, attendee count + numbered **Attendees** (Core / Supportive,
+    Microsoft groups marked), Departments › Functions, agenda count +
+    numbered **Agenda** with owners, supportive functions, linked reports and
+    TOR.
+  - `meetingSetupExportSheets()` puts each Setup on the sheet of its `stage`
+    (STAGES index), plus "Stage not set" only if needed. Rows are in name order.
+- **Writer:** new `src/services/meetingSetupExport.js`, pure ExcelJS
+  (dynamically imported). It writes an About sheet (time, user, counts per
+  sheet, not exported) and four stage sheets: styled header, frozen header
+  and first column, autofilter, wrapped top-aligned cells, alternate fill per
+  Setup, and cells capped at Excel's 32,767 characters. The download is a
+  `blob:` + synthetic click.
+- **Checks:** both apps build; Governance lint 19, same as HEAD; `no-undef`
+  clean. Writer run in Node on sample rows and the file re-opened with ExcelJS:
+  About + 4 stage sheets, 26 columns, multi-line cells intact, empty stage
+  noted. Not browser-checked, not pushed (Governance (2) would be the test
+  target).
+
 ## 6. Schema facts that are expensive to rediscover
 
 ### `lm_meetingcategories` — a blank `lm_typeclassification` IS the Accreditation Committee signal, not a data gap
