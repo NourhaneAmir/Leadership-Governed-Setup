@@ -2658,6 +2658,47 @@ export async function fetchTasksForMeeting(occurrenceId, agendaItemIds = []){
   return [...byId.values()];
 }
 
+/** Every Task linked to any of these meetings, directly or through one of
+ *  their agenda items, in batched reads (15 conditions a request) -- for the
+ *  Meetings export (06 Oct), so 100 meetings is a handful of requests, not
+ *  100. Each Task carries `occurrenceId` and `agendaItemId`, resolved through
+ *  the agenda item when the Task is linked only to that.
+ *  @param {{id:string, agenda?:{id:string}[]}[]} occs
+ *  @returns {Promise<object[]|null>} null when Tasks have no meeting link in
+ *           this environment (the same signal as fetchTasksForMeeting). */
+export async function fetchTasksForMeetings(occs = []){
+  const occOfItem = new Map();
+  const conds = [];
+  for(const o of occs){
+    if(!o?.id) continue;
+    conds.push(`_lm_meetingoccurrence_value eq ${o.id}`);
+    for(const a of o.agenda || []) if(a?.id){
+      occOfItem.set(a.id, o.id);
+      conds.push(`_lm_meetingoccurrenceagendaitem_value eq ${a.id}`);
+    }
+  }
+  if(!conds.length) return [];
+  const byId = new Map();
+  try{
+    for(let i = 0; i < conds.length; i += 15){
+      const res = await Hx_taskesService.getAll({
+        filter: conds.slice(i, i + 15).join(' or '),
+        select: [...TASK_FULL_SELECT, '_lm_meetingoccurrence_value', '_lm_meetingoccurrenceagendaitem_value'],
+      });
+      if(res?.success === false) return null;
+      for(const r of res?.data ?? []){
+        const agendaItemId = r._lm_meetingoccurrenceagendaitem_value || null;
+        byId.set(r.hx_tasksid, { ...taskFromRow(r), agendaItemId,
+          occurrenceId: r._lm_meetingoccurrence_value || (agendaItemId && occOfItem.get(agendaItemId)) || null });
+      }
+    }
+  }catch(e){
+    console.warn('[dataverse] fetchTasksForMeetings(): tasks are not linked to meetings in this environment', e);
+    return null;
+  }
+  return [...byId.values()];
+}
+
 /** Raises a Task on hx_tasks.
  *
  *  Status is left to Dataverse's own default rather than set here: the option

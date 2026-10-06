@@ -14,6 +14,7 @@ import { ymd, TODAY, PERIOD, HOLIDAYS, isNonWorking, isWeekend,
          band, scoreColour, pctColour } from '../../shared/format.js';
 import { Ctx, use } from './store.jsx';
 import { exportMinutesDocx, minutesDocxBase64, minutesFileName } from '../../services/minutesExport.js';
+import { exportMeetings } from '../../services/meetingsExport.js';
 import { uploadMinutesFile, pathFromUrl } from '../../services/sharepoint.js';
 import { isConnectionError, askToReconnect, reloadForConsent } from '../../services/connectionPrompt.js';
 /* Attach an existing Task to a Minutes agenda item (04 Oct). Its own import
@@ -46,7 +47,7 @@ import { fetchMeetingOccurrences, fetchReportOccurrences, createMeetingOccurrenc
          cancelMeetingOccurrence, recordAgendaDistribution, createMeetingOccurrenceAgendaItem,
          archiveMeetingOccurrenceAgendaItem, updateMeetingOccurrenceAgendaSequence,
          fetchMeetingOccurrenceDepartments, fetchMeetingOccurrenceLinkedReports, fetchMeetingTemplateInputReports,
-         fetchTasksForMeeting, addMeetingOccurrenceAttendee,
+         fetchTasksForMeeting, fetchTasksForMeetings, addMeetingOccurrenceAttendee,
          linkMeetingOccurrenceReport, unlinkMeetingOccurrenceReport, fetchMeetingCategories, MEETING_OCC_STAGE_KEY,
          updateLinkedReportFile, upsertMeetingMinutesDocument, getMeetingMinutesDocument,
          attachReportOccurrenceToLink,
@@ -5903,8 +5904,10 @@ const MTG_ROLE_FILTERS = [
 ];
 
 function ScreenMeetings(){
-  const {sel,setSel,dvMeetingOccs,dvMinutes,S,dvLoading,dvError,openMeeting,go,meetingRoleOf,isMyMeeting} = use();
+  const {sel,setSel,dvMeetingOccs,dvMinutes,S,dvLoading,dvError,openMeeting,go,meetingRoleOf,isMyMeeting,
+         dvDecisions=[],dvLookup,currentUser,toast} = use();
   const [tab,setTab]=useState('due');
+  const [exporting,setExporting]=useState(false);
   /* This Week is the default filter, and the first chip (04 Oct, user's ask). */
   const [typeFilter,setTypeFilter]=useState('week');
   /* Declared with the other state, ABOVE the early return below — a hook after
@@ -6025,16 +6028,77 @@ function ScreenMeetings(){
   ].slice(0,5);
 
   const tabDef = TABS.find(t=>t.id===tab)||TABS[0];
-  const exportCsv = () => {
-    const out = [['Meeting','Setup','Setup type','Department','Scope','Stage','Date','Start','End','Mode',
-      'Agenda items','Agenda covered','Attendees','Present','Chair','Organizer','Status']];
-    rows.forEach(o=>out.push([o.name, dvTpl(o.templateId)||(o.adhocType?'Ad Hoc — '+o.adhocType:'Ad Hoc'),
-      setupTypeOf(o)||'', dvDept(o.departmentId)||'', dvBu(o.businessUnitId)||dvRegion(o.regionId)||'Group-wide',
-      o.stage||'', o.date||'', o.start||'', o.end||'', o.mode||'',
-      o.agenda.length, o.agenda.filter(a=>a.covered==='Yes').length,
-      o.attendees.length, o.attendees.filter(a=>a.present==='Present').length,
-      dvPos(o.chairPositionId)||'', dvPos(o.facilitatorPositionId)||'', o.status||'']));
-    csDownloadCsv(`meetings-${tabDef.id}-${ymd(new Date())}.csv`, out);
+  /* Export (06 Oct, user's ask): a styled Excel workbook of exactly the rows
+     shown (tab, chips, Stage, My role, search), with detail sheets -- Agenda
+     Items, Attendees, Decisions, Tasks -- one row each, linked back to the
+     meeting by name and date. Writer: services/meetingsExport.js. A
+     confidential Stage 4 agenda item the user may not read is exported as
+     "Confidential item", the same rule as the meeting page. */
+  const exportXlsx = async () => {
+    if(!rows.length || exporting) return;
+    setExporting(true);
+    try{
+      const posHolder = id => (id && DV_POS_HOLDER[id]) || '';
+      const myPos = dvLookup?.myPositionIds || [], myUserId = currentUser?.systemUserId || null;
+      const itemTitle = (o,a) => canReadAgendaItem(o, a, null, myPos, myUserId) ? a.title : 'Confidential item';
+      const head = o => ({ _meetingId:o.id, meeting:o.name, meetingDate:o.date||'' });
+      const meetings = rows.map(o=>({
+        meeting:o.name, setup:dvTpl(o.templateId)||(o.adhocType?'Ad Hoc — '+o.adhocType:'Ad Hoc'),
+        setupType:setupTypeOf(o)||'', department:dvDept(o.departmentId)||'',
+        scope:dvBu(o.businessUnitId)||dvRegion(o.regionId)||'Group-wide', stage:stageOf(o)||'',
+        date:o.date||'', start:o.start||'', end:o.end||'', mode:o.mode||'',
+        agendaCount:o.agenda.length, agendaCovered:o.agenda.filter(a=>a.covered==='Yes').length,
+        attendeeCount:o.attendees.length, presentCount:o.attendees.filter(a=>a.present==='Present').length,
+        chair:dvPos(o.chairPositionId)||'', organizer:dvPos(o.facilitatorPositionId)||'', status:o.status||'' }));
+      const agenda = rows.flatMap(o=>o.agenda.map((a,i)=>({ ...head(o), seq:a.seq ?? i+1, title:itemTitle(o,a),
+        owner:dvPos(a.ownerPositionId)||'', source:a.source||'', covered:a.covered||'Not Yet Recorded' })));
+      const attendees = rows.flatMap(o=>o.attendees.map(a=>({ ...head(o),
+        position:dvPos(a.positionId)||a.name||'', holder:posHolder(a.positionId), type:a.type||'',
+        delegate:dvPos(a.delegatePositionId)||'', present:a.present||'Not Yet Recorded' })));
+      const itemsById = new Map(rows.flatMap(o=>o.agenda.map(a=>[a.id,{o,a}])));
+      const decisions = dvDecisions.filter(d=>d.agendaItemId && itemsById.has(d.agendaItemId))
+        .map(d=>{ const {o,a}=itemsById.get(d.agendaItemId);
+          return { ...head(o), agendaItem:itemTitle(o,a), name:d.name||'', taken:d.decisionTaken||'',
+                   output:d.expectedOutput||'', status:d.status||'', created:d.created||'' }; });
+      const occById = new Map(rows.map(o=>[o.id,o]));
+      const taskRows = await fetchTasksForMeetings(rows);
+      const tasks = (taskRows||[]).filter(t=>occById.has(t.occurrenceId)).map(t=>{
+        const o = occById.get(t.occurrenceId), it = t.agendaItemId && itemsById.get(t.agendaItemId);
+        return { ...head(o), agendaItem:it ? itemTitle(it.o,it.a) : '', code:t.code||'', name:t.name||'',
+                 assignee:t.assigneeName||'', status:t.status||'', priority:t.priority||'',
+                 start:t.start||'', due:t.due||'', delayed:t.delayed||'' }; });
+      /* detail sheets in the Meetings sheet's order */
+      const order = new Map(rows.map((o,i)=>[o.id,i]));
+      const byMeeting = (x,y) => order.get(x._meetingId)-order.get(y._meetingId);
+      const typeLabel = {week:'This Week', all:'All Types', setup:'From a Setup', adhoc:'Ad Hoc'}[typeFilter] || typeFilter;
+      const view = [
+        ['Tab', tab==='due' ? 'Upcoming Meetings' : tabDef.label],
+        ['Type', typeLabel],
+        ['Stage', MTG_STAGE_FILTERS.find(x=>x.v===fStage)?.label || 'Any stage'],
+        ['My role', MTG_ROLE_FILTERS.find(x=>x.v===fRole)?.label || 'Any role'],
+        ...(q.trim() ? [['Search', q.trim()]] : []),
+        ['Meetings', `${rows.length} (only meetings where you hold a role)`],
+      ];
+      const notes = [];
+      if(taskRows===null) notes.push('Tasks could not be read for these meetings, so the Tasks sheet is empty.');
+      if(agenda.some(a=>a.title==='Confidential item'))
+        notes.push('Confidential Stage 4 agenda items you may not read are listed as “Confidential item”.');
+      const {filename} = await exportMeetings({
+        Meetings: meetings,
+        'Agenda Items': agenda,
+        Attendees: attendees,
+        Decisions: decisions.sort(byMeeting),
+        Tasks: tasks.sort(byMeeting),
+      }, {
+        exportedAt: `${fmtD(TODAY)} ${new Date().toTimeString().slice(0,5)}`,
+        exportedBy: currentUser?.fullName || undefined,
+        view, notes,
+      }, `Meetings - ${tab==='due' ? 'Upcoming' : tabDef.label}`);
+      toast('Exported', filename, 'ok');
+    }catch(e){
+      console.warn('[meetingsExport] failed:', e);
+      toast('Export failed', 'The meetings could not be exported: ' + (e?.message || 'unknown error'), 'err');
+    }finally{ setExporting(false); }
   };
   const statusBadge = o => o.status==='Held' ? 'approved' : o.status==='Cancelled' ? 'returned' : 'scheduled';
 
@@ -6114,8 +6178,9 @@ function ScreenMeetings(){
             <input type="search" value={q} placeholder="Search meetings…" aria-label="Search meetings"
               onChange={e=>setQ(e.target.value)}/>
             <span className="cs-search-n">{q.trim() ? `${rows.length} of ${typedRows.length}` : `${rows.length} shown`}</span>
-            <button type="button" className="cs-btn" onClick={exportCsv} disabled={!rows.length}>
-              <Download size={12}/>Export</button>
+            <button type="button" className="cs-btn" onClick={exportXlsx} disabled={!rows.length||exporting}
+              title="Excel: the meetings shown, with their agenda items, attendees, decisions and tasks">
+              <Download size={12}/>{exporting ? 'Exporting…' : 'Export'}</button>
           </div>
         </div>
         {dvError
