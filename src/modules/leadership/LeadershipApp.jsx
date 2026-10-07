@@ -8337,6 +8337,9 @@ const SHOW_MOM_NEEDS_ACTION = false;
 /* The meeting page's "can't be marked Held until its start time and end time
    are entered" banner -- removed (07 Oct, user's ask), code kept. */
 const SHOW_HELD_BLOCK_NOTE = false;
+/* The Submissions tab's "Meeting input readiness minimum (OD-39)" note --
+   removed (07 Oct, user's ask), code kept. */
+const SHOW_INPUTS_READINESS_NOTE = false;
 /* The Documents tab's "Link a report directly" card (an ad hoc meeting's
    picker of any Report Occurrence) is hidden too (05 Oct, user's ask). Its
    code and ReportLinkPicker are unchanged: set to true to bring it back. */
@@ -9526,7 +9529,8 @@ function DvMeetingDetail({rec,back}){
       </div>
     </div>}
 
-    {tab==='inputs' && <Note k="info">Meeting input readiness minimum (OD-39): every input must reach at
+    {/* Readiness note removed from the Submissions tab (07 Oct, user's ask). */}
+    {SHOW_INPUTS_READINESS_NOTE && tab==='inputs' && <Note k="info">Meeting input readiness minimum (OD-39): every input must reach at
       least <b>{needApproved?'Approved':'In Review (submitted)'}</b> before the meeting.
       {' '}Inputs are the reports linked on the Documents tab{rec.templateId
         ? ', plus the Input reports this meeting\'s Setup names' : ''}. A report
@@ -10997,7 +11001,24 @@ function ScreenNewMeeting(){
   /* The typed agenda items, each with its owner (05 Oct). Blank lines are
      ignored; every item kept must have an owner before the meeting saves. */
   const agenda=f.agenda.map((t,i)=>({title:t.trim(), owner:(f.agendaOwners||[])[i]||''})).filter(r=>r.title);
-  const agendaNoOwner=agenda.filter(r=>!r.owner).length;
+  /* An agenda item's owner must be one of the meeting's own people (07 Oct,
+     user's rule): its Chairman, its Organizer or one of its Attendees. The
+     picker offers only them, and an owner who stops being one (a changed Chair,
+     a removed attendee, a Setup's owner who is not in this meeting) is cleared,
+     so the item asks for an owner again. */
+  const ownerIds = [...new Set([f.dvChairPositionId, f.dvFacilitatorPositionId,
+                                ...(f.dvAttend||[]).map(a=>a.positionId)].filter(Boolean))];
+  const ownerKey = ownerIds.join(',');
+  useEffect(()=>{
+    const ok = new Set(ownerKey ? ownerKey.split(',') : []);
+    setF(x=>{
+      const owners = x.agendaOwners||[];
+      if(!owners.some(o=>o && !ok.has(o))) return x;
+      return {...x, agendaOwners: owners.map(o=>o && ok.has(o) ? o : '')};
+    });
+  },[ownerKey]);
+  const ownerOpts = ownerIds.map(id=>DV_POS_LIST.find(p=>p.id===id)).filter(Boolean);
+  const agendaNoOwner=agenda.filter(r=>!r.owner || !ownerIds.includes(r.owner)).length;
   const setAgendaLine=(i,patch)=>setF(x=>{
     const titles=[...x.agenda], owners=[...(x.agendaOwners||[])];
     while(owners.length<titles.length) owners.push('');
@@ -11808,8 +11829,9 @@ function ScreenNewMeeting(){
                   {/* Every agenda item must have an owner (05 Oct). */}
                   <div className="cs-agenda-owner" aria-label={'Owner of Agenda Item '+(i+1)}>
                     <PositionSelect value={owner} onChange={v=>setAgendaLine(i,{owner:v||''})}
-                      opts={chairOpts} disabled={!scopeChosen}
-                      placeholder={scopeChosen ? 'Owner…' : scopePlaceholder} emptyText="No Positions in this scope"/>
+                      opts={ownerOpts} disabled={!ownerOpts.length}
+                      placeholder={ownerOpts.length ? 'Owner…' : 'Pick the Chair, Organizer or Attendees first'}
+                      emptyText="Only the Chair, the Organizer and the Attendees can own an item"/>
                   </div>
                   {f.agenda.length>1
                     ? <button type="button" className="cs-btn" aria-label={'Remove Agenda Item '+(i+1)}
