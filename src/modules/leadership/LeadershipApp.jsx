@@ -72,7 +72,7 @@ import { fetchMeetingOccurrences, fetchReportOccurrences, createMeetingOccurrenc
          MEETING_SETUP_TYPE, MEETING_CATEGORY, MEETING_FREQUENCY, MEETING_DAY_OF_WEEK,
          MEETING_MONTH_IN_QUARTER,
          ATTENDEE_TYPE, REPORT_TYPE, REPORT_CATEGORY, REPORT_FREQUENCY,
-         fetchMeetingUnitRoles, fetchReportUnitRoles,
+         fetchMeetingUnitRoles, fetchReportUnitRoles, backfillMeetingCoChairmen,
          REPORT_OBJECTIVE_MAX } from '../../services/dataverse.js';
 /* The meetings' own handle on the Teams channel list (03 Oct). Kept as a
    separate import on purpose: `fetchTeamsChannels` in the list above arrived
@@ -3218,6 +3218,18 @@ function App({onSwitch}){
     try{
       const list=await fetchMeetingOccurrences();
       setDvMeetingOccs(list||[]);
+      /* Once per session: copy each Setup's Co-Chairman onto its meetings that
+         have none (07 Oct) -- then show them at once, without a second read. */
+      if(!CO_CHAIR_BACKFILL.started && (list||[]).length){
+        CO_CHAIR_BACKFILL.started = true;
+        backfillMeetingCoChairmen(list)
+          .then(done=>{
+            if(!done.size) return;
+            console.info(`[dataverse] Co-Chairman copied from the Setup onto ${done.size} meeting(s).`);
+            setDvMeetingOccs(xs=>xs.map(o=>done.has(o.id) ? {...o, coChairPositionId:done.get(o.id)} : o));
+          })
+          .catch(e=>console.warn('[dataverse] backfillMeetingCoChairmen() failed:', e));
+      }
     }catch(e){ console.warn('[dataverse] fetchMeetingOccurrences() failed:', e); failed=e; }
     try{
       const list=await fetchReportOccurrences();
@@ -8341,6 +8353,8 @@ const SHOW_HELD_BLOCK_NOTE = false;
 /* The Submissions tab's "Meeting input readiness minimum (OD-39)" note --
    removed (07 Oct, user's ask), code kept. */
 const SHOW_INPUTS_READINESS_NOTE = false;
+/* The once-per-session Co-Chairman backfill (see refreshOccurrences). */
+const CO_CHAIR_BACKFILL = { started:false };
 /* The Documents tab's "Link a report directly" card (an ad hoc meeting's
    picker of any Report Occurrence) is hidden too (05 Oct, user's ask). Its
    code and ReportLinkPicker are unchanged: set to true to bring it back. */

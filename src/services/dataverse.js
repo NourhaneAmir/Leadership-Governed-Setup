@@ -4103,6 +4103,36 @@ export async function fetchMeetingUnitRoles(){
   };
 }
 
+/** Fills a missing Co-Chairman on existing meetings from their Setup (07 Oct,
+ *  user's ask -- "automatically on load"). Meetings scheduled before 219aad0
+ *  were saved without lm_meetingcochairman, so their Setup's Co-Chairman could
+ *  not see them. For every occurrence that has a Setup but no Co-Chairman,
+ *  fetchMeetingUnitRoles() names the Setup's one (unit row, else the Setup)
+ *  and it is written. Only empty ones are touched -- an occurrence's own
+ *  Co-Chairman is never overwritten. Five writes at a time.
+ *  @returns {Promise<Map<string,string>>} occurrence id -> Co-Chairman written */
+export async function backfillMeetingCoChairmen(occs = []){
+  const todo = occs.filter(o => o && o.templateId && !o.coChairPositionId);
+  const done = new Map();
+  if(!todo.length) return done;
+  const roles = await fetchMeetingUnitRoles();
+  const work = todo.map(o => [o, roles.forOccurrence(o)]).filter(([, p]) => p);
+  for(let i = 0; i < work.length; i += 5){
+    await Promise.all(work.slice(i, i + 5).map(async ([o, posId]) => {
+      try{
+        const result = await Lm_meetingoccurrencesService.update(o.id, {
+          'lm_MeetingCoChairman@odata.bind': `/cr603_organizationstructures(${posId})`,
+        });
+        assertSuccess(result);
+        done.set(o.id, posId);
+      }catch(e){
+        console.warn('[dataverse] backfillMeetingCoChairmen(): could not set the Co-Chairman on', o.id, e);
+      }
+    }));
+  }
+  return done;
+}
+
 /** Every Report Occurrence. One request -- this table has no child tables the
  *  calendar needs (its history lives in lm_reportoccurrencehistories). */
 export async function fetchReportOccurrences(){
