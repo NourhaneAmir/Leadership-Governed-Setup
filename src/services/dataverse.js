@@ -4985,6 +4985,10 @@ export async function createMeetingOccurrence(payload){
   if(payload.regionId)          parent['lm_Region@odata.bind']            = `/crd04_regionses(${payload.regionId})`;
   if(payload.departmentId)      parent['lm_Department@odata.bind']        = `/cr603_chklst_departmentses(${payload.departmentId})`;
   if(payload.chairPositionId)   parent['lm_ChairmanPosition@odata.bind']  = `/cr603_organizationstructures(${payload.chairPositionId})`;
+  /* The meeting's Co-Chairman (07 Oct): copied from the Setup's unit (or the
+     Setup itself) when scheduling, so isMyMeeting() lets the Co-Chairman see
+     it. lm_meetingcochairman is a Position lookup, DT New only. */
+  if(payload.coChairPositionId) parent['lm_MeetingCoChairman@odata.bind'] = `/cr603_organizationstructures(${payload.coChairPositionId})`;
   if(payload.facilitatorPositionId) parent['lm_FacilitatorPosition@odata.bind'] = `/cr603_organizationstructures(${payload.facilitatorPositionId})`;
   if(payload.rescheduledFromId) parent['lm_RescheduledFrom@odata.bind']   = `/lm_meetingoccurrences(${payload.rescheduledFromId})`;
   /* The Teams channel the meeting belongs to (03 Oct, a Custom Ad Hoc

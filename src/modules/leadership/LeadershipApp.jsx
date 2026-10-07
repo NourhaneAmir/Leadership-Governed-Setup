@@ -6781,6 +6781,7 @@ function DvRescheduleOccModal({rec,onClose}){
         regionId: rec.regionId||undefined,
         departmentId: rec.departmentId||undefined,
         chairPositionId: rec.chairPositionId||undefined,
+        coChairPositionId: rec.coChairPositionId||undefined,
         facilitatorPositionId: rec.facilitatorPositionId||undefined,
         date:f.date, start:f.start, end:f.end,
         timezone: rec.timezone||undefined,
@@ -10992,7 +10993,7 @@ function ScreenNewMeeting(){
        accept this module's seeded ids, for either an Ad Hoc from Setup or a
        Custom Ad Hoc Meeting. */
     dvBusinessUnitId:'', dvRegionId:'', dvDepartmentId:'',
-    dvChairPositionId:'', dvFacilitatorPositionId:'', dvAttend:[], tz:''});
+    dvChairPositionId:'', dvCoChairPositionId:'', dvFacilitatorPositionId:'', dvAttend:[], tz:''});
   const [f,setF]=useState(blankForm);
   const [saving,setSaving]=useState(false);
   const [tplDetail,setTplDetail]=useState(null);
@@ -11078,6 +11079,7 @@ function ScreenNewMeeting(){
       key:b._lm_businessunit_value, kind:'bu',
       label: dvBu(b._lm_businessunit_value) || '(Business Unit not in the loaded list)',
       chairman:b._lm_meetingchairman_value||null,
+      coChairman:b._lm_meetingcochairman_value||null,
       facilitator:b._lm_meetingorganizerfacilitator_value||null,
       attendees:(b.attendees||[]).map(a=>({positionId:a._lm_attendeeposition_value||null,
                                             type:ATTENDEE_TYPE[a.lm_attendeetype]||'Required'})),
@@ -11086,6 +11088,7 @@ function ScreenNewMeeting(){
       key:r._lm_region_value, kind:'region',
       label: dvRegion(r._lm_region_value) || '(Region not in the loaded list)',
       chairman:r._lm_meetingchairman_value||null,
+      coChairman:r._lm_meetingcochairman_value||null,
       facilitator:r._lm_meetingorganizerfacilitator_value||null,
       attendees:(r.attendees||[]).map(a=>({positionId:a._lm_attendeeposition_value||null,
                                             type:ATTENDEE_TYPE[a.lm_attendeetype]||'Required'})),
@@ -11112,6 +11115,8 @@ function ScreenNewMeeting(){
       dvRegionId: unit&&unit.kind==='region' ? unit.key : '',
       dvDepartmentId:'',
       dvChairPositionId: unit ? (unit.chairman||'') : (tplDetail?.parent?._lm_meetingchairman_value||''),
+      /* The Setup's Co-Chairman comes across too (07 Oct, user's ask). */
+      dvCoChairPositionId: unit ? (unit.coChairman||'') : (tplDetail?.parent?._lm_meetingcochairman_value||''),
       dvFacilitatorPositionId: unit ? (unit.facilitator||'') : (tplDetail?.parent?._lm_meetingorganizerfacilitator_value||''),
       dvAttend: unit ? unit.attendees.filter(a=>a.positionId).map(a=>({
         positionId:a.positionId, name:dvPos(a.positionId), holder:DV_POS_HOLDER[a.positionId]||null,
@@ -11150,7 +11155,7 @@ function ScreenNewMeeting(){
     let cancelled=false;
     setTplLoading(true); setTplDetail(null);
     setF(x=>({...x, tplUnitKey:'', dvBusinessUnitId:'', dvRegionId:'', dvDepartmentId:'',
-                    dvChairPositionId:'', dvFacilitatorPositionId:'', dvAttend:[], agenda:[''], agendaOwners:[''], torLink:''}));
+                    dvChairPositionId:'', dvCoChairPositionId:'', dvFacilitatorPositionId:'', dvAttend:[], agenda:[''], agendaOwners:[''], torLink:''}));
     fetchMeetingTemplateDetail(f.setup)
       .then(d=>{ if(!cancelled) setTplDetail(d); })
       .catch(e=>{ console.warn('[dataverse] fetchMeetingTemplateDetail() failed:', e); })
@@ -11272,6 +11277,7 @@ function ScreenNewMeeting(){
         regionId:(stageRegion && f.dvRegionId) ? f.dvRegionId : undefined,
         departmentId:f.dvDepartmentId||undefined,
         chairPositionId:f.dvChairPositionId||undefined,
+        coChairPositionId:f.dvCoChairPositionId||undefined,
         facilitatorPositionId:f.dvFacilitatorPositionId||undefined,
         date:bookedDate, start:f.start, end:f.end,
         timezone:f.tz||undefined,
@@ -11600,7 +11606,7 @@ function ScreenNewMeeting(){
                   /* 06 Oct (user's ask): a new organizational structure also clears the
                      Attendees and every agenda item's owner -- the items themselves stay. */
                   setF(x=>({...x, stage:v, dvBusinessUnitId:'', dvRegionId:'',
-                                    dvDepartmentId:'', dvChairPositionId:'', dvFacilitatorPositionId:'',
+                                    dvDepartmentId:'', dvChairPositionId:'', dvCoChairPositionId:'', dvFacilitatorPositionId:'',
                                     dvAttend:[], agendaOwners:(x.agenda||['']).map(()=>'')}));
                 }}>
                 {/* The 4th stage is labelled Top Management (03 Oct); its value stays
@@ -11614,7 +11620,7 @@ function ScreenNewMeeting(){
                       const bu=DV_BU_LIST.find(b=>b.id===id);
                       const rn=bu?dvRegion(bu.region):null;
                       // Picking scope pre-selects the time zone that scope sits in.
-                      setF(x=>({...x, dvBusinessUnitId:id, dvDepartmentId:'', dvChairPositionId:'',
+                      setF(x=>({...x, dvBusinessUnitId:id, dvDepartmentId:'', dvChairPositionId:'', dvCoChairPositionId:'',
                                       dvFacilitatorPositionId:'', dvAttend:[], agendaOwners:(x.agenda||['']).map(()=>''),
                                       tz:rn?tzForRegionName(rn):x.tz}));
                     }}>
@@ -11627,7 +11633,7 @@ function ScreenNewMeeting(){
                       <select value={f.dvRegionId} onChange={e=>{
                         const id=e.target.value;
                         const rg=DV_REGION_LIST.find(r=>r.id===id);
-                        setF(x=>({...x, dvRegionId:id, dvDepartmentId:'', dvChairPositionId:'',
+                        setF(x=>({...x, dvRegionId:id, dvDepartmentId:'', dvChairPositionId:'', dvCoChairPositionId:'',
                                         dvFacilitatorPositionId:'', dvAttend:[], agendaOwners:(x.agenda||['']).map(()=>''),
                                         tz:rg?tzForRegionName(rg.name):x.tz}));
                       }}>
@@ -11768,6 +11774,12 @@ function ScreenNewMeeting(){
                   opts={chairOpts} disabled={!scopeChosen}
                   placeholder={scopePlaceholder} emptyText="No Positions in this scope"/></Field>
             </div>
+            <Field label="Meeting Co-Chairman"
+              hint={!custom && f.dvCoChairPositionId ? 'From the Setup. Optional — the Co-Chairman sees this meeting too.'
+                : 'Optional. The Co-Chairman sees this meeting too.'}>
+              <PositionSelect value={f.dvCoChairPositionId} onChange={v=>set('dvCoChairPositionId',v||'')}
+                opts={chairOpts} disabled={!scopeChosen}
+                placeholder={scopeChosen ? 'Co-Chairman…' : scopePlaceholder} emptyText="No Positions in this scope"/></Field>
             <Field label="Department"
               hint={fromSetup
                 ? `The ${deptOpts.length} Department${deptOpts.length===1?'':'s'} this Setup is for.`
