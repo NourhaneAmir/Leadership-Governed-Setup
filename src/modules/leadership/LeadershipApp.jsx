@@ -3515,7 +3515,7 @@ function ScreenWorkspace(){
     {id:'All',      label:'All Items'},
     {id:'Meeting',  label:'Meetings'},
     {id:'Minutes',  label:'MOM'},
-    {id:'Decision', label:'Decisions'},
+    /* "Decisions" tab removed from My Workspace (07 Oct, user's ask). */
   ];
   const QUICK = [
     {id:'all',    label:'All'},
