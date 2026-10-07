@@ -9079,6 +9079,27 @@ function DvMeetingDetail({rec,back}){
             : <Note k="info">{rec.status==='Held'
                 ? `${requiredPresent} of ${required.length} Required Attendees present.`
                 : 'Attendance is recorded after the meeting is held.'}</Note>}
+          {/* The attendees themselves (07 Oct, user's ask) -- name, Position, role
+              and attendance, the same reading as the Attendance tab. */}
+          {rec.attendees.length>0 && <div className="mtgd-attlist" style={{display:'flex',flexDirection:'column',gap:2,marginTop:10}}>
+            {rec.attendees.map((a,i)=>{
+              const who = (a.positionId && DV_POS_HOLDER[a.positionId]) || a.name || dvPos(a.positionId) || '—';
+              const role = a.positionId===rec.chairPositionId ? 'Chair'
+                : a.positionId===rec.coChairPositionId ? 'Co-Chairman'
+                : a.positionId===rec.facilitatorPositionId ? 'Organizer' : (a.type||'Required');
+              const st = rec.status==='Held' ? (a.present||'Not Yet Recorded') : null;
+              return <div key={a.id} style={{display:'flex',alignItems:'center',gap:10,padding:'7px 2px',
+                  borderBottom:i<rec.attendees.length-1?'1px solid var(--cs-border)':'none'}}>
+                <div className="mtgd-member" style={{flex:1,minWidth:0}}>
+                  <span className={'mtgd-av'+(i%2?' g':'')} aria-hidden="true">
+                    {String(who).split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase()}</span>
+                  <span style={{minWidth:0}}><span className="t-main" style={{display:'block'}}>{who}</span>
+                    <span className="t-sub" style={{display:'block',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                      {dvPos(a.positionId)||'—'}</span></span></div>
+                <Tag c={role==='Chair'?'amber':role==='Co-Chairman'?'amber':role==='Organizer'?'teal':role==='Optional'?'grey':'blue'}>{role}</Tag>
+                {st && <Tag c={st==='Present'?'green':st==='Absent'?'red':'grey'}>{st}</Tag>}
+              </div>;})}
+          </div>}
           <button type="button" className="mtgd-more" onClick={()=>setTab('att')}>View full attendance →</button>
         </section>
       </div>
@@ -9108,6 +9129,7 @@ function DvMeetingDetail({rec,back}){
               ['Type', typeLabel],
               ['Category', tplCategory],
               ['Chair', posName(rec.chairPositionId)],
+              ['Co-Chairman', posName(rec.coChairPositionId)],
               ['Organizer', posName(rec.facilitatorPositionId)],
               ['Location', rec.location || rec.link || null],
               ['Scope', scope],
