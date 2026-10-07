@@ -6551,7 +6551,7 @@ function ScreenMinutes(){
         {TABS.map(t=>
           <button key={t.id} type="button" role="tab" aria-selected={tab===t.id}
             className={'cs-tab'+(tab===t.id?' on':'')} onClick={()=>setTab(t.id)}>
-            {t.label}{t.id!=='all' && <span className="cs-tab-badge">{t.rows.length}</span>}
+            {t.label}{SHOW_COUNT_BADGES && t.id!=='all' && <span className="cs-tab-badge">{t.rows.length}</span>}
           </button>)}
       </div>
     </div>
@@ -6617,7 +6617,7 @@ function ScreenMinutes(){
           </div>
         </section>
 
-        {needsAction.length>0 && <section className="cs-card" aria-labelledby="mom-action">
+        {SHOW_MOM_NEEDS_ACTION && needsAction.length>0 && <section className="cs-card" aria-labelledby="mom-action">
           <div className="cs-card-top"><div className="cs-card-title-grp">
             <span className="cs-icon amber" aria-hidden="true"><CircleAlert size={16}/></span>
             <h2 className="cs-card-title" id="mom-action">Needs Action</h2></div></div>
@@ -8326,9 +8326,12 @@ const SHOW_DECISION_REPORT_LINK = false;
    removed from the screen (06 Oct, user's ask), code kept. */
 const SHOW_MONTH_CARD = false;
 /* Count badges (07 Oct, user's ask) -- hidden on the sidebar menu, My
-   Workspace's Work Queue tabs, Meetings & Committees' tabs and a meeting's own
-   tabs. Meeting Minutes, Committee Scores and Decisions keep theirs. */
+   Workspace's Work Queue tabs, Meetings & Committees' tabs, a meeting's own
+   tabs, Meeting Minutes', Committee Scores' and Decisions' tabs. */
 const SHOW_COUNT_BADGES = false;
+/* Meeting Minutes' "Needs Action" card -- removed from the screen (07 Oct,
+   user's ask), code kept. */
+const SHOW_MOM_NEEDS_ACTION = false;
 /* The Documents tab's "Link a report directly" card (an ad hoc meeting's
    picker of any Report Occurrence) is hidden too (05 Oct, user's ask). Its
    code and ReportLinkPicker are unchanged: set to true to bring it back. */
@@ -12628,7 +12631,7 @@ function ScreenGrid(){
         {CS_TABS.map(t=>
           <button key={t.id} type="button" role="tab" aria-selected={tab===t.id}
             className={'cs-tab'+(tab===t.id?' on':'')} onClick={()=>setTabSel(t.id)}>
-            {t.label}{!t.noCount && <span className="cs-tab-badge">{list.filter(t.test).length}</span>}
+            {t.label}{SHOW_COUNT_BADGES && !t.noCount && <span className="cs-tab-badge">{list.filter(t.test).length}</span>}
           </button>)}
       </div>
     </div>
@@ -13076,7 +13079,7 @@ function ScreenDecisions(){
           <button key={k} type="button" role="tab" aria-selected={fSt===k}
             className={'cs-tab'+(fSt===k?' on':'')} onClick={()=>setFSt(k)}>
             {k==='All'?'All Decisions':k}
-            {k!=='All' && <span className="cs-tab-badge">{dvDecisions.filter(d=>d.status===k).length}</span>}
+            {SHOW_COUNT_BADGES && k!=='All' && <span className="cs-tab-badge">{dvDecisions.filter(d=>d.status===k).length}</span>}
           </button>)}
       </div>
     </div>
