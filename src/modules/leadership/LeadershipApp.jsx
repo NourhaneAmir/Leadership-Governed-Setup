@@ -11654,7 +11654,9 @@ function ScreenNewMeeting(){
                 : <Field need="classification" label="Classification" req hint="Narrows the Category list.">
                     <select value={cls.classification} onChange={e=>setCls(x=>({...x, classification:e.target.value, categoryId:''}))}>
                       <option value="">Select…</option>
-                      {Object.values(MEETING_CATEGORY).map(c=><option key={c}>{c}</option>)}</select></Field>}
+                      {/* Team of Teams left out (07 Oct, user's ask): no Category carries it. */}
+                      {Object.values(MEETING_CATEGORY).filter(c=>c!=='Cross-Functional Team of Teams')
+                        .map(c=><option key={c}>{c}</option>)}</select></Field>}
               <Field need="category" label="Category" req={categoryOpts.length>0}
                 hint={categories===null ? 'Reading Categories…'
                   : !accredCustom && !cls.classification ? 'Choose a Classification first.'

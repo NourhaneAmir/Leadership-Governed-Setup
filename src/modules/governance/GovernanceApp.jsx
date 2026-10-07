@@ -2244,18 +2244,21 @@ function AttendeeList({id,rows,opts,fullOpts,onChange}){
    Returned in CATEGORIES' order, not the data's, so the picker keeps its
    familiar running order whatever order the rows came back in.
 
-   Team of Teams is always included: no Category row carries classification
-   124330006, so filtering on the data alone would remove it from the app
-   entirely. Falls back to the whole list while the reference data is empty. */
+   Team of Teams is NOT forced in any more (07 Oct, user's ask): no Category
+   row carries classification 124330006, so it is not offered -- it comes
+   back on its own if a Category for it is ever added. A Setup already saved
+   as Team of Teams shows it as no longer offered (see MeetingClassField).
+   Falls back to the whole list (still without Team of Teams) while the
+   reference data is empty. */
 const classificationOpts = s => {
-  if(!MEETING_CATEGORIES.length) return CATEGORIES;
+  const noTot = CATEGORIES.filter(n => n !== TOT);
+  if(!MEETING_CATEGORIES.length) return noTot;
   const stageCode = STAGES.indexOf(s.stage) + 1;
-  if(stageCode < 1) return CATEGORIES;
+  if(stageCode < 1) return noTot;
   const allowed = new Set(MEETING_CATEGORIES
     .filter(c => c.stageCode === stageCode)
     .map(c => DV_MEETING_CATEGORY[c.typeCode])
     .filter(Boolean));
-  allowed.add(TOT);
   return CATEGORIES.filter(n => allowed.has(n));
 };
 
