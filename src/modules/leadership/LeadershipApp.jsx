@@ -8355,6 +8355,9 @@ const SHOW_HELD_BLOCK_NOTE = false;
 const SHOW_INPUTS_READINESS_NOTE = false;
 /* The once-per-session Co-Chairman backfill (see refreshOccurrences). */
 const CO_CHAIR_BACKFILL = { started:false };
+/* The meeting Overview's Linked Items, Terms of Reference or Policy and "What
+   this occurrence produces" cards -- removed (07 Oct, user's ask). */
+const SHOW_OVERVIEW_SIDE_CARDS = false;
 /* The Documents tab's "Link a report directly" card (an ad hoc meeting's
    picker of any Report Occurrence) is hidden too (05 Oct, user's ask). Its
    code and ReportLinkPicker are unchanged: set to true to bring it back. */
@@ -9157,6 +9160,7 @@ function DvMeetingDetail({rec,back}){
         {/* Linked Items (04 Oct, screenshot): the meeting's documents -- linked
             reports, links and the Minutes' Word file -- and the previous
             meeting's Minutes. Up to four documents; the rest on Documents. */}
+        {SHOW_OVERVIEW_SIDE_CARDS && <>
         <section className="card" aria-labelledby="mtgd-links">
           <h2 id="mtgd-links" className="mtgd-h">Linked Items</h2>
           {(()=>{
@@ -9187,6 +9191,7 @@ function DvMeetingDetail({rec,back}){
             </div>;
           })()}
         </section>
+        </>}
 
         {(prevOcc || carriedIn.length>0) && <div className="card">
           <h2>Carried forward</h2>
@@ -9218,6 +9223,9 @@ function DvMeetingDetail({rec,back}){
           </>}
         </div>}
 
+        {/* Linked Items, Terms of Reference or Policy and What this occurrence
+            produces -- removed from the Overview (07 Oct, user's ask), code kept. */}
+        {SHOW_OVERVIEW_SIDE_CARDS && <>
         <div className="card">
           <h2>Terms of Reference or Policy</h2>
           <div className="csub">Mandatory for an Accreditation Committee, optional for a Business Meeting.
@@ -9252,6 +9260,7 @@ function DvMeetingDetail({rec,back}){
             </div>
           </div>
         </div>
+        </>}
 
         <details className="card mtgd-all">
           <summary className="mtgd-h">All details</summary>
