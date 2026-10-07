@@ -9343,7 +9343,14 @@ function DvMeetingDetail({rec,back}){
             </tbody></table></div>}
     </div>}
 
-    {tab==='att' && <div className="cs-two-col mtgd-cols">
+    {tab==='att' && (()=>{
+    /* Attendance locks once the Audit Grid is submitted (07 Oct, user's ask):
+       the Grid scored quorum and attendance from what is recorded here, so no
+       Present / Absent change and no new attendee after Submitted for Approval
+       or Approved. A Grid returned for revision unlocks it again. */
+    const curGrid = (grids||[]).find(g=>g.state!=='Void') || null;
+    const attLocked = !!curGrid && (curGrid.state==='Submitted for Approval' || curGrid.state==='Approved');
+    return <div className="cs-two-col mtgd-cols">
     <div className="card flush">
       <div className="card-hd mtgd-hd">
         <span className="cs-icon green" aria-hidden="true"><Users size={15}/></span>
@@ -9353,10 +9360,12 @@ function DvMeetingDetail({rec,back}){
           {requiredPresent} of {required.length} Required present</Tag>}
         {quorum.state!=='none' && quorum.state!=='pending' &&
           <Tag c={QUORUM_TAG[quorum.state][0]}>{QUORUM_TAG[quorum.state][1]}</Tag>}
-        {canRun &&
+        {canRun && !attLocked &&
           <Btn k="sm" onClick={()=>setAddingAtt(v=>!v)}>{addingAtt?'Close':'+ Add attendee'}</Btn>}
       </div>
-      {canRun && addingAtt && <div className="mtgd-addatt">
+      {attLocked && <div style={{padding:'10px 17px 0'}}><Note k="lock" ic="—">Attendance is locked — the Audit Grid was
+        {curGrid.state==='Approved' ? ' approved' : ' submitted for approval'}, and it scored this attendance.</Note></div>}
+      {canRun && !attLocked && addingAtt && <div className="mtgd-addatt">
         <div style={{flex:'1 1 260px',minWidth:0}}>
           <PositionSelect value={newAtt.positionId} onChange={v=>setNewAtt(x=>({...x,positionId:v}))}
             opts={DV_POS_LIST.filter(p=>!rec.attendees.some(a=>a.positionId===p.id))}
@@ -9394,7 +9403,7 @@ function DvMeetingDetail({rec,back}){
                   ? <div style={{display:'flex',alignItems:'center',gap:6}}>
                       <Tag c={a.present==='Present'?'green':a.present==='Absent'?'red':'grey'}>
                         {a.present||'Not Yet Recorded'}</Tag>
-                      {!viewOnly && <>
+                      {!viewOnly && !attLocked && <>
                       <Btn k="sm" disabled={attSavingId===a.id||a.present==='Present'}
                         onClick={()=>setAttendance(a.id,'Present')}>Present</Btn>
                       <Btn k="sm" disabled={attSavingId===a.id||a.present==='Absent'}
@@ -9435,7 +9444,7 @@ function DvMeetingDetail({rec,back}){
                 <b className={'cs-mono '+(a.pct>=80?'':'mtgd-warn')}>{a.present}/{a.total} ({Math.round(a.pct)}%)</b></div>)}</div>}
       </section>
     </div>
-    </div>}
+    </div>;})()}
 
     {tab==='minutes' && <>
       {govLoading && <div className="card"><Empty>Reading minutes…</Empty></div>}
