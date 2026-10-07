@@ -11,6 +11,7 @@
    stay in LeadershipApp.jsx until the store itself is extracted.
    ========================================================================= */
 import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { pctColour } from './format.js';
 
 export const Tag  = ({c='grey',children,...r}) => <span className={'tag '+c} {...r}>{children}</span>;
@@ -43,10 +44,32 @@ export function Combo({label, value, onChange, opts = [], all = 'Any', placehold
   const [q, setQ]       = React.useState('');
   const box  = React.useRef(null);
   const find = React.useRef(null);
+  const pop  = React.useRef(null);
+  /* The list is drawn in a portal on <body> with fixed positioning (07 Oct):
+     inside a modal (or any scrolling card) an absolutely placed list was cut
+     off by the container's overflow. It follows the button on scroll / resize
+     and opens upwards when there is no room below. */
+  const [place, setPlace] = React.useState(null);
+  React.useLayoutEffect(() => {
+    if(!open){ setPlace(null); return; }
+    const measure = () => {
+      const r = box.current?.getBoundingClientRect();
+      if(!r) return;
+      const below = window.innerHeight - r.bottom - 8, above = r.top - 8;
+      const up = below < 220 && above > below;
+      const maxHeight = Math.max(140, Math.min(320, up ? above : below));
+      setPlace({ left:r.left, width:r.width, maxHeight,
+                 ...(up ? { bottom: window.innerHeight - r.top + 4 } : { top: r.bottom + 4 }) });
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    window.addEventListener('scroll', measure, true);
+    return () => { window.removeEventListener('resize', measure); window.removeEventListener('scroll', measure, true); };
+  }, [open]);
 
   React.useEffect(() => {
     if(!open) return;
-    const onDoc = e => { if(!box.current?.contains(e.target)) setOpen(false); };
+    const onDoc = e => { if(!box.current?.contains(e.target) && !pop.current?.contains(e.target)) setOpen(false); };
     const onKey = e => { if(e.key === 'Escape') setOpen(false); };
     document.addEventListener('mousedown', onDoc);
     document.addEventListener('keydown', onKey);
@@ -74,8 +97,9 @@ export function Combo({label, value, onChange, opts = [], all = 'Any', placehold
       <span className={chosen ? 'cmb-v' : 'cmb-v none'}>{chosen ? chosen.name : all}</span>
       <span className="cmb-cv" aria-hidden="true">▾</span>
     </button>
-    {open
-      ? <div className="cmb-pop" role="listbox">
+    {open && place ? createPortal(
+        <div className="cmb-pop" role="listbox" ref={pop}
+          style={{ position:'fixed', right:'auto', zIndex:10000, ...place }}>
           <input ref={find} type="search" className="cmb-q" value={q}
             placeholder={placeholder} onChange={e => setQ(e.target.value)}/>
           <button type="button" className={'cmb-opt' + (value ? '' : ' on')}
@@ -89,7 +113,7 @@ export function Combo({label, value, onChange, opts = [], all = 'Any', placehold
                   <span>{o.name}</span>
                   {o.sub ? <span className="cmb-sub">{o.sub}</span> : null}
                 </button>)}
-        </div>
+        </div>, document.body)
       : null}
   </div>;
 

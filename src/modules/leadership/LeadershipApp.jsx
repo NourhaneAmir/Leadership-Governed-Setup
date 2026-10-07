@@ -2217,7 +2217,8 @@ function ScreenCalendar(){
         <Btn k="sm" onClick={()=>shift(-1)}>←</Btn>
         <b style={{fontSize:14,minWidth:132,textAlign:'center'}}>{MONTHS[m-1]} {y}</b>
         <Btn k="sm" onClick={()=>shift(1)}>→</Btn>
-        <Btn k="sm" onClick={()=>setYm(TODAY.slice(0,7))}>Today</Btn>
+        {/* Shown only away from the current month (07 Oct, user's ask). */}
+        {ym!==TODAY.slice(0,7) && <Btn k="sm" onClick={()=>setYm(TODAY.slice(0,7))}>Today</Btn>}
       </div>
       <div className="chip-row" style={{margin:0}}>
         {CAL_KINDS.map(k=>{
@@ -8332,6 +8333,9 @@ const SHOW_COUNT_BADGES = false;
 /* Meeting Minutes' "Needs Action" card -- removed from the screen (07 Oct,
    user's ask), code kept. */
 const SHOW_MOM_NEEDS_ACTION = false;
+/* The meeting page's "can't be marked Held until its start time and end time
+   are entered" banner -- removed (07 Oct, user's ask), code kept. */
+const SHOW_HELD_BLOCK_NOTE = false;
 /* The Documents tab's "Link a report directly" card (an ad hoc meeting's
    picker of any Report Occurrence) is hidden too (05 Oct, user's ask). Its
    code and ReportLinkPicker are unchanged: set to true to bring it back. */
@@ -8982,7 +8986,9 @@ function DvMeetingDetail({rec,back}){
 
     {viewOnly && <Note k="info">{noRole ? <>You have <b>no role</b> in this meeting</> : <>You are an <b>attendee</b> of this meeting</>}: you can see everything, but only
       its Organizer, Chair or Co-Chair can change it, mark it Held, or write and approve its Minutes.</Note>}
-    {canRun && missingWhen.length>0 &&
+    {/* Removed from the page (07 Oct, user's ask); the Mark as Held button stays
+        disabled and its tooltip still says what is missing. */}
+    {SHOW_HELD_BLOCK_NOTE && canRun && missingWhen.length>0 &&
       <Note k="warn">This meeting can’t be marked Held until its {missingWhen.join(', ').replace(/, ([^,]*)$/,' and $1')}
         {missingWhen.length===1?' is':' are'} entered. Use <b>Edit</b> to add {missingWhen.length===1?'it':'them'}.</Note>}
     {rec.status==='Scheduled' && !rec.agenda.length &&
@@ -13052,6 +13058,16 @@ function ScreenDecisions(){
   const fromReport  = dvDecisions.filter(d=>d.sectionId);
   const fromMeeting = dvDecisions.filter(d=>d.agendaItemId);
   const unlinked    = dvDecisions.filter(d=>!d.sectionId && !d.agendaItemId);
+  const inProgress  = dvDecisions.filter(d=>d.status==='Pending' || d.status==='Waiting');
+  const completed   = dvDecisions.filter(d=>d.status==='Completed');
+  const escalated   = dvDecisions.filter(d=>d.escalatedOn || d.status==='Escalated');
+  const reviewed    = dvDecisions.filter(d=>d.reviewedOn && d.created);
+  /* average days from logging to the review, over the decisions that have both */
+  const avgReviewDays = reviewed.length
+    ? Math.round(reviewed.reduce((t,d)=>t + Math.max(0,(new Date(d.reviewedOn) - new Date(d.created))/864e5),0) / reviewed.length * 10) / 10
+    : null;
+  const linkedPct = dvDecisions.length ? Math.round(fromMeeting.length / dvDecisions.length * 100) : null;
+  const completedThisMonth = completed.filter(d=>(d.updated||'').slice(0,7)===TODAY.slice(0,7)).length;
 
   const rows = dvDecisions.filter(d=>{
     if(fSt!=='All' && d.status!==fSt) return false;
@@ -13084,17 +13100,29 @@ function ScreenDecisions(){
       </div>
     </div>
 
+    {/* 07 Oct (user's ask): laid out like the reference Decisions page -- top-bar
+        stat cards, an alert banner, the register beside Decision Flow and
+        Decision Health. Every figure is read from the Work Log decisions. */}
     <div className="cs-stats">
       <div className="cs-stat acc-gold"><div className="cs-stat-lbl">Decisions</div>
         <div className="cs-stat-val">{dvDecisions.length}</div><div className="cs-stat-meta">logged</div></div>
+      <div className="cs-stat acc-amber"><div className="cs-stat-lbl">In Progress</div>
+        <div className="cs-stat-val">{inProgress.length}</div><div className="cs-stat-meta">pending or waiting</div></div>
+      <div className="cs-stat acc-green"><div className="cs-stat-lbl">Completed</div>
+        <div className="cs-stat-val">{completed.length}</div><div className="cs-stat-meta">outcome recorded</div></div>
+      <div className="cs-stat acc-alert"><div className="cs-stat-lbl">Not Linked</div>
+        <div className="cs-stat-val">{unlinked.length}</div><div className="cs-stat-meta">{SHOW_DECISION_REPORT_LINK?'no report or meeting yet':'no meeting yet'}</div></div>
       {/* "From a report" count hidden with the report link (06 Oct, user's ask). */}
       {SHOW_DECISION_REPORT_LINK && <div className="cs-stat acc-green"><div className="cs-stat-lbl">From a report</div>
         <div className="cs-stat-val">{fromReport.length}</div><div className="cs-stat-meta">taken on a section</div></div>}
-      <div className="cs-stat acc-amber"><div className="cs-stat-lbl">From a meeting</div>
-        <div className="cs-stat-val">{fromMeeting.length}</div><div className="cs-stat-meta">taken on an agenda item</div></div>
-      <div className="cs-stat acc-alert"><div className="cs-stat-lbl">Not linked</div>
-        <div className="cs-stat-val">{unlinked.length}</div><div className="cs-stat-meta">{SHOW_DECISION_REPORT_LINK?'no report or meeting yet':'no meeting yet'}</div></div>
     </div>
+
+    {unlinked.length>0 && <div className="cs-banner" role="status">
+      <CircleAlert size={15} aria-hidden="true"/>
+      <div><div className="cs-banner-t">{unlinked.length} Decision{unlinked.length===1?' is':'s are'} not linked to a meeting yet</div>
+        <div className="cs-banner-s">Link each one to the agenda item it was taken on — use <b>Link…</b> in the
+          register, or filter by <b>Not linked</b> to see them together.</div></div>
+    </div>}
 
     <div className="cs-chips" role="group" aria-label="Filter Decisions by where they were taken">
       {/* "From a report" chip hidden with the report link (06 Oct, user's ask) --
@@ -13115,19 +13143,20 @@ function ScreenDecisions(){
       </div>
     </div>
 
+    <div className="cs-two-col cs-wide-side">
     <section className="cs-card flush" aria-labelledby="dec-reg">
       <div className="cs-card-top">
         <div className="cs-card-title-grp">
           <span className="cs-icon amber" aria-hidden="true"><ClipboardList size={16}/></span>
           <div><h2 className="cs-card-title" id="dec-reg">Decision Register</h2>
             <div className="cs-card-note">{rows.length} of {dvDecisions.length}. Read from the Work Log
-              Decisions table in IT.</div></div>
+              Decisions table.</div></div>
         </div>
       </div>
       {dvLoading && !dvDecisions.length ? <div className="cs-empty">Reading from Dataverse…</div>
       : rows.length===0 ? <div className="cs-empty">{dvDecisions.length?'No Decision matches these filters.':'No Decisions logged yet.'}</div>
-      : <div className="cs-tbl-wrap"><table className="cs-tbl dense" style={{minWidth:860}}>
-          <thead><tr><th>Decision</th><th>Taken in</th><th>Status</th><th>Review</th><th>Logged</th>
+      : <div className="cs-tbl-wrap"><table className="cs-tbl dense" style={{minWidth:760}}>
+          <thead><tr><th>Decision</th><th>Raised From</th><th>Status</th><th>Review</th><th>Taken?</th>
             <th><span className="sr-only">Actions</span></th></tr></thead>
           <tbody>{rows.map(d=>{
             const src = sourceOf(d);
@@ -13137,9 +13166,7 @@ function ScreenDecisions(){
               <tr className="cs-row" tabIndex={0} aria-expanded={isOpen} onClick={toggle}
                   onKeyDown={e=>{ if(e.key==='Enter'){ e.preventDefault(); toggle(); } }}>
                 <td><div className="cs-name">{d.name}</div>
-                  {d.decisionTaken
-                    ? <div className="cs-name-sub">{d.decisionTaken.slice(0,90)}{d.decisionTaken.length>90?'…':''}</div>
-                    : null}</td>
+                  <div className="cs-name-sub">{['Logged '+(d.created?fmtD(d.created.slice(0,10)):'—'), d.reviewer].filter(Boolean).join(' · ')}</div></td>
                 <td><span className={'cs-type'+(src.kind==='report'?'':src.kind==='meeting'?' green':' adhoc')}>
                     {src.kind==='report'?'Report':src.kind==='meeting'?'Meeting':src.label}</span>
                   {src.kind!=='none'
@@ -13149,8 +13176,10 @@ function ScreenDecisions(){
                 <td>{d.status
                   ? <span className={'cs-badge '+(d.status==='Completed'?'approved':d.status==='Escalated'?'pending':'scheduled')}>
                       <i/>{d.status}</span> : '—'}</td>
-                <td>{d.reviewStatus||'—'}{d.reviewer ? <div className="cs-name-sub">{d.reviewer}</div> : null}</td>
-                <td><span className="cs-mono muted">{fmtISODT(d.created)}</span></td>
+                <td>{d.reviewStatus||'—'}</td>
+                <td>{d.decisionTaken
+                  ? <span className="cs-taken" style={{color:'var(--cs-green)'}} title={d.decisionTaken}>✓ Taken</span>
+                  : <span className="cs-taken" style={{color:'var(--cs-gold)'}}>Not yet</span>}</td>
                 <td style={{whiteSpace:'nowrap'}}>
                   {src.open
                     ? <button type="button" className="cs-btn" onClick={e=>{ e.stopPropagation(); src.open(); }}>
@@ -13183,6 +13212,32 @@ function ScreenDecisions(){
             </React.Fragment>;})}
           </tbody></table></div>}
     </section>
+
+    <div className="cs-side">
+      <section className="cs-card" aria-labelledby="dec-flow">
+        <div className="cs-card-top"><div className="cs-card-title-grp">
+          <span className="cs-icon amber" aria-hidden="true"><Activity size={16}/></span>
+          <h2 className="cs-card-title" id="dec-flow">Decision Flow</h2></div></div>
+        <div className="cs-flow">
+          <div className="cs-flow-step"><span className="cs-flow-n">1</span>Raised in a meeting<span className="cs-flow-m">Minutes / log</span></div>
+          <div className="cs-flow-step"><span className="cs-flow-n">2</span>Linked to its agenda item<span className="cs-flow-m">{fromMeeting.length} linked</span></div>
+          <div className="cs-flow-step green"><span className="cs-flow-n">A</span>In progress<span className="cs-flow-m">{inProgress.length} pending / waiting</span></div>
+          <div className="cs-flow-step gold"><span className="cs-flow-n">B</span>Escalated<span className="cs-flow-m">{escalated.length} escalated</span></div>
+          <div className="cs-flow-step"><span className="cs-flow-n">3</span>Completed → Closed<span className="cs-flow-m">{completed.length} completed</span></div>
+        </div>
+      </section>
+      <section className="cs-card" aria-labelledby="dec-health">
+        <div className="cs-card-top"><div className="cs-card-title-grp">
+          <span className="cs-icon green" aria-hidden="true"><Activity size={16}/></span>
+          <h2 className="cs-card-title" id="dec-health">Decision Health</h2></div></div>
+        <div>{[['Avg time to review', avgReviewDays==null?'—':avgReviewDays+'d'],
+               ['Linked to a meeting', linkedPct==null?'—':linkedPct+'%'],
+               ['Escalated', escalated.length],
+               ['Completed this month', completedThisMonth]].map(([l,v])=>
+          <div key={l} className="cs-qs"><span>{l}</span><span className="cs-qs-v">{v}</span></div>)}</div>
+      </section>
+    </div>
+    </div>
 
     {logging && <WorkLogDecisionModal onClose={()=>setLogging(false)}/>}
     {linking && <WorkLogDecisionModal decision={linking} onClose={()=>setLinking(null)}/>}
