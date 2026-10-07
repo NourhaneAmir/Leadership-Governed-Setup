@@ -6076,7 +6076,6 @@ function ScreenMeetings(){
   const noAgendaCt    = upcoming.filter(o=>!o.agenda.length).length;
   const noAttendeeCt  = upcoming.filter(o=>!o.attendees.length).length;
   const agendaNotSent = upcoming.filter(o=>o.agenda.length && !o.agendaSent);
-  const notSentCt     = agendaNotSent.length;
 
   /* -------- Attention: named exceptions, not just counts -------- */
   /* A held meeting whose Minutes are still Draft-and-unsubmitted past the
@@ -6350,7 +6349,7 @@ function ScreenMeetings(){
             ['Cancelled',             cancelled.length,    cancelled.length?'red':null],
             ['Upcoming with no Agenda',    noAgendaCt,   noAgendaCt?'red':null],
             ['Upcoming with no Attendees', noAttendeeCt, noAttendeeCt?'red':null],
-            ['Agenda not yet distributed', notSentCt,    notSentCt?'amber':null],
+            /* "Agenda not yet distributed" removed (07 Oct, user's ask). */
           ].map(([label,val,colour])=>
             <div key={label} className="cs-qs"><span>{label}</span>
               <span className={'cs-qs-v'+(colour?' c-'+colour:'')}>{val}</span></div>)}
