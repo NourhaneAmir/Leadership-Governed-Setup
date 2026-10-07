@@ -17,10 +17,10 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { use } from '../store.jsx';
-import { Btn, Tag, Modal, Field } from '../../../shared/ui.jsx';
+import { Btn, Tag, Modal, Field, Combo } from '../../../shared/ui.jsx';
 import { matchesQuery } from '../domain.jsx';
 import { createWorkLogDecision, linkWorkLogDecision,
-         NEW_DECISION_STATUSES } from '../../../services/dataverse.js';
+         NEW_DECISION_STATUSES, CA_OCCASION_OPTS, CA_OCCASION_DEFAULT, CA_DECISION_OPTS } from '../../../services/dataverse.js';
 
 const decisionTagC = s => s === 'Completed' ? 'green' : s === 'Escalated' ? 'amber' : 'grey';
 
@@ -29,7 +29,7 @@ const decisionTagC = s => s === 'Completed' ? 'green' : s === 'Escalated' ? 'amb
 export function DecisionPanel({ target, canAdd = true }){
   const { dvDecisions = [], toast, refreshOccurrences } = use();
   const [mode, setMode] = useState(null);          // 'new' | 'attach' | null
-  const [f, setF] = useState({ name: '', decisionTaken: '', expectedOutput: '', status: 'Pending' });
+  const [f, setF] = useState({ name: '', decisionTaken: '', expectedOutput: '', status: 'Pending', caOccasion: CA_OCCASION_DEFAULT, caDecision: '' });
   const [q, setQ] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -40,7 +40,7 @@ export function DecisionPanel({ target, canAdd = true }){
 
   const done = async (title, msg) => {
     toast(title, msg, 'ok');
-    setMode(null); setF({ name: '', decisionTaken: '', expectedOutput: '', status: 'Pending' }); setQ('');
+    setMode(null); setF({ name: '', decisionTaken: '', expectedOutput: '', status: 'Pending', caOccasion: CA_OCCASION_DEFAULT, caDecision: '' }); setQ('');
     await refreshOccurrences();
   };
 
@@ -51,6 +51,7 @@ export function DecisionPanel({ target, canAdd = true }){
         name: f.name.trim(), decisionTaken: f.decisionTaken.trim(),
         expectedOutput: f.expectedOutput.trim() || undefined,
         status: f.status,
+        caOccasion: f.caOccasion, caDecision: f.caDecision === '' ? undefined : f.caDecision,
         [linkKey]: target.id,
       });
       if (!id) {
@@ -119,7 +120,7 @@ export function DecisionPanel({ target, canAdd = true }){
       const close = () => {
         if (busy) return;
         if (dirty && !window.confirm('Discard this decision? What you entered will be lost.')) return;
-        setMode(null); setF({ name: '', decisionTaken: '', expectedOutput: '', status: 'Pending' });
+        setMode(null); setF({ name: '', decisionTaken: '', expectedOutput: '', status: 'Pending', caOccasion: CA_OCCASION_DEFAULT, caDecision: '' });
       };
       return createPortal(<Modal title="Raise a decision" wide onClose={close}
         sub={target.label ? `Recorded against ${where}: ${target.label}` : `Recorded against ${where}.`}
@@ -139,6 +140,17 @@ export function DecisionPanel({ target, canAdd = true }){
           <select value={f.status} onChange={e => setF(x => ({ ...x, status: e.target.value }))}>
             {NEW_DECISION_STATUSES.map(st => <option key={st} value={st}>{st}</option>)}
           </select></Field>
+        {/* CA Occasion (Committee by default) and CA Decision, searchable (07 Oct). */}
+        <div className="f-row">
+          <Field label="CA Occasion">
+            <select value={f.caOccasion} onChange={e => setF(x => ({ ...x, caOccasion: Number(e.target.value) }))}>
+              {CA_OCCASION_OPTS.map(o => <option key={o.v} value={o.v}>{o.label}</option>)}
+            </select></Field>
+          <Field label="CA Decision" hint="Optional. Type to search.">
+            <Combo value={f.caDecision === '' ? '' : String(f.caDecision)} all="Select…" placeholder="Search CA decisions…"
+              onChange={id => setF(x => ({ ...x, caDecision: id === '' ? '' : Number(id) }))}
+              opts={CA_DECISION_OPTS.map(o => ({ id: String(o.v), name: o.label }))}/></Field>
+        </div>
       </Modal>, document.body);
     })()}
 

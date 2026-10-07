@@ -58,7 +58,8 @@ import { fetchMeetingOccurrences, fetchReportOccurrences, createMeetingOccurrenc
          TEMPLATE_STATUS_LABEL,
          fetchMeetingMinutes, fetchMeetingMinutesByOccurrence, fetchAuditGridInstancesByOccurrence,
          fetchAuditGridInstances,
-         fetchWorkLogDecisions, createWorkLogDecision, linkWorkLogDecision, NEW_DECISION_STATUSES, fetchReportSectionsByIds,
+         fetchWorkLogDecisions, createWorkLogDecision, linkWorkLogDecision, NEW_DECISION_STATUSES,
+         CA_OCCASION_OPTS, CA_OCCASION_DEFAULT, CA_DECISION_OPTS, fetchReportSectionsByIds,
          fetchReportOccurrenceForEdit,
          fetchAuthorityMatrix, createMeetingMinutes, saveMomNote, updateAgendaCovered,
          setAgendaItemConfidential, saveAgendaItemViewers,
@@ -13260,7 +13261,7 @@ function WorkLogDecisionModal({onClose, decision}){
   const {toast,refreshOccurrences,dvReportOccs,dvMeetingOccs,isMyMeeting}=use();
   const linkOnly = !!decision;
   const [f,setF]=useState({name:'',decisionTaken:'',expectedOutput:'',managerNote:'',evidenceUrl:'',
-    status:'Pending',
+    status:'Pending', caOccasion:CA_OCCASION_DEFAULT, caDecision:'',
     where: decision?.agendaItemId ? 'meeting'
       : SHOW_DECISION_REPORT_LINK && decision?.sectionId ? 'report'
       : linkOnly ? (SHOW_DECISION_REPORT_LINK ? 'report' : 'meeting') : 'none',
@@ -13300,6 +13301,7 @@ function WorkLogDecisionModal({onClose, decision}){
             managerNote:f.managerNote.trim()||undefined,
             evidenceUrl:f.evidenceUrl.trim()||undefined,
             status:f.status,
+            caOccasion:f.caOccasion, caDecision:f.caDecision===''?undefined:f.caDecision,
             ...target,
           });
       if(!id){
@@ -13335,6 +13337,17 @@ function WorkLogDecisionModal({onClose, decision}){
         <textarea rows={2} value={f.expectedOutput} onChange={e=>set('expectedOutput',e.target.value)} maxLength={1000}/></Field>
       <Field label="Status" hint="Saved on the Decision. Escalate it later from the Work Log if it needs escalating.">
         <Pills opts={NEW_DECISION_STATUSES} val={f.status} onChange={v=>set('status',v||'Pending')}/></Field>
+      {/* CA Occasion (Committee by default) and CA Decision, searchable (07 Oct). */}
+      <div className="f-row">
+        <Field label="CA Occasion">
+          <select value={f.caOccasion} onChange={e => setF(x => ({ ...x, caOccasion: Number(e.target.value) }))}>
+            {CA_OCCASION_OPTS.map(o => <option key={o.v} value={o.v}>{o.label}</option>)}
+          </select></Field>
+        <Field label="CA Decision" hint="Optional. Type to search.">
+          <Combo value={f.caDecision === '' ? '' : String(f.caDecision)} all="Select…" placeholder="Search CA decisions…"
+            onChange={id => setF(x => ({ ...x, caDecision: id === '' ? '' : Number(id) }))}
+            opts={CA_DECISION_OPTS.map(o => ({ id: String(o.v), name: o.label }))}/></Field>
+      </div>
     </>}
 
     <Field label="Where was it taken?">

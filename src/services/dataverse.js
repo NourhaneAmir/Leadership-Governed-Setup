@@ -6714,11 +6714,85 @@ const decisionLinkBinds = ({ sectionId, agendaItemId } = {}) => {
 export const DECISION_STATUS_KEY = { 'Completed':1, 'Pending':2, 'Waiting':3, 'Escalated':4 };
 export const NEW_DECISION_STATUSES = ['Pending', 'Waiting', 'Completed'];
 
+/* CA Occasion / CA Decision (07 Oct) -- pms_caoccasion and pms_cadecision on
+   wlog_decision, global choices pms_pmscaoccasionglobalchoice and
+   pms_pmscadecisionglobalchoice. Values and labels read from DT New's
+   stringmap (the values start at 0). DT New only: IT's wlog_decision has no
+   such columns. A new decision is a Committee one unless said otherwise. */
+export const CA_OCCASION_OPTS = [
+  {v:0, label:'Committee'}, {v:1, label:'Weekly Assumption'}, {v:2, label:'PMS'}, {v:3, label:'Productivity'},
+];
+export const CA_OCCASION_DEFAULT = 0;   // Committee
+export const CA_DECISION_OPTS = [
+  {v:0, label:'Cost increase'},
+  {v:1, label:'Cost Saving'},
+  {v:2, label:'Create/Modify bonus scheme'},
+  {v:3, label:'Investigation'},
+  {v:4, label:'Overtime Schema'},
+  {v:5, label:'Salary Adjustment'},
+  {v:6, label:'Salary Scale Modifications'},
+  {v:7, label:'Assessments'},
+  {v:8, label:'Job Assignment'},
+  {v:9, label:'Job Descoping'},
+  {v:10, label:'Succession Planning'},
+  {v:11, label:'Training'},
+  {v:12, label:'Conduct Workload analysis'},
+  {v:13, label:'Decrease Manpower'},
+  {v:14, label:'Increase Manpower'},
+  {v:15, label:'Recruit'},
+  {v:16, label:'Add/Remove Box'},
+  {v:17, label:'Change Reporting Line'},
+  {v:18, label:'Change Responsibilities'},
+  {v:19, label:'Hold Position'},
+  {v:20, label:'Job Enlargement'},
+  {v:21, label:'Job Enrichment'},
+  {v:22, label:'Merging Boxes'},
+  {v:23, label:'Restructure'},
+  {v:24, label:'UpSkilling'},
+  {v:25, label:'Add/ Remove KPI'},
+  {v:26, label:'Change Weights'},
+  {v:27, label:'KPI Measurement Change'},
+  {v:28, label:'Target Setting'},
+  {v:29, label:'Engagement Activities'},
+  {v:30, label:'Adding Services or Capex'},
+  {v:31, label:'Modify Price List'},
+  {v:32, label:'Marketing Campaigne'},
+  {v:33, label:'Modify Offering & Packages'},
+  {v:34, label:'On site Clinic'},
+  {v:35, label:'Account Management'},
+  {v:36, label:'Clinic Modification'},
+  {v:37, label:'Internal Announcement'},
+  {v:38, label:'IT Support'},
+  {v:39, label:'Modify Process'},
+  {v:40, label:'Modify Work Flow'},
+  {v:41, label:'New Tools'},
+  {v:42, label:'New/Modify Policy'},
+  {v:43, label:'Setting Business Plan'},
+  {v:44, label:'Working hours Modifcation'},
+  {v:45, label:'Deduction'},
+  {v:46, label:'End Of Contract'},
+  {v:47, label:'Issue/ Remove Allowances'},
+  {v:48, label:'Lay Off'},
+  {v:49, label:'Promotion'},
+  {v:50, label:'Renewal Contract'},
+  {v:51, label:'Retention'},
+  {v:52, label:'Issue/ Stop Reward'},
+  {v:53, label:'Coaching'},
+  {v:54, label:'Mentoring Downgrade'},
+  {v:55, label:'Replacement'},
+  {v:56, label:'Termination'},
+  {v:57, label:'Transfer'},
+  {v:58, label:'Action Plan'},
+  {v:59, label:'Feedback Session'},
+  {v:60, label:'Formal Feedback'},
+  {v:61, label:'Warning Letter'},
+];
+
 /** Logs a new Work Log Decision, optionally where it was taken -- a report
  *  section and/or a meeting agenda item, with a status (Pending when none is
  *  given). */
 export async function createWorkLogDecision({ name, decisionTaken, expectedOutput, managerNote, evidenceUrl,
-                                              sectionId, agendaItemId, status } = {}){
+                                              sectionId, agendaItemId, status, caOccasion, caDecision } = {}){
   try{
     const created = await Wlog_decisionsService.create({
       wlog_name: (name||'').trim().slice(0,100) || undefined,
@@ -6727,6 +6801,8 @@ export async function createWorkLogDecision({ name, decisionTaken, expectedOutpu
       wlog_expectedoutput: expectedOutput ? expectedOutput.slice(0,1000) : undefined,
       wlog_managernote: managerNote ? managerNote.slice(0,2000) : undefined,
       wlog_evidenceurl: evidenceUrl ? evidenceUrl.slice(0,500) : undefined,
+      pms_caoccasion: typeof caOccasion === 'number' ? caOccasion : CA_OCCASION_DEFAULT,
+      pms_cadecision: typeof caDecision === 'number' ? caDecision : undefined,
       ...decisionLinkBinds({ sectionId, agendaItemId }),
     });
     const id = idOrThrow(created, 'wlog_decisionid');
