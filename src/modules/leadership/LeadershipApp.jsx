@@ -1735,8 +1735,14 @@ const SCREENS = [
    code are untouched -- delete the flag to switch one back on. Communication
    & execution joined them on 04 Oct, same instruction. */
 const VISIBLE_SCREENS = SCREENS.filter(s=>!s.hidden);
-const NAV = [...new Set(VISIBLE_SCREENS.map(s=>s.group))].map(g=>({
-  g, items: VISIBLE_SCREENS.filter(s=>s.group===g),
+/* The "Soon" entries (Artifact group + Communication & execution) are hidden
+   from the sidebar altogether (07 Oct, user's ask) -- a group left with no
+   entries disappears with them. true brings them back as "Soon". Defined
+   here, above NAV, because NAV is built when the module loads. */
+const SHOW_SOON_IN_NAV = false;
+const NAV_SCREENS = VISIBLE_SCREENS.filter(s=>SHOW_SOON_IN_NAV || !s.comingSoon);
+const NAV = [...new Set(NAV_SCREENS.map(s=>s.group))].map(g=>({
+  g, items: NAV_SCREENS.filter(s=>s.group===g),
 }));
 const SCREEN_BY_ID = Object.fromEntries(SCREENS.map(s=>[s.id,s.Screen]));
 const WIDE_SCREENS = new Set(SCREENS.filter(s=>s.wide).map(s=>s.id));
@@ -1757,7 +1763,7 @@ function Side(){
           title={navOpen?undefined:i.label}
           className={'nav-i'+(screen===i.id?' on':'')} onClick={()=>go(i.id)}>
           <span className="nav-n"><i.Icon size={16} strokeWidth={2.25}/></span><span className="lp-nav-label">{i.label}</span>
-          {counts[i.id]>0 && <span className="nav-b" aria-label={counts[i.id]+' open activities'}>
+          {SHOW_COUNT_BADGES && counts[i.id]>0 && <span className="nav-b" aria-label={counts[i.id]+' open activities'}>
             {counts[i.id]}</span>}
         </button>)}
     </div>)}
@@ -3598,7 +3604,7 @@ function ScreenWorkspace(){
           const n = t.id==='All' ? tagged.length : tagged.filter(w=>w.area===t.id).length;
           return <button key={t.id} type="button" role="tab" aria-selected={tab===t.id}
             className={'cs-tab'+(tab===t.id?' on':'')} onClick={()=>setTab(t.id)}>
-            {t.label}<span className="cs-tab-badge">{n}</span></button>;})}
+            {t.label}{SHOW_COUNT_BADGES && <span className="cs-tab-badge">{n}</span>}</button>;})}
       </div>
     </div>
 
@@ -6073,8 +6079,6 @@ function ScreenMeetings(){
   const scheduledThisPeriod = list.filter(o=>o.status!=='Cancelled' && inPeriod(o.date)).length;
   const heldThisPeriod      = held.filter(o=>inPeriod(o.date)).length;
   const rescheduledCt = list.filter(o=>o.rescheduledFromId).length;
-  const noAgendaCt    = upcoming.filter(o=>!o.agenda.length).length;
-  const noAttendeeCt  = upcoming.filter(o=>!o.attendees.length).length;
   const agendaNotSent = upcoming.filter(o=>o.agenda.length && !o.agendaSent);
 
   /* -------- Attention: named exceptions, not just counts -------- */
@@ -6196,7 +6200,7 @@ function ScreenMeetings(){
         {TABS.map(t=>
           <button key={t.id} type="button" role="tab" aria-selected={tab===t.id}
             className={'cs-tab'+(tab===t.id?' on':'')} onClick={()=>setTab(t.id)}>
-            {t.label}{t.id!=='all' && <span className="cs-tab-badge">{t.rows.length}</span>}
+            {t.label}{SHOW_COUNT_BADGES && t.id!=='all' && <span className="cs-tab-badge">{t.rows.length}</span>}
           </button>)}
       </div>
     </div>
@@ -6347,9 +6351,8 @@ function ScreenMeetings(){
             ['Held this period',      heldThisPeriod,      null],
             ['Rescheduled',           rescheduledCt,       rescheduledCt?'amber':null],
             ['Cancelled',             cancelled.length,    cancelled.length?'red':null],
-            ['Upcoming with no Agenda',    noAgendaCt,   noAgendaCt?'red':null],
-            ['Upcoming with no Attendees', noAttendeeCt, noAttendeeCt?'red':null],
-            /* "Agenda not yet distributed" removed (07 Oct, user's ask). */
+            /* "Upcoming with no Agenda", "Upcoming with no Attendees" and "Agenda not
+               yet distributed" removed (07 Oct, user's ask). */
           ].map(([label,val,colour])=>
             <div key={label} className="cs-qs"><span>{label}</span>
               <span className={'cs-qs-v'+(colour?' c-'+colour:'')}>{val}</span></div>)}
@@ -8322,6 +8325,10 @@ const SHOW_DECISION_REPORT_LINK = false;
 /* My Workspace's "This Month" card (Meetings Held / Agenda Fully Recorded) --
    removed from the screen (06 Oct, user's ask), code kept. */
 const SHOW_MONTH_CARD = false;
+/* Count badges (07 Oct, user's ask) -- hidden on the sidebar menu, My
+   Workspace's Work Queue tabs, Meetings & Committees' tabs and a meeting's own
+   tabs. Meeting Minutes, Committee Scores and Decisions keep theirs. */
+const SHOW_COUNT_BADGES = false;
 /* The Documents tab's "Link a report directly" card (an ad hoc meeting's
    picker of any Report Occurrence) is hidden too (05 Oct, user's ask). Its
    code and ReportLinkPicker are unchanged: set to true to bring it back. */
@@ -8962,7 +8969,7 @@ function DvMeetingDetail({rec,back}){
           ['actions','Actions',mtgTasks===undefined?null:(actions.length||null)]].map(([k,l,c])=>
           <button key={k} type="button" role="tab" aria-selected={tab===k}
             className={'cs-tab'+(tab===k?' on':'')} onClick={()=>setTab(k)}>
-            {l}{c!=null ? <span className="cs-tab-badge">{c}</span> : null}</button>)}
+            {l}{SHOW_COUNT_BADGES && c!=null ? <span className="cs-tab-badge">{c}</span> : null}</button>)}
       </nav>
     </div>
 
@@ -10946,7 +10953,8 @@ function ScreenNewMeeting(){
      TODAY -- and named once so the initial state and the Custom reset below
      cannot drift into two different ideas of "empty". */
   const blankForm = () => ({setup:'', tplUnitKey:'', name:'', purpose:'', bu:'AHJ',
-    date:addDays(TODAY,5), start:'09:00', end:'10:00', mode:'Online', location:'',
+    /* No default date or times (07 Oct, user's ask): the Organizer enters them. */
+    date:'', start:'', end:'', suggestedDate:'', mode:'Online', location:'',
     adhoc:'Governance', restricted:false, dept:P(me).dept, stage:'Business Unit',
     chair:'u2', facilitator:'u3', recorder:null,
     attend:[{who:'u2',type:'Required'},{who:'u5',type:'Required'}], agenda:[''], inputs:[],
@@ -11136,7 +11144,9 @@ function ScreenNewMeeting(){
       TODAY,
       typeof p.cr18c_month==='number' ? p.cr18c_month : null,
     );
-    setF(x=>({...x, agenda: ag.length?ag:[''], agendaOwners: ag.length?agOwners:[''], date: natural || x.date,
+    /* The cadence date is only SUGGESTED (07 Oct): the date stays empty until the
+       user picks one or clicks "Use it" under the field. */
+    setF(x=>({...x, agenda: ag.length?ag:[''], agendaOwners: ag.length?agOwners:[''], suggestedDate: natural || '',
               torLink: p.lm_torpolicylink || '' }));
     if(tplUnits.length<=1) applyUnit(tplUnits[0]||null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -11644,6 +11654,10 @@ function ScreenNewMeeting(){
               <Field need="date" label="Date" req
                 hint={moved
                   ? `${dayName(f.date)} is a non-working day. This occurrence will be booked on ${fmtD(bookedDate)} — the series is unchanged.`
+                  : !f.date && f.suggestedDate && !isWeekend(f.suggestedDate)
+                    ? <>The Setup’s cadence suggests {dayName(f.suggestedDate)}, {fmtD(f.suggestedDate)}.{' '}
+                        <button type="button" className="cs-btn" style={{padding:'1px 8px',fontSize:11.5}}
+                          onClick={()=>pickWorkingDate(f.suggestedDate, v=>set('date',v), setFriPick)}>Use it</button></>
                   : 'The working week is Saturday to Thursday.'}
                 err={friPick ? `${dayName(friPick)} ${fmtD(friPick)} is not a working day (the working week is Saturday to Thursday). Choose another date.`
                   : offDay ? `${dayName(f.date)} is not a working day (the working week is Saturday to Thursday). Choose another date.` : null}>
