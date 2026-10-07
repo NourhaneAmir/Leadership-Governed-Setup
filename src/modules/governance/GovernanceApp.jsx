@@ -5584,7 +5584,8 @@ function App({onSwitch}){
         console.warn('[dataverse] fetchRegions() failed, using built-in list:', e);
       }
       try{
-        const units=await fetchBusinessUnits();
+        /* Only the BUs tagged "Leadership Practice" (07 Oct, user's ask). */
+        const units=await fetchBusinessUnits({ appTag:'Leadership' });
         if(cancelled) return;
         if(units&&units.length){ BUSINESS_UNITS=units; changed=true; }
       }catch(e){

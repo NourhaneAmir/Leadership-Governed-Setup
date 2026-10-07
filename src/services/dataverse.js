@@ -284,16 +284,31 @@ export async function fetchRegions(){
    longer a dead end for the pickers that need one -- positionsInScope()
    (GovernanceApp.jsx) now falls back to every Position company-wide,
    labelled by its real BU, exactly for this case. */
-export async function fetchBusinessUnits(){
+/* `appTag` (07 Oct, user's ask -- Governance Setup): keep only the Business
+   Units whose cr603_application_tag (multi-select) carries an option whose
+   label contains this text, read from the FormattedValue ("Leadership
+   Practice; HR; ..."). IT has the "Leadership Practice" option on 29 BUs;
+   DT New has no such option yet, so when NO row matches, every BU is returned
+   (with a warning) rather than leaving the pickers empty. */
+export async function fetchBusinessUnits({ appTag } = {}){
   const res = await BusinessunitsService.getAll({
-    select: ['businessunitid', 'name', '_cr603_region_value'],
+    select: ['businessunitid', 'name', '_cr603_region_value', ...(appTag ? ['cr603_application_tag'] : [])],
   });
   const rows = res?.data ?? [];
-  return rows.map(r => ({
+  const all = rows.map(r => ({
     id: r.businessunitid,
     name: r.name,
     region: r._cr603_region_value ?? null, // matches a Region's id above
+    tags: String(r['cr603_application_tag' + FV] || ''),
   }));
+  if(!appTag) return all;
+  const needle = appTag.toLowerCase();
+  const tagged = all.filter(b => b.tags.toLowerCase().split(/;\s*/).some(t => t.includes(needle)));
+  if(!tagged.length){
+    console.warn(`[dataverse] fetchBusinessUnits(): no Business Unit is tagged "${appTag}" here -- showing all of them.`);
+    return all;
+  }
+  return tagged;
 }
 
 /* ---------------------------------------------------------------------
